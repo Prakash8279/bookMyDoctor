@@ -493,11 +493,16 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
     expect(where).toEqual({ patientUserId: PATIENT_ID });
   });
 
-  test('a doctor is always scoped to their own doctorUserId', async () => {
+  // PAYMENT-CONFIRMATION GATE (user request: "jab tak payment confirm nahi hota hai minimum ya
+  // full tab tak receptionest ya doctor ke pass detail nahi jana chahiye") — a doctor's list is
+  // now also always scoped away from `status: 'pending_payment'` bookings (an abandoned/unpaid
+  // checkout attempt — see runBookingJob/payments.service.js), the same forced way doctorUserId
+  // itself is scoped, never something a caller can ask their way around.
+  test('a doctor is always scoped to their own doctorUserId and never sees an unpaid pending_payment booking', async () => {
     await appointmentsService.listAppointments({ patientId: 'someone-else' }, { id: DOCTOR_ID, role: 'doctor' });
 
     const where = prisma.appointment.findMany.mock.calls[0][0].where;
-    expect(where).toEqual({ doctorUserId: DOCTOR_ID });
+    expect(where).toEqual({ doctorUserId: DOCTOR_ID, status: { not: 'pending_payment' } });
   });
 
   test('a receptionist with no clinic assignment gets an empty page WITHOUT ever querying appointments', async () => {
@@ -509,13 +514,25 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
     expect(prisma.appointment.findMany).not.toHaveBeenCalled();
   });
 
-  test('a receptionist is scoped to their own clinic\'s id, not a client-supplied clinicId', async () => {
+  // Same PAYMENT-CONFIRMATION GATE as the doctor test above — a receptionist's list is scoped
+  // away from unpaid pending_payment bookings too.
+  test('a receptionist is scoped to their own clinic\'s id, not a client-supplied clinicId, and never sees an unpaid pending_payment booking', async () => {
     prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
 
     await appointmentsService.listAppointments({ clinicId: 'other-clinic' }, { id: 'recep-1', role: 'receptionist' });
 
     const where = prisma.appointment.findMany.mock.calls[0][0].where;
-    expect(where).toEqual({ clinicId: CLINIC_ID });
+    expect(where).toEqual({ clinicId: CLINIC_ID, status: { not: 'pending_payment' } });
+  });
+
+  // The gate above only applies to doctor/receptionist (per the user's own request, which named
+  // only those two roles) — admin/superadmin still see pending_payment bookings, matching every
+  // other admin view of the full, unfiltered appointment set.
+  test('admin/superadmin are NOT subject to the pending_payment gate', async () => {
+    await appointmentsService.listAppointments({}, { id: 'admin-1', role: 'admin' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({});
   });
 
   test('admin/superadmin MAY filter by doctorId/clinicId/patientId query params', async () => {
@@ -526,6 +543,26 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
 
     const where = prisma.appointment.findMany.mock.calls[0][0].where;
     expect(where).toEqual({ doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, patientUserId: PATIENT_ID });
+  });
+
+  // A patient must still see their OWN pending_payment booking — that's the whole point of the
+  // "complete your payment" screen; only doctor/receptionist are gated from it.
+  test('a patient still sees their own pending_payment booking (the gate never applies to patients)', async () => {
+    await appointmentsService.listAppointments({}, { id: PATIENT_ID, role: 'patient' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ patientUserId: PATIENT_ID });
+  });
+
+  test('an explicit status filter for a doctor/receptionist is ANDed with the pending_payment gate rather than replaced by it', async () => {
+    await appointmentsService.listAppointments({ status: 'completed' }, { id: DOCTOR_ID, role: 'doctor' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({
+      doctorUserId: DOCTOR_ID,
+      AND: [{ status: 'completed' }, { status: { not: 'pending_payment' } }],
+    });
+    expect(where.status).toBeUndefined();
   });
 
   test('rows are shaped with the commission looked up once for the whole page, not once per row', async () => {

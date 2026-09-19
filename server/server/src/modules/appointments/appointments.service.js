@@ -1285,6 +1285,28 @@ async function listAppointments(
       if (patientId) where.patientUserId = patientId;
     }
 
+    // PAYMENT-CONFIRMATION GATE (user request: "jab tak payment confirm nahi hota hai minimum ya
+    // full tab tak receptionest ya doctor ke pass detail nahi jana chahiye") — a booking that
+    // requires prepayment is created as `status: 'pending_payment'` (see runBookingJob above) and
+    // stays that way until a payment — minimum advance OR full — actually succeeds; only then
+    // does payments.service.js#createPaymentForAppointment flip it to 'upcoming'. Before that, it
+    // is just an abandoned/incomplete checkout attempt (the patient started booking and never
+    // paid), and the doctor/receptionist should never see that patient's name, phone, or reason
+    // for it — same forced role-scoping principle as clinicId/doctorUserId just above (never the
+    // client's choice, rule 3). The patient's own appointment list is unaffected — that's exactly
+    // where an unpaid pending_payment booking belongs, so they can go back and finish paying.
+    if (requester.role === 'doctor' || requester.role === 'receptionist') {
+      if (where.status) {
+        // An explicit status filter isn't sent by any current client (every fetchAppointments()
+        // call passes no status), but if one ever is, AND it with the gate instead of letting a
+        // caller request their way past it by asking for status=pending_payment directly.
+        where.AND = [...(where.AND || []), { status: where.status }, { status: { not: 'pending_payment' } }];
+        delete where.status;
+      } else {
+        where.status = { not: 'pending_payment' };
+      }
+    }
+
     // The commission lookup doesn't depend on the appointment query below (or vice versa) — run
     // all three concurrently instead of paying for the commission round-trip before even starting
     // the appointment fetch.
