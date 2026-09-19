@@ -494,8 +494,8 @@ export function PatientAppointments({ data, history = false }) {
   // shared with Payments below and StaffPages.jsx's CashPayment), and the actual save-to-disk
   // action lives inside that preview.
   const slip = usePdfPreview()
-  const viewSlip = ({ appointment, fee, paid, due }) =>
-    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—' }))
+  const viewSlip = ({ appointment, fee, feeMinimumPath, paid, due }) =>
+    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee, feeMinimumPath, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—' }))
   // COLUMN-CLARITY FIX (user request: "feec column ka matlab clear kro" — the "Fee" column shows
   // the FULL fee as if paid entirely online (consultationFee + platform convenience/emergency
   // charge + GST — see utils/minBookingAmount.js's worked example), which is deliberately MORE
@@ -545,7 +545,7 @@ export function PatientAppointments({ data, history = false }) {
     <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
     {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
     <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-  </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, fee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
+  </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, fee, feeMinimumPath, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
   </Page>
   <PdfPreviewModal preview={slip.preview} onClose={slip.close} title="Booking slip preview" />
   </>

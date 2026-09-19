@@ -135,7 +135,7 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
  * included since the appointments.service.js#APPOINTMENT_INCLUDE fix that added them for exactly
  * this purpose).
  */
-export function buildBookingSlipSections({ appointment, fee, paid, due, patientName }) {
+export function buildBookingSlipSections({ appointment, fee, feeMinimumPath, paid, due, patientName }) {
   return {
     title: 'BookMyDoctor24',
     subtitle: 'Booking Slip',
@@ -177,8 +177,17 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
     // consultationFee/convenienceFee/emergencyFee/gstAmount separately), this booking SLIP only
     // ever received the single merged total, so the correct minimal fix is to label it for what it
     // actually is.
+    // DUAL-FEE FIX ("slip me v sahi kro" — same fix as the "My appointments" table's Full
+    // Fee / Fee (Min. Path) columns): "Total amount" is the COMPLETE-online-payment total
+    // (fees.totalAmount). When the patient paid only the doctor's minimum booking amount online,
+    // Paid + Due legitimately add up to LESS than that (the platform charge/GST is collected
+    // exactly once either way — see utils/minBookingAmount.js's worked example) — which read as
+    // a mismatch on this official-looking, printable slip. Add the minimum-booking-path total
+    // (feeMinimumPath, passed from PatientPages.jsx's `records` map) as its own row whenever it's
+    // known and actually differs from `fee`, so Paid + Due visibly reconciles against it instead.
     totalRows: [
-      ['Total amount', formatMoneyPlain(fee)],
+      ['Total amount (full online payment)', formatMoneyPlain(fee)],
+      ...(feeMinimumPath != null && feeMinimumPath !== fee ? [['Total amount (minimum booking path)', formatMoneyPlain(feeMinimumPath)]] : []),
       ['Paid', formatMoneyPlain(paid)],
       ['Due', formatMoneyPlain(due), true],
     ],
@@ -192,8 +201,8 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
  * this in an in-page preview and lets the browser's object URL double as the download link's href.
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
-export async function buildBookingSlipPdfBlob({ appointment, fee, paid, due, patientName }) {
-  const doc = await renderReceiptDocument(buildBookingSlipSections({ appointment, fee, paid, due, patientName }))
+export async function buildBookingSlipPdfBlob({ appointment, fee, feeMinimumPath, paid, due, patientName }) {
+  const doc = await renderReceiptDocument(buildBookingSlipSections({ appointment, fee, feeMinimumPath, paid, due, patientName }))
   return { blob: doc.toBlob(), filename: `booking-slip-${shortId(appointment.id)}.pdf` }
 }
 
