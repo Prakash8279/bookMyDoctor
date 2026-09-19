@@ -69,3 +69,27 @@ export function sequenceId(index, prefix = 'DC') {
   const n = Number(index) + 1
   return `${prefix}${String(n).padStart(2, '0')}`
 }
+
+/**
+ * Formats a real, server-stored sequential number (User.patientNumber / DoctorProfile.doctorNumber
+ * / Clinic.clinicNumber — assigned once at registration/creation, see prisma/migrations/
+ * 20260919130000_add_patient_doctor_clinic_numbers) as a stable display id: stableId(1, 'DCP') ->
+ * 'DCP1', stableId(23, 'DCD') -> 'DCD23'. Unlike sequenceId() above, this number is NOT derived
+ * from a row's position in whatever filtered/sorted/paginated list happens to be on screen right
+ * now — it's the actual stored identity of that one patient/doctor/clinic, so it stays the same
+ * everywhere that record's data appears, regardless of search/sort/pagination (per user request:
+ * "ek patient ko dcp1 mil hya to ushka data jaha v ja raha hai waha same id jaye").
+ *
+ * A legacy row created before this column existed and somehow not yet backfilled by the migration
+ * shows the fallback below instead of a blank/NaN cell — this should be rare in practice (the
+ * migration backfills every existing row), but a formatter must never crash a table render over
+ * one bad value.
+ * @param {number|string|null|undefined} number - the stored patientNumber/doctorNumber/clinicNumber
+ * @param {string} prefix - 'DCP' | 'DCD' | 'DCC' (no default: callers must be explicit about which)
+ * @returns {string}
+ */
+export function stableId(number, prefix) {
+  if (number === null || number === undefined || number === '') return `${prefix}—`
+  const n = Number(number)
+  return Number.isFinite(n) ? `${prefix}${n}` : `${prefix}—`
+}

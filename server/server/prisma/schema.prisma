@@ -144,6 +144,17 @@ model User {
   status       AccountStatus @default(active)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
+  // Stable, sequential, human-facing display number for patient-role users — assigned ONCE at
+  // registration (auth.service.js#register) via `nextval('patient_number_seq')`, rendered
+  // client-side as "DCP<N>". Deliberately NOT derived from a row's position/index in whatever
+  // filtered/sorted/paginated list happens to be on screen (that's what sequenceId() in
+  // client/src/lib/format.js is for, and it can change from one page load to the next) — this
+  // column is the actual stored identity, so the same patient always shows the same DCP number
+  // everywhere their data appears. Meaningless for non-patient roles; NULL only for a legacy row
+  // created before this column existed (backfilled by this migration, so NULL should only appear
+  // on a brand-new patient row that somehow bypassed auth.service.js#register). See
+  // prisma/migrations/20260919130000_add_patient_doctor_clinic_numbers.
+  patientNumber Int? @unique @map("patient_number")
 
   patientProfile      PatientProfile?
   doctorProfile       DoctorProfile?
@@ -286,6 +297,12 @@ model DoctorProfile {
   // See appointments.service.js#runBookingJob's token-assignment block for exactly how this
   // combines with tokenNumberingMode.
   onlineTokenParity  String @default("odd") @map("online_token_parity")
+  // Stable, sequential, human-facing display number — assigned ONCE at doctor creation
+  // (doctors.service.js#createDoctor) via `nextval('doctor_number_seq')`, rendered client-side as
+  // "DCD<N>". Same rationale as User.patientNumber above: never derived from list
+  // position/index, so it never changes across searches, sorts, or pagination. See
+  // prisma/migrations/20260919130000_add_patient_doctor_clinic_numbers.
+  doctorNumber Int? @unique @map("doctor_number")
 
   @@index([specializationId])
   @@index([status])
@@ -347,6 +364,12 @@ model Clinic {
   paymentQrUrl         String?               @map("payment_qr_url")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
+  // Stable, sequential, human-facing display number — assigned ONCE at clinic creation via
+  // `nextval('clinic_number_seq')`, rendered client-side as "DCC<N>". Same rationale as
+  // User.patientNumber above: never derived from list position/index, so it never changes across
+  // searches, sorts, or pagination. See
+  // prisma/migrations/20260919130000_add_patient_doctor_clinic_numbers.
+  clinicNumber         Int?                  @unique @map("clinic_number")
 
   doctorClinics DoctorClinic[]
   hours         DoctorClinicHours[]

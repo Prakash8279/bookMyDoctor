@@ -96,6 +96,11 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
         photoUrl: null,
         status: data.status,
         createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        // Stable "DCP<N>" display number (prisma/migrations/
+        // 20260919130000_add_patient_doctor_clinic_numbers) — register() draws this from
+        // idGenerators.nextPatientNumber(), itself backed by mockPrisma.js's default
+        // $queryRaw mock (always resolves nextval() to 1n in this fake).
+        patientNumber: data.patientNumber ?? null,
       };
       usersByEmail.set(record.email, record);
       usersById.set(record.id, record);
@@ -133,6 +138,9 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
     expect(registerRes.body.success).toBe(true);
     expect(registerRes.body.data.user.email).toBe('asha@example.com');
     expect(registerRes.body.data.user.role).toBe('patient');
+    // The stable "DCP<N>" number is drawn from nextval() (mockPrisma.js's $queryRaw default
+    // always resolves it to 1n) and round-trips through the real register() response.
+    expect(registerRes.body.data.user.patientNumber).toBe(1);
     // Never leak the hash over the wire.
     expect(registerRes.body.data.user.passwordHash).toBeUndefined();
     expect(typeof registerRes.body.data.accessToken).toBe('string');

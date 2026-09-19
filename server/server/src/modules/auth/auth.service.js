@@ -15,6 +15,7 @@ const activityLogService = require('../../services/activityLogService');
 const emailService = require('../../services/emailService');
 const smsService = require('../../services/smsService');
 const logger = require('../../config/logger');
+const idGenerators = require('../../utils/idGenerators');
 
 // Base columns returned for "who am I" responses across this module — never includes passwordHash.
 const USER_SUMMARY_SELECT = {
@@ -27,6 +28,11 @@ const USER_SUMMARY_SELECT = {
   photoUrl: true,
   status: true,
   createdAt: true,
+  // Stable "DCP<N>" display number — see prisma/migrations/
+  // 20260919130000_add_patient_doctor_clinic_numbers. Always null for a non-patient role; harmless
+  // to select unconditionally here since every caller of USER_SUMMARY_SELECT already returns this
+  // same shape for every role (login, register, GET /me).
+  patientNumber: true,
 };
 
 // Precomputed once at boot and reused as the bcrypt.compare() target whenever an email lookup
@@ -77,6 +83,14 @@ async function register({ name, email, password, phone, city }) {
   let user;
   try {
     user = await prisma.$transaction(async (tx) => {
+      // Drawn once, right before the insert that stores it — same "only burn a number once
+      // everything else is confirmed" posture as payments.service.js's nextReceiptNumber calls.
+      // Sequences are non-transactional in Postgres (a nextval() is never rolled back even if
+      // this transaction later fails), so a rare failed registration can leave a small gap in
+      // the sequence — exactly as accepted for payment_receipt_seq already; it never causes a
+      // duplicate or reused patient_number.
+      const patientNumber = await idGenerators.nextPatientNumber();
+
       const created = await tx.user.create({
         data: {
           name: name.trim(),
@@ -86,6 +100,7 @@ async function register({ name, email, password, phone, city }) {
           phone: phone ? phone.trim() : null,
           city: city ? city.trim() : null,
           status: 'active',
+          patientNumber,
         },
         select: USER_SUMMARY_SELECT,
       });

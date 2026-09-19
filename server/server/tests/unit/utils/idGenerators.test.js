@@ -5,11 +5,16 @@
  * TEMPLATE (`` prisma.$queryRaw`SELECT ...` ``) — under the hood that's just prisma.$queryRaw
  * being called with a template-strings array as its first argument, so the mock must itself be
  * callable.
+ *
+ * Also covers nextPatientNumber/nextDoctorNumber/nextClinicNumber (prisma/migrations/
+ * 20260919130000_add_patient_doctor_clinic_numbers) — same tagged-template $queryRaw call
+ * against their own sequences, but returning a plain Number (no CDR-style prefix/padding: that
+ * formatting is a frontend concern, see client/src/lib/format.js#stableId).
  */
 jest.mock('../../../src/config/db', () => ({ $queryRaw: jest.fn() }));
 
 const prisma = require('../../../src/config/db');
-const { nextReceiptNumber } = require('../../../src/utils/idGenerators');
+const { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber } = require('../../../src/utils/idGenerators');
 
 describe('idGenerators.nextReceiptNumber', () => {
   test('pads a small sequence value out to 8 digits with the CDR- prefix', async () => {
@@ -44,5 +49,35 @@ describe('idGenerators.nextReceiptNumber', () => {
     const result = await nextReceiptNumber();
 
     expect(result).toBe('CDR-00000000');
+  });
+});
+
+describe('idGenerators.nextPatientNumber / nextDoctorNumber / nextClinicNumber', () => {
+  test.each([
+    ['nextPatientNumber', nextPatientNumber, 'patient_number_seq'],
+    ['nextDoctorNumber', nextDoctorNumber, 'doctor_number_seq'],
+    ['nextClinicNumber', nextClinicNumber, 'clinic_number_seq'],
+  ])('%s returns a plain Number (unformatted, unpadded) drawn from %s', async (_name, fn, seqName) => {
+    prisma.$queryRaw.mockResolvedValue([{ value: 7n }]);
+
+    const result = await fn();
+
+    expect(result).toBe(7);
+    expect(typeof result).toBe('number');
+    const [strings] = prisma.$queryRaw.mock.calls[0];
+    expect(strings.join('')).toContain(seqName);
+  });
+
+  test.each([
+    ['nextPatientNumber', nextPatientNumber],
+    ['nextDoctorNumber', nextDoctorNumber],
+    ['nextClinicNumber', nextClinicNumber],
+  ])('%s converts a BigInt sequence value to a real Number, not a string or BigInt', async (_name, fn) => {
+    prisma.$queryRaw.mockResolvedValue([{ value: 123456789n }]);
+
+    const result = await fn();
+
+    expect(result).toBe(123456789);
+    expect(typeof result).toBe('number');
   });
 });

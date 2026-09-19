@@ -14,6 +14,7 @@ const notificationsService = require('../notifications/notifications.service');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { ADMIN_ROLES } = require('../../utils/roles');
+const idGenerators = require('../../utils/idGenerators');
 
 // Public directory data — output is role-invariant (no masking), so list keys need only the
 // query params. TTL 60s: staleness here is low-stakes (a doctor bio/rating going stale for a
@@ -85,6 +86,11 @@ const DOCTOR_PROFILE_BASE_SELECT = {
   // detail page.
   minBookingAdvanceAmount: true,
   specialization: { select: { id: true, name: true, icon: true } },
+  // Stable "DCD<N>" display number (see prisma/migrations/
+  // 20260919130000_add_patient_doctor_clinic_numbers) — fetched here so both the public listDoctors
+  // and the single-doctor detail query have it, but only ever SURFACED by shapeDoctor when
+  // includeContact is true (admin doctor-management tables), same gate as verificationDocuments.
+  doctorNumber: true,
 };
 
 // Pushed down into Prisma (rather than filtered in shapeDoctor afterward) so Postgres only ever
@@ -320,6 +326,9 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     // while tokenNumberingMode is 'sequential', still surfaced either way so the client's select
     // can be pre-filled with whatever the doctor last chose.
     shaped.onlineTokenParity = dp.onlineTokenParity === 'even' ? 'even' : 'odd';
+    // Stable "DCD<N>" display number — admin-only, same includeContact gate as everything else
+    // in this block. null for a legacy doctor row not yet backfilled.
+    shaped.doctorNumber = dp.doctorNumber ?? null;
   }
 
   return shaped;
@@ -563,6 +572,11 @@ async function createDoctor(input, actor = null) {
         select: { id: true },
       });
 
+      // Drawn once, right before the insert that stores it — same posture as
+      // auth.service.js#register's nextPatientNumber call (see its comment for the sequence's
+      // non-transactional-gap note, which applies identically here).
+      const doctorNumber = await idGenerators.nextDoctorNumber();
+
       await tx.doctorProfile.create({
         data: {
           userId: user.id,
@@ -576,6 +590,7 @@ async function createDoctor(input, actor = null) {
           bio: bio ? bio.trim() : null,
           verificationDocuments: verificationDocuments ?? null,
           status: initialStatus,
+          doctorNumber,
         },
       });
 

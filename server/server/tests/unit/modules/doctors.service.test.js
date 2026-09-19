@@ -74,6 +74,7 @@ function buildDoctorRow(overrides = {}) {
       bankUpiId: 'asha@okhdfcbank',
       tokenNumberingMode: 'sequential',
       onlineTokenParity: 'odd',
+      doctorNumber: 7,
       specialization: { id: 'spec-1', name: 'Cardiology', icon: 'heart' },
       ...doctorProfile,
     },
@@ -158,6 +159,9 @@ describe('doctorsService.getDoctorById — shapeDoctor contact/detail field gati
     expect(result.bankDetails).toBeUndefined();
     expect(result.tokenNumberingMode).toBeUndefined();
     expect(result.onlineTokenParity).toBeUndefined();
+    // Stable "DCD<N>" display number (prisma/migrations/
+    // 20260919130000_add_patient_doctor_clinic_numbers) is admin-only, same includeContact gate.
+    expect(result.doctorNumber).toBeUndefined();
   });
 
   test('the doctor viewing their own profile gets email/phone/accountStatus/verificationDocuments too', async () => {
@@ -182,6 +186,7 @@ describe('doctorsService.getDoctorById — shapeDoctor contact/detail field gati
     });
     expect(result.tokenNumberingMode).toBe('sequential');
     expect(result.onlineTokenParity).toBe('odd');
+    expect(result.doctorNumber).toBe(7);
   });
 
   test('an admin caller also gets email/phone/accountStatus/verificationDocuments/bankDetails', async () => {
@@ -201,6 +206,17 @@ describe('doctorsService.getDoctorById — shapeDoctor contact/detail field gati
       bankName: 'HDFC Bank',
       upiId: 'asha@okhdfcbank',
     });
+    expect(result.doctorNumber).toBe(7);
+  });
+
+  // Same rationale as the tokenNumberingMode/onlineTokenParity fallback tests below: a legacy
+  // doctor row not yet backfilled by the migration must surface null, never undefined/NaN.
+  test('doctorNumber is null (not undefined) for a legacy doctor row not yet backfilled', async () => {
+    prisma.user.findUnique.mockResolvedValue(buildDoctorRow({ doctorProfile: { doctorNumber: null } }));
+
+    const result = await doctorsService.getDoctorById('doc-1', { id: 'admin-1', role: 'admin' });
+
+    expect(result.doctorNumber).toBeNull();
   });
 
   test('verificationDocuments defaults to an empty array (not undefined/null) when the doctor has never uploaded one', async () => {

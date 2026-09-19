@@ -18,4 +18,38 @@ async function nextReceiptNumber() {
   return `CDR-${value.toString().padStart(8, '0')}`;
 }
 
-module.exports = { nextReceiptNumber };
+/**
+ * Draws the next value from `patient_number_seq` (created in prisma/migrations/
+ * 20260919130000_add_patient_doctor_clinic_numbers) as a plain integer — unlike
+ * nextReceiptNumber above, no prefix/padding is applied here, because the display prefix
+ * ("DCP") is a presentation concern the frontend owns (client/src/lib/format.js), not something
+ * to bake into the stored number itself. Called once, at registration, and the result is stored
+ * forever on User.patientNumber — never recomputed, never re-derived from list position.
+ * @returns {Promise<number>}
+ */
+async function nextPatientNumber() {
+  const rows = await prisma.$queryRaw`SELECT nextval('patient_number_seq') AS value`;
+  return Number(rows[0].value); // BigInt from node-postgres
+}
+
+/**
+ * Same pattern as nextPatientNumber, backed by `doctor_number_seq`, stored on
+ * DoctorProfile.doctorNumber. Called once, at doctor creation.
+ * @returns {Promise<number>}
+ */
+async function nextDoctorNumber() {
+  const rows = await prisma.$queryRaw`SELECT nextval('doctor_number_seq') AS value`;
+  return Number(rows[0].value);
+}
+
+/**
+ * Same pattern as nextPatientNumber, backed by `clinic_number_seq`, stored on
+ * Clinic.clinicNumber. Called once, at clinic creation.
+ * @returns {Promise<number>}
+ */
+async function nextClinicNumber() {
+  const rows = await prisma.$queryRaw`SELECT nextval('clinic_number_seq') AS value`;
+  return Number(rows[0].value);
+}
+
+module.exports = { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber };

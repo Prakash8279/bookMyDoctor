@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatDate, formatMoney, formatMoneyPlain, sequenceId, shortId } from './format'
+import { formatDate, formatMoney, formatMoneyPlain, sequenceId, shortId, stableId } from './format'
 
 describe('formatDate', () => {
   it('returns an em dash for a falsy value', () => {
@@ -96,5 +96,33 @@ describe('sequenceId', () => {
 
   it('applies a custom prefix', () => {
     expect(sequenceId(0, 'BK')).toBe('BK01')
+  })
+})
+
+describe('stableId', () => {
+  it('formats a stored patient/doctor/clinic number with its prefix, no zero-padding', () => {
+    expect(stableId(1, 'DCP')).toBe('DCP1')
+    expect(stableId(23, 'DCD')).toBe('DCD23')
+    expect(stableId(7, 'DCC')).toBe('DCC7')
+  })
+
+  it('coerces a numeric string', () => {
+    expect(stableId('5', 'DCP')).toBe('DCP5')
+  })
+
+  it('falls back to "<prefix>—" for a legacy row with no stored number yet', () => {
+    expect(stableId(null, 'DCP')).toBe('DCP—')
+    expect(stableId(undefined, 'DCD')).toBe('DCD—')
+    expect(stableId('', 'DCC')).toBe('DCC—')
+  })
+
+  it('falls back to "<prefix>—" instead of crashing on a non-numeric value', () => {
+    expect(stableId('not-a-number', 'DCP')).toBe('DCP—')
+  })
+
+  // The whole point of this formatter (vs. sequenceId above): the same record's number stays
+  // identical across calls regardless of any notion of "position" — there simply isn't one here.
+  it('never changes for the same stored number, unlike position-based sequenceId', () => {
+    expect(stableId(4, 'DCP')).toBe(stableId(4, 'DCP'))
   })
 })

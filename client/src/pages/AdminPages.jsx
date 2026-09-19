@@ -10,7 +10,7 @@ import { StatusPill } from '../components/StatusPill'
 import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
 import { Analytics, patientVitals } from './StaffPages'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate as sharedFormatDate, formatMoney as money, sequenceId } from '../lib/format'
+import { formatDate as sharedFormatDate, formatMoney as money, sequenceId, stableId } from '../lib/format'
 import { COMPLAINT_STATUS_LABELS } from '../lib/statusLabels'
 import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
@@ -355,7 +355,7 @@ export function DoctorVerification({ data }) {
       <ErrorNote>{statusError}</ErrorNote>
       <ErrorNote>{listError}</ErrorNote>
       <DataTable loading={loading} rows={allDoctors} columns={[
-        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index, 'DCD') },
+        { key: 'id', label: 'ID', render: (item) => stableId(item.doctorNumber, 'DCD') },
         { key: 'name', label: 'Doctor' },
         { key: 'registrationNumber', label: 'Registration' },
         { key: 'experienceYears', label: 'Experience', render: (item) => `${item.experienceYears || 0} years` },
@@ -387,7 +387,7 @@ export function DoctorVerification({ data }) {
         <EmptyState title="No doctors awaiting verification" message="Newly self-registered doctors, or any account created above without 'Verify immediately', will show up here." />
       ) : (
         <DataTable rows={pendingDoctors} columns={[
-          { key: 'id', label: 'ID', render: (item, index) => sequenceId(index, 'DCD') },
+          { key: 'id', label: 'ID', render: (item) => stableId(item.doctorNumber, 'DCD') },
           { key: 'name', label: 'Doctor' },
           { key: 'registrationNumber', label: 'Registration' },
           { key: 'experienceYears', label: 'Experience', render: (item) => `${item.experienceYears || 0} years` },
@@ -658,7 +658,7 @@ export function ManageClinics({ data }) {
       onRetry={load}
       rows={(data.clinics || [])}
       columns={[
-        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index, 'DCC') },
+        { key: 'id', label: 'ID', render: (item) => stableId(item.clinicNumber, 'DCC') },
         { key: 'name', label: 'Clinic' },
         { key: 'address', label: 'Address', render: (item) => item.address || [item.area?.name, item.city?.name].filter(Boolean).join(', ') || '—' },
         { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },
@@ -859,7 +859,7 @@ export function ManagePatients({ data }) {
     </div>
     <ErrorNote>{statusError}</ErrorNote>
     <DataTable loading={loading} error={listError} onRetry={load} rows={patients} columns={[
-      { key: 'id', label: 'ID', render: (item, index) => sequenceId(index, 'DCP') },
+      { key: 'id', label: 'ID', render: (item) => stableId(item.patientNumber, 'DCP') },
       { key: 'name', label: 'Patient' },
       { key: 'email', label: 'Email', render: (item) => item.email || '—' },
       { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },

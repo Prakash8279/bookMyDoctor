@@ -78,10 +78,19 @@ jest.mock('../../../src/services/cacheService', () => ({
 jest.mock('../../../src/modules/doctors/doctors.service', () => ({
   invalidateDoctorCaches: jest.fn(),
 }));
+// createClinic now draws a stable clinicNumber (prisma/migrations/
+// 20260919130000_add_patient_doctor_clinic_numbers) via idGenerators.nextClinicNumber(), which
+// itself calls the real prisma.$queryRaw('SELECT nextval(...)') — not worth teaching the plain
+// object mock above to fake a Postgres sequence's return shape, so the generator itself is
+// mocked directly (same approach as auth.service.test.js's nextPatientNumber mock).
+jest.mock('../../../src/utils/idGenerators', () => ({
+  nextClinicNumber: jest.fn().mockResolvedValue(101),
+}));
 
 const prisma = require('../../../src/config/db');
 const cacheService = require('../../../src/services/cacheService');
 const doctorsService = require('../../../src/modules/doctors/doctors.service');
+const idGenerators = require('../../../src/utils/idGenerators');
 const clinicsService = require('../../../src/modules/clinics/clinics.service');
 
 const ADMIN = { id: 'admin-1', role: 'admin' };
@@ -102,6 +111,7 @@ function buildClinicDetail(overrides = {}) {
     paymentQrUrl: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    clinicNumber: 5,
     city: { id: 'city-1', name: 'Pune', state: 'MH' },
     area: { id: 'area-1', name: 'Kothrud', pincode: '411038' },
     doctorClinics: [],
@@ -149,6 +159,12 @@ describe('clinicsService.createClinic', () => {
       expect.objectContaining({ data: expect.objectContaining({ name: 'City Clinic', approvalStatus: 'active' }) })
     );
     expect(prisma.doctorClinic.create).not.toHaveBeenCalled();
+    // Stable "DCC<N>" display number — drawn from idGenerators.nextClinicNumber() (mocked above
+    // to return 101) and stored directly on the new clinic row, never recomputed later.
+    expect(prisma.clinic.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ clinicNumber: 101 }) })
+    );
+    expect(idGenerators.nextClinicNumber).toHaveBeenCalledTimes(1);
   });
 
   // FROM-SCRATCH FIX documented in createClinic's own comment: a doctor-created clinic used to go
@@ -280,6 +296,9 @@ describe('clinicsService.getClinicById — public-cacheable vs visibility-gated 
     const result = await clinicsService.getClinicById('clinic-1', undefined);
 
     expect(result.id).toBe('clinic-1');
+    // Stable "DCC<N>" display number (prisma/migrations/
+    // 20260919130000_add_patient_doctor_clinic_numbers) — never derived from list position.
+    expect(result.clinicNumber).toBe(5);
     // Only the one lookup inside the cached fetcher — the uncached visibility-gated branch below
     // must NOT also run for an active clinic.
     expect(prisma.clinic.findUnique).toHaveBeenCalledTimes(1);

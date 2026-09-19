@@ -69,6 +69,17 @@ function createMockPrisma() {
     return fnOrArray(prisma);
   });
 
+  // register()/createDoctor()/createClinic() each draw a stable display number via
+  // utils/idGenerators.js (nextPatientNumber/nextDoctorNumber/nextClinicNumber — prisma/
+  // migrations/20260919130000_add_patient_doctor_clinic_numbers), which calls THIS SAME
+  // module-level prisma.$queryRaw as a tagged template (`` prisma.$queryRaw`SELECT nextval(...)`
+  // ``). Defaulted here (rather than left unmocked like every other field, which a test wires up
+  // itself) because it's plumbing every register/createDoctor/createClinic integration test needs
+  // regardless of what that specific test is actually asserting — same reasoning as the
+  // `$transaction` default right above. Returns a fresh BigInt-shaped row every call, matching
+  // node-postgres's real return shape for `nextval()`.
+  prisma.$queryRaw = jest.fn().mockResolvedValue([{ value: 1n }]);
+
   return prisma;
 }
 

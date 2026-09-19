@@ -416,6 +416,22 @@ describe('adminService.listPatients', () => {
     const result = await adminService.listPatients({});
 
     expect(result.rows[0]).toMatchObject({ gender: null, dateOfBirth: null, bloodGroup: null, registeredAt: new Date('2026-01-01') });
+    // A legacy row not yet backfilled by prisma/migrations/
+    // 20260919130000_add_patient_doctor_clinic_numbers must surface null, never undefined/NaN.
+    expect(result.rows[0].patientNumber).toBeNull();
+  });
+
+  // Stable "DCP<N>" display number — never derived from list position, unlike the pre-existing
+  // sequenceId() index-based numbering it replaces on the admin Patients table.
+  test('surfaces patientNumber from the stored column', async () => {
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'p1', name: 'Ravi', email: 'ravi@example.com', phone: '999', city: 'Pune', status: 'active', createdAt: new Date('2026-01-01'), patientNumber: 3, patientProfile: null },
+    ]);
+    prisma.user.count.mockResolvedValue(1);
+
+    const result = await adminService.listPatients({});
+
+    expect(result.rows[0].patientNumber).toBe(3);
   });
 });
 

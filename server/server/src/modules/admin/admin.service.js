@@ -371,6 +371,10 @@ async function listPatients({ search, page, pageSize }) {
           city: true,
           status: true,
           createdAt: true,
+          // Stable "DCP<N>" display number (see prisma/migrations/
+          // 20260919130000_add_patient_doctor_clinic_numbers) — never derived from list position,
+          // unlike the pre-existing sequenceId() index-based numbering it replaces on this table.
+          patientNumber: true,
           patientProfile: { select: { gender: true, dateOfBirth: true, bloodGroup: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -389,6 +393,7 @@ async function listPatients({ search, page, pageSize }) {
         city: row.city,
         status: row.status,
         registeredAt: row.createdAt,
+        patientNumber: row.patientNumber ?? null,
         gender: row.patientProfile?.gender ?? null,
         dateOfBirth: row.patientProfile?.dateOfBirth ?? null,
         bloodGroup: row.patientProfile?.bloodGroup ?? null,

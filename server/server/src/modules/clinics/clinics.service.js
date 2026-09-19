@@ -11,6 +11,7 @@ const cacheService = require('../../services/cacheService');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { ADMIN_ROLES } = require('../../utils/roles');
+const idGenerators = require('../../utils/idGenerators');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 const DETAIL_CACHE_TTL_SECONDS = 60;
@@ -64,6 +65,10 @@ const CLINIC_DETAIL_SELECT = {
   paymentQrUrl: true,
   createdAt: true,
   updatedAt: true,
+  // Stable "DCC<N>" display number (see prisma/migrations/
+  // 20260919130000_add_patient_doctor_clinic_numbers) — never derived from list position, unlike
+  // the pre-existing sequenceId() index-based numbering it replaces on the admin Clinics table.
+  clinicNumber: true,
   city: { select: { id: true, name: true, state: true } },
   area: { select: { id: true, name: true, pincode: true } },
   doctorClinics: {
@@ -87,6 +92,7 @@ const CLINIC_LIST_SELECT = {
   paymentCashEnabled: true,
   paymentUpiEnabled: true,
   createdAt: true,
+  clinicNumber: true,
   city: { select: { id: true, name: true } },
   area: { select: { id: true, name: true } },
 };
@@ -110,6 +116,7 @@ function shapeClinicDetail(clinic) {
     paymentQrUrl: clinic.paymentQrUrl,
     createdAt: clinic.createdAt,
     updatedAt: clinic.updatedAt,
+    clinicNumber: clinic.clinicNumber ?? null,
     city: clinic.city,
     area: clinic.area,
     doctors: (clinic.doctorClinics || []).map((dc) => ({
@@ -134,6 +141,7 @@ function shapeClinicListItem(clinic) {
     paymentCashEnabled: clinic.paymentCashEnabled,
     paymentUpiEnabled: clinic.paymentUpiEnabled,
     createdAt: clinic.createdAt,
+    clinicNumber: clinic.clinicNumber ?? null,
     city: clinic.city,
     area: clinic.area,
   };
@@ -221,6 +229,11 @@ async function createClinic(input, actor) {
   const approvalStatus = actor.role === 'doctor' ? 'pending' : 'active';
 
   const clinic = await prisma.$transaction(async (tx) => {
+    // Drawn once, right before the insert that stores it — same posture as
+    // auth.service.js#register's nextPatientNumber call (see its comment for the sequence's
+    // non-transactional-gap note, which applies identically here).
+    const clinicNumber = await idGenerators.nextClinicNumber();
+
     const created = await tx.clinic.create({
       data: {
         name: name.trim(),
@@ -234,6 +247,7 @@ async function createClinic(input, actor) {
         paymentUpiEnabled: paymentUpiEnabled ?? false,
         paymentUpiId: paymentUpiId ? paymentUpiId.trim() : null,
         paymentQrUrl: paymentQrUrl || null,
+        clinicNumber,
       },
       select: { id: true },
     });

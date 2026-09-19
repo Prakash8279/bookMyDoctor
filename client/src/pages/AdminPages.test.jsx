@@ -129,6 +129,28 @@ describe('DoctorVerification', () => {
     expect(within(pendingSection).getByText('Dr. New')).toBeInTheDocument()
   })
 
+  // Regression test for the stable-id feature (prisma/migrations/
+  // 20260919130000_add_patient_doctor_clinic_numbers): the ID column must render the real stored
+  // doctorNumber via stableId(), not a row-position-derived sequenceId(), so the same doctor
+  // always shows the same "DCD<N>" regardless of where they land in the list.
+  it('renders each doctor\'s ID from their stored doctorNumber, not their row position', async () => {
+    mockGetRoutes({
+      '/doctors': [
+        { id: 'doc-1', name: 'Dr. Kapoor', status: 'verified', accountStatus: 'active', experienceYears: 5, consultationFee: 500, doctorNumber: 12 },
+        { id: 'doc-2', name: 'Dr. New', status: 'pending', accountStatus: 'active', experienceYears: 2, consultationFee: 300, doctorNumber: 3 },
+      ],
+    })
+    renderConnected(DoctorVerification, {})
+
+    await screen.findByText('Dr. Kapoor')
+    expect((await screen.findByText('Dr. Kapoor')).closest('tr')).toHaveTextContent('DCD12')
+    // Dr. New is index 1 in "Live records" but appears FIRST (index 0) in "Pending verification"
+    // below — a position-based DC02 would collide with a different index-based label in each
+    // section; the stored doctorNumber must show DCD3 in both regardless.
+    const pendingSection = screen.getByText('Pending verification').closest('div').parentElement
+    expect(within(pendingSection).getByText('Dr. New').closest('tr')).toHaveTextContent('DCD3')
+  })
+
   it('creates a doctor account with correctly-typed fields', async () => {
     mockGetRoutes({ '/doctors': [] })
     apiClient.post.mockResolvedValue({ id: 'doc-3', name: 'Dr. Fresh', status: 'pending' })
@@ -333,6 +355,14 @@ describe('ManageClinics', () => {
     fireEvent.click(screen.getByRole('checkbox'))
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/clinics/clinic-1', { emergencyAvailable: true }))
   })
+
+  it('renders the clinic\'s ID from its stored clinicNumber ("DCC<N>")', async () => {
+    mockGetRoutes({ '/clinics': [{ id: 'clinic-1', name: 'Heart Care Clinic', approvalStatus: 'active', emergencyAvailable: false, clinicNumber: 9 }] })
+    renderConnected(ManageClinics, {})
+
+    const row = (await screen.findByText('Heart Care Clinic')).closest('tr')
+    expect(row).toHaveTextContent('DCC9')
+  })
 })
 
 describe('CitiesAreas', () => {
@@ -372,6 +402,33 @@ describe('ManagePatients', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable login' }))
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/admin/patients/p1/status', { status: 'disabled' }))
+  })
+
+  it('renders the patient\'s ID from their stored patientNumber ("DCP<N>")', async () => {
+    mockGetRoutes({
+      '/admin/patients': [{ id: 'p1', name: 'Asha Mehta', email: 'asha@example.com', status: 'active', patientNumber: 1 }],
+      '/appointments': [],
+      '/payments': [],
+    })
+    renderConnected(ManagePatients, {})
+
+    const row = (await screen.findByText('Asha Mehta')).closest('tr')
+    expect(row).toHaveTextContent('DCP1')
+  })
+
+  // Legacy-row fallback: prisma/migrations/20260919130000_add_patient_doctor_clinic_numbers
+  // backfills every existing row, but stableId() must still degrade gracefully (never crash the
+  // table render) if a patientNumber is ever missing.
+  it('falls back to "DCP—" for a patient with no stored patientNumber yet', async () => {
+    mockGetRoutes({
+      '/admin/patients': [{ id: 'p1', name: 'Asha Mehta', email: 'asha@example.com', status: 'active', patientNumber: null }],
+      '/appointments': [],
+      '/payments': [],
+    })
+    renderConnected(ManagePatients, {})
+
+    const row = (await screen.findByText('Asha Mehta')).closest('tr')
+    expect(row).toHaveTextContent('DCP—')
   })
 })
 

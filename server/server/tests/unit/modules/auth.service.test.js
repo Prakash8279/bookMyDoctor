@@ -19,11 +19,20 @@ jest.mock('../../../src/services/tokenService', () => ({
 jest.mock('../../../src/services/activityLogService', () => ({
   log: jest.fn(),
 }));
+// register() now draws a stable patientNumber (prisma/migrations/
+// 20260919130000_add_patient_doctor_clinic_numbers) via idGenerators.nextPatientNumber(), which
+// itself calls the real prisma.$queryRaw('SELECT nextval(...)') — not worth teaching the plain
+// object mock above to fake a Postgres sequence's return shape, so the generator itself is
+// mocked directly, same as tokenService/activityLogService above.
+jest.mock('../../../src/utils/idGenerators', () => ({
+  nextPatientNumber: jest.fn(),
+}));
 
 const bcrypt = require('bcrypt');
 const prisma = require('../../../src/config/db');
 const tokenService = require('../../../src/services/tokenService');
 const activityLogService = require('../../../src/services/activityLogService');
+const idGenerators = require('../../../src/utils/idGenerators');
 const ApiError = require('../../../src/utils/ApiError');
 const authService = require('../../../src/modules/auth/auth.service');
 
@@ -32,6 +41,7 @@ const FAKE_TOKENS = { accessToken: 'fake.access.token', refreshToken: 'fake.refr
 beforeEach(() => {
   jest.clearAllMocks();
   tokenService.issueTokenPair.mockResolvedValue(FAKE_TOKENS);
+  idGenerators.nextPatientNumber.mockResolvedValue(42);
 });
 
 describe('auth.service.register — password hashing', () => {
@@ -85,6 +95,10 @@ describe('auth.service.register — password hashing', () => {
     expect(capturedCreateData.role).toBe('patient');
     expect(capturedCreateData.email).toBe('asha@example.com');
     expect(capturedCreateData.name).toBe('Asha Rao');
+    // Stable "DCP<N>" display number — drawn from idGenerators.nextPatientNumber() (mocked above
+    // to return 42) and stored directly on the new user row, never recomputed later.
+    expect(capturedCreateData.patientNumber).toBe(42);
+    expect(idGenerators.nextPatientNumber).toHaveBeenCalledTimes(1);
 
     expect(result.user.id).toBe('new-user-1');
     expect(result.accessToken).toBe(FAKE_TOKENS.accessToken);
@@ -99,6 +113,9 @@ describe('auth.service.register — password hashing', () => {
     ).rejects.toMatchObject({ statusCode: 409, code: 'EMAIL_ALREADY_EXISTS' });
 
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    // A rejected duplicate-email attempt must never burn a number from patient_number_seq —
+    // mirrors the sequence-preserving intent already documented on nextReceiptNumber's callers.
+    expect(idGenerators.nextPatientNumber).not.toHaveBeenCalled();
   });
 });
 
