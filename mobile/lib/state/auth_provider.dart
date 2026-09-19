@@ -72,6 +72,31 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro"). One backend
+  /// call (POST /auth/google) covers login, first-time account-linking, and self-registration
+  /// together — see the server's auth.service.js#googleAuth — so this is exactly [login] above,
+  /// just posting the Google ID token the native picker returned instead of an email+password
+  /// pair. [idToken] comes from `GoogleSignInAuthentication.idToken` — see login_screen.dart /
+  /// register_screen.dart's `_handleGoogleSignIn`.
+  Future<bool> loginWithGoogle(String idToken) async {
+    lastError = null;
+    try {
+      final res = await _api.post('/auth/google', body: {'idToken': idToken});
+      final data = res.map;
+      final tokens = TokenPair.fromJson(data);
+      await TokenStore.instance.save(tokens);
+      user = AppUser.fromJson(data['user'] as Map<String, dynamic>);
+      await _loadMe();
+      status = AuthStatus.loggedIn;
+      notifyListeners();
+      return true;
+    } catch (err) {
+      lastError = err.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Patient self-registration only — the backend hard-codes role:'patient'
   /// server-side regardless of what's sent (see integration_plan.md §1.1).
   Future<bool> register({

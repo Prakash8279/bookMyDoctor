@@ -33,3 +33,10 @@ process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379/1';
 // brute-force for real; it has zero effect on whether hash/compare correctly round-trip, which
 // is the only thing these tests care about.
 process.env.BCRYPT_SALT_ROUNDS = process.env.BCRYPT_SALT_ROUNDS || '4';
+
+// GOOGLE SIGN-IN FEATURE — set so config/env.js's env.google.clientId is truthy by default,
+// letting auth.service.test.js exercise the real googleAuth() code path (it mocks
+// googleIdTokenVerifier.js directly rather than making a real network call, same as every other
+// external dependency in that suite). Individual tests still override env.google.clientId = ''
+// to cover the "not configured" case.
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'test-only-google-client-id.apps.googleusercontent.com';

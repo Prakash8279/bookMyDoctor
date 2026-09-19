@@ -25,6 +25,14 @@ const login = [
   body('password').notEmpty().withMessage('Password is required.'),
 ];
 
+// GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro"). idToken is the signed
+// JWT ("credential") Google Identity Services hands the frontend — shape validation only, no
+// length bound (a real Google ID token easily runs past a few hundred characters); the actual
+// signature/audience/issuer verification happens in googleIdTokenVerifier.js.
+const googleAuth = [
+  body('idToken').notEmpty().withMessage('idToken is required.').isString(),
+];
+
 const logout = [
   body('refreshToken').notEmpty().withMessage('refreshToken is required.').isString(),
 ];
@@ -44,4 +52,4 @@ const resetPassword = [
   body('newPassword').notEmpty().withMessage('newPassword is required.').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
 ];
 
-module.exports = { register, login, logout, refresh, forgotPassword, resetPassword };
+module.exports = { register, login, googleAuth, logout, refresh, forgotPassword, resetPassword };

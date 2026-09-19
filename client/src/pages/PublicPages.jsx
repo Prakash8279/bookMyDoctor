@@ -6,6 +6,7 @@ import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
+import { signInWithGoogle } from '../lib/googleSignIn'
 import { useAppStore } from '../store/useAppStore'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
@@ -261,9 +262,13 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // GOOGLE SIGN-IN FEATURE — separate loading flag from `submitting` (the email/password form's
+  // own submit state) so the two buttons never show each other's spinner.
+  const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const login = useAppStore((state) => state.login)
+  const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
   // One-shot success banner handed in via router state — currently only ResetPassword uses
   // this (after POST /auth/reset-password succeeds), but any future redirect-with-message flow
   // can reuse the same `state: { message }` convention. Read once into local state rather than
@@ -282,6 +287,25 @@ export function Login() {
       setError(loginError.message)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — replaces the
+  // old stub that only ever showed "Google sign-in is unavailable in this browser-only
+  // workspace." One backend call (POST /auth/google) covers login, first-time account-linking,
+  // and self-registration together, so this same handler is reused as-is on the Register page
+  // below.
+  const handleGoogleSignIn = async () => {
+    setGoogleSubmitting(true)
+    try {
+      const idToken = await signInWithGoogle()
+      const account = await loginWithGoogle(idToken)
+      setError('')
+      navigate(location.state?.from || roleHome(account.role), { replace: true })
+    } catch (googleError) {
+      setError(googleError.message)
+    } finally {
+      setGoogleSubmitting(false)
     }
   }
 
@@ -332,8 +356,8 @@ export function Login() {
           <h2>Welcome back</h2>
           <p>Sign in to manage appointments, queues, and health records.</p>
           <form onSubmit={handleLogin}>
-            <button type="button" onClick={() => setError('Google sign-in is unavailable in this browser-only workspace. Use your registered email and password.')} className="google-auth-button">
-              <span className="google-g" aria-hidden="true">G</span>Continue with Google
+            <button type="button" onClick={handleGoogleSignIn} disabled={googleSubmitting} className="google-auth-button">
+              <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
             </button>
             <div className="oauth-divider"><span>or continue with email</span></div>
 
@@ -375,9 +399,12 @@ export function Register() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  // GOOGLE SIGN-IN FEATURE — separate loading flag, same reasoning as Login above.
+  const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const navigate = useNavigate()
   const register = useAppStore((state) => state.register)
   const registerDoctor = useAppStore((state) => state.registerDoctor)
+  const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
   const specializations = useAppStore((state) => state.data.specializations)
   const fetchSpecializations = useAppStore((state) => state.fetchSpecializations)
   useEffect(() => {
@@ -413,6 +440,29 @@ export function Register() {
       setSubmitting(false)
     }
   }
+
+  // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — replaces the
+  // old stub ("Google sign-up needs an OAuth provider..."). Note this always self-registers as a
+  // `patient` regardless of the accountType tab the person has selected — same rule POST
+  // /auth/register already enforces for the email/password form (a doctor account can only ever
+  // be created via the dedicated "Submit for verification" doctor form below, never a generic
+  // sign-up button).
+  const handleGoogleSignIn = async () => {
+    setGoogleSubmitting(true)
+    try {
+      const idToken = await signInWithGoogle()
+      const account = await loginWithGoogle(idToken)
+      setError('')
+      setMessage('')
+      navigate(roleHome(account.role), { replace: true })
+    } catch (googleError) {
+      setMessage('')
+      setError(googleError.message)
+    } finally {
+      setGoogleSubmitting(false)
+    }
+  }
+
   const { dark, toggle } = useTheme()
 
   return (
@@ -465,8 +515,8 @@ export function Register() {
             <button type="button" role="tab" aria-selected={accountType === 'doctor'} onClick={() => setAccountType('doctor')} className={`touch-target rounded-button border px-3 py-2 text-sm font-semibold ${accountType === 'doctor' ? 'border-primary-dark bg-primary-light text-primary-dark' : 'border-border bg-white text-muted'}`}>I'm a doctor</button>
           </div>
 
-          <button type="button" className="google-auth-button mt-3" onClick={() => setMessage('Google sign-up needs an OAuth provider. Use the email form for this browser-only workspace.')}>
-            <span className="google-g" aria-hidden="true">G</span>Continue with Google
+          <button type="button" className="google-auth-button mt-3" onClick={handleGoogleSignIn} disabled={googleSubmitting}>
+            <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
           </button>
           <p className="mt-2 text-center text-xs text-muted">
             {accountType === 'doctor'

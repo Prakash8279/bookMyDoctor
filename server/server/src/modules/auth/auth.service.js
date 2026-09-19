@@ -16,6 +16,7 @@ const emailService = require('../../services/emailService');
 const smsService = require('../../services/smsService');
 const logger = require('../../config/logger');
 const idGenerators = require('../../utils/idGenerators');
+const { verifyGoogleIdToken } = require('../../services/googleIdTokenVerifier');
 
 // Base columns returned for "who am I" responses across this module — never includes passwordHash.
 const USER_SUMMARY_SELECT = {
@@ -146,8 +147,12 @@ async function login({ email, password }) {
   });
 
   // Always compare against SOME bcrypt hash, even when no user was found, so a missing
-  // account and a wrong password take the same amount of time to reject.
-  const passwordMatches = await bcrypt.compare(password, user ? user.passwordHash : DUMMY_PASSWORD_HASH);
+  // account and a wrong password take the same amount of time to reject. Also falls back to the
+  // dummy hash for a real user with passwordHash === null — a GOOGLE-SIGN-IN-ONLY account (see
+  // googleAuth below) that has never set a password — so "email exists but was created via
+  // Google" rejects with the exact same INVALID_CREDENTIALS as a wrong password, never a crash
+  // from bcrypt.compare(password, null) and never a hint that Google-only accounts exist.
+  const passwordMatches = await bcrypt.compare(password, user && user.passwordHash ? user.passwordHash : DUMMY_PASSWORD_HASH);
 
   if (!user || !passwordMatches) {
     throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
@@ -171,6 +176,111 @@ async function login({ email, password }) {
   });
 
   const { passwordHash, createdAt, ...safeUser } = user;
+  return { user: safeUser, ...tokens };
+}
+
+/**
+ * GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro" — the "Continue with
+ * Google" button on the login/register pages used to be a non-functional stub that only showed
+ * an error message; this is the real implementation).
+ *
+ * Handles all three cases a Google sign-in attempt can land in, in priority order:
+ *   1. This Google account has signed in before (googleId already on file) -> ordinary login.
+ *   2. No Google link yet, but an account already exists for this email (they originally signed
+ *      up with a password) -> link this Google account to it, then log in. Never creates a
+ *      second, duplicate account for the same person just because they happened to use Google
+ *      this time.
+ *   3. Neither exists -> brand-new self-registration. Always creates a `patient` account, same
+ *      hard-coded rule as register() above (self sign-up can never mint any other role) — even
+ *      though nothing about a Google profile could imply doctor/receptionist/admin anyway.
+ *
+ * @param {{idToken:string}} input - the `credential` Google Identity Services hands the frontend.
+ */
+async function googleAuth({ idToken }) {
+  if (!env.google.clientId) {
+    throw new ApiError(503, 'GOOGLE_SIGNIN_UNAVAILABLE', 'Google sign-in is not configured on this server yet.');
+  }
+
+  const profile = await verifyGoogleIdToken(idToken, env.google.clientId);
+  const normalizedEmail = normalizeEmail(profile.email);
+  const SELECT_WITH_GOOGLE_ID = { ...USER_SUMMARY_SELECT, passwordHash: true, googleId: true };
+
+  let user = await prisma.user.findUnique({ where: { googleId: profile.sub }, select: SELECT_WITH_GOOGLE_ID });
+  let isNewAccount = false;
+
+  if (!user) {
+    const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: SELECT_WITH_GOOGLE_ID });
+
+    if (existingByEmail) {
+      // Belt-and-suspenders: googleId is unique in the DB, so this could only happen if Google
+      // ever reissued the same `sub` to a second account, which it doesn't — but if it somehow
+      // did, silently re-pointing an existing link to a different Google account would be a
+      // worse failure mode than a clear error.
+      if (existingByEmail.googleId && existingByEmail.googleId !== profile.sub) {
+        throw new ApiError(409, 'GOOGLE_ACCOUNT_MISMATCH', 'This email is already linked to a different Google account.');
+      }
+      user = await prisma.user.update({
+        where: { id: existingByEmail.id },
+        data: { googleId: profile.sub },
+        select: SELECT_WITH_GOOGLE_ID,
+      });
+    } else {
+      isNewAccount = true;
+      try {
+        user = await prisma.$transaction(async (tx) => {
+          // Same "only burn a number once everything else is confirmed" posture as register()
+          // above.
+          const patientNumber = await idGenerators.nextPatientNumber();
+
+          const created = await tx.user.create({
+            data: {
+              name: (profile.name || '').trim().slice(0, 150) || 'Google user',
+              email: normalizedEmail,
+              passwordHash: null,
+              googleId: profile.sub,
+              role: 'patient',
+              photoUrl: profile.picture || null,
+              status: 'active',
+              patientNumber,
+            },
+            select: SELECT_WITH_GOOGLE_ID,
+          });
+
+          // Created eagerly, same as register() — GET /me never has to special-case a missing
+          // patient profile.
+          await tx.patientProfile.create({ data: { userId: created.id } });
+
+          return created;
+        });
+      } catch (err) {
+        // Race with a concurrent Google sign-in/registration for the same email — the pre-check
+        // above is not atomic with the insert, so the DB's unique constraint is the real
+        // backstop, same as register()'s own P2002 handling.
+        if (err.code === 'P2002') {
+          throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
+        }
+        throw err;
+      }
+    }
+  }
+
+  // Checked after identity is resolved, same placement/reasoning as login()'s own status check.
+  if (user.status === 'disabled') {
+    throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+  }
+
+  const tokens = await tokenService.issueTokenPair(user);
+
+  await activityLogService.log({
+    actorUserId: user.id,
+    actorRole: user.role,
+    actionType: isNewAccount ? 'auth.google_register' : 'auth.google_login',
+    targetEntityType: 'user',
+    targetEntityId: user.id,
+    description: isNewAccount ? 'Patient self-registered via Google sign-in' : 'User logged in via Google',
+  });
+
+  const { passwordHash, googleId, createdAt, ...safeUser } = user;
   return { user: safeUser, ...tokens };
 }
 
@@ -327,4 +437,4 @@ async function resetPassword({ token, newPassword }) {
   });
 }
 
-module.exports = { register, login, logout, refresh, getMe, forgotPassword, resetPassword };
+module.exports = { register, login, googleAuth, logout, refresh, getMe, forgotPassword, resetPassword };

@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/google_auth_config.dart';
 import '../../routing/app_router.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
@@ -21,6 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscure = true;
   bool _submitting = false;
+  // GOOGLE SIGN-IN FEATURE — separate loading flag from `_submitting` (the email/password form's
+  // own submit state) so the two buttons never show each other's spinner.
+  bool _googleSubmitting = false;
   String? _error;
 
   @override
@@ -28,6 +33,53 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro"). Opens the
+  /// native Google account picker, then hands the resulting ID token to
+  /// AuthProvider.loginWithGoogle (POST /auth/google — same backend endpoint covers login,
+  /// first-time account-linking, and self-registration together). `serverClientId` MUST be set
+  /// (see GoogleAuthConfig's own doc comment) or Google never returns an idToken our backend can
+  /// verify — checked up front here so that misconfiguration shows a clear message instead of a
+  /// confusing null-idToken failure after the picker closes.
+  Future<void> _handleGoogleSignIn() async {
+    if (!GoogleAuthConfig.isConfigured) {
+      setState(() => _error = 'Google sign-in is not configured for this app yet.');
+      return;
+    }
+    setState(() {
+      _googleSubmitting = true;
+      _error = null;
+    });
+    try {
+      final googleSignIn = GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
+      final account = await googleSignIn.signIn();
+      if (account == null) {
+        // User closed the picker without choosing an account — not an error worth showing.
+        setState(() => _googleSubmitting = false);
+        return;
+      }
+      final googleAuth = await account.authentication;
+      final idToken = googleAuth.idToken;
+      if (idToken == null) {
+        throw Exception('Google did not return a usable sign-in token. Please try again.');
+      }
+      final auth = context.read<AuthProvider>();
+      final ok = await auth.loginWithGoogle(idToken);
+      if (!mounted) return;
+      setState(() => _googleSubmitting = false);
+      if (!ok) {
+        setState(() => _error = auth.lastError ?? 'Google sign-in failed. Please try again.');
+      } else if (Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _googleSubmitting = false;
+        _error = 'Google sign-in failed: $err';
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -42,6 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _submitting = false);
     if (!ok) {
       setState(() => _error = auth.lastError ?? 'Login failed. Please try again.');
+    } else {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     }
   }
 
@@ -106,6 +162,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     PrimaryButton(label: 'Sign in', onPressed: _submit, loading: _submitting),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(children: const [
+                      Expanded(child: Divider()),
+                      Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
+                      Expanded(child: Divider()),
+                    ]),
+                    const SizedBox(height: AppSpacing.sm),
+                    // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix
+                    // kro") — mirrors the web app's "Continue with Google" button
+                    // (client/src/pages/PublicPages.jsx#Login).
+                    OutlinedButton.icon(
+                      onPressed: _googleSubmitting ? null : _handleGoogleSignIn,
+                      icon: _googleSubmitting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('G', style: TextStyle(fontWeight: FontWeight.w800)),
+                      label: Text(_googleSubmitting ? 'Signing in…' : 'Continue with Google'),
+                    ),
                     const SizedBox(height: AppSpacing.sm),
                     Center(
                       child: TextButton(

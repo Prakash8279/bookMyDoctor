@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/google_auth_config.dart';
 import '../../core/token_store.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
@@ -54,6 +56,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _accountType = 'patient';
   bool _obscure = true;
   bool _submitting = false;
+  // GOOGLE SIGN-IN FEATURE — separate loading flag, same reasoning as login_screen.dart.
+  bool _googleSubmitting = false;
   String? _error;
 
   @override
@@ -159,6 +163,54 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (err) {
       _error = err.toString();
       return false;
+    }
+  }
+
+  /// GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — same
+  /// handler as login_screen.dart's `_handleGoogleSignIn`; kept as its own copy here (rather than
+  /// a shared helper) since this screen's error/loading state and post-success navigation
+  /// (there's no `Navigator.pop` — Register is a distinct route, not one you dismiss back into)
+  /// already differ from Login's. Deliberately fires even from the "I'm a doctor" tab: Google
+  /// sign-up always lands as a patient, same rule POST /auth/register already enforces for the
+  /// email/password form (a doctor account can only ever be created via the dedicated "Submit
+  /// for verification" doctor form above, never a generic sign-up shortcut).
+  Future<void> _handleGoogleSignIn() async {
+    if (!GoogleAuthConfig.isConfigured) {
+      setState(() => _error = 'Google sign-in is not configured for this app yet.');
+      return;
+    }
+    setState(() {
+      _googleSubmitting = true;
+      _error = null;
+    });
+    try {
+      final googleSignIn = GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
+      final account = await googleSignIn.signIn();
+      if (account == null) {
+        setState(() => _googleSubmitting = false);
+        return;
+      }
+      final googleAuth = await account.authentication;
+      final idToken = googleAuth.idToken;
+      if (idToken == null) {
+        throw Exception('Google did not return a usable sign-in token. Please try again.');
+      }
+      final auth = context.read<AuthProvider>();
+      final ok = await auth.loginWithGoogle(idToken);
+      if (!mounted) return;
+      setState(() => _googleSubmitting = false);
+      if (!ok) {
+        setState(() => _error = auth.lastError ?? 'Google sign-in failed. Please try again.');
+      }
+      // On success there's nothing further to do here — AuthProvider's own status change flips
+      // the app router over to the signed-in shell (same as the plain-email path's `_submit`,
+      // which also never navigates explicitly).
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _googleSubmitting = false;
+        _error = 'Google sign-in failed: $err';
+      });
     }
   }
 
@@ -318,6 +370,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       label: isDoctor ? 'Submit for verification' : 'Create account',
                       onPressed: _submit,
                       loading: _submitting,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(children: const [
+                      Expanded(child: Divider()),
+                      Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
+                      Expanded(child: Divider()),
+                    ]),
+                    const SizedBox(height: AppSpacing.sm),
+                    // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix
+                    // kro") — mirrors the web app's "Continue with Google" button
+                    // (client/src/pages/PublicPages.jsx#Register).
+                    OutlinedButton.icon(
+                      onPressed: _googleSubmitting ? null : _handleGoogleSignIn,
+                      icon: _googleSubmitting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('G', style: TextStyle(fontWeight: FontWeight.w800)),
+                      label: Text(_googleSubmitting ? 'Signing in…' : 'Continue with Google'),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Center(

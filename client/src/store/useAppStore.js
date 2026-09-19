@@ -187,6 +187,25 @@ export const useAppStore = create(
         }
       },
 
+      // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro"). One
+      // backend endpoint handles login, first-time account-linking, and self-registration all
+      // together (see server auth.service.js#googleAuth) — the client side is exactly login()
+      // above, just posting the Google ID token instead of an email+password pair.
+      loginWithGoogle: async (idToken) => {
+        set({ authLoading: true })
+        try {
+          const result = await apiClient.post('/auth/google', { idToken })
+          setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken })
+          const me = await apiClient.get('/me')
+          set({ currentUser: me, isAuthenticated: true, authLoading: false, sessionVerified: true })
+          await get().loadUserData().catch((err) => console.error('[useAppStore] post-login bulk load failed', err))
+          return me
+        } catch (err) {
+          set({ authLoading: false })
+          throw err
+        }
+      },
+
       register: async (fields) => {
         set({ authLoading: true })
         try {

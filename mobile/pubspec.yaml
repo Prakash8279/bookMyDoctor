@@ -35,6 +35,15 @@ dependencies:
   # entries also present in the web repo's tailwind config). Fetched from Google Fonts at first run
   # and cached; run `flutter pub get` after pulling this.
   google_fonts: ^6.2.1
+  # GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — the native
+  # Google account picker for "Continue with Google" on screens/auth/login_screen.dart and
+  # register_screen.dart. See lib/core/google_auth_config.dart for the ONE value you still need
+  # to fill in (a Client ID — not a secret, safe to commit) before this actually works, and that
+  # file's own comment for why nothing else can be wired up yet (no android/ or ios/ platform
+  # folder exists in this repo — see mobile/README.md's Prerequisites section — Android/iOS
+  # Google Cloud setup only becomes possible once `flutter create .` has generated them). Run
+  # `flutter pub get` after pulling this.
+  google_sign_in: ^6.2.2
 
 dev_dependencies:
   flutter_test:

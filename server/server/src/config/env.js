@@ -191,4 +191,15 @@ module.exports = {
     keyId: process.env.RAZORPAY_KEY_ID || '',
     keySecret: process.env.RAZORPAY_KEY_SECRET || '',
   },
+
+  // GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro") — "Continue with
+  // Google" on the login/register pages (modules/auth/auth.service.js#googleAuth). Same
+  // deliberately-optional pattern as razorpay above: leave blank to keep the app booting fine
+  // with Google sign-in simply disabled (a clean 503 from the endpoint; email/password auth is
+  // completely unaffected) until an operator adds a real Client ID. This is NOT a secret — it's
+  // the same public "Client ID" value client/.env's VITE_GOOGLE_CLIENT_ID ships inside the
+  // frontend bundle — see .env.example for how to create one.
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+  },
 };

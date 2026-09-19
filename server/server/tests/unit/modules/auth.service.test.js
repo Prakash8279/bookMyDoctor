@@ -27,12 +27,21 @@ jest.mock('../../../src/services/activityLogService', () => ({
 jest.mock('../../../src/utils/idGenerators', () => ({
   nextPatientNumber: jest.fn(),
 }));
+// GOOGLE SIGN-IN FEATURE: the actual signature/JWKS-fetch verification is exercised by its own
+// dedicated tests (googleIdTokenVerifier makes a real network call to Google, which has no place
+// in a unit test) — here it's mocked out exactly like tokenService/activityLogService above, so
+// these tests exercise ONLY auth.service.js#googleAuth's own login/link/register decision logic.
+jest.mock('../../../src/services/googleIdTokenVerifier', () => ({
+  verifyGoogleIdToken: jest.fn(),
+}));
 
 const bcrypt = require('bcrypt');
 const prisma = require('../../../src/config/db');
 const tokenService = require('../../../src/services/tokenService');
 const activityLogService = require('../../../src/services/activityLogService');
 const idGenerators = require('../../../src/utils/idGenerators');
+const { verifyGoogleIdToken } = require('../../../src/services/googleIdTokenVerifier');
+const env = require('../../../src/config/env');
 const ApiError = require('../../../src/utils/ApiError');
 const authService = require('../../../src/modules/auth/auth.service');
 
@@ -190,5 +199,204 @@ describe('auth.service.login — password comparison', () => {
     await expect(
       authService.login({ email: 'patient@example.com', password: 'wrong-password' })
     ).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
+  });
+
+  // GOOGLE SIGN-IN FEATURE: passwordHash is now nullable (prisma/manual_sql/
+  // 011_google_sign_in.sql) — an account created via "Continue with Google" has none at all.
+  test('rejects a password-login attempt against a Google-only account (passwordHash null) with the SAME generic error, never a crash', async () => {
+    prisma.user.findUnique.mockResolvedValue(activeUserFixture({ passwordHash: null, googleId: 'google-sub-1' }));
+
+    await expect(
+      authService.login({ email: 'patient@example.com', password: 'anything-they-typed' })
+    ).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
+    expect(tokenService.issueTokenPair).not.toHaveBeenCalled();
+  });
+});
+
+describe('auth.service.googleAuth — GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro")', () => {
+  const GOOGLE_PROFILE = {
+    sub: 'google-sub-123',
+    email: 'asha@example.com',
+    emailVerified: true,
+    name: 'Asha Rao',
+    picture: 'https://example.com/photo.jpg',
+  };
+
+  beforeEach(() => {
+    env.google.clientId = 'test-only-google-client-id.apps.googleusercontent.com';
+    verifyGoogleIdToken.mockResolvedValue(GOOGLE_PROFILE);
+  });
+
+  test('returns GOOGLE_SIGNIN_UNAVAILABLE when no GOOGLE_CLIENT_ID is configured, without even attempting to verify the token', async () => {
+    env.google.clientId = '';
+
+    await expect(authService.googleAuth({ idToken: 'whatever' })).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'GOOGLE_SIGNIN_UNAVAILABLE',
+    });
+    expect(verifyGoogleIdToken).not.toHaveBeenCalled();
+  });
+
+  test('propagates a token-verification failure without ever touching the DB', async () => {
+    verifyGoogleIdToken.mockRejectedValue(Object.assign(new Error('bad token'), { statusCode: 401, code: 'INVALID_GOOGLE_TOKEN' }));
+
+    await expect(authService.googleAuth({ idToken: 'garbage' })).rejects.toMatchObject({ code: 'INVALID_GOOGLE_TOKEN' });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  test('logs in directly when this Google account has signed in before (googleId already on file) — no email lookup, no link, no create', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'user-1',
+      name: 'Asha Rao',
+      email: 'asha@example.com',
+      role: 'patient',
+      phone: null,
+      city: null,
+      photoUrl: null,
+      status: 'active',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      passwordHash: null,
+      googleId: 'google-sub-123',
+    });
+
+    const result = await authService.googleAuth({ idToken: 'valid-token' });
+
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma.user.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { googleId: 'google-sub-123' } }));
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(result.user.id).toBe('user-1');
+    // passwordHash/googleId/createdAt must never leak into the returned user object — same
+    // never-leak contract login() already has, extended to the two new internal-only fields.
+    expect(result.user.passwordHash).toBeUndefined();
+    expect(result.user.googleId).toBeUndefined();
+    expect(result.user.createdAt).toBeUndefined();
+    expect(activityLogService.log).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'auth.google_login' }));
+  });
+
+  test('links this Google account to an existing email/password account on first Google sign-in, never creating a duplicate', async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null) // no user with this googleId yet
+      .mockResolvedValueOnce({
+        // ...but the email already has a password-based account from a plain register() earlier.
+        id: 'user-2',
+        name: 'Asha Rao',
+        email: 'asha@example.com',
+        role: 'patient',
+        phone: '9876543210',
+        city: 'Pune',
+        photoUrl: null,
+        status: 'active',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        passwordHash: '$2b$04$abcdefghijklmnopqrstuv',
+        googleId: null,
+      });
+    prisma.user.update.mockResolvedValue({
+      id: 'user-2',
+      name: 'Asha Rao',
+      email: 'asha@example.com',
+      role: 'patient',
+      phone: '9876543210',
+      city: 'Pune',
+      photoUrl: null,
+      status: 'active',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      passwordHash: '$2b$04$abcdefghijklmnopqrstuv',
+      googleId: 'google-sub-123',
+    });
+
+    const result = await authService.googleAuth({ idToken: 'valid-token' });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-2' },
+      data: { googleId: 'google-sub-123' },
+      select: expect.any(Object),
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled(); // linking, never a fresh create
+    expect(result.user.id).toBe('user-2');
+    expect(activityLogService.log).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'auth.google_login' }));
+  });
+
+  test('rejects when the matched email is already linked to a DIFFERENT Google account, without re-pointing the link', async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'user-3',
+        email: 'asha@example.com',
+        status: 'active',
+        googleId: 'some-other-google-sub',
+        passwordHash: null,
+      });
+
+    await expect(authService.googleAuth({ idToken: 'valid-token' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'GOOGLE_ACCOUNT_MISMATCH',
+    });
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(tokenService.issueTokenPair).not.toHaveBeenCalled();
+  });
+
+  test('self-registers a brand-new patient account when neither googleId nor email match anything existing', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    let capturedCreateData;
+    prisma.$transaction.mockImplementation(async (fn) => {
+      const tx = {
+        user: {
+          create: jest.fn((args) => {
+            capturedCreateData = args.data;
+            return Promise.resolve({
+              id: 'new-google-user',
+              name: args.data.name,
+              email: args.data.email,
+              role: args.data.role,
+              phone: null,
+              city: null,
+              photoUrl: args.data.photoUrl,
+              status: args.data.status,
+              createdAt: new Date('2026-01-01T00:00:00.000Z'),
+              passwordHash: null,
+              googleId: args.data.googleId,
+            });
+          }),
+        },
+        patientProfile: { create: jest.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
+    });
+
+    const result = await authService.googleAuth({ idToken: 'valid-token' });
+
+    // Never a password, and self-registration can only ever mint a patient — same hard-coded
+    // rule as register()'s own belt-and-suspenders role assignment.
+    expect(capturedCreateData.passwordHash).toBeNull();
+    expect(capturedCreateData.googleId).toBe('google-sub-123');
+    expect(capturedCreateData.role).toBe('patient');
+    expect(capturedCreateData.email).toBe('asha@example.com');
+    expect(capturedCreateData.name).toBe('Asha Rao');
+    expect(capturedCreateData.photoUrl).toBe('https://example.com/photo.jpg');
+    expect(capturedCreateData.patientNumber).toBe(42);
+    expect(idGenerators.nextPatientNumber).toHaveBeenCalledTimes(1);
+
+    expect(result.user.id).toBe('new-google-user');
+    expect(result.user.passwordHash).toBeUndefined();
+    expect(result.user.googleId).toBeUndefined();
+    expect(activityLogService.log).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'auth.google_register' }));
+  });
+
+  test('rejects a disabled account matched via googleId — same ACCOUNT_DISABLED as a disabled password-login account', async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({
+      id: 'user-4',
+      email: 'asha@example.com',
+      status: 'disabled',
+      googleId: 'google-sub-123',
+      passwordHash: null,
+    });
+
+    await expect(authService.googleAuth({ idToken: 'valid-token' })).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'ACCOUNT_DISABLED',
+    });
+    expect(tokenService.issueTokenPair).not.toHaveBeenCalled();
   });
 });

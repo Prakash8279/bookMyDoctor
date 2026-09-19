@@ -135,7 +135,13 @@ enum NotificationAudience {
 model User {
   id           String        @id @default(uuid())
   email        String        @unique
-  passwordHash String        @map("password_hash")
+  // Nullable since the GOOGLE SIGN-IN feature (user request: "google work nahi kar rah hai fix
+  // kro"): an account created via "Continue with Google" has no password at all until/unless the
+  // person later sets one — see prisma/manual_sql/011_google_sign_in.sql and
+  // auth.service.js#googleAuth. auth.service.js#login already treats a null passwordHash the
+  // same as "no matching user" (falls back to DUMMY_PASSWORD_HASH) so a Google-only account can
+  // never be logged into with a guessed/blank password.
+  passwordHash String?       @map("password_hash")
   role         UserRole
   name         String
   phone        String?
@@ -144,6 +150,11 @@ model User {
   status       AccountStatus @default(active)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
+  // Google's stable per-account identifier ("sub" claim in the verified ID token) once this user
+  // has signed in with "Continue with Google" at least once — see auth.service.js#googleAuth.
+  // NULL for every account that has only ever used email+password. Unique (not one-to-many):
+  // Google itself never reuses a `sub` across two different Google accounts.
+  googleId     String?       @unique @map("google_id")
   // Stable, sequential, human-facing display number for patient-role users — assigned ONCE at
   // registration (auth.service.js#register) via `nextval('patient_number_seq')`, rendered
   // client-side as "DCP<N>". Deliberately NOT derived from a row's position/index in whatever

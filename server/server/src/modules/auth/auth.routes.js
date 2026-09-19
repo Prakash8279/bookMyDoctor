@@ -161,6 +161,74 @@ router.post('/register', authLimiter, validation.register, validateRequest, cont
  */
 router.post('/login', authLimiter, validation.login, validateRequest, controller.login);
 
+/**
+ * @openapi
+ * /auth/google:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Sign in (or self-register) with Google — "Continue with Google".
+ *     description: >
+ *       One endpoint handles all three cases: an account already linked to this Google account
+ *       logs in; an existing email/password account signing in with Google for the first time
+ *       gets that Google account linked to it; a brand-new person gets a `patient` account
+ *       created (self-registration can never mint any other role, same rule as /auth/register).
+ *       idToken is the `credential` Google Identity Services hands the frontend after the user
+ *       picks an account — verified server-side against Google's published signing keys before
+ *       any of the above happens (see modules/auth/../../services/googleIdTokenVerifier.js).
+ *     operationId: authGoogleSignIn
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [idToken]
+ *             properties:
+ *               idToken: { type: string, description: 'Google Identity Services credential (a signed JWT).' }
+ *     responses:
+ *       200:
+ *         description: Signed in (or newly registered); fresh access + refresh tokens issued.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user: { type: object, description: 'Same shape as /auth/login — never includes passwordHash or googleId.' }
+ *                     accessToken: { type: string }
+ *                     refreshToken: { type: string }
+ *       401:
+ *         description: The Google token failed verification, or its email is unverified.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       403:
+ *         description: The linked/matched account has been disabled.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       409:
+ *         description: EMAIL_ALREADY_EXISTS (rare create-time race) or GOOGLE_ACCOUNT_MISMATCH.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       503:
+ *         description: GOOGLE_SIGNIN_UNAVAILABLE — no GOOGLE_CLIENT_ID configured on this server, or Google's signing keys couldn't be fetched.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       429:
+ *         description: Too many requests from this IP (authLimiter — same as /auth/login).
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ */
+router.post('/google', authLimiter, validation.googleAuth, validateRequest, controller.googleAuth);
+
 // Public — same authLimiter as login/register: forgot-password lets a caller trigger a lookup
 // by email (a coarse enumeration/spam surface) and reset-password lets a caller brute-force a
 // token (a credential-guessing surface functionally like login), so both get the same

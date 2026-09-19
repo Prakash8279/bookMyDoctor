@@ -19,6 +19,14 @@ const login = asyncHandler(async (req, res) => {
   return success(res, result);
 });
 
+// GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro"). Handles login,
+// account-linking, and self-registration all in one call — see auth.service.js#googleAuth.
+const googleAuth = asyncHandler(async (req, res) => {
+  const { idToken } = req.body;
+  const result = await authService.googleAuth({ idToken });
+  return success(res, result);
+});
+
 const logout = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
   await authService.logout({ userId: req.user.id, role: req.user.role, refreshToken });
@@ -50,4 +58,4 @@ const resetPassword = asyncHandler(async (req, res) => {
   return success(res, null, { message: 'Your password has been reset. Please log in with your new password.' });
 });
 
-module.exports = { register, login, logout, refresh, me, forgotPassword, resetPassword };
+module.exports = { register, login, googleAuth, logout, refresh, me, forgotPassword, resetPassword };

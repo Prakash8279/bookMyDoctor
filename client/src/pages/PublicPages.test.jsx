@@ -21,7 +21,16 @@ vi.mock('../lib/apiClient', () => ({
   registerUnauthorizedHandler: vi.fn(),
 }))
 
+// GOOGLE SIGN-IN FEATURE — the picker itself (loading Google's script, rendering its real hidden
+// button, waiting for the credential) is browser/GIS machinery with nothing to do with React;
+// these tests mock it at this boundary and exercise everything downstream for real (the store's
+// loginWithGoogle action, the actual POST /auth/google call, navigation).
+vi.mock('../lib/googleSignIn', () => ({
+  signInWithGoogle: vi.fn(),
+}))
+
 import apiClient, { getTokens } from '../lib/apiClient'
+import { signInWithGoogle } from '../lib/googleSignIn'
 import { useAppStore } from '../store/useAppStore'
 import {
   SiteHeader,
@@ -288,10 +297,28 @@ describe('Login', () => {
     expect(useAppStore.getState().isAuthenticated).toBe(false)
   })
 
-  it('shows an inline notice instead of Google sign-in when clicked (no OAuth provider in this workspace)', () => {
+  // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — replaces the
+  // old stub test (the button used to always show "Google sign-in is unavailable..." and never
+  // actually attempt anything). Real Google Sign-In now covers login AND first-time
+  // account-linking AND self-registration in a single POST /auth/google call.
+  it('signs in with the Google ID token and navigates to the role home on success', async () => {
+    signInWithGoogle.mockResolvedValue('fake-google-id-token')
+    apiClient.post.mockImplementation((url) => (url === '/auth/google' ? Promise.resolve({ accessToken: 'tok', refreshToken: 'ref' }) : Promise.resolve({})))
+    apiClient.get.mockImplementation((url) => (url === '/me' ? Promise.resolve({ id: 'u1', name: 'Asha', role: 'patient' }) : Promise.resolve([])))
     renderWithLocation(<Login />)
     fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
-    expect(screen.getByRole('alert')).toHaveTextContent(/Google sign-in is unavailable/i)
+    await waitFor(() => expect(screen.getByTestId('location-probe').dataset.pathname).toBe('/patient/dashboard'))
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/google', { idToken: 'fake-google-id-token' })
+    expect(useAppStore.getState().isAuthenticated).toBe(true)
+  })
+
+  it('shows the real error message when Google sign-in fails (e.g. not configured, or the picker was cancelled)', async () => {
+    signInWithGoogle.mockRejectedValue(new Error('Google sign-in is not configured for this deployment yet.'))
+    renderWithLocation(<Login />)
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Google sign-in is not configured for this deployment yet.')
+    expect(apiClient.post).not.toHaveBeenCalledWith('/auth/google', expect.anything())
+    expect(useAppStore.getState().isAuthenticated).toBe(false)
   })
 
   it('shows a one-shot success notice handed in via router state', () => {
@@ -360,6 +387,22 @@ describe('Register', () => {
   it('links back to sign in', () => {
     renderWithLocation(<Register />)
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+  })
+
+  // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — replaces the
+  // old stub test ("Google sign-up needs an OAuth provider..."). Uses the SAME POST /auth/google
+  // call as Login (it transparently registers a brand-new person server-side) — deliberately
+  // fired even from the "I'm a doctor" tab to confirm Google sign-up always lands as a patient,
+  // same rule the email/password doctor form is exempt from only via its own dedicated endpoint.
+  it('signs up with Google and navigates to the patient dashboard, even from the doctor tab', async () => {
+    signInWithGoogle.mockResolvedValue('fake-google-id-token')
+    apiClient.post.mockImplementation((url) => (url === '/auth/google' ? Promise.resolve({ accessToken: 'tok', refreshToken: 'ref' }) : Promise.resolve({})))
+    apiClient.get.mockImplementation((url) => (url === '/me' ? Promise.resolve({ id: 'u1', name: 'New Patient', role: 'patient' }) : Promise.resolve([])))
+    renderWithLocation(<Register />)
+    fireEvent.click(screen.getByRole('tab', { name: "I'm a doctor" }))
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }))
+    await waitFor(() => expect(screen.getByTestId('location-probe').dataset.pathname).toBe('/patient/dashboard'))
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/google', { idToken: 'fake-google-id-token' })
   })
 })
 
