@@ -93,6 +93,15 @@ function mockGetRoutes(map) {
   })
 }
 
+// RESPONSIVE-CARDS FIX (user request: "patient and receptionist and admin panel ko fully
+// resposive bnao mobile view v best ho") — same viewport-stubbing pattern as
+// components/DataTable.test.jsx / hooks/useIsMobile.test.js, reused here for the 4 hand-rolled
+// tables in this file (Family, Notifications, PatientAppointments, Payments) that predate the
+// shared DataTable component and so needed the mobile-card treatment applied by hand.
+function mockMobileViewport(matches) {
+  window.matchMedia = vi.fn().mockReturnValue({ matches, media: '(max-width: 767px)', addEventListener: () => {}, removeEventListener: () => {} })
+}
+
 // =====================================================================
 // PatientDashboard
 // =====================================================================
@@ -810,6 +819,41 @@ describe('PatientAppointments', () => {
       confirmSpy.mockRestore()
     })
   })
+
+  describe('mobile card layout (viewport below 768px)', () => {
+    afterEach(() => { delete window.matchMedia })
+
+    it('renders appointment cards instead of a table, with the row data and "View slip" action', () => {
+      mockMobileViewport(true)
+      seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
+      renderConnected(PatientAppointments)
+
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      expect(screen.getByText('Dr. Asha Rao')).toBeInTheDocument()
+      expect(screen.getByText(shortId(APPT_COMPLETED.id))).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /View slip/ })).toBeInTheDocument()
+    })
+
+    it('still shows Pay/Pay min/Cancel actions on a pending_payment card', () => {
+      mockMobileViewport(true)
+      const APPT_PENDING = {
+        id: 'a9',
+        status: 'pending_payment',
+        doctor: { name: 'Dr. Asha Rao' },
+        clinic: { name: 'Heart Care Clinic' },
+        appointmentDate: '2026-08-05',
+        tokenNumber: 9,
+        fees: { totalAmount: 500, minBookingAmount: 100 },
+        paymentStatus: 'pending',
+      }
+      seedData({ appointments: [APPT_PENDING], payments: [] })
+      renderConnected(PatientAppointments)
+
+      expect(screen.getByRole('button', { name: /Pay ₹500 now/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Pay min ₹100 now/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    })
+  })
 })
 
 describe('BookingHistory', () => {
@@ -999,6 +1043,21 @@ describe('Payments', () => {
 
     expect(screen.getByText('At booking')).toBeInTheDocument()
     expect(screen.getByText('At clinic')).toBeInTheDocument() // PAYMENT_ROW's transactionRef ('txn_9') isn't a Razorpay id
+  })
+
+  describe('mobile card layout (viewport below 768px)', () => {
+    afterEach(() => { delete window.matchMedia })
+
+    it('renders payment cards instead of a table, with the row data and "View receipt" action', () => {
+      mockMobileViewport(true)
+      seedData({ payments: [PAYMENT_ROW], appointments: [APPT_FOR_PAYMENT] })
+      renderConnected(Payments)
+
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      expect(screen.getByText('Dr. Asha Rao')).toBeInTheDocument()
+      expect(screen.getByText('₹750')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /View receipt/ })).toBeInTheDocument()
+    })
   })
 })
 
