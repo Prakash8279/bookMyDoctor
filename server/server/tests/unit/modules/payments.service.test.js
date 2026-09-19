@@ -4,14 +4,19 @@
  * commission/clinicPayout split shown to admins, and the double-submit idempotency guards.
  * Three classes of bug this suite is written to catch:
  *
- *   - shapePaymentFees's admin commission math (see that function's own header comment): when one
- *     appointment is split across TWO Payment rows (an online advance + a clinic-collected
- *     remainder), commission/clinicPayout must be computed off THIS row's *share* of the
- *     appointment total (scaled by `row.amount / impliedTotalAmount`), never off the full
- *     consultationFee on every row — the latter would double-count commission across the split
- *     and overstate the admin dashboard's revenue figures. STAFF_ROLES must see ONLY
- *     consultationFee (every other money field omitted, not nulled); patients must never see
- *     commission/clinicPayout at all.
+ *   - shapePaymentFees's fee-masking math (see that function's own header comment, and
+ *     utils/minBookingAmount.js#resolvePaymentRowFeeSplit's — user request: "receptionest and
+ *     doctor admin ye sab me ye payment thik kro payment system sahi ho"): when one appointment
+ *     is split across TWO Payment rows (an online minimum-booking advance + a clinic-collected
+ *     remainder), every role must see THIS row's real, exact share — never the appointment's full
+ *     consultationFee/convenienceFee/gstAmount copied verbatim onto every row. STAFF_ROLES
+ *     (doctor/receptionist) previously double-counted the full consultationFee per row
+ *     (StaffPages.jsx's doctorRevenue/bookingTotal/cashTotal sum it across rows); ADMIN_ROLES
+ *     previously scaled commission/clinicPayout by a plain `row.amount / impliedTotalAmount`
+ *     ratio, which "balanced" to the right total but never matched what was actually collected
+ *     (the platform charge/GST is collected in full by the online minimum payment, never spread
+ *     proportionally across both rows). STAFF_ROLES must see ONLY consultationFee (every other
+ *     money field omitted, not nulled); patients must never see commission/clinicPayout at all.
  *   - createPaymentForAppointment's ordering and state-machine rules: authorization (receptionist
  *     clinic match / patient ownership) must be checked BEFORE any state-revealing check
  *     (already-paid, cancelled) — an out-of-scope caller must get the same 403/404 regardless of
@@ -627,6 +632,67 @@ describe('payments.service.shapePaymentFees — role-based masking (exercised vi
     expect(Number(result.fees.commission.toString())).toBeCloseTo(18.51, 1);
     expect(Number(result.fees.clinicPayout.toString())).not.toBeCloseTo(500, 0);
     expect(Number(result.fees.commission.toString())).not.toBeCloseTo(113.6, 0);
+  });
+
+  // EXACT-BREAKDOWN FIX (user request: "receptionest and doctor admin ye sab me ye payment thik
+  // kro payment system sahi ho") — the SPLIT test right above has no doctorProfile mocked, so
+  // resolvePaymentRowFeeSplit can't identify which of the three real payment shapes the row is
+  // and falls back to the same ratio-scaling as before (still correct for an un-split payment,
+  // still the best available estimate for an older/unrecognized row). Once the doctor's
+  // minBookingAdvanceAmount IS known (as it always is in production — PAYMENT_SELECT fetches it),
+  // the exact figures replace that estimate. Worked example (same one used throughout the app):
+  // consultationFee 400, convenienceFee 25, doctor's minimum booking advance 100 -> GST rate 3%
+  // -> minBookingAmount 128 (100 + 25 + 3% of 100), minBookingRemainder 300 (400 - 100).
+  const MIN_BOOKING_DOCTOR = { id: 'doctor-1', name: 'Doc', doctorProfile: { minBookingAdvanceAmount: dec(100) } };
+  const MIN_BOOKING_ROW_BASE = { consultationFee: dec(400), convenienceFee: dec(25), emergencyFee: dec(0), gstAmount: dec(12.75), doctor: MIN_BOOKING_DOCTOR };
+
+  test('doctor/receptionist see the doctor\'s EXACT minimum booking advance (100) for the online minimum-advance row — not the appointment\'s full consultationFee (400)', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ ...MIN_BOOKING_ROW_BASE, amount: dec(128) }));
+
+    const doctorResult = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'online' }, DOCTOR);
+    expect(doctorResult.fees.consultationFee.toString()).toBe('100');
+
+    tx.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'clinic-1' });
+    const receptionistResult = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'online' }, RECEPTIONIST);
+    expect(receptionistResult.fees.consultationFee.toString()).toBe('100');
+  });
+
+  test('doctor/receptionist see the EXACT remaining balance (300) for the clinic-collected remainder row — not the appointment\'s full consultationFee (400) again (the double-count bug)', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ ...MIN_BOOKING_ROW_BASE, amount: dec(300) }));
+
+    const result = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'cash' }, DOCTOR);
+
+    expect(result.fees.consultationFee.toString()).toBe('300');
+    // Summing the two rows' consultationFee (100 + 300) equals the doctor's true fee (400),
+    // counted exactly once across the split — never 400 + 400 = 800.
+  });
+
+  test('admin: EXACT (not ratio-scaled) clinicPayout/commission for the online minimum-advance row — clinicPayout 100, commission 28 (25 convenience + 3 GST-on-advance)', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ ...MIN_BOOKING_ROW_BASE, amount: dec(128) }));
+
+    const result = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'online' }, ADMIN);
+
+    expect(result.fees.clinicPayout.toString()).toBe('100');
+    expect(result.fees.commission.toString()).toBe('28');
+  });
+
+  test('admin: EXACT (not ratio-scaled) clinicPayout/commission for the clinic-collected remainder row — clinicPayout 300 (the whole thing), commission 0 (platform charge/GST already settled online)', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ ...MIN_BOOKING_ROW_BASE, amount: dec(300) }));
+
+    const result = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'cash' }, ADMIN);
+
+    expect(result.fees.clinicPayout.toString()).toBe('300');
+    expect(result.fees.commission.toString()).toBe('0');
   });
 });
 

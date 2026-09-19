@@ -28,7 +28,7 @@ const idGenerators = require('../../utils/idGenerators');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
-const { computeMinBookingRemainder } = require('../../utils/minBookingAmount');
+const { computeMinBookingRemainder, resolvePaymentRowFeeSplit } = require('../../utils/minBookingAmount');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -93,7 +93,11 @@ const PAYMENT_SELECT = {
   createdAt: true,
   appointment: { select: { id: true } },
   patient: { select: { id: true, name: true } },
-  doctor: { select: { id: true, name: true } },
+  // doctorProfile.minBookingAdvanceAmount added (EXACT PAYMENT-ROW-BREAKDOWN FIX — see
+  // shapePaymentFees's own header comment) — needed to tell which of the three real payment
+  // shapes (full / online minimum advance / clinic-collected remainder) a row is, so its fee
+  // breakdown can be resolved exactly instead of trusting the verbatim-copied columns.
+  doctor: { select: { id: true, name: true, doctorProfile: { select: { minBookingAdvanceAmount: true } } } },
   // address/phone added (COMPLETENESS FIX — proper receipt/slip generation needs the clinic's
   // address on the printed document; previously only id/name were selected here).
   clinic: { select: { id: true, name: true, address: true, phone: true } },
@@ -109,56 +113,55 @@ const PAYMENT_SELECT = {
  *  - admin/superadmin: full breakdown PLUS commission/clinicPayout, derived on read (not stored
  *    columns) from consultationFee x commissionPercent%. `commissionPercent` is fetched once per
  *    list/get call by the caller — see loadCommissionPercentIfAdmin below.
+ *
+ * EXACT PAYMENT-ROW-BREAKDOWN FIX (user request: "receptionest and doctor admin ye sab me ye
+ * payment thik kro payment system sahi ho" — see
+ * utils/minBookingAmount.js#resolvePaymentRowFeeSplit's own header comment for the full
+ * rationale): every branch below now reads THIS row's real fee split — exact for the three real
+ * payment shapes (full / online minimum advance / clinic-collected remainder) — instead of the
+ * appointment's full breakdown copied verbatim onto every row. Previously this double-counted
+ * the doctor's consultation fee for STAFF_ROLES (doctorRevenue/bookingTotal/cashTotal on the
+ * frontend all sum this per row) and produced a fictional, ratio-scaled commission/clinicPayout
+ * for ADMIN_ROLES on any appointment split across two payment rows.
  * @param {object} row - a raw Prisma payment row shaped via PAYMENT_SELECT.
  * @param {string} role
  * @param {import('@prisma/client').Prisma.Decimal|null} [commissionPercent]
  */
 function shapePaymentFees(row, role, commissionPercent) {
+  const split = resolvePaymentRowFeeSplit({
+    consultationFee: row.consultationFee,
+    convenienceFee: row.convenienceFee,
+    emergencyFee: row.emergencyFee,
+    gstAmount: row.gstAmount,
+    minBookingAdvanceAmount: row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+    amount: row.amount,
+  });
+
   if (STAFF_ROLES.includes(role)) {
-    return { consultationFee: row.consultationFee };
+    return { consultationFee: new Prisma.Decimal(split.consultationFee) };
   }
 
   if (ADMIN_ROLES.includes(role)) {
     let commission = null;
     let clinicPayout = null;
     if (commissionPercent != null) {
-      // consultationFee/convenienceFee/emergencyFee/gstAmount are copied VERBATIM (the
-      // appointment's full fee breakdown, unchanged) onto every Payment row for that appointment
-      // — including a SECOND row created when a `partial` online payment's remaining balance is
-      // later collected at the clinic (see createPaymentForAppointment's partial-payment
-      // handling). Computing commission/clinicPayout straight off the full `row.consultationFee`
-      // on every such row would double-count both for any appointment split across two payments
-      // (once for the online advance, once again for the clinic-collected remainder) — the admin
-      // dashboard's revenue reports would then overstate platform commission and clinic payout.
-      // Instead, scale this row's share of the consultation fee by what THIS row actually
-      // collected (`row.amount`) out of the appointment's total (the sum of its own fee columns
-      // — the same total on every row for one appointment). For the normal, un-split, single
-      // full-payment case `row.amount` already equals that total, so the ratio is exactly 1 and
-      // the result is byte-identical to the old calculation.
-      const impliedTotalAmount = row.consultationFee
-        .plus(row.convenienceFee)
-        .plus(row.emergencyFee)
-        .plus(row.gstAmount);
-      const consultationFeeShare = impliedTotalAmount.greaterThan(0)
-        ? row.consultationFee.times(row.amount).dividedBy(impliedTotalAmount)
-        : row.consultationFee;
       // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega
-      // baki jo extra hai ye plateform charge me rakho") — the clinic/doctor now keeps this row's
-      // ENTIRE consultation-fee share, never diminished by a platform cut. Platform commission is
-      // instead whatever this row collected ON TOP of that share — its convenience/emergency/GST
-      // share, i.e. row.amount minus consultationFeeShare (both already scaled identically for a
-      // split payment, so this is exactly the convenience+emergency+GST portion of THIS row, not
-      // the appointment's full total). `commissionPercent` is kept only as the `!= null` gate
-      // above (admin/superadmin + platformCharges row exists) — it no longer drives this
-      // arithmetic. See appointments.service.js#shapeFees for the identical change.
-      clinicPayout = consultationFeeShare.toDecimalPlaces(2);
-      commission = row.amount.minus(clinicPayout).toDecimalPlaces(2);
+      // baki jo extra hai ye plateform charge me rakho") — the clinic/doctor keeps this row's
+      // entire (exact, not ratio-scaled) consultation-fee share; platform commission is whatever
+      // this row collected on top of it — its exact convenience/emergency/GST share.
+      // `commissionPercent` is kept only as the `!= null` gate above (admin/superadmin +
+      // platformCharges row exists) — it no longer drives this arithmetic. See
+      // appointments.service.js#shapeFees for the identical change.
+      clinicPayout = new Prisma.Decimal(split.consultationFee);
+      commission = new Prisma.Decimal(
+        Math.round((split.convenienceFee + split.emergencyFee + split.gstAmount) * 100) / 100
+      );
     }
     return {
-      consultationFee: row.consultationFee,
-      convenienceFee: row.convenienceFee,
-      emergencyFee: row.emergencyFee,
-      gstAmount: row.gstAmount,
+      consultationFee: new Prisma.Decimal(split.consultationFee),
+      convenienceFee: new Prisma.Decimal(split.convenienceFee),
+      emergencyFee: new Prisma.Decimal(split.emergencyFee),
+      gstAmount: new Prisma.Decimal(split.gstAmount),
       amount: row.amount,
       commission,
       clinicPayout,
@@ -167,10 +170,10 @@ function shapePaymentFees(row, role, commissionPercent) {
 
   // patient (their own payment, enforced by the visibility check upstream).
   return {
-    consultationFee: row.consultationFee,
-    convenienceFee: row.convenienceFee,
-    emergencyFee: row.emergencyFee,
-    gstAmount: row.gstAmount,
+    consultationFee: new Prisma.Decimal(split.consultationFee),
+    convenienceFee: new Prisma.Decimal(split.convenienceFee),
+    emergencyFee: new Prisma.Decimal(split.emergencyFee),
+    gstAmount: new Prisma.Decimal(split.gstAmount),
     amount: row.amount,
   };
 }
