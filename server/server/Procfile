@@ -1,0 +1,13 @@
+# Declares this app's process types for Procfile-based platforms (Heroku, Render, Railway, etc.)
+# and, more importantly, documents for anyone reading this repo that the `worker` process type
+# is NOT optional — it MUST run as its own process/dyno/service in production, separate from the
+# `web` process. See src/jobs/worker.process.js's header comment: the BullMQ booking worker is
+# split into its own entry point specifically so it can be scaled independently of the HTTP API
+# under load, and so the two can be started/stopped/restarted without affecting each other.
+#
+# Commands below mirror package.json's "start" and "worker" npm scripts exactly (see
+# package.json's "scripts" block) — kept as direct `node` invocations here rather than `npm run
+# ...` because most Procfile-reading platforms exec these commands directly, without npm in the
+# path or performing its own script-lookup overhead.
+web: node src/server.js
+worker: node src/jobs/worker.process.js

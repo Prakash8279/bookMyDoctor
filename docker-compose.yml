@@ -1,0 +1,108 @@
+# Local/staging Docker Compose setup for BookMyDoctor24.
+#
+# This is here for local development and staging convenience (spin up the whole stack —
+# Postgres, Redis, the API, the BullMQ worker, and the web frontend — with one command). It is
+# NOT necessarily how this app is actually deployed to production: a real production host might
+# use managed Postgres/Redis (RDS, ElastiCache, Upstash, etc.), a container orchestrator (ECS,
+# Kubernetes, Nomad), a static-host/CDN for the frontend (Vercel, Netlify, S3+CloudFront), or a
+# PaaS reading server/server/Procfile directly (Heroku, Render, Railway) instead of this file.
+# Treat this as a convenience for "run the whole thing locally against real Postgres/Redis" and
+# "smoke-test the Docker images," not as the production deployment topology.
+#
+# Note: the Flutter mobile app (mobile/) is intentionally NOT part of this compose file — it
+# needs an Android/iOS SDK + emulator or a physical device to run, which isn't something a
+# container gives you. Run it the normal Flutter way (`flutter run`) against whichever backend
+# URL you point it at (see mobile/'s own config for the API base URL).
+#
+# Usage:
+#   cp server/server/.env.example server/server/.env   # then fill in real values
+#   docker compose up --build
+#   docker compose exec server npx prisma migrate deploy
+#   docker compose exec server psql "$DATABASE_URL" -f prisma/manual_sql/001_constraints_and_triggers.sql
+# (see server/server/README.md's "Database setup" section for why that manual SQL step exists.)
+#   Web frontend: http://localhost:5173   |   API: http://localhost:4000
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: doctor_connect
+      # Overridable via a POSTGRES_PASSWORD env var (or a root .env — docker compose reads one
+      # automatically) so this stack isn't stuck on the "changeme" default the moment it's
+      # anywhere reachable beyond your own machine (a shared staging box, a LAN demo, etc.).
+      # Local `docker compose up` with nothing set still works exactly as before. If you do set
+      # POSTGRES_PASSWORD, update server/server/.env's DATABASE_URL to match.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: doctor_connect
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doctor_connect -d doctor_connect"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The HTTP API. Built from the same image as `worker` below — only the command differs — so
+  # the two never drift out of sync with each other's dependencies/Prisma Client.
+  server:
+    build:
+      context: ./server/server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./server/server/.env
+    ports:
+      - "4000:4000"
+
+  # The BullMQ booking-queue worker. MUST run as its own process, separate from `server` above —
+  # see server/server/src/jobs/worker.process.js's header comment and server/server/Procfile for
+  # why. No ports: it never accepts inbound HTTP, only pulls jobs off the Redis-backed queue.
+  worker:
+    build:
+      context: ./server/server
+    command: npm run worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./server/server/.env
+
+  # The React/Vite web frontend, built to static files and served by nginx. Vite bakes
+  # VITE_API_BASE_URL into the JS bundle at BUILD time (see client/Dockerfile's header comment),
+  # so pointing this at a different backend means rebuilding the image, not just an env change —
+  # override with `docker compose build client --build-arg VITE_API_BASE_URL=...` if the API
+  # isn't at the default http://localhost:4000 (e.g. a deployed/staging backend URL).
+  client:
+    build:
+      context: ./client
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "5173:80"
+
+volumes:
+  postgres_data:

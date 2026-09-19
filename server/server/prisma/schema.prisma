@@ -1,0 +1,789 @@
+// Doctor Connect — Prisma schema
+// Source of truth: /tmp/connect/planning/DATABASE_SCHEMA.md (confirmed with the user).
+// Conventions: UUID string ids, snake_case columns via @map, camelCase in Prisma Client.
+// NOTE: Postgres cannot express everything here (partial unique index for double-booking,
+// the rating-recompute trigger, the receipt-number sequence) — those live in
+// prisma/manual_sql/001_constraints_and_triggers.sql, run once after `prisma migrate dev`.
+// See server/README.md "Database setup" for the exact commands.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  patient
+  doctor
+  receptionist
+  admin
+  superadmin
+}
+
+enum AccountStatus {
+  active
+  disabled
+}
+
+enum DoctorStatus {
+  pending
+  verified
+  disabled
+}
+
+enum ClinicApprovalStatus {
+  pending
+  active
+  disabled
+}
+
+enum AppointmentStatus {
+  // Online bookings that require payment (fee > 0) are created directly in this status — a
+  // token number IS assigned immediately behind the scenes (see appointments.service.js's
+  // runBookingJob comment for why: token-number fairness/ordering and the advisory-lock
+  // concurrency safety it relies on are both easier to keep correct by minting the number at
+  // booking time and simply not revealing/activating it, rather than deferring the mint itself
+  // to payment time). The patient is shown a "complete payment" screen, not their token, until
+  // payments.service.js#createPaymentForAppointment flips this to `upcoming` on a successful
+  // payment (full OR the doctor's minimum advance amount — either unlocks it). Walk-ins and
+  // free (fee = 0) online bookings skip this status entirely, going straight to `upcoming` as
+  // before this feature existed.
+  pending_payment
+  upcoming
+  confirmed
+  completed
+  cancelled
+  no_show
+}
+
+enum AppointmentSource {
+  online
+  walk_in
+}
+
+enum PaymentStatus {
+  pending
+  // Doctor's minimum advance amount was paid online, less than the full consultation fee — the
+  // booking is confirmed/token unlocked, but a remaining balance is still due at the clinic.
+  // Never used on the `Payment` row itself (a recorded payment transaction is always `paid` —
+  // "partial" describes the *appointment's* overall payment state, not one transaction), only on
+  // Appointment.paymentStatus.
+  partial
+  paid
+  refunded
+}
+
+enum PaymentMode {
+  cash
+  upi
+  card
+  online
+}
+
+enum QueueStatus {
+  // Mirrors Appointment's `pending_payment` — a queue token for an online booking that still
+  // needs payment starts here instead of `waiting`, so it never shows up in the live
+  // doctor/receptionist queue (queue.service.js#listQueue excludes it) or counts toward anyone's
+  // patientsAhead. Deliberately NOT part of QUEUE_ORDER's forward-only sequence: staff can never
+  // manually transition a token into or out of this status via PATCH /queue/:id/status — only
+  // payments.service.js#createPaymentForAppointment flips it to `waiting` on successful payment.
+  on_hold
+  waiting
+  called
+  in_consultation
+  completed
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ComplaintStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum ContactStatus {
+  open
+  responded
+  resolved
+}
+
+enum NotificationAudience {
+  all
+  patients
+  doctors
+  receptionists
+  single_user
+}
+
+// ────────────────────────────────────────────────────────────────
+// Auth & Users
+// ────────────────────────────────────────────────────────────────
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String        @map("password_hash")
+  role         UserRole
+  name         String
+  phone        String?
+  city         String?
+  photoUrl     String?       @map("photo_url")
+  status       AccountStatus @default(active)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  patientProfile      PatientProfile?
+  doctorProfile       DoctorProfile?
+  receptionistProfile ReceptionistProfile?
+  refreshTokens       RefreshToken[]
+
+  familyMembers      FamilyMember[]
+  patientAppointments Appointment[]        @relation("PatientAppointments")
+  doctorAppointments  Appointment[]        @relation("DoctorAppointments")
+  patientMedicalRecords MedicalRecord[]    @relation("PatientMedicalRecords")
+  doctorMedicalRecords  MedicalRecord[]    @relation("DoctorMedicalRecords")
+  patientPayments     Payment[]            @relation("PatientPayments")
+  doctorPayments      Payment[]            @relation("DoctorPayments")
+  patientReviews      Review[]             @relation("PatientReviews")
+  doctorReviews       Review[]             @relation("DoctorReviews")
+  complaints          Complaint[]
+  notificationsSent   Notification[]       @relation("NotificationSender")
+  notificationsTargeted Notification[]     @relation("NotificationSingleTarget")
+  notificationRecipients NotificationRecipient[]
+  activityLogEntries  ActivityLog[]
+  doctorClinics       DoctorClinic[]
+  doctorClinicHours   DoctorClinicHours[]
+  doctorClinicClosures DoctorClinicClosure[]
+  queueTokensAsDoctor QueueToken[]         @relation("QueueDoctor")
+
+  // (role, createdAt) instead of a bare (role) index: admin.service.js#listPatients filters
+  // role='patient' and orders by createdAt desc — a composite index serves that ORDER BY without
+  // a separate sort step, while still serving any plain role-only filter exactly as before (role
+  // stays the leading column, so this is a strict superset of the index it replaces, not a
+  // narrowing of it). See also prisma/manual_sql/006_admin_patient_search_indexes.sql for the
+  // trigram indexes this same listPatients search needs on email/phone (GIN trigram indexes have
+  // no Prisma schema DSL representation, same reason 005_scalability_indexes.sql exists by hand).
+  @@index([role, createdAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PatientProfile {
+  userId            String    @id @map("user_id")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth       DateTime? @map("date_of_birth") @db.Date
+  gender            String?
+  bloodGroup        String?   @map("blood_group")
+  emergencyContact  String?   @map("emergency_contact")
+  address           String?
+  medicalHistory    String?   @map("medical_history")
+  about             String?
+
+  @@map("patient_profiles")
+}
+
+model DoctorProfile {
+  userId               String       @id @map("user_id")
+  user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specializationId     String?      @map("specialization_id")
+  specialization       Specialization? @relation(fields: [specializationId], references: [id])
+  qualification        String?
+  registrationNumber   String?      @map("registration_number")
+  experienceYears      Int?         @map("experience_years")
+  consultationFee      Decimal      @default(0) @map("consultation_fee") @db.Decimal(10, 2)
+  emergencyFee         Decimal      @default(0) @map("emergency_fee") @db.Decimal(10, 2)
+  // Doctor-set minimum amount a patient may pay ONLINE at booking time instead of the full
+  // consultation fee, to unlock their token immediately — the remaining balance is then
+  // collected at the clinic like any other partial payment. NULL (default) = this doctor hasn't
+  // configured one, so the patient's booking-payment screen only offers "pay full amount".
+  // Business rule (enforced in me.service.js, not here): must never exceed consultationFee.
+  minBookingAdvanceAmount Decimal?  @map("min_booking_advance_amount") @db.Decimal(10, 2)
+  languages            String[]     @default([])
+  bio                  String?
+  rating               Decimal      @default(0) @db.Decimal(3, 2)
+  reviewCount          Int          @default(0) @map("review_count")
+  status               DoctorStatus @default(pending)
+  verificationDocuments Json?       @map("verification_documents")
+  onlineBooking        Boolean      @default(true) @map("online_booking")
+  allowRebooking       Boolean      @default(true) @map("allow_rebooking")
+  maxDaysAdvance       Int          @default(30) @map("max_days_advance")
+  // Doctor-set daily cap on ONLINE (patient self-service) bookings — walk-ins booked by a
+  // receptionist never count against or get blocked by this. NULL (default) = no cap, matching
+  // this profile's existing behavior before this field existed. Enforced per calendar date,
+  // across all of the doctor's clinics combined — see appointments.service.js's createAppointment.
+  maxOnlineBookingsPerDay Int?      @map("max_online_bookings_per_day")
+  // Per-doctor override of the platform-wide online-booking accessibility window (BookingRules'
+  // onlineBookingWindowStart/End — see appointments.service.js#runBookingJob's enforcement
+  // comment for exactly how the two compose). NULL/NULL (default) = this doctor has no override,
+  // so the platform-wide window (if any) applies to them like everyone else. Set both together
+  // to give THIS doctor their own daily HH:MM-HH:MM online-booking window regardless of the
+  // platform default — e.g. a doctor who wants online booking open longer/shorter hours than the
+  // platform's general rule. Editable by admin/superadmin (doctors.service.js#updateBookingSettings)
+  // and by the doctor themselves, same dual-editable pattern as maxOnlineBookingsPerDay above.
+  onlineBookingWindowStart String?  @map("online_booking_window_start") // "HH:MM", 24h
+  onlineBookingWindowEnd   String?  @map("online_booking_window_end")   // "HH:MM", 24h
+  emergencyAvailable   Boolean      @default(false) @map("emergency_available")
+  // Doctor-entered bank details for payout/settlement, added on request ("bank details v only
+  // admin and super admin dekh sakta hai"). Doctor-self-editable via PATCH /me
+  // (me.service.js#PROFILE_EDITABLE_FIELDS.doctor) but surfaced only behind shapeDoctor's
+  // includeContact gate (doctors.service.js) — exactly the same self-or-admin/superadmin-only
+  // visibility just built for verificationDocuments, since a bank account number is at least as
+  // sensitive and an unrelated public/patient caller has no business ever seeing it.
+  bankAccountHolderName String? @map("bank_account_holder_name")
+  bankAccountNumber     String? @map("bank_account_number")
+  bankIfscCode          String? @map("bank_ifsc_code")
+  bankName              String? @map("bank_name")
+  // UPI ID as an alternative/additional payout option alongside the bank fields above (request:
+  // "upiid dalne ka v option de do") — same self-editable, admin/superadmin-only-visible pattern.
+  // Independent of the 4 bank fields: a doctor may fill in either, both, or neither.
+  bankUpiId             String? @map("bank_upi_id")
+  // Doctor-configurable rule for how appointments.service.js#runBookingJob numbers this
+  // doctor's queue tokens each day (request: "ek booking rule do jo booking online wala
+  // continues token no jayega ya odd ya even patient ko mile"):
+  //   'sequential' (default) — every booking, online or walk-in, takes the next number in one
+  //     shared count, exactly the pre-existing behavior.
+  //   'alternate' — online (patient self-service) bookings get their own odd-numbered sequence
+  //     (1, 3, 5, …) and walk-in (receptionist-booked) bookings get their own even-numbered
+  //     sequence (2, 4, 6, …), so the queue/reception display can tell an online arrival from a
+  //     walk-in apart at a glance from the token number alone, with no schema change to
+  //     Appointment/QueueToken needed.
+  // Editable by the doctor themselves or an admin/superadmin via PATCH /doctors/:id
+  // (doctors.service.js#updateBookingSettings) — same dual-editable pattern already used for
+  // onlineBookingWindowStart/End above. Surfaced only behind includeContact (self/admin only,
+  // like the bank fields above) since it's a pure internal operational setting a public/patient
+  // caller has no use for.
+  tokenNumberingMode String @default("sequential") @map("token_numbering_mode")
+  // Only meaningful when tokenNumberingMode = 'alternate' (ignored/ANY value is harmless when
+  // 'sequential') — request: "odd ya even select karne ka option do doctor jo select kar online
+  // ke lie" (let the DOCTOR choose which parity online patients get, instead of it being fixed).
+  // 'odd' (default) — online bookings get the odd sequence (1, 3, 5, …), walk-ins get the even
+  // one (2, 4, 6, …). 'even' — flipped: online gets the even sequence, walk-ins get the odd one.
+  // See appointments.service.js#runBookingJob's token-assignment block for exactly how this
+  // combines with tokenNumberingMode.
+  onlineTokenParity  String @default("odd") @map("online_token_parity")
+
+  @@index([specializationId])
+  @@index([status])
+  // Scalability pass: doctors.service.js#listDoctors accepts sortBy=rating|fee|experience and
+  // orders the public directory query by whichever of these three columns the caller picked
+  // (see SORT_FIELD_MAP), but until now none of them had a supporting index — every sorted
+  // directory page forced a full-table sort. These are pure Prisma-DSL documentation of intent;
+  // the actual btree indexes are created by prisma/manual_sql/005_scalability_indexes.sql since
+  // this sandbox cannot run `prisma migrate dev` against a real database.
+  @@index([rating])
+  @@index([consultationFee])
+  @@index([experienceYears])
+  @@map("doctor_profiles")
+}
+
+model ReceptionistProfile {
+  userId   String    @id @map("user_id")
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // ADDITIVE, FLAGGED CHANGE (Directory & Reference Data phase, see receptionists.service.js
+  // header comment for full rationale): DATABASE_SCHEMA.md §2 says clinic assignment for
+  // receptionists "lives in `clinic_staff` below" but that table was never actually defined
+  // anywhere in this doc or in the original schema — a documentation gap, not a deliberate
+  // decision to leave receptionists unscoped to a clinic. Without a queryable clinic_id here,
+  // "which clinic is this receptionist at" / "list receptionists at clinic X" (both explicitly
+  // required by this phase) have no schema-legal, non-hacky implementation: reusing
+  // doctor_clinics would silently corrupt every query that assumes every row there is a real
+  // doctor, and recording the assignment only in activity_log is an audit trail, not an
+  // authoritative/queryable source. This column is purely additive — nothing existing is
+  // renamed, retyped, or removed — and nullable, so no backfill is required. Needs a real
+  // `npx prisma migrate dev --name add_receptionist_clinic` run once DB access is available;
+  // flagged prominently in this phase's summary for explicit review/sign-off.
+  clinicId String?   @map("clinic_id")
+  clinic   Clinic?   @relation(fields: [clinicId], references: [id])
+  since    DateTime? @db.Date
+
+  @@index([clinicId])
+  @@map("receptionist_profiles")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Clinics & Doctor-Clinic
+// ────────────────────────────────────────────────────────────────
+
+model Clinic {
+  id                   String                @id @default(uuid())
+  name                 String
+  phone                String?
+  address              String?
+  cityId               String?               @map("city_id")
+  city                 City?                 @relation(fields: [cityId], references: [id])
+  areaId               String?               @map("area_id")
+  area                 Area?                 @relation(fields: [areaId], references: [id])
+  approvalStatus       ClinicApprovalStatus  @default(pending) @map("approval_status")
+  rejectionReason      String?               @map("rejection_reason")
+  emergencyAvailable   Boolean               @default(false) @map("emergency_available")
+  paymentCashEnabled   Boolean               @default(true) @map("payment_cash_enabled")
+  paymentUpiEnabled    Boolean               @default(false) @map("payment_upi_enabled")
+  paymentUpiId         String?               @map("payment_upi_id")
+  paymentQrUrl         String?               @map("payment_qr_url")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+
+  doctorClinics DoctorClinic[]
+  hours         DoctorClinicHours[]
+  closures      DoctorClinicClosure[]
+  appointments  Appointment[]
+  payments      Payment[]
+  queueTokens   QueueToken[]
+  receptionistProfiles ReceptionistProfile[] // back-relation for the additive clinicId above
+
+  @@index([cityId])
+  @@index([areaId])
+  @@index([approvalStatus])
+  @@map("clinics")
+}
+
+model DoctorClinic {
+  doctorUserId  String  @map("doctor_user_id")
+  doctor        User    @relation(fields: [doctorUserId], references: [id], onDelete: Cascade)
+  clinicId      String  @map("clinic_id")
+  clinic        Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  isOwner       Boolean @default(false) @map("is_owner")
+  isPrimary     Boolean @default(false) @map("is_primary")
+  onlineBooking Boolean @default(true) @map("online_booking")
+
+  @@id([doctorUserId, clinicId])
+  @@index([clinicId])
+  @@map("doctor_clinics")
+}
+
+model DoctorClinicHours {
+  id           String   @id @default(uuid())
+  doctorUserId String   @map("doctor_user_id")
+  doctor       User     @relation(fields: [doctorUserId], references: [id], onDelete: Cascade)
+  clinicId     String   @map("clinic_id")
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  weekday      Int // 0=Sunday .. 6=Saturday
+  startTime    String   @map("start_time") // "HH:MM"
+  endTime      String   @map("end_time")
+  slotMinutes  Int      @default(15) @map("slot_minutes")
+  status       String   @default("active")
+
+  @@unique([doctorUserId, clinicId, weekday])
+  @@map("doctor_clinic_hours")
+}
+
+model DoctorClinicClosure {
+  id           String   @id @default(uuid())
+  doctorUserId String   @map("doctor_user_id")
+  doctor       User     @relation(fields: [doctorUserId], references: [id], onDelete: Cascade)
+  clinicId     String   @map("clinic_id")
+  clinic       Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  closedDate   DateTime @map("closed_date") @db.Date
+  reason       String?
+
+  @@index([doctorUserId, closedDate])
+  @@map("doctor_clinic_closures")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Geography
+// ────────────────────────────────────────────────────────────────
+
+model City {
+  id    String @id @default(uuid())
+  name  String
+  state String?
+
+  areas   Area[]
+  clinics Clinic[]
+
+  @@map("cities")
+}
+
+model Area {
+  id      String @id @default(uuid())
+  cityId  String @map("city_id")
+  city    City   @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  name    String
+  pincode String?
+
+  clinics Clinic[]
+
+  @@index([cityId])
+  @@map("areas")
+}
+
+model Specialization {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  icon        String?
+  description String?
+
+  doctorProfiles DoctorProfile[]
+
+  @@map("specializations")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Appointments & Queue
+// ────────────────────────────────────────────────────────────────
+
+model Appointment {
+  id               String             @id @default(uuid())
+  patientUserId    String             @map("patient_user_id")
+  patient          User               @relation("PatientAppointments", fields: [patientUserId], references: [id])
+  familyMemberId   String?            @map("family_member_id")
+  // onDelete: Restrict is explicit here, not left to Prisma's default. For an OPTIONAL
+  // relation Prisma's own default onDelete is SetNull (see
+  // https://www.prisma.io/docs/orm/prisma-schema/data-model/relations/referential-actions),
+  // which would let a family member with existing appointments be deleted and silently null
+  // out appointments.family_member_id instead of blocking the delete.
+  // familyMembers.service.js#deleteFamilyMember depends on the delete throwing a Postgres
+  // FK-violation (Prisma error P2003) whenever appointments still reference this row — see
+  // prisma/manual_sql/003_family_member_fk_restrict.sql for the matching constraint fix on a
+  // database whose FK was already created (e.g. via `prisma db push`) before this was flagged.
+  familyMember     FamilyMember?      @relation(fields: [familyMemberId], references: [id], onDelete: Restrict)
+  doctorUserId     String             @map("doctor_user_id")
+  doctor           User               @relation("DoctorAppointments", fields: [doctorUserId], references: [id])
+  clinicId         String?            @map("clinic_id")
+  clinic           Clinic?            @relation(fields: [clinicId], references: [id])
+  appointmentDate  DateTime           @map("appointment_date") @db.Date
+  appointmentTime  String             @map("appointment_time") // "HH:MM", paired with a partial unique index — see manual_sql
+  reason           String?
+  isEmergency      Boolean            @default(false) @map("is_emergency")
+  status           AppointmentStatus  @default(upcoming)
+  source           AppointmentSource
+  tokenNumber      Int                @map("token_number")
+  consultationFee  Decimal            @default(0) @map("consultation_fee") @db.Decimal(10, 2)
+  convenienceFee   Decimal            @default(0) @map("convenience_fee") @db.Decimal(10, 2)
+  emergencyFee     Decimal            @default(0) @map("emergency_fee") @db.Decimal(10, 2)
+  gstAmount        Decimal            @default(0) @map("gst_amount") @db.Decimal(10, 2)
+  totalAmount      Decimal            @default(0) @map("total_amount") @db.Decimal(10, 2)
+  paymentStatus    PaymentStatus      @default(pending) @map("payment_status")
+  paymentMethod    PaymentMode?       @map("payment_method")
+  checkedInAt      DateTime?          @map("checked_in_at")
+  notes            String?
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  queueToken    QueueToken?
+  payments      Payment[]
+  medicalRecords MedicalRecord[]
+  review        Review?
+
+  @@index([patientUserId])
+  @@index([doctorUserId, appointmentDate])
+  @@index([clinicId])
+  @@index([status])
+  @@index([paymentStatus])
+  // Scalability pass: appointments.service.js#listAppointments's admin/superadmin path (the only
+  // role allowed to query with no doctorId/clinicId/patientId filter at all — see the role-scoping
+  // block above) orderBys [{appointmentDate:'desc'},{appointmentTime:'desc'}] over the entire
+  // table. The existing (doctorUserId, appointmentDate) composite only helps once a doctor filter
+  // is present, so an unfiltered "recent appointments" admin view had nothing to lean on and fell
+  // back to a full-table sort. Same caveat as above: this is DSL documentation only, the real
+  // index lives in prisma/manual_sql/005_scalability_indexes.sql.
+  @@index([appointmentDate, appointmentTime])
+  @@map("appointments")
+  // NOTE: the critical double-booking guard —
+  //   CREATE UNIQUE INDEX appointments_doctor_slot_unique ON appointments
+  //     (doctor_user_id, appointment_date, appointment_time)
+  //     WHERE status NOT IN ('cancelled', 'no_show');
+  // — is a PARTIAL index, which Prisma's schema DSL cannot express. It is created by
+  // prisma/manual_sql/001_constraints_and_triggers.sql. Do not consider this table safe
+  // against double-booking until that script has been run.
+}
+
+model QueueToken {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique @map("appointment_id")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  doctorUserId  String      @map("doctor_user_id")
+  doctor        User        @relation("QueueDoctor", fields: [doctorUserId], references: [id])
+  clinicId      String?     @map("clinic_id")
+  clinic        Clinic?     @relation(fields: [clinicId], references: [id])
+  tokenNumber   Int         @map("token_number")
+  status        QueueStatus @default(waiting)
+  queueDate     DateTime    @map("queue_date") @db.Date
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([doctorUserId, queueDate])
+  @@index([status])
+  @@map("queue_tokens")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Medical Records
+// ────────────────────────────────────────────────────────────────
+
+model MedicalRecord {
+  id            String       @id @default(uuid())
+  patientUserId String       @map("patient_user_id")
+  patient       User         @relation("PatientMedicalRecords", fields: [patientUserId], references: [id])
+  doctorUserId  String       @map("doctor_user_id")
+  doctor        User         @relation("DoctorMedicalRecords", fields: [doctorUserId], references: [id])
+  appointmentId String?      @map("appointment_id")
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  title         String
+  type          String?
+  notes         String?
+  carePlan      String?      @map("care_plan")
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([patientUserId])
+  @@index([doctorUserId])
+  @@map("medical_records")
+}
+
+model FamilyMember {
+  id            String    @id @default(uuid())
+  patientUserId String    @map("patient_user_id")
+  patient       User      @relation(fields: [patientUserId], references: [id], onDelete: Cascade)
+  name          String
+  relation      String
+  dateOfBirth   DateTime? @map("date_of_birth") @db.Date
+  gender        String?
+  bloodGroup    String?   @map("blood_group")
+
+  appointments Appointment[]
+
+  @@index([patientUserId])
+  @@map("family_members")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Payments & Revenue
+// ────────────────────────────────────────────────────────────────
+
+model Payment {
+  id              String        @id @default(uuid())
+  receiptNumber   String        @unique @map("receipt_number") // generated via manual_sql sequence, see idGenerators.js
+  appointmentId   String?       @map("appointment_id")
+  appointment     Appointment?  @relation(fields: [appointmentId], references: [id])
+  patientUserId   String        @map("patient_user_id")
+  patient         User          @relation("PatientPayments", fields: [patientUserId], references: [id])
+  doctorUserId    String        @map("doctor_user_id")
+  doctor          User          @relation("DoctorPayments", fields: [doctorUserId], references: [id])
+  clinicId        String?       @map("clinic_id")
+  clinic          Clinic?       @relation(fields: [clinicId], references: [id])
+  consultationFee Decimal       @default(0) @map("consultation_fee") @db.Decimal(10, 2)
+  convenienceFee  Decimal       @default(0) @map("convenience_fee") @db.Decimal(10, 2)
+  emergencyFee    Decimal       @default(0) @map("emergency_fee") @db.Decimal(10, 2)
+  gstAmount       Decimal       @default(0) @map("gst_amount") @db.Decimal(10, 2)
+  amount          Decimal       @db.Decimal(10, 2)
+  mode            PaymentMode
+  transactionRef  String?       @map("transaction_ref")
+  // Payer's own UPI handle for THIS transaction (e.g. "name@okhdfcbank") — distinct from
+  // DoctorProfile.bankUpiId (the doctor's own payout UPI id, see the "upiid dalne ka v option
+  // de do" bank-details feature). Added per receptionist Cash Payment request: "utr no aaye upi
+  // id aaye" (UTR number + UPI ID field), clarified to always show regardless of payment method
+  // and to be saved, not just displayed. transactionRef above IS the UTR/reference-number field
+  // (relabeled client-side to "UTR / Transaction number") — this is the one genuinely new column.
+  payerUpiId      String?       @map("payer_upi_id")
+  status          PaymentStatus @default(pending)
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([patientUserId])
+  @@index([doctorUserId])
+  @@index([clinicId])
+  @@index([appointmentId])
+  @@index([status])
+  // Composite indexes added in a scalability audit — payments.service.js#listPayments always
+  // filters on patientUserId/doctorUserId (patient's own / doctor's own history) AND
+  // orderBy: { createdAt: 'desc' } in the same query. The single-column indexes above satisfy the
+  // filter alone but still need a separate sort step; these let Postgres use one index for both
+  // the filter and the sort as payment volume (one row per appointment) grows. Matches the same
+  // (filterCol, sortCol) composite-index pattern already used on Appointment/DoctorProfile.
+  @@index([patientUserId, createdAt])
+  @@index([doctorUserId, createdAt])
+  @@map("payments")
+}
+
+model PlatformCharges {
+  id                    Int     @id @default(1)
+  commissionPercent     Decimal @default(10) @map("commission_percent") @db.Decimal(5, 2)
+  patientConvenienceFee Decimal @default(25) @map("patient_convenience_fee") @db.Decimal(10, 2)
+  emergencyFee          Decimal @default(50) @map("emergency_fee") @db.Decimal(10, 2)
+  gstPercent            Decimal @default(18) @map("gst_percent") @db.Decimal(5, 2)
+  applyConvenienceFee   Boolean @default(true) @map("apply_convenience_fee")
+  applyEmergencyFee     Boolean @default(true) @map("apply_emergency_fee")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_charges")
+  // Enforced as a true singleton via manual_sql CHECK (id = 1); always upsert id=1, never insert a new row.
+}
+
+// ────────────────────────────────────────────────────────────────
+// Reviews & Moderation
+// ────────────────────────────────────────────────────────────────
+
+model Review {
+  id            String       @id @default(uuid())
+  appointmentId String       @unique @map("appointment_id")
+  appointment   Appointment  @relation(fields: [appointmentId], references: [id])
+  doctorUserId  String       @map("doctor_user_id")
+  doctor        User         @relation("DoctorReviews", fields: [doctorUserId], references: [id])
+  patientUserId String       @map("patient_user_id")
+  patient       User         @relation("PatientReviews", fields: [patientUserId], references: [id])
+  rating        Int
+  text          String?
+  status        ReviewStatus @default(pending)
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  @@index([doctorUserId, status])
+  @@map("reviews")
+  // rating recompute into doctor_profiles.rating/review_count happens via manual_sql trigger
+  // on INSERT/UPDATE where status transitions to/from 'approved' — see manual_sql/001.
+}
+
+// ────────────────────────────────────────────────────────────────
+// Notifications
+// ────────────────────────────────────────────────────────────────
+
+model Notification {
+  id            String               @id @default(uuid())
+  title         String
+  body          String
+  type          String               @default("system")
+  senderUserId  String?              @map("sender_user_id")
+  sender        User?                @relation("NotificationSender", fields: [senderUserId], references: [id])
+  audience      NotificationAudience @default(single_user)
+  targetUserId  String?              @map("target_user_id")
+  targetUser    User?                @relation("NotificationSingleTarget", fields: [targetUserId], references: [id])
+  createdAt     DateTime             @default(now()) @map("created_at")
+
+  recipients NotificationRecipient[]
+
+  @@map("notifications")
+}
+
+model NotificationRecipient {
+  id             String       @id @default(uuid())
+  notificationId String       @map("notification_id")
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime?    @map("read_at")
+
+  @@unique([notificationId, userId])
+  @@index([userId, readAt])
+  @@map("notification_recipients")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Complaints & Contact
+// ────────────────────────────────────────────────────────────────
+
+model Complaint {
+  id            String          @id @default(uuid())
+  raisedByUserId String         @map("raised_by_user_id")
+  raisedBy      User            @relation(fields: [raisedByUserId], references: [id])
+  subject       String
+  description   String?
+  status        ComplaintStatus @default(open)
+  adminResponse String?         @map("admin_response")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([raisedByUserId])
+  @@index([status])
+  @@map("complaints")
+}
+
+model ContactRequest {
+  id        String        @id @default(uuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    ContactStatus @default(open)
+  response  String?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("contact_requests")
+}
+
+// ────────────────────────────────────────────────────────────────
+// Platform Admin
+// ────────────────────────────────────────────────────────────────
+
+model SystemSettings {
+  id              Int     @id @default(1)
+  platformName    String  @default("Doctor Connect") @map("platform_name")
+  supportEmail    String? @map("support_email")
+  supportPhone    String? @map("support_phone")
+  bookingFee      Decimal @default(0) @map("booking_fee") @db.Decimal(10, 2)
+  maintenanceMode Boolean @default(false) @map("maintenance_mode")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model BookingRules {
+  id                     Int @id @default(1)
+  cancellationWindowHours Int @default(2) @map("cancellation_window_hours")
+  maxBookingsPerPatient  Int @default(5) @map("max_bookings_per_patient")
+  defaultSlotMinutes     Int @default(15) @map("default_slot_minutes")
+  // Platform-wide online-booking accessibility window (admin/superadmin managed — see
+  // AdminPages.jsx's "Booking rules" form and appointments.service.js#runBookingJob's
+  // enforcement). Both NULL (the default) = online booking accepted around the clock ("full
+  // time"). Set both together to restrict online booking to a daily HH:MM-HH:MM window
+  // platform-wide — e.g. "09:00"-"21:00". Only ever gates ONLINE bookings (source==='online');
+  // walk-ins booked by staff at the clinic are never affected, same exemption pattern as every
+  // other admin/doctor booking-policy flag in this app.
+  onlineBookingWindowStart String? @map("online_booking_window_start") // "HH:MM", 24h
+  onlineBookingWindowEnd   String? @map("online_booking_window_end")   // "HH:MM", 24h
+  // Platform-wide cap on how many days ahead an ONLINE booking's appointment date may be — a
+  // ROLLING window measured from "today" (not a fixed calendar date), so it never needs manual
+  // bumping and can't silently expire if left unattended. NULL (default) = no platform-wide cap
+  // (each doctor's own maxDaysAdvance, default 30, still applies as before). 0 = online bookings
+  // restricted to TODAY ONLY, platform-wide, regardless of what any individual doctor allows.
+  // Whichever of this and the doctor's own maxDaysAdvance is STRICTER wins — see
+  // runBookingJob's comment for how the two checks compose.
+  onlineBookingMaxAdvanceDays Int? @map("online_booking_max_advance_days")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("booking_rules")
+}
+
+model ActivityLog {
+  id               String   @id @default(uuid())
+  actorUserId      String?  @map("actor_user_id")
+  actor            User?    @relation(fields: [actorUserId], references: [id])
+  actorRole        String?  @map("actor_role")
+  // Real client IP of the request that triggered this action (captured via req.ip — see
+  // middleware/requestContext.js — which already honors TRUST_PROXY_HOPS the same way
+  // middleware/adminIpAllowlist.js does). Nullable: worker-process-triggered actions (BullMQ
+  // jobs, no HTTP request in flight) and rows written before this column existed have no IP.
+  ipAddress        String?  @map("ip_address")
+  actionType       String   @map("action_type")
+  targetEntityType String?  @map("target_entity_type")
+  targetEntityId   String?  @map("target_entity_id")
+  description      String
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("activity_log")
+}

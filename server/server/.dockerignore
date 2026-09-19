@@ -1,0 +1,6 @@
+# Keeps build context small and avoids baking local/dev-only state into the image.
+node_modules
+.env
+uploads
+npm-debug.log
+.git

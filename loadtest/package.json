@@ -1,0 +1,12 @@
+{
+  "name": "connect-loadtest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phase 1 scalability baseline: measures how the backend actually behaves under concurrent login load, before any of the Phase 2+ fixes are applied.",
+  "scripts": {
+    "test:login": "node login-loadtest.js"
+  },
+  "dependencies": {
+    "autocannon": "^7.15.0"
+  }
+}

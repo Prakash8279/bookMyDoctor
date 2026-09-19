@@ -1,0 +1,28 @@
+# Repo-root fallback .gitignore. client/ and server/server/ already have their own, more specific
+# .gitignore files (dist/dist-ssr, logs, etc.) — this one exists for anything created at the repo
+# root itself (root-level .env, an accidental root node_modules/build) and for mobile/, which has
+# its own Flutter-specific .gitignore (mobile/.gitignore) but still benefits from these generic
+# entries applying repo-wide.
+
+node_modules/
+dist/
+build/
+.env
+.env.*.local
+*.log
+.DS_Store
+uploads/
+
+# Flutter (mobile/) — see mobile/.gitignore for the full Flutter-specific set; these are the
+# generic patterns worth having apply at the repo root too.
+mobile/.dart_tool/
+mobile/build/
+mobile/android/**/build
+
+coverage/
+
+# Local-machine artifacts, not project source (Claude Code settings, scratch outputs, files
+# staged for manual deletion) — none of these belong in the repo history.
+.claude/
+Claude outputs/
+_to_delete/
