@@ -1284,7 +1284,7 @@ export function Broadcast() {
       onRetry={load}
       rows={broadcasts}
       columns={[
-        { key: 'id', label: 'Id' },
+        { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
         { key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleString() : '—' },
         { key: 'title', label: 'Title' },
         { key: 'body', label: 'Message' },
@@ -1330,7 +1330,7 @@ export function AuditLog({ data }) {
       onRetry={load}
       rows={(data.activity || [])}
       columns={[
-        { key: 'id', label: 'Id' },
+        { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
         { key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleString() : '—' },
         { key: 'description', label: 'Action', render: (item) => item.description || item.actionType || '—' },
         { key: 'actorName', label: 'User', render: (item) => item.actor?.name || 'System' },

@@ -5,7 +5,7 @@ import { FormField } from '../components/FormField'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { StatusPill } from '../components/StatusPill'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate } from '../lib/format'
+import { formatDate, sequenceId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 
@@ -144,7 +144,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
     return <Page title="Appointments registry" subtitle="Manage every booking in the platform.">
       <ErrorNote>{actionError}</ErrorNote>
       <DataTable loading={loading} error={listError} onRetry={load} rows={rows} columns={[
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
@@ -165,7 +165,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
   return <Page title={role === 'patient' ? 'My appointments' : 'Appointments'} subtitle={role === 'patient' ? 'View upcoming bookings, download slips, and review completed consultations.' : 'Manage scheduled patients and consultation status.'}>
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable rows={rows} columns={[
-      { key: 'id', label: 'Id' },
+      { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
       { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
       { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
       { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
@@ -235,7 +235,7 @@ export function Specializations({ data }) {
     {adding && <form onSubmit={add} className="mb-5 grid max-w-xl gap-3 rounded-card border border-border bg-white p-4 shadow-card"><FormField label="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /><FormField label="Description" type="textarea" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save specialization'}</Button><ErrorNote>{error}</ErrorNote></form>}
     {!adding && <ErrorNote>{error}</ErrorNote>}
     <DataTable rows={data.specializations || []} columns={[
-      { key: 'id', label: 'ID' },
+      { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
       { key: 'name', label: 'Name' },
       {
         key: 'actions',
@@ -300,7 +300,7 @@ export function ReviewModeration({ data }) {
   return <Page title="Review moderation" subtitle="Keep public feedback useful, respectful, and actionable.">
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable loading={loading} error={listError} onRetry={load} rows={reviews} columns={[
-      { key: 'id', label: 'ID' },
+      { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
       { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) },
       { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || 'Verified patient' },
       { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
@@ -367,7 +367,7 @@ export function ContactInbox({ data }) {
       <ErrorNote>{formError}</ErrorNote>
       {saved && <p role="status" className="text-sm font-semibold text-success">Response saved.</p>}
     </form>
-    <DataTable loading={loading} error={listError} onRetry={load} rows={requests} columns={[{ key: 'id', label: 'ID' }, { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'subject', label: 'Subject' }, { key: 'message', label: 'Message' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'response', label: 'Response', render: (item) => item.response || '—' }]} />
+    <DataTable loading={loading} error={listError} onRetry={load} rows={requests} columns={[{ key: 'id', label: 'ID', render: (item, index) => sequenceId(index) }, { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'subject', label: 'Subject' }, { key: 'message', label: 'Message' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'response', label: 'Response', render: (item) => item.response || '—' }]} />
   </Page>
 }
 

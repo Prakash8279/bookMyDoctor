@@ -9,7 +9,7 @@ import { StatusPill } from '../components/StatusPill'
 import { DoctorCard, SiteHeader } from './PublicPages'
 import { doctorCharge, isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate } from '../lib/format'
+import { formatDate, sequenceId } from '../lib/format'
 import { buildCsv, downloadCsv } from '../lib/csv'
 
 const Page = ({ title, subtitle, action, kicker, children }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
@@ -558,7 +558,7 @@ export function DoctorStaff() {
       <Button type="submit" className="sm:col-span-2" disabled={submitting}>{submitting ? 'Saving…' : 'Create account'}</Button>
       {saved && <p role="status" className="text-sm font-semibold text-success sm:col-span-2">Receptionist account created.</p>}
     </form>
-    <DataTable loading={loading} error={listError} onRetry={load} rows={receptionists} columns={[{ key: 'id', label: 'ID' }, { key: 'name', label: 'Name' }, { key: 'phone', label: 'Phone' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'since', label: 'Since', render: (item) => item.since ? formatDate(item.since) : '—' }]} />
+    <DataTable loading={loading} error={listError} onRetry={load} rows={receptionists} columns={[{ key: 'id', label: 'ID', render: (item, index) => sequenceId(index) }, { key: 'name', label: 'Name' }, { key: 'phone', label: 'Phone' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'since', label: 'Since', render: (item) => item.since ? formatDate(item.since) : '—' }]} />
   </Page>
 }
 export function SimpleInbox({ data, title = 'Notifications' }) {
