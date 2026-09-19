@@ -29,6 +29,17 @@ jobs:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # src/lib/pdf.test.js's image() round-trip test shells out to python3 + pypdf (with
+      # Pillow, pypdf's own dependency for image extraction) to independently decode the PDF
+      # this project's own hand-rolled pdf.js writer just produced, and checks the embedded
+      # image's pixels come back byte-exact — a genuine cross-check against a real PDF library,
+      # not something to skip. actions/setup-python gives an isolated interpreter pip can install
+      # into directly, sidestepping Ubuntu's system-Python "externally managed environment"
+      # restriction that a bare `pip install` on ubuntu-latest would otherwise hit.
+      - run: pip install pypdf Pillow
       - run: npm ci
       - run: npm test
 
