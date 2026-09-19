@@ -37,6 +37,11 @@
 jest.mock('../../../src/config/db', () => ({
   appointment: { findUnique: jest.fn() },
   doctorProfile: { findUnique: jest.fn() },
+  // platformCharges added (MIN-BOOKING-AMOUNT FIX) — createOrder's 'minimum' branch now also
+  // calls commissionLookupService#loadCommissionPercent (unmocked here, so it runs for real
+  // against this same mocked prisma client) to compute the correct minimum-booking charge; see
+  // utils/minBookingAmount.js.
+  platformCharges: { findUnique: jest.fn() },
 }));
 jest.mock('../../../src/services/activityLogService', () => ({ log: jest.fn() }));
 jest.mock('../../../src/modules/payments/payments.service', () => ({
@@ -82,6 +87,9 @@ function buildAppointmentRow(overrides = {}) {
     status: 'pending_payment',
     paymentStatus: 'unpaid',
     totalAmount: 613.6,
+    // consultationFee added (MIN-BOOKING-AMOUNT FIX) — the 'minimum' branch now needs it, along
+    // with totalAmount, to derive platformCharge = totalAmount - consultationFee.
+    consultationFee: 500,
     doctorUserId: 'doctor-1',
     ...overrides,
   };
@@ -94,6 +102,10 @@ beforeEach(() => {
   env.razorpay.keyId = KEY_ID;
   env.razorpay.keySecret = KEY_SECRET;
   global.fetch = jest.fn();
+  // Default admin-configured commission % for the 'minimum' branch's computeMinBookingAmount —
+  // only exercised by tests in the "payload shape (full vs minimum)" describe block below;
+  // harmless for every other test since 'full'-option and guard tests never reach that branch.
+  prisma.platformCharges.findUnique.mockResolvedValue({ commissionPercent: 20 });
 });
 
 describe('razorpay.service — gateway-not-configured guard', () => {
@@ -216,15 +228,21 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
     expect(body.receipt.length).toBeLessThanOrEqual(40);
   });
 
-  test('"minimum" option orders the doctor\'s configured minBookingAdvanceAmount instead of the full fee', async () => {
-    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ totalAmount: 613.6 }));
+  // MIN-BOOKING-AMOUNT FIX (superadmin request) — this used to charge the doctor's raw
+  // minBookingAdvanceAmount verbatim (100 rupees here), leaving the platform's own cut out of the
+  // "pay minimum now" option entirely. It must now charge platformCharge (totalAmount -
+  // consultationFee = 613.6 - 500 = 113.6) plus the doctor's minimum x the admin's
+  // commissionPercent (100 x 20% = 20) = 133.6 rupees — see utils/minBookingAmount.js.
+  test('"minimum" option orders the computed minBookingAmount (platform charge + doctor minimum x commission%), never the raw doctor minimum', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ totalAmount: 613.6, consultationFee: 500 }));
     prisma.doctorProfile.findUnique.mockResolvedValue({ minBookingAdvanceAmount: 100 });
-    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_min', amount: 10000, currency: 'INR' }));
+    prisma.platformCharges.findUnique.mockResolvedValue({ commissionPercent: 20 });
+    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_min', amount: 13360, currency: 'INR' }));
 
     await razorpayService.createOrder('appt-1', PATIENT, 'minimum');
 
     const body = JSON.parse(global.fetch.mock.calls[0][1].body);
-    expect(body.amount).toBe(10000); // 100 rupees -> paise
+    expect(body.amount).toBe(13360); // 133.6 rupees -> paise, NOT 10000 (the old buggy ₹100 charge)
     expect(body.notes.paymentOption).toBe('minimum');
   });
 
@@ -237,19 +255,33 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
   // resolved value regardless of what was actually selected, so it could not have caught this —
   // only asserting on the `select` argument itself can. Guards against the same field silently
   // being dropped again.
-  test('fetches doctorUserId in the appointment select — required for the "minimum" branch to look up the doctor\'s profile', async () => {
+  test('fetches doctorUserId AND consultationFee in the appointment select — both required for the "minimum" branch\'s computation', async () => {
     prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
     prisma.doctorProfile.findUnique.mockResolvedValue({ minBookingAdvanceAmount: 100 });
-    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_min', amount: 10000, currency: 'INR' }));
+    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_min', amount: 13360, currency: 'INR' }));
 
     await razorpayService.createOrder('appt-1', PATIENT, 'minimum');
 
     expect(prisma.appointment.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ select: expect.objectContaining({ doctorUserId: true }) })
+      // consultationFee added (MIN-BOOKING-AMOUNT FIX) alongside the pre-existing doctorUserId
+      // regression coverage — dropping either silently breaks the minimum-booking charge again.
+      expect.objectContaining({ select: expect.objectContaining({ doctorUserId: true, consultationFee: true }) })
     );
     expect(prisma.doctorProfile.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId: 'doctor-1' } })
     );
+  });
+
+  test('400 MIN_BOOKING_AMOUNT_NOT_SET when the doctor set a minimum but platformCharges (commissionPercent) is not configured', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    prisma.doctorProfile.findUnique.mockResolvedValue({ minBookingAdvanceAmount: 100 });
+    prisma.platformCharges.findUnique.mockResolvedValue(null);
+
+    await expect(razorpayService.createOrder('appt-1', PATIENT, 'minimum')).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'MIN_BOOKING_AMOUNT_NOT_SET',
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('400 MIN_BOOKING_AMOUNT_NOT_SET when "minimum" is requested but the doctor never configured one', async () => {

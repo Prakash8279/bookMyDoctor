@@ -113,7 +113,7 @@ jest.mock('../../../src/jobs/bookingQueue', () => ({
   QUEUE_NAME: 'appointment-booking',
 }));
 jest.mock('../../../src/services/commissionLookupService', () => ({
-  loadCommissionPercentIfAdmin: jest.fn(),
+  loadCommissionPercent: jest.fn(),
 }));
 
 const { Prisma } = require('@prisma/client');
@@ -124,7 +124,7 @@ const cacheService = require('../../../src/services/cacheService');
 const queueService = require('../../../src/modules/queue/queue.service');
 const notificationsService = require('../../../src/modules/notifications/notifications.service');
 const bookingQueue = require('../../../src/jobs/bookingQueue');
-const { loadCommissionPercentIfAdmin } = require('../../../src/services/commissionLookupService');
+const { loadCommissionPercent } = require('../../../src/services/commissionLookupService');
 const { todayUTCDateOnly } = require('../../../src/utils/dateOnly');
 const appointmentsService = require('../../../src/modules/appointments/appointments.service');
 
@@ -198,7 +198,7 @@ function fullAppointmentRow(overrides = {}) {
 describe('appointmentsService.getAppointmentById — visibility (404-not-403 enumeration avoidance)', () => {
   test('throws 404 APPOINTMENT_NOT_FOUND when the row does not exist', async () => {
     prisma.appointment.findUnique.mockResolvedValue(null);
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     await expect(
       appointmentsService.getAppointmentById('missing', { id: PATIENT_ID, role: 'patient' })
@@ -207,7 +207,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
 
   test('a patient gets 404 (not 403) for someone else\'s appointment', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ patientUserId: 'someone-else' }));
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     await expect(
       appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' })
@@ -216,7 +216,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
 
   test('a doctor gets 404 (not 403) for an appointment belonging to a different doctor', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ doctorUserId: 'other-doctor' }));
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     await expect(
       appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'doctor' })
@@ -226,7 +226,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
   test('a receptionist with no clinic assignment gets 404', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
     prisma.receptionistProfile.findUnique.mockResolvedValue(null);
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     await expect(
       appointmentsService.getAppointmentById('appt-1', { id: 'recep-1', role: 'receptionist' })
@@ -236,7 +236,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
   test('a receptionist assigned to a DIFFERENT clinic gets 404', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ clinicId: CLINIC_ID }));
     prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'other-clinic' });
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     await expect(
       appointmentsService.getAppointmentById('appt-1', { id: 'recep-1', role: 'receptionist' })
@@ -246,7 +246,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
   test('a receptionist assigned to the SAME clinic can see it', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ clinicId: CLINIC_ID }));
     prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'recep-1', role: 'receptionist' });
     expect(result.id).toBe('appt-1');
@@ -254,7 +254,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
 
   test('admin can see any appointment regardless of ownership', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ patientUserId: 'anyone' }));
-    loadCommissionPercentIfAdmin.mockResolvedValue(dec(10));
+    loadCommissionPercent.mockResolvedValue(dec(10));
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'admin-1', role: 'admin' });
     expect(result.id).toBe('appt-1');
@@ -264,7 +264,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
 describe('appointmentsService.getAppointmentById — fee masking by role (rule 8)', () => {
   test('doctor/receptionist see ONLY consultationFee — every other money field is OMITTED, not null', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'doctor' });
 
@@ -276,7 +276,11 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
 
   test('a patient sees the full fee breakdown but never commission/clinicPayout', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null); // never even looked up for a patient
+    // MIN-BOOKING-AMOUNT FIX: commissionPercent is now fetched unconditionally (every role), not
+    // just for admin — the patient branch needs it to compute minBookingAmount. It's null here
+    // because this fixture's doctor has no minBookingAdvanceAmount configured, so
+    // computeMinBookingAmount short-circuits to null regardless of commissionPercent anyway.
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
 
@@ -286,8 +290,62 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
       emergencyFee: dec(0),
       gstAmount: dec(93.6),
       totalAmount: dec(613.6),
+      minBookingAmount: null,
     });
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'commission')).toBe(false);
+  });
+
+  // MIN-BOOKING-AMOUNT FIX (superadmin request, Hinglish: "minimum me platform charge + joo
+  // minimum fee doctor decide kiya hai ushka percentage jo admin decide kiya hai") — the patient's
+  // "pay minimum now" figure must be platformCharge (totalAmount - consultationFee) plus the
+  // doctor's own minBookingAdvanceAmount x the admin's commissionPercent, NOT the doctor's raw
+  // minBookingAdvanceAmount verbatim (the old, buggy behaviour — see utils/minBookingAmount.js).
+  test('a patient sees minBookingAmount computed as platformCharge + (doctor minimum x commission%), never the raw doctor minimum', async () => {
+    // totalAmount 613.6, consultationFee 500 -> platformCharge 113.6 (see fixture defaults above).
+    // Doctor's own minBookingAdvanceAmount is 100; admin's commissionPercent is 20%.
+    // Expected: 113.6 + (100 x 20 / 100) = 113.6 + 20 = 133.6 — deliberately NOT 100.
+    prisma.appointment.findUnique.mockResolvedValue(
+      fullAppointmentRow({
+        doctor: {
+          id: DOCTOR_ID,
+          name: 'Dr. Asha',
+          photoUrl: null,
+          doctorProfile: { specialization: { id: 'spec-1', name: 'Cardiology' }, minBookingAdvanceAmount: dec(100) },
+        },
+      })
+    );
+    loadCommissionPercent.mockResolvedValue(dec(20));
+
+    const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
+
+    expect(result.fees.minBookingAmount.toString()).toBe('133.6');
+  });
+
+  test('minBookingAmount is null when the doctor has not configured a minimum, even with commissionPercent available', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
+    loadCommissionPercent.mockResolvedValue(dec(20));
+
+    const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
+
+    expect(result.fees.minBookingAmount).toBeNull();
+  });
+
+  test('minBookingAmount is null when platformCharges (commissionPercent) is not configured, even with a doctor minimum set', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(
+      fullAppointmentRow({
+        doctor: {
+          id: DOCTOR_ID,
+          name: 'Dr. Asha',
+          photoUrl: null,
+          doctorProfile: { specialization: { id: 'spec-1', name: 'Cardiology' }, minBookingAdvanceAmount: dec(100) },
+        },
+      })
+    );
+    loadCommissionPercent.mockResolvedValue(null);
+
+    const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
+
+    expect(result.fees.minBookingAmount).toBeNull();
   });
 
   // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega baki
@@ -301,7 +359,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
     // consultationFee 500, convenienceFee 20, emergencyFee 0, gstAmount 93.6 -> totalAmount 613.6
     // (see fullAppointmentRow's defaults / the patient fee-breakdown test above).
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ consultationFee: dec(500) }));
-    loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
+    loadCommissionPercent.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'admin-1', role: 'admin' });
 
@@ -311,7 +369,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
 
   test('admin sees null commission/clinicPayout when commissionPercent could not be loaded (platformCharges missing)', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'admin-1', role: 'admin' });
 
@@ -323,7 +381,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
 describe('appointmentsService.getAppointmentById — patient data masking by role', () => {
   test('doctor/admin see phone plus the clinical patientProfile fields', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'doctor' });
 
@@ -342,7 +400,7 @@ describe('appointmentsService.getAppointmentById — patient data masking by rol
   test('receptionist sees name + phone only — never the clinical fields', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
     prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'recep-1', role: 'receptionist' });
 
@@ -353,7 +411,7 @@ describe('appointmentsService.getAppointmentById — patient data masking by rol
 
   test('a patient viewing their own booking sees only identity (id/name), no phone/clinical fields', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
 
@@ -368,7 +426,7 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
   beforeEach(() => {
     prisma.appointment.findMany.mockResolvedValue([]);
     prisma.appointment.count.mockResolvedValue(0);
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
   });
 
   test('a patient is always scoped to their own patientUserId, even if doctorId/clinicId/patientId query params are supplied', async () => {
@@ -419,11 +477,11 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
   test('rows are shaped with the commission looked up once for the whole page, not once per row', async () => {
     prisma.appointment.findMany.mockResolvedValue([fullAppointmentRow(), fullAppointmentRow({ id: 'appt-2' })]);
     prisma.appointment.count.mockResolvedValue(2);
-    loadCommissionPercentIfAdmin.mockResolvedValue(dec(10));
+    loadCommissionPercent.mockResolvedValue(dec(10));
 
     const result = await appointmentsService.listAppointments({}, { id: 'admin-1', role: 'admin' });
 
-    expect(loadCommissionPercentIfAdmin).toHaveBeenCalledTimes(1);
+    expect(loadCommissionPercent).toHaveBeenCalledTimes(1);
     expect(result.rows).toHaveLength(2);
     // 613.6 (totalAmount) - 500 (consultationFee) = 113.6 — see the fee-masking describe block
     // above for the full business-rule-change rationale.
@@ -534,7 +592,7 @@ describe('appointmentsService.getBookingStatus', () => {
       returnvalue: { appointmentId: 'appt-1', tokenNumber: 5 },
     });
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
 
     const result = await appointmentsService.getBookingStatus('job-1', { id: PATIENT_ID, role: 'patient' });
 
@@ -1253,7 +1311,7 @@ describe('appointmentsService.updateAppointmentStatus', () => {
       queueToken: { delete: jest.fn(), update: jest.fn() },
     };
     prisma.$transaction.mockImplementation((cb) => cb(tx));
-    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    loadCommissionPercent.mockResolvedValue(null);
     prisma.bookingRules.findUnique.mockResolvedValue({ cancellationWindowHours: 2 });
     // NOTE: `clearMocks` (jest.config.js) only clears call history between tests, it does NOT
     // drain a mock's queued mockResolvedValueOnce() values — a test that throws before consuming

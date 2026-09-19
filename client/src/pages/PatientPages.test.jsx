@@ -354,6 +354,68 @@ describe('Booking', () => {
       delete window.Razorpay
     }
   })
+
+  // MIN-BOOKING-AMOUNT FIX (superadmin request) regression test: the "Minimum booking amount"
+  // card must read from the appointment's own server-computed `fees.minBookingAmount` — which
+  // already bakes in the platform's cut — not the doctor's raw `minBookingAdvanceAmount` (that
+  // old behaviour left the platform's cut out of this payment option entirely).
+  it('shows the server-computed minBookingAmount (not the doctor\'s raw minBookingAdvanceAmount) as the minimum booking option, and pays that exact amount', async () => {
+    vi.useFakeTimers()
+    let capturedOptions = null
+    window.Razorpay = vi.fn(function RazorpayMock(options) {
+      capturedOptions = options
+      return { open: vi.fn(), on: vi.fn() }
+    })
+    try {
+      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      apiClient.post.mockImplementation((url) => {
+        if (url === '/appointments') return Promise.resolve({ jobId: 'job-4', status: 'queued' })
+        // Server order amount reflects fees.minBookingAmount (¥33.60 below), NOT the doctor's raw
+        // minBookingAdvanceAmount of ₹100 from the DOCTOR fixture.
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 3360, currency: 'INR', orderId: 'order_2' })
+        return Promise.resolve({})
+      })
+      apiClient.get.mockImplementation((url) =>
+        url === '/appointments/booking-status/job-4'
+          ? Promise.resolve({
+              status: 'confirmed',
+              appointment: {
+                id: 'appt-10',
+                status: 'pending_payment',
+                doctor: { name: 'Dr. Asha Rao' },
+                appointmentDate: '2026-09-25',
+                // Server-computed: platform charge (₹20 convenience + ₹0.60 GST-ish) + doctor's
+                // minBookingAdvanceAmount x admin commission% — deliberately NOT ₹100 (the raw
+                // doctor-set value), to prove the UI reads the computed field, not the raw one.
+                fees: { totalAmount: 546, minBookingAmount: 33.6 },
+              },
+            })
+          : Promise.resolve([])
+      )
+
+      renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1700)
+      })
+      vi.useRealTimers()
+
+      expect(screen.getByText('Payment required to confirm')).toBeInTheDocument()
+      expect(screen.getByText('Minimum booking amount')).toBeInTheDocument()
+      expect(screen.getByText('₹33.6')).toBeInTheDocument()
+      expect(screen.queryByText('₹100')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pay ₹33.6 now' }))
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith('/payments/razorpay/order', { appointmentId: 'appt-10', paymentOption: 'minimum' })
+      )
+      expect(window.Razorpay).toHaveBeenCalledWith(expect.objectContaining({ amount: 3360, order_id: 'order_2' }))
+    } finally {
+      vi.useRealTimers()
+      delete window.Razorpay
+    }
+  })
 })
 
 // =====================================================================

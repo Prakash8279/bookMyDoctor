@@ -27,6 +27,8 @@ const env = require('../../config/env');
 const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const paymentsService = require('./payments.service');
+const { loadCommissionPercent } = require('../../services/commissionLookupService');
+const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
 
 const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
 
@@ -99,7 +101,10 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
     // PrismaClientValidationError — an unhandled exception (not an ApiError), so it fell through
     // to errorHandler.js's generic "Something went wrong" 500 instead of a real error message.
     // The 'full' payment option never hit this because it only needs totalAmount.
-    select: { id: true, patientUserId: true, doctorUserId: true, status: true, paymentStatus: true, totalAmount: true },
+    // consultationFee added (MIN-BOOKING-AMOUNT FIX) — createOrder's 'minimum' branch now needs
+    // it, alongside totalAmount, to compute the correct minimum-booking charge instead of the
+    // doctor's raw minBookingAdvanceAmount; see utils/minBookingAmount.js.
+    select: { id: true, patientUserId: true, doctorUserId: true, status: true, paymentStatus: true, totalAmount: true, consultationFee: true },
   });
   if (!appointment) {
     throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
@@ -147,18 +152,35 @@ async function createOrder(appointmentId, requester, paymentOption = 'full') {
 
   let amountToCharge = appointment.totalAmount;
   if (paymentOption === 'minimum') {
-    const doctorProfile = await prisma.doctorProfile.findUnique({
-      where: { userId: appointment.doctorUserId },
-      select: { minBookingAdvanceAmount: true },
-    });
-    if (!doctorProfile || doctorProfile.minBookingAdvanceAmount == null || Number(doctorProfile.minBookingAdvanceAmount) <= 0) {
+    // MIN-BOOKING-AMOUNT FIX (superadmin request) — this used to charge the doctor's raw
+    // minBookingAdvanceAmount verbatim, meaning the platform collected ZERO cut whenever a
+    // patient chose the "pay minimum now" option. Now derives the same minBookingAmount figure
+    // shown to the patient on the pending_payment screen (appointments.service.js#shapeFees), via
+    // the shared utils/minBookingAmount.js formula, so what's shown and what's charged can never
+    // drift apart again.
+    const [doctorProfile, commissionPercent] = await Promise.all([
+      prisma.doctorProfile.findUnique({
+        where: { userId: appointment.doctorUserId },
+        select: { minBookingAdvanceAmount: true },
+      }),
+      loadCommissionPercent(),
+    ]);
+    const minBookingAmount = doctorProfile
+      ? computeMinBookingAmount({
+          totalAmount: appointment.totalAmount,
+          consultationFee: appointment.consultationFee,
+          minBookingAdvanceAmount: doctorProfile.minBookingAdvanceAmount,
+          commissionPercent,
+        })
+      : null;
+    if (minBookingAmount == null) {
       throw new ApiError(
         400,
         'MIN_BOOKING_AMOUNT_NOT_SET',
         'This doctor has not set a minimum booking amount. Please pay the full amount instead.'
       );
     }
-    amountToCharge = doctorProfile.minBookingAdvanceAmount;
+    amountToCharge = minBookingAmount;
   }
 
   // Razorpay amounts are always in the smallest currency unit — paise for INR.

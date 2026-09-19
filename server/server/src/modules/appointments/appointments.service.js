@@ -26,7 +26,8 @@ const bookingQueue = require('../../jobs/bookingQueue');
 const env = require('../../config/env');
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { formatDateOnly, todayUTCDateOnly } = require('../../utils/dateOnly');
-const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
+const { loadCommissionPercent } = require('../../services/commissionLookupService');
+const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
 // live booking state; see cacheService.js header for the general caching contract.
@@ -130,7 +131,10 @@ const APPOINTMENT_SELECT = {
       id: true,
       name: true,
       photoUrl: true,
-      doctorProfile: { select: { specialization: { select: { id: true, name: true } } } },
+      // minBookingAdvanceAmount added (MIN-BOOKING-AMOUNT FIX) — shapeFees needs the doctor's own
+      // configured minimum to compute the patient-facing minBookingAmount figure; see
+      // utils/minBookingAmount.js. Never surfaced raw to a non-admin — only the derived total is.
+      doctorProfile: { select: { specialization: { select: { id: true, name: true } }, minBookingAdvanceAmount: true } },
     },
   },
   // address/phone added (COMPLETENESS FIX — proper receipt/slip generation needs the clinic's
@@ -170,11 +174,15 @@ function generateSlotCandidates(startTime, endTime, slotMinutes) {
  *  - doctor/receptionist: consultationFee only — every other money field OMITTED from the
  *    response object entirely (not nulled), so no client code can mistake a masked zero for real.
  *  - patient (their own booking): full fee breakdown, no commission/clinicPayout (those are
- *    platform business figures, not the patient's concern).
+ *    platform business figures, not the patient's concern) — plus minBookingAmount, the correct
+ *    "pay minimum now" figure (see utils/minBookingAmount.js). Computing it needs
+ *    commissionPercent as an input, but the raw percent itself is never included in this return
+ *    value — only the derived rupee total is (rule 8 blocks the percent, not numbers it feeds).
  *  - admin/superadmin: full breakdown PLUS commission/clinicPayout, derived on read (not stored
  *    columns — schema has none) from consultationFee x platformCharges.commissionPercent%.
- *    `commissionPercent` must be supplied by the caller (fetched once per list/get call, not
- *    once per row) — see listAppointments/getAppointmentById.
+ *    `commissionPercent` is now fetched unconditionally by every caller (not just for admin —
+ *    the patient branch needs it too, for minBookingAmount) once per list/get call, not once per
+ *    row — see listAppointments/getAppointmentById.
  * @param {object} row - a raw Prisma appointment row shaped via APPOINTMENT_SELECT.
  * @param {string} role
  * @param {import('@prisma/client').Prisma.Decimal|null} [commissionPercent]
@@ -212,12 +220,23 @@ function shapeFees(row, role, commissionPercent) {
   }
 
   // patient (their own booking, enforced by the visibility check upstream).
+  const minBookingAmount = computeMinBookingAmount({
+    totalAmount: row.totalAmount,
+    consultationFee: row.consultationFee,
+    minBookingAdvanceAmount: row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+    commissionPercent,
+  });
   return {
     consultationFee: row.consultationFee,
     convenienceFee: row.convenienceFee,
     emergencyFee: row.emergencyFee,
     gstAmount: row.gstAmount,
     totalAmount: row.totalAmount,
+    // MIN-BOOKING-AMOUNT FIX (superadmin request) — the correct "pay minimum now" figure,
+    // already including the platform's cut; see utils/minBookingAmount.js for the formula and
+    // why this replaced the old bare doctorProfile.minBookingAdvanceAmount display. null when the
+    // doctor hasn't configured a minimum, or Platform Charges isn't configured yet.
+    minBookingAmount: minBookingAmount != null ? new Prisma.Decimal(minBookingAmount) : null,
   };
 }
 
@@ -1226,9 +1245,10 @@ async function listAppointments(
 
     // The commission lookup doesn't depend on the appointment query below (or vice versa) — run
     // all three concurrently instead of paying for the commission round-trip before even starting
-    // the appointment fetch.
+    // the appointment fetch. Fetched unconditionally (not just for admin) — shapeFees' patient
+    // branch now also needs it, to compute minBookingAmount (see MIN-BOOKING-AMOUNT FIX above).
     const [commissionPercent, rows, total] = await Promise.all([
-      loadCommissionPercentIfAdmin(requester.role),
+      loadCommissionPercent(),
       prisma.appointment.findMany({
         where,
         select: APPOINTMENT_SELECT,
@@ -1251,11 +1271,11 @@ async function listAppointments(
  * @param {{id:string, role:string}} requester
  */
 async function getAppointmentById(id, requester) {
-  // Independent lookups (commission only needs requester.role, not the fetched row) — run
-  // concurrently rather than paying for both round-trips back to back.
+  // Independent lookups (commission doesn't depend on the fetched row) — run concurrently rather
+  // than paying for both round-trips back to back. Fetched unconditionally — see listAppointments.
   const [row, commissionPercent] = await Promise.all([
     getVisibleAppointmentOrThrow(id, requester),
-    loadCommissionPercentIfAdmin(requester.role),
+    loadCommissionPercent(),
   ]);
   return shapeAppointment(row, requester.role, commissionPercent);
 }
