@@ -25,6 +25,7 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
+import { shortId } from '../lib/format'
 import App from '../App'
 import {
   AdminDashboard,
@@ -541,6 +542,23 @@ describe('RevenueReports', () => {
     const paymentsSection = (await screen.findByText('Payments in selected period')).closest('div')
     expect(within(paymentsSection).getByText('At booking')).toBeInTheDocument()
     expect(within(paymentsSection).getByText('At clinic')).toBeInTheDocument()
+  })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to "bookinh
+  // id ko slip pe dikhai and my bookong me v dikhao") — this table (shared by admin's "Revenue
+  // reports" and, via doctorOnly, the doctor's own "My revenue reports") never showed which
+  // appointment/booking each payment belonged to. Every payment row already carries
+  // `appointment: {id}` straight from the API, unmasked for every role.
+  it('shows a "Booking ID" column with the real booking id in "Payments in selected period"', async () => {
+    mockGetRoutes({
+      '/payments': [
+        { id: 'pay-1', createdAt: isoToday, doctor: { id: 'doc-1', name: 'Dr. Kapoor' }, mode: 'Cash', status: 'paid', appointment: { id: 'a1' }, fees: { amount: 1000, commission: 100, clinicPayout: 900 } },
+      ],
+    })
+    renderConnected(RevenueReports, {})
+
+    expect(await screen.findByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
   })
 })
 

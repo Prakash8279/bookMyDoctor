@@ -10,7 +10,7 @@ import { StatusPill } from '../components/StatusPill'
 import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
 import { Analytics, patientVitals } from './StaffPages'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate as sharedFormatDate, formatMoney as money, sequenceId, stableId } from '../lib/format'
+import { formatDate as sharedFormatDate, formatMoney as money, sequenceId, shortId, stableId } from '../lib/format'
 import { COMPLAINT_STATUS_LABELS } from '../lib/statusLabels'
 import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
@@ -1105,6 +1105,14 @@ export function RevenueReports({ data, doctorOnly = false }) {
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Selected range revenue" value={money(total)} detail={`${reportPayments.length} payment${reportPayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail={periodLabel} icon="≈" /><StatCard label="Platform commission" value={doctorOnly ? '—' : money(commission)} detail={doctorOnly ? 'Shown to admin only' : 'Convenience/emergency/GST charges'} icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail={doctorOnly ? 'Your consultation charges' : "Full consultation fee (doctor's share)"} icon="✓" /></div>
     <div className="mt-6 grid gap-5 lg:grid-cols-2"><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid grid-cols-3 gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div><div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div></section></div>
     <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
+      // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
+      // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — this table (shared by
+      // admin's "Revenue reports" and, via the doctorOnly prop, the doctor's own "My revenue
+      // reports") only ever showed the payment's own Receipt id, never the appointment/booking it
+      // belongs to. Every payment row already carries `appointment: {id}` straight from the API
+      // (payments.service.js#shapePayment), unmasked for every role. Same shortId() format used
+      // everywhere else in the app.
+      { key: 'bookingId', label: 'Booking ID', render: (item) => item.appointment?.id ? shortId(item.appointment.id) : '—' },
       // COMPLETENESS ADD (request: "eshme v add kro ye sab ye sab patient setion me v add kro ...
       // admin section me v") — same "At booking" / "At clinic" confirmation tag as the
       // receptionist/doctor and patient Payments tables, so admin can tell a patient's own

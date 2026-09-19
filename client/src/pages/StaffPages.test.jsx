@@ -963,6 +963,32 @@ describe('CashPayment', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do") — 'Receipt' is the
+  // payment's own id/receipt number, not the appointment/booking it belongs to. Every payment row
+  // already carries `appointment: {id}` from the API, so the column must show it even when the
+  // matching appointment isn't (or is no longer) in this page's own data.appointments list.
+  it('shows a "Booking ID" column with the real booking id, separate from the Receipt column', async () => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(CashPayment, {
+      data: {
+        appointments: [],
+        payments: [{
+          id: 'pay-1',
+          receiptNumber: 'RCPT-9',
+          createdAt: '2026-08-02',
+          mode: 'cash',
+          status: 'paid',
+          transactionRef: 'txn_1',
+          fees: { consultationFee: 500 },
+          appointment: { id: 'a1' },
+        }],
+      },
+    })
+
+    expect(await screen.findByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
+  })
 })
 
 describe('ClinicSchedule', () => {

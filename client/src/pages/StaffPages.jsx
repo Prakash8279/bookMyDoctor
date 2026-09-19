@@ -1083,6 +1083,12 @@ export function CashPayment({ data }) {
   const clinicPayments = (data.payments || []).map((payment) => ({
     ...payment,
     clinicAmount: doctorCharge({ consultationFee: payment.fees?.consultationFee }, {}),
+    // Keep the raw booking id BEFORE the lookup below overwrites `appointment` with the full
+    // (possibly not-found -> undefined) appointment object, so the "Booking ID" column below
+    // never goes blank just because the matching appointment isn't in this page's own
+    // data.appointments list — every payment row already carries `appointment: {id}` straight
+    // from the API (payments.service.js#shapePayment), unmasked for every role.
+    bookingId: payment.appointment?.id || null,
     appointment: (data.appointments || []).find((item) => item.id === payment.appointment?.id),
   }))
   // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua
@@ -1180,6 +1186,12 @@ export function CashPayment({ data }) {
     </form>
     <div className="mt-6"><DataTable loading={loading} error={loadError} onRetry={load} rows={clinicPayments} columns={[
       { key: 'id', label: 'Receipt', render: (item) => item.receiptNumber || shortId(item.id) },
+      // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
+      // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — 'Receipt' above is the
+      // payment's own id/receipt number, not the appointment/booking it belongs to. Same
+      // shortId() format already used on the Appointments table above and the patient's own
+      // Payments table.
+      { key: 'bookingId', label: 'Booking ID', render: (item) => item.bookingId ? shortId(item.bookingId) : '—' },
       { key: 'date', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' },
       { key: 'description', label: 'Appointment', render: (item) => item.doctor?.name || item.patient?.name || '—' },
       { key: 'clinicAmount', label: 'Doctor charge', render: (item) => `₹${item.clinicAmount}` },
