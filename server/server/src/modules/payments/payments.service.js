@@ -141,8 +141,17 @@ function shapePaymentFees(row, role, commissionPercent) {
       const consultationFeeShare = impliedTotalAmount.greaterThan(0)
         ? row.consultationFee.times(row.amount).dividedBy(impliedTotalAmount)
         : row.consultationFee;
-      commission = consultationFeeShare.times(commissionPercent).dividedBy(100).toDecimalPlaces(2);
-      clinicPayout = consultationFeeShare.minus(commission).toDecimalPlaces(2);
+      // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega
+      // baki jo extra hai ye plateform charge me rakho") — the clinic/doctor now keeps this row's
+      // ENTIRE consultation-fee share, never diminished by a platform cut. Platform commission is
+      // instead whatever this row collected ON TOP of that share — its convenience/emergency/GST
+      // share, i.e. row.amount minus consultationFeeShare (both already scaled identically for a
+      // split payment, so this is exactly the convenience+emergency+GST portion of THIS row, not
+      // the appointment's full total). `commissionPercent` is kept only as the `!= null` gate
+      // above (admin/superadmin + platformCharges row exists) — it no longer drives this
+      // arithmetic. See appointments.service.js#shapeFees for the identical change.
+      clinicPayout = consultationFeeShare.toDecimalPlaces(2);
+      commission = row.amount.minus(clinicPayout).toDecimalPlaces(2);
     }
     return {
       consultationFee: row.consultationFee,

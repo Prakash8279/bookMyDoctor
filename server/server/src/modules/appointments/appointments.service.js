@@ -188,8 +188,17 @@ function shapeFees(row, role, commissionPercent) {
     let commission = null;
     let clinicPayout = null;
     if (commissionPercent != null) {
-      commission = row.consultationFee.times(commissionPercent).dividedBy(100).toDecimalPlaces(2);
-      clinicPayout = row.consultationFee.minus(commission).toDecimalPlaces(2);
+      // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega
+      // baki jo extra hai ye plateform charge me rakho") — the clinic/doctor now keeps the ENTIRE
+      // consultation fee they set, never diminished by a platform cut. Platform commission is
+      // instead whatever this booking charged ON TOP of that consultation fee — convenience fee +
+      // emergency fee + GST, i.e. totalAmount minus consultationFee. `commissionPercent` (Platform
+      // Charges' admin-configured %) is kept only as the `!= null` gate for "is this caller
+      // admin/superadmin and does the platformCharges row exist" (same role/config check every
+      // other branch here relies on) — it no longer drives this arithmetic. See
+      // payments.service.js#shapePaymentFees for the identical change on the payment-row side.
+      clinicPayout = row.consultationFee.toDecimalPlaces(2);
+      commission = row.totalAmount.minus(clinicPayout).toDecimalPlaces(2);
     }
     return {
       consultationFee: row.consultationFee,

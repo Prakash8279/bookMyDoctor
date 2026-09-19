@@ -553,36 +553,46 @@ describe('payments.service.shapePaymentFees — role-based masking (exercised vi
     expect(result.fees.clinicPayout).toBeNull();
   });
 
-  test('admin: for a normal, un-split, single full-payment row, commission is computed straight off consultationFee x commissionPercent%', async () => {
+  // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega baki
+  // jo extra hai ye plateform charge me rakho") — clinicPayout is now this row's FULL
+  // consultation-fee share (never reduced by a commission cut); platform commission is instead
+  // whatever this row collected on top of that share (its convenience/emergency/GST share, i.e.
+  // row.amount - consultationFeeShare). commissionPercent no longer drives this math — it's only
+  // the "is this caller admin and does platformCharges exist" gate (still exercised by the
+  // null-commissionPercent test right above).
+  test('admin: for a normal, un-split, single full-payment row, clinicPayout is the full consultationFee and commission is everything charged on top', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
-    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10));
+    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
     // amount (613.6) equals the row's own implied total (500+20+0+93.6) — ratio is exactly 1.
     prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ amount: dec(613.6) }));
 
     const result = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'cash' }, ADMIN);
 
-    // commission = 500 * 10 / 100 = 50; clinicPayout = 500 - 50 = 450.
-    expect(result.fees.commission.toString()).toBe('50');
-    expect(result.fees.clinicPayout.toString()).toBe('450');
+    // clinicPayout = 500 (the doctor's full consultation fee); commission = 613.6 - 500 = 113.6
+    // (convenience fee 20 + GST 93.6).
+    expect(result.fees.clinicPayout.toString()).toBe('500');
+    expect(result.fees.commission.toString()).toBe('113.6');
   });
 
-  test('admin: a SPLIT payment (this row collected only part of the appointment total) scales commission by this row\'s share — regression test for the double-count bug the header comment describes', async () => {
+  test('admin: a SPLIT payment (this row collected only part of the appointment total) scales BOTH clinicPayout and commission by this row\'s share — regression test for the double-count bug the header comment describes', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
-    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10));
+    commissionLookupService.loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
     // Appointment's full fee columns still show 500/20/0/93.6 (implied total 613.6), but THIS row
     // only collected the doctor's 100 minimum advance out of that total.
     prisma.payment.findUnique.mockResolvedValue(buildPaymentRow({ amount: dec(100) }));
 
     const result = await paymentsService.createPayment({ appointmentId: 'appt-1', mode: 'online' }, ADMIN);
 
-    // consultationFeeShare = 500 * (100/613.6) = 81.4859...; commission = share * 10% ≈ 8.15;
-    // clinicPayout = share - commission ≈ 73.34. Must NOT be 50/450 (the un-split figures) —
-    // that would double-count commission across the two rows of this split appointment.
-    expect(Number(result.fees.commission.toString())).toBeCloseTo(8.15, 1);
-    expect(Number(result.fees.clinicPayout.toString())).not.toBeCloseTo(450, 0);
-    expect(Number(result.fees.commission.toString())).not.toBeCloseTo(50, 0);
+    // consultationFeeShare = 500 * (100/613.6) ≈ 81.49 -> clinicPayout ≈ 81.49;
+    // commission = row.amount(100) - clinicPayout ≈ 18.51. Must NOT be 500/113.6 (the un-split
+    // figures) — that would double-count both clinicPayout and commission across the two rows of
+    // this split appointment.
+    expect(Number(result.fees.clinicPayout.toString())).toBeCloseTo(81.49, 1);
+    expect(Number(result.fees.commission.toString())).toBeCloseTo(18.51, 1);
+    expect(Number(result.fees.clinicPayout.toString())).not.toBeCloseTo(500, 0);
+    expect(Number(result.fees.commission.toString())).not.toBeCloseTo(113.6, 0);
   });
 });
 

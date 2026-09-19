@@ -290,14 +290,23 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'commission')).toBe(false);
   });
 
-  test('admin sees the full breakdown PLUS commission/clinicPayout derived from consultationFee x commissionPercent%', async () => {
+  // BUSINESS RULE CHANGE (request: "clinic ko jitna doctor decide kiya hai fee utna jayega baki
+  // jo extra hai ye plateform charge me rakho") — clinicPayout is now the doctor's FULL
+  // consultation fee (never reduced by a commission cut); platform commission is instead
+  // whatever the appointment charged on top of that (convenience + emergency + GST =
+  // totalAmount - consultationFee). commissionPercent no longer drives this math — it's only the
+  // "is this caller admin and does platformCharges exist" gate (still exercised by the
+  // null-commissionPercent test right below).
+  test('admin sees the full breakdown PLUS commission/clinicPayout: clinicPayout is the full consultationFee, commission is everything charged on top', async () => {
+    // consultationFee 500, convenienceFee 20, emergencyFee 0, gstAmount 93.6 -> totalAmount 613.6
+    // (see fullAppointmentRow's defaults / the patient fee-breakdown test above).
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ consultationFee: dec(500) }));
-    loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // 10%
+    loadCommissionPercentIfAdmin.mockResolvedValue(dec(10)); // present only to pass the admin/config gate
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'admin-1', role: 'admin' });
 
-    expect(result.fees.commission.toString()).toBe('50'); // 500 * 10 / 100
-    expect(result.fees.clinicPayout.toString()).toBe('450'); // 500 - 50
+    expect(result.fees.clinicPayout.toString()).toBe('500'); // the doctor's full consultation fee
+    expect(result.fees.commission.toString()).toBe('113.6'); // 613.6 - 500 (convenience + GST)
   });
 
   test('admin sees null commission/clinicPayout when commissionPercent could not be loaded (platformCharges missing)', async () => {
@@ -416,8 +425,10 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
 
     expect(loadCommissionPercentIfAdmin).toHaveBeenCalledTimes(1);
     expect(result.rows).toHaveLength(2);
-    expect(result.rows[0].fees.commission.toString()).toBe('50');
-    expect(result.rows[1].fees.commission.toString()).toBe('50');
+    // 613.6 (totalAmount) - 500 (consultationFee) = 113.6 — see the fee-masking describe block
+    // above for the full business-rule-change rationale.
+    expect(result.rows[0].fees.commission.toString()).toBe('113.6');
+    expect(result.rows[1].fees.commission.toString()).toBe('113.6');
   });
 });
 
