@@ -468,31 +468,28 @@ export function PatientAppointments({ data, history = false }) {
     // minimum booking amount was never configured (computeMinBookingRemainder returns null then).
     const minRemainder = appointment.fees?.minBookingRemainder != null ? Number(appointment.fees.minBookingRemainder) : null
     const due = status === 'partial' && minRemainder != null ? minRemainder : Math.max(0, fee - paid)
-    // DUAL-FEE FIX (user request: "full fee ko minimum ke anusar kro and complete fee ke anusar v
-    // calculate karke show kro") — `fee` above is the COMPLETE-payment total (fees.totalAmount).
-    // `feeMinimumPath` is what the total comes to on the MINIMUM-booking path instead: the
-    // doctor's minBookingAmount (already includes the platform convenience/emergency charge +
-    // GST, collected once) plus whatever's left of the consultation fee (minBookingRemainder),
-    // collected later at the clinic. Both raw figures are already sent to patients by
-    // appointments.service.js#shapeFees, so this is a pure display computation — no backend
-    // change needed. null whenever the doctor never configured a minimum booking option for this
-    // appointment, so an absent option is never treated as if it equalled the full fee. Kept
-    // (not merged into `fee`) because buildBookingSlipPdfBlob's booking slip still shows both
-    // figures side by side — see the ONE-FEE-COLUMN FIX below for why the on-screen table itself
-    // no longer does.
+    // ONE-FEE-COLUMN FIX (user request, in two rounds: "full fee ko minimum ke anusar kro and
+    // complete fee ke anusar v calculate karke show kro", then "ye dono hata kar ek kro jis
+    // tarah se payment ho ushka amount show ho agar minimum ke sath booking kar raha hai to
+    // minimum wala agar full pay kar raha hai to full wala", then "slip v sahi kro eshi taarat")
+    // — `fee` above is the COMPLETE-payment total (fees.totalAmount). `feeMinimumPath` is what
+    // the total comes to on the MINIMUM-booking path instead: the doctor's minBookingAmount
+    // (already includes the platform convenience/emergency charge + GST, collected once) plus
+    // whatever's left of the consultation fee (minBookingRemainder), collected later at the
+    // clinic — both raw figures already sent to patients by appointments.service.js#shapeFees,
+    // so this is a pure display computation, no backend change needed. null whenever the doctor
+    // never configured a minimum booking option for this appointment, so an absent option is
+    // never treated as if it equalled the full fee. `displayFee` is the single figure actually
+    // shown — on the table, its CSV export, AND the booking slip (buildBookingSlipPdfBlob) — and
+    // follows how the booking is actually being paid: the minimum-booking-path total while it
+    // sits at 'partial' (the doctor's minimum was paid online, the rest still due at the clinic
+    // — same signal `due` above already keys off), otherwise the full online-payment total
+    // (covers a fully 'paid' booking, and a 'pending'/'pending_payment' one where nothing's been
+    // decided yet).
     const minBookingAmount = appointment.fees?.minBookingAmount != null ? Number(appointment.fees.minBookingAmount) : null
     const feeMinimumPath = minBookingAmount != null && minRemainder != null ? minBookingAmount + minRemainder : null
-    // ONE-FEE-COLUMN FIX (user request: "ye dono hata kar ek kro jis tarah se payment ho ushka
-    // amount show ho agar minimum ke sath booking kar raha hai to minimum wala agar full pay kar
-    // raha hai to full wala") — showing "Full Fee" and "Fee (Min. Path)" as two separate columns
-    // read as confusing/redundant. Collapsed back into a single "Fee" column whose value follows
-    // how the patient actually paid: the minimum-booking-path total while the booking is sitting
-    // at 'partial' (the doctor's minimum was paid online, the rest still due at the clinic — same
-    // signal `due` above already keys off), otherwise the full online-payment total (covers a
-    // fully 'paid' booking, and a 'pending'/'pending_payment' one where nothing's been decided
-    // yet — both correctly show the standard full fee).
     const displayFee = status === 'partial' && feeMinimumPath != null ? feeMinimumPath : fee
-    return { appointment, payment, fee, feeMinimumPath, displayFee, paid, due, status, mode: payment?.mode || appointment.paymentMethod || 'pay_at_clinic' }
+    return { appointment, payment, fee, displayFee, paid, due, status, mode: payment?.mode || appointment.paymentMethod || 'pay_at_clinic' }
   })
   const paymentReference = (payment) => payment?.transactionRef || '—'
   const displayDate = formatDate
@@ -506,8 +503,12 @@ export function PatientAppointments({ data, history = false }) {
   // shared with Payments below and StaffPages.jsx's CashPayment), and the actual save-to-disk
   // action lives inside that preview.
   const slip = usePdfPreview()
-  const viewSlip = ({ appointment, fee, feeMinimumPath, paid, due }) =>
-    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee, feeMinimumPath, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—' }))
+  // ONE-FEE-COLUMN FIX ("slip v sahi kro eshi taarat" — same treatment as the table's single
+  // Fee column): pass `displayFee` (payment-path-aware — the minimum-booking-path total while
+  // 'partial', otherwise the full online-payment total), not the always-full `fee`, so the
+  // slip's "Total amount" row reconciles with Paid + Due exactly like the table does.
+  const viewSlip = ({ appointment, displayFee, paid, due }) =>
+    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee: displayFee, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—' }))
   // COLUMN-CLARITY FIX (user request: "feec column ka matlab clear kro" — the "Fee" column shows
   // the FULL fee as if paid entirely online (consultationFee + platform convenience/emergency
   // charge + GST — see utils/minBookingAmount.js's worked example), which is deliberately MORE
@@ -550,14 +551,14 @@ export function PatientAppointments({ data, history = false }) {
     {paymentError && <p role="alert" className="mb-4 text-sm text-error">{paymentError}</p>}
     {cancelError && <p role="alert" className="mb-4 text-sm text-error">{cancelError}</p>}
     {!history && completed.length > 0 && <form onSubmit={submitReview} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">Review a completed consultation</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Completed appointment" type="select" options={completed.map((item) => `#${item.tokenNumber ?? item.id} · ${item.doctor?.name || 'Doctor'} · ${displayDate(item.appointmentDate)}`)} value={selectedCompleted ? `#${selectedCompleted.tokenNumber ?? selectedCompleted.id} · ${selectedCompleted.doctor?.name || 'Doctor'} · ${displayDate(selectedCompleted.appointmentDate)}` : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setReviewAppointment(completed[index]?.id || '') }} required /><FormField label="Rating" type="select" options={['1', '2', '3', '4', '5']} value={rating} onChange={(event) => setRating(event.target.value)} required /><div className="sm:col-span-2"><FormField label="Review" type="textarea" value={reviewText} onChange={(event) => setReviewText(event.target.value)} required /></div></div><Button type="submit" className="mt-5">Submit review</Button>{reviewError && <p role="alert" className="mt-3 text-sm text-error">{reviewError}</p>}{saved && <p role="status" className="mt-3 text-sm font-semibold text-success">Review submitted — pending moderation before it appears publicly.</p>}</form>}
-    <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">{history ? 'Booking history' : 'Live records'}</h2><span className="text-sm font-semibold text-muted">{records.length} record(s)</span></div><div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{records.map(({ appointment, payment, fee, feeMinimumPath, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
+    <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">{history ? 'Booking history' : 'Live records'}</h2><span className="text-sm font-semibold text-muted">{records.length} record(s)</span></div><div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{records.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
     {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
     <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
     {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
     <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-  </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, fee, feeMinimumPath, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
+  </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
   </Page>
   <PdfPreviewModal preview={slip.preview} onClose={slip.close} title="Booking slip preview" />
   </>

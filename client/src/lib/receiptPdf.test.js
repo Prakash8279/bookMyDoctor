@@ -76,38 +76,28 @@ describe('buildBookingSlipSections', () => {
     const doc = buildBookingSlipSections({ appointment, fee: 500, paid: 200, due: 300, patientName: 'Rahul Verma' })
     // LABEL FIX (multi-agent payment audit): `fee` is the appointment's full totalAmount
     // (consultation + platform charge + emergency fee + GST), not just the consultation fee — see
-    // the fix comment in buildBookingSlipSections — so this row is now labeled "Total amount
-    // (full online payment)" (DUAL-FEE FIX below renamed it further for clarity alongside the new
-    // minimum-path row).
+    // the fix comment in buildBookingSlipSections — so this row is labeled "Total amount".
     expect(doc.totalRows).toEqual([
-      ['Total amount (full online payment)', 'Rs. 500'],
+      ['Total amount', 'Rs. 500'],
       ['Paid', 'Rs. 200'],
       ['Due', 'Rs. 300', true],
     ])
   })
 
-  // DUAL-FEE FIX (user request: "slip me v sahi kro", following the same fix on the "My
-  // appointments" table's Full Fee / Fee (Min. Path) columns): a partially-paid booking's Paid +
-  // Due legitimately add up to less than the full online-payment total (the platform
-  // charge/GST is collected exactly once either way), which read as a mismatch on this
-  // official-looking slip. When feeMinimumPath is known and differs from fee, it now gets its own
-  // row so Paid + Due visibly reconciles against it instead.
-  it('adds a "Total amount (minimum booking path)" row when feeMinimumPath is known and differs from the full fee', () => {
-    const doc = buildBookingSlipSections({ appointment, fee: 437.75, feeMinimumPath: 428, paid: 128, due: 300, patientName: 'Rahul Verma' })
+  // ONE-FEE-COLUMN FIX (user request, in two rounds: "slip me v sahi kro" — briefly added a
+  // second "Total amount (minimum booking path)" row — then "slip v sahi kro eshi taarat",
+  // matching the "My appointments" table's collapse back to one payment-path-aware Fee column):
+  // buildBookingSlipSections takes a single `fee` again. It's up to the caller
+  // (PatientPages.jsx's `records` map — see its `displayFee`) to resolve that to the
+  // minimum-booking-path total for a 'partial' booking, or the full online-payment total
+  // otherwise, so this "Total amount" row always reconciles with Paid + Due on its own.
+  it('prints whatever fee the caller passes as "Total amount" — e.g. the minimum-booking-path total for a partial booking', () => {
+    const doc = buildBookingSlipSections({ appointment, fee: 428, paid: 128, due: 300, patientName: 'Rahul Verma' })
     expect(doc.totalRows).toEqual([
-      ['Total amount (full online payment)', 'Rs. 437.75'],
-      ['Total amount (minimum booking path)', 'Rs. 428'],
+      ['Total amount', 'Rs. 428'],
       ['Paid', 'Rs. 128'],
       ['Due', 'Rs. 300', true],
     ])
-  })
-
-  it('omits the minimum-booking-path row when feeMinimumPath is absent or equal to the full fee', () => {
-    const withoutMinPath = buildBookingSlipSections({ appointment, fee: 500, paid: 200, due: 300, patientName: 'Rahul Verma' })
-    expect(withoutMinPath.totalRows.map(([label]) => label)).not.toContain('Total amount (minimum booking path)')
-
-    const equalMinPath = buildBookingSlipSections({ appointment, fee: 500, feeMinimumPath: 500, paid: 500, due: 0, patientName: 'Rahul Verma' })
-    expect(equalMinPath.totalRows.map(([label]) => label)).not.toContain('Total amount (minimum booking path)')
   })
 })
 
