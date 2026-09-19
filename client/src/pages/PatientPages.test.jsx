@@ -583,6 +583,29 @@ describe('PatientAppointments', () => {
     expect(screen.queryByRole('columnheader', { name: 'Fee' })).not.toBeInTheDocument()
   })
 
+  // DUAL-FEE FIX (user request: "full fee ko minimum ke anusar kro and complete fee ke anusar v
+  // calculate karke show kro") — alongside the complete-payment "Full Fee" column, a second
+  // "Fee (Min. Path)" column shows what the total comes to if the patient pays the doctor's
+  // minimum booking amount online instead (minBookingAmount + minBookingRemainder), and falls
+  // back to "—" when the doctor never configured a minimum booking option for the appointment.
+  it('shows a separate "Fee (Min. Path)" column computed from minBookingAmount + minBookingRemainder, and "—" when no minimum option exists', () => {
+    const APPT_WITH_MIN_PATH = {
+      ...APPT_COMPLETED,
+      id: 'a6',
+      fees: { totalAmount: 437.75, minBookingAmount: 128, minBookingRemainder: 300 },
+    }
+    seedData({ appointments: [APPT_COMPLETED, APPT_WITH_MIN_PATH], payments: [PAYMENT1] })
+    renderConnected(PatientAppointments)
+
+    const header = screen.getByRole('columnheader', { name: 'Fee (Min. Path)' })
+    expect(header).toBeInTheDocument()
+    expect(header).toHaveAttribute('title', expect.stringMatching(/minimum booking amount/i))
+    // a1 (APPT_COMPLETED) has no minBookingAmount/minBookingRemainder — shown as "—".
+    // a6 (APPT_WITH_MIN_PATH) — 128 + 300 = 428, distinct from its own Full Fee of 437.75.
+    expect(screen.getByText('₹428')).toBeInTheDocument()
+    expect(screen.queryByText('₹428.00')).not.toBeInTheDocument()
+  })
+
   it('refresh re-fetches appointments and payments from the server and re-renders with the new rows', async () => {
     seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
     const APPT_NEW = { ...APPT_COMPLETED, id: 'a2', tokenNumber: 4 }
