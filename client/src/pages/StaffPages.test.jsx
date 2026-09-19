@@ -27,6 +27,7 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
+import { shortId } from '../lib/format'
 import App from '../App'
 import {
   Analytics,
@@ -573,6 +574,29 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     renderConnected(ReceptionAppointments, {})
     expect(screen.getByText('Manage scheduled and walk-in visits.')).toBeInTheDocument()
     expect(await screen.findByText('Asha')).toBeInTheDocument()
+  })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me v
+  // dikhao", follow-up: "dctor receptionest ko v show ho") — the shared AppointmentTable's 'ID'
+  // column is just this table's own row sequence number, not the real booking id. Since both
+  // DoctorAppointments and ReceptionAppointments render the same AppointmentTable, one column
+  // covers both roles — verified here for each page.
+  it('shows a "Booking ID" column with the real booking id on the doctor appointments page', async () => {
+    mockGetRoutes({ '/appointments': APPOINTMENTS })
+    renderConnected(DoctorAppointments, {})
+
+    await screen.findByText('Asha')
+    expect(screen.getByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
+  })
+
+  it('shows a "Booking ID" column with the real booking id on the receptionist appointments page', async () => {
+    mockGetRoutes({ '/appointments': APPOINTMENTS })
+    renderConnected(ReceptionAppointments, {})
+
+    await screen.findByText('Asha')
+    expect(screen.getByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
   })
 })
 

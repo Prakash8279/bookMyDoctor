@@ -142,6 +142,14 @@ const AppointmentTable = ({ data }) => {
       rows={(data.appointments || [])}
       columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
+        // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me
+        // v dikhao", follow-up: "dctor receptionest ko v show ho") — 'ID' above is just this
+        // table's own row sequence number (DC01, DC02...), not the real booking id a patient
+        // would read off their slip or "My Bookings" page. This table is shared by both the
+        // doctor's and receptionist's Appointments pages (see AppointmentTable's two callers
+        // below), so one column here covers both roles. Same shortId() format used everywhere
+        // else in the app.
+        { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
         { key: 'tokenNumber', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'appointmentDate', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'appointmentTime', label: 'Time', render: (item) => item.appointmentTime || '—' },
