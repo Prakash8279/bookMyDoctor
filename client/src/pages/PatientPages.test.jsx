@@ -660,6 +660,10 @@ describe('PatientAppointments', () => {
     // Fee and Paid are both ₹428 (128 + 300 actually collected) — never the full ₹437.75.
     expect(screen.getAllByText('₹428')).toHaveLength(2)
     expect(screen.queryByText('₹437.75')).not.toBeInTheDocument()
+    // DUE-AFTER-SETTLEMENT FIX (user request: "due 9 rupya kyu o to zero hoga") — Due must be
+    // ₹0, never fee(437.75) - paid(428) = ₹9.75. This booking is fully settled; nothing is owed.
+    expect(screen.getByText('₹0')).toBeInTheDocument()
+    expect(screen.queryByText('₹9.75')).not.toBeInTheDocument()
   })
 
   it('refresh re-fetches appointments and payments from the server and re-renders with the new rows', async () => {

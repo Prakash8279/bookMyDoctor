@@ -478,7 +478,15 @@ export function PatientAppointments({ data, history = false }) {
     // available, and keep the old fee-paid fallback only for appointments where the doctor's
     // minimum booking amount was never configured (computeMinBookingRemainder returns null then).
     const minRemainder = appointment.fees?.minBookingRemainder != null ? Number(appointment.fees.minBookingRemainder) : null
-    const due = status === 'partial' && minRemainder != null ? minRemainder : Math.max(0, fee - paid)
+    // DUE-AFTER-SETTLEMENT FIX (user request: "due 9 rupya kyu o to zero hoga" — a direct
+    // follow-up to the PAID-AMOUNT ACCURACY FIX above): fixing `paid` to the real, lesser
+    // minimum-path total (428) broke this line for a fully 'paid' booking — `fee` here is still
+    // the FULL online total (437.75), so `fee - paid` came out to ₹9.75 owed on a booking that is
+    // completely settled. Once status is 'paid', nothing is owed, full stop — same rule
+    // appointments.service.js#shapeFees already applies for the doctor/receptionist `due` figure
+    // (`row.paymentStatus === 'paid' -> due = 0`) — so that case is checked first, before ever
+    // falling back to a fee/paid subtraction that only makes sense while still mid-payment.
+    const due = status === 'paid' ? 0 : status === 'partial' && minRemainder != null ? minRemainder : Math.max(0, fee - paid)
     // ONE-FEE-COLUMN FIX (user request, in two rounds: "full fee ko minimum ke anusar kro and
     // complete fee ke anusar v calculate karke show kro", then "ye dono hata kar ek kro jis
     // tarah se payment ho ushka amount show ho agar minimum ke sath booking kar raha hai to
