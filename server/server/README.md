@@ -20,23 +20,46 @@ cp .env.example .env
 
 ## Database setup
 
-Prisma creates all tables from `prisma/schema.prisma`. A few things Prisma's schema
-language can't express (the partial unique index that prevents double-booking, the
-doctor-rating recompute trigger, and singleton-row constraints) live in a separate,
-plain-SQL file that must be run once, right after the Prisma migration:
+### Fresh database (new environment, new teammate's machine, disaster recovery)
+
+`prisma migrate deploy` (or `migrate dev` while developing) alone is now enough — every
+migration under `prisma/migrations/`, including the `..._consolidate_manual_sql_baseline`
+one, runs in order and produces the complete schema: tables, the partial unique index that
+prevents double-booking, the doctor-rating recompute trigger, singleton-row constraints and
+their seed rows, every scalability/search index (including the `pg_trgm` trigram indexes),
+and every column added since the initial migration.
 
 ```bash
-npx prisma migrate dev --name init
-psql "$DATABASE_URL" -f prisma/manual_sql/001_constraints_and_triggers.sql
-npm run seed   # optional: creates the 5 demo accounts + reference data
+npx prisma migrate deploy   # or: npx prisma migrate dev
+npm run seed                # optional: creates the 5 demo accounts + reference data
 ```
 
-> The double-booking constraint and the rating-recompute trigger in that SQL file were
-> tested against a real local Postgres instance during development (inserted a
-> conflicting slot and confirmed it's rejected; cancelled a booking and confirmed the
-> slot frees up; inserted reviews and confirmed the doctor's rating recomputes correctly
-> and excludes non-approved reviews). If you ever change `001_constraints_and_triggers.sql`,
-> re-verify the same way before trusting it in production.
+Nothing under `prisma/manual_sql/` needs to be run by hand for a fresh database anymore.
+
+### This project's existing dev database (already had manual_sql run by hand)
+
+If your database already went through the old process — `prisma migrate dev` followed by
+hand-running `psql -f prisma/manual_sql/...` — Prisma doesn't know that the new
+`..._consolidate_manual_sql_baseline` migration's effects already exist (they do; the
+migration is byte-for-byte the same statements manual_sql/001, 005–010 already ran). Tell
+Prisma that instead of re-running the SQL:
+
+```bash
+npx prisma migrate resolve --applied 20260919120000_consolidate_manual_sql_baseline
+npx prisma migrate status   # should report "Database schema is up to date!"
+```
+
+`prisma/manual_sql/002_receptionist_clinic_id.sql` and `003_family_member_fk_restrict.sql`
+needed no equivalent step — both were already folded into the tracked `..._init` migration
+from the start. `004_fix_seed_uuid_ids.sql` was a one-time data fix (renaming three seed
+rows' ids), not a schema change, and stays exactly what it always was: something you ran
+once, historical record now, never migration history.
+
+> The double-booking constraint and the rating-recompute trigger were tested against a real
+> local Postgres instance during development (inserted a conflicting slot and confirmed it's
+> rejected; cancelled a booking and confirmed the slot frees up; inserted reviews and
+> confirmed the doctor's rating recomputes correctly and excludes non-approved reviews). If
+> you ever change that logic, re-verify the same way before trusting it in production.
 
 ## Running
 
@@ -63,7 +86,13 @@ src/
   routes/       mounts every module's router
 prisma/
   schema.prisma              the real schema
-  manual_sql/                supplements Prisma can't express (see Database setup above)
+  migrations/                tracked migration history — `migrate deploy` alone builds a
+                              fresh database completely, no manual SQL needed (see Database
+                              setup above)
+  manual_sql/                historical record only: how the migrations/ folder's
+                              hand-written raw-SQL migrations were first developed and
+                              applied, back before this environment could reach a live
+                              database. Not part of setting up a new environment anymore.
   seed.js                    dev seed data
 ```
 
