@@ -454,9 +454,20 @@ export function PatientAppointments({ data, history = false }) {
     const payment = appointmentPayments[0]
     const fee = Number(appointment.fees?.totalAmount ?? payment?.fees?.amount ?? appointment.fees?.consultationFee ?? 0)
     const status = appointment.paymentStatus || payment?.status || 'pending'
-    const paid = status === 'paid'
-      ? fee
-      : appointmentPayments.reduce((sum, item) => sum + (Number(item.fees?.amount ?? item.amount) || 0), 0)
+    // PAID-AMOUNT ACCURACY FIX (user request: "eshme 437 kyu aa raha hai jabki maine to 428 hi
+    // payment kiya hai jisme 128 online booking ke time hai 300 clinic pe receptionist se") —
+    // once fully settled ('paid'), this used to always show Paid = the FULL online total
+    // (fees.totalAmount/`fee`), even when the patient actually paid LESS overall by choosing the
+    // minimum-booking path: the doctor's minimum online + the remainder at the clinic, with the
+    // platform convenience/GST charge collected exactly once (see utils/minBookingAmount.js's
+    // worked example — that path totals 128 + 300 = 428, genuinely less than paying 437.75 in one
+    // shot online, never more). Sum what was ACTUALLY collected across every payment row instead
+    // — the same real-money figure receptionist/doctor/admin payment tables already show per row
+    // (payments.service.js#shapePaymentFees's exact-split fix) — falling back to the full fee
+    // only when no payment rows have loaded at all yet, so a still-fetching page never flashes a
+    // false "Paid ₹0" for an appointment the server already says is 'paid'.
+    const paidFromRecords = appointmentPayments.reduce((sum, item) => sum + (Number(item.fees?.amount ?? item.amount) || 0), 0)
+    const paid = appointmentPayments.length ? paidFromRecords : (status === 'paid' ? fee : paidFromRecords)
     // MIN-BOOKING-REMAINDER FIX ("309 kyu bach raha hai 300 bachna chahiye" — same bug, second
     // spot): this list re-derived "Due" as fee(totalAmount) - paid, which still counted the
     // platform's convenience/emergency charge and its GST as owed even though that's fully
@@ -483,12 +494,16 @@ export function PatientAppointments({ data, history = false }) {
     // shown — on the table, its CSV export, AND the booking slip (buildBookingSlipPdfBlob) — and
     // follows how the booking is actually being paid: the minimum-booking-path total while it
     // sits at 'partial' (the doctor's minimum was paid online, the rest still due at the clinic
-    // — same signal `due` above already keys off), otherwise the full online-payment total
-    // (covers a fully 'paid' booking, and a 'pending'/'pending_payment' one where nothing's been
-    // decided yet).
+    // — same signal `due` above already keys off), the full online-payment total for a
+    // 'pending'/'pending_payment' one where nothing's been decided yet, and — continuing the
+    // PAID-AMOUNT ACCURACY FIX above — the appointment's ACTUAL `paid` total once fully settled,
+    // instead of unconditionally falling back to the full online total. `paid` already equals the
+    // true minimum-path total (428) when settled that way, and the full total (437.75) when
+    // settled by a single online payment, so this single field now covers both without needing to
+    // separately re-detect which path was taken.
     const minBookingAmount = appointment.fees?.minBookingAmount != null ? Number(appointment.fees.minBookingAmount) : null
     const feeMinimumPath = minBookingAmount != null && minRemainder != null ? minBookingAmount + minRemainder : null
-    const displayFee = status === 'partial' && feeMinimumPath != null ? feeMinimumPath : fee
+    const displayFee = status === 'partial' && feeMinimumPath != null ? feeMinimumPath : status === 'paid' ? paid : fee
     return { appointment, payment, fee, displayFee, paid, due, status, mode: payment?.mode || appointment.paymentMethod || 'pay_at_clinic' }
   })
   const paymentReference = (payment) => payment?.transactionRef || '—'

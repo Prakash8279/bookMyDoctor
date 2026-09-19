@@ -633,6 +633,35 @@ describe('PatientAppointments', () => {
     expect(screen.queryByText('₹428')).not.toBeInTheDocument()
   })
 
+  // PAID-AMOUNT ACCURACY FIX (user request: "eshme 437 kyu aa raha hai jabki maine to 428 hi
+  // payment kiya hai jisme 128 online booking ke time hai 300 clinic pe receptionist se") — once
+  // this SAME booking (a6 above) is fully settled via the minimum-booking path (128 online +
+  // 300 collected at the clinic — genuinely LESS than paying 437.75 online in one shot, since the
+  // platform convenience/GST charge is only ever collected once), it used to snap back to showing
+  // the full ₹437.75 online total the instant paymentStatus flipped from 'partial' to 'paid',
+  // even though nowhere near that much was actually collected.
+  it('keeps showing the minimum-booking-path total (not the full online total) once that same booking is fully settled via 2 payments', () => {
+    const APPT_SETTLED_VIA_MIN_PATH = {
+      ...APPT_COMPLETED,
+      id: 'a8',
+      status: 'upcoming',
+      fees: { totalAmount: 437.75, minBookingAmount: 128, minBookingRemainder: 300 },
+      paymentStatus: 'paid',
+    }
+    const ADVANCE_PAYMENT = { id: 'pay-8a', appointment: { id: 'a8' }, status: 'paid', mode: 'online', transactionRef: 'rzp_8', fees: { amount: 128 } }
+    const CLINIC_REMAINDER_PAYMENT = { id: 'pay-8b', appointment: { id: 'a8' }, status: 'paid', mode: 'cash', transactionRef: '—', fees: { amount: 300 } }
+    // API order is createdAt desc (payments.service.js) — the clinic remainder payment came
+    // SECOND chronologically (collected after the online advance), so it's first in this list,
+    // same as it would be in production.
+    seedData({ appointments: [APPT_SETTLED_VIA_MIN_PATH], payments: [CLINIC_REMAINDER_PAYMENT, ADVANCE_PAYMENT] })
+
+    renderConnected(PatientAppointments)
+
+    // Fee and Paid are both ₹428 (128 + 300 actually collected) — never the full ₹437.75.
+    expect(screen.getAllByText('₹428')).toHaveLength(2)
+    expect(screen.queryByText('₹437.75')).not.toBeInTheDocument()
+  })
+
   it('refresh re-fetches appointments and payments from the server and re-renders with the new rows', async () => {
     seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
     const APPT_NEW = { ...APPT_COMPLETED, id: 'a2', tokenNumber: 4 }
