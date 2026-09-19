@@ -61,6 +61,14 @@ describe('buildBookingSlipSections', () => {
     expect(findRow(findSection(doc, 'Appointment'), 'Status')).toBe('confirmed')
   })
 
+  // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai") — the booking id
+  // was already in the `meta` caption line (asserted above), but as its own row in the
+  // "Appointment" section it reads as an actual booking detail, matching "Token number".
+  it('shows the booking id as its own row in the Appointment section, matching the meta line', () => {
+    const doc = buildBookingSlipSections({ appointment, fee: 500, paid: 200, due: 300, patientName: 'Rahul Verma' })
+    expect(findRow(findSection(doc, 'Appointment'), 'Booking ID')).toBe('#5b4a')
+  })
+
   it('shows "Not yet assigned" when no token has been given yet', () => {
     const doc = buildBookingSlipSections({
       appointment: { ...appointment, tokenNumber: null },

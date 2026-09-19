@@ -160,6 +160,13 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
       {
         heading: 'Appointment',
         rows: [
+          // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai") — the
+          // booking id was already in the `meta` line above (small caption text next to "Issued:
+          // ..."), but as its own row here it reads as an actual appointment detail, matching
+          // how "Token number" is shown, and it's what a patient would look for if the clinic
+          // asks "aapki booking id kya hai" at the counter. Same shortId(appointment.id) format
+          // used everywhere else in the app (e.g. PatientPages.jsx's Payments table).
+          ['Booking ID', shortId(appointment.id)],
           ['Date', formatDate(appointment.appointmentDate)],
           ['Time', appointment.appointmentTime],
           ['Token number', appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : 'Not yet assigned'],

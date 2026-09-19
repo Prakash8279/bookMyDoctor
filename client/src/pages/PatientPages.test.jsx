@@ -26,7 +26,7 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate } from '../lib/format'
+import { formatDate, shortId } from '../lib/format'
 import { visiblePaymentAmount } from '../lib/paymentVisibility'
 import {
   Booking,
@@ -583,6 +583,19 @@ describe('PatientAppointments', () => {
     expect(header).toHaveAttribute('title', expect.stringMatching(/minimum booking amount/i))
     expect(screen.queryByRole('columnheader', { name: 'Full Fee' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Fee (Min. Path)' })).not.toBeInTheDocument()
+  })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me v
+  // dikhao") — the "ID" column here is just this page's own row sequence number (#1, #2...), not
+  // the real booking id a patient would need to reference at the clinic counter or read off the
+  // slip. A new "Booking ID" column shows the real id, matching the format already used by the
+  // Payments table below and by the booking slip PDF.
+  it('shows a "Booking ID" column with the real booking id, separate from the row sequence "ID" column', () => {
+    seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
+    renderConnected(PatientAppointments)
+
+    expect(screen.getByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId(APPT_COMPLETED.id))).toBeInTheDocument()
   })
 
   it('shows the minimum-booking-path total in the Fee column for a partially-paid ("minimum" path) booking', () => {
