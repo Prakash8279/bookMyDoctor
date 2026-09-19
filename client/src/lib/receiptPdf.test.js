@@ -181,6 +181,44 @@ describe('buildPatientReceiptSections', () => {
     ])
   })
 
+  // EXACT-BREAKDOWN FIX (user request: "...doctor jo minimum le set kiya hai utna do and jo
+  // platform charge hai ushko v sahi do transaction charge v sahi do") — worked example from
+  // utils/minBookingAmount.js: consultationFee 400, doctor's minimum booking advance 100,
+  // platform (convenience) charge 25, GST rate 3% -> totalAmount 437.75, minBookingAmount 128,
+  // minBookingRemainder 300. The online advance payment row's `amount` (128) matches the
+  // appointment's minBookingAmount, so the receipt must show the doctor's REAL minimum (100).
+  it('shows the exact minimum-booking-amount breakdown (not a fractional scale) for the online advance payment', () => {
+    const doc = buildPatientReceiptSections({
+      ...baseItem,
+      appointment: {
+        ...baseItem.appointment,
+        fees: { consultationFee: 400, totalAmount: 437.75, minBookingAmount: 128, minBookingRemainder: 300 },
+      },
+      fees: { consultationFee: 400, convenienceFee: 25, emergencyFee: 0, gstAmount: 12.75, amount: 128 },
+    })
+    expect(doc.totalRows).toEqual([
+      ['Consultation fee (minimum booking amount)', 'Rs. 100'],
+      ['Platform charge', 'Rs. 25'],
+      ['Transaction charge', 'Rs. 3'],
+      ['Amount paid', 'Rs. 128', true],
+    ])
+  })
+
+  it('shows only the remaining consultation fee — no fictional platform charge/GST — for the clinic-collected remainder payment', () => {
+    const doc = buildPatientReceiptSections({
+      ...baseItem,
+      appointment: {
+        ...baseItem.appointment,
+        fees: { consultationFee: 400, totalAmount: 437.75, minBookingAmount: 128, minBookingRemainder: 300 },
+      },
+      fees: { consultationFee: 400, convenienceFee: 25, emergencyFee: 0, gstAmount: 12.75, amount: 300 },
+    })
+    expect(doc.totalRows).toEqual([
+      ['Consultation fee (remaining balance)', 'Rs. 300'],
+      ['Amount paid', 'Rs. 300', true],
+    ])
+  })
+
   it('includes clinic address/phone and doctor specialization from the cross-referenced appointment', () => {
     const doc = buildPatientReceiptSections(baseItem)
     expect(findRow(findSection(doc, 'Doctor'), 'Specialization')).toBe('Cardiology')

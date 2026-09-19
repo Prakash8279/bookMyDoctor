@@ -218,31 +218,71 @@ export async function buildBookingSlipPdfBlob({ appointment, fee, feeMinimumPath
 export function buildPatientReceiptSections(item) {
   const fees = item.fees || {}
   const appointment = item.appointment
-  // SPLIT-PAYMENT BREAKDOWN FIX (multi-agent payment audit): payments.service.js copies the
-  // appointment's FULL fee breakdown (consultationFee/convenienceFee/emergencyFee/gstAmount)
-  // verbatim onto every Payment row for that appointment, including a second row created when a
-  // 'partial' online advance's remaining balance is later collected at the clinic — only
-  // `fees.amount` differs between the two rows (each one's own actual charge). Printing the full,
-  // unscaled breakdown above a bold "Amount paid" that's only this row's partial charge made the
-  // itemized lines not add up to the paid figure on the same receipt, with no indication the
-  // breakdown was the appointment's total rather than this transaction's share. Scale each line to
-  // this row's share of the appointment total (same ratio approach payments.service.js's
-  // shapePaymentFees already uses for admin commission) — for the normal, un-split, full-payment
-  // case `fees.amount` already equals the total, so the ratio is exactly 1 and every line is
-  // unchanged.
   const paidAmount = Number(fees.amount ?? item.amount) || 0
-  const impliedTotal =
-    (Number(fees.consultationFee) || 0) +
-    (Number(fees.convenienceFee) || 0) +
-    (Number(fees.emergencyFee) || 0) +
-    (Number(fees.gstAmount) || 0)
-  const shareRatio = impliedTotal > 0 ? paidAmount / impliedTotal : 1
-  const scaled = (value) => (Number(value) || 0) * shareRatio
-  const totalRows = [['Consultation fee', formatMoneyPlain(scaled(fees.consultationFee))]]
-  if (Number(fees.convenienceFee) > 0) totalRows.push(['Platform charge', formatMoneyPlain(scaled(fees.convenienceFee))])
-  if (Number(fees.emergencyFee) > 0) totalRows.push(['Emergency fee', formatMoneyPlain(scaled(fees.emergencyFee))])
-  if (Number(fees.gstAmount) > 0) totalRows.push(['Transaction charge', formatMoneyPlain(scaled(fees.gstAmount))])
-  totalRows.push(['Amount paid', formatMoneyPlain(paidAmount), true])
+  const consultationFeeFull = Number(fees.consultationFee) || 0
+  const convenienceFeeFull = Number(fees.convenienceFee) || 0
+  const emergencyFeeFull = Number(fees.emergencyFee) || 0
+  const gstAmountFull = Number(fees.gstAmount) || 0
+  const impliedTotal = consultationFeeFull + convenienceFeeFull + emergencyFeeFull + gstAmountFull
+  const closeTo = (a, b) => Math.abs(a - b) < 0.01
+
+  // EXACT-BREAKDOWN FIX (user request: "...doctor jo minimum le set kiya hai utna do and jo
+  // platform charge hai ushko v sahi do transaction charge v sahi do"): payments.service.js
+  // copies the appointment's FULL fee breakdown (consultationFee/convenienceFee/emergencyFee/
+  // gstAmount) verbatim onto every Payment row for that appointment — including the doctor's
+  // minimum-booking-amount advance paid online, and a second row for the remaining balance
+  // collected later at the clinic — only `fees.amount` differs between rows (each one's own
+  // actual charge). The previous fix scaled every line by this row's share of the appointment
+  // total (amount / impliedTotal), which "balanced" to the right total but printed a fictional
+  // FRACTIONAL platform charge/GST for the minimum-advance row (and a fictional platform
+  // charge/GST on the clinic's remainder row, which never actually collects either — the
+  // platform charge/GST are settled in full by the online minimum payment; see
+  // utils/minBookingAmount.js's worked example). When the cross-referenced appointment carries
+  // its own minBookingAmount/minBookingRemainder/consultationFee (patient branch of
+  // appointments.service.js#shapeFees) and this row's amount matches one of the three real
+  // payment shapes, compute the EXACT figures that business rule defines instead of an
+  // approximation. Falls back to the old ratio-based scaling for a full payment (ratio is
+  // exactly 1 there, so unchanged) or any older/unrecognized row shape this can't identify.
+  const apptFees = appointment?.fees
+  const minBookingAmount = apptFees?.minBookingAmount != null ? Number(apptFees.minBookingAmount) : null
+  const minBookingRemainder = apptFees?.minBookingRemainder != null ? Number(apptFees.minBookingRemainder) : null
+  const apptConsultationFee = apptFees?.consultationFee != null ? Number(apptFees.consultationFee) : null
+
+  let totalRows
+  if (minBookingAmount != null && closeTo(paidAmount, minBookingAmount)) {
+    // The doctor's own minimum booking amount, paid online at booking time. Consultation
+    // portion is the doctor's configured minimum advance itself (consultationFee -
+    // minBookingRemainder — see utils/minBookingAmount.js#computeMinBookingRemainder), the
+    // platform charge is collected IN FULL (never prorated) either way, and the transaction
+    // charge (GST) is whatever's left of this exact amount — guaranteed to foot to the total.
+    const platformCharge = convenienceFeeFull + emergencyFeeFull
+    const minAdvance = apptConsultationFee != null && minBookingRemainder != null
+      ? apptConsultationFee - minBookingRemainder
+      : Math.max(0, paidAmount - platformCharge)
+    const transactionCharge = Math.max(0, paidAmount - minAdvance - platformCharge)
+    totalRows = [['Consultation fee (minimum booking amount)', formatMoneyPlain(minAdvance)]]
+    if (platformCharge > 0) totalRows.push(['Platform charge', formatMoneyPlain(platformCharge)])
+    if (transactionCharge > 0) totalRows.push(['Transaction charge', formatMoneyPlain(transactionCharge)])
+    totalRows.push(['Amount paid', formatMoneyPlain(paidAmount), true])
+  } else if (minBookingRemainder != null && closeTo(paidAmount, minBookingRemainder)) {
+    // The remaining consultation fee, collected later at the clinic. The platform charge and
+    // GST were already collected in full by the online minimum-booking payment above, so
+    // nothing further is owed (or shown) for either of those on this row.
+    totalRows = [
+      ['Consultation fee (remaining balance)', formatMoneyPlain(paidAmount)],
+      ['Amount paid', formatMoneyPlain(paidAmount), true],
+    ]
+  } else {
+    // Full payment (ratio is exactly 1, so unchanged), or an older/unrecognized row shape this
+    // can't match to one of the two exact cases above — same ratio-based scaling as before.
+    const shareRatio = impliedTotal > 0 ? paidAmount / impliedTotal : 1
+    const scaled = (value) => value * shareRatio
+    totalRows = [['Consultation fee', formatMoneyPlain(scaled(consultationFeeFull))]]
+    if (convenienceFeeFull > 0) totalRows.push(['Platform charge', formatMoneyPlain(scaled(convenienceFeeFull))])
+    if (emergencyFeeFull > 0) totalRows.push(['Emergency fee', formatMoneyPlain(scaled(emergencyFeeFull))])
+    if (gstAmountFull > 0) totalRows.push(['Transaction charge', formatMoneyPlain(scaled(gstAmountFull))])
+    totalRows.push(['Amount paid', formatMoneyPlain(paidAmount), true])
+  }
 
   const paymentRows = [
     ['Payment date', formatDate(item.createdAt)],
