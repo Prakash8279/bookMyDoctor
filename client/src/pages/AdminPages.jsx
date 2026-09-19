@@ -62,6 +62,12 @@ export function AdminDashboard({ data }) {
   // the actual record still matters.
   const recentRecords = [...(data.appointments || [])].reverse().slice(0, 6).map((item, index) => ({
     id: sequenceId(index),
+    // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar admin
+    // ke") — 'id' above is just this widget's own row sequence number (DC01, DC02...), never the
+    // real booking id. Kept as its own field (not reusing 'id') so the Time/ID column above can
+    // stay unchanged. Same shortId() format already used for doctor/receptionist's Appointments
+    // table and every payment table in the app.
+    bookingId: item.id ? shortId(item.id) : '—',
     patient: item.patient?.name || 'Patient',
     details: item.appointmentDate ? `${item.appointmentDate}${item.appointmentTime ? ` ${item.appointmentTime}` : ''}` : '—',
     status: item.status || 'upcoming'
@@ -106,6 +112,7 @@ export function AdminDashboard({ data }) {
             rows={recentRecords}
             columns={[
               { key: 'id', label: 'Time / ID', render: (item) => `#${item.id}` },
+              { key: 'bookingId', label: 'Booking ID' },
               { key: 'patient', label: 'Patient / User' },
               { key: 'details', label: 'Details' },
               { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }

@@ -112,6 +112,21 @@ describe('AdminDashboard', () => {
     expect(await screen.findByText('Stats service unavailable.')).toBeInTheDocument()
     expect(screen.getByText('Welcome, Priya.')).toBeInTheDocument()
   })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar admin ke")
+  // — the "Recent live records" widget's 'Time / ID' column is just this row's position (#1,
+  // #2...), never the real booking id. Same shortId() format already used everywhere else.
+  it('shows a "Booking ID" column with the real booking id in "Recent live records"', async () => {
+    setCurrentUser({ id: 'admin-1', name: 'Priya Admin' })
+    mockGetRoutes({
+      '/admin/dashboard-stats': { verifiedDoctorsCount: 12, registeredPatientsCount: 340, todaysBookingsCount: 8, monthlyRevenue: 125000 },
+      '/appointments': [{ id: 'a1', patient: { name: 'Asha' }, appointmentDate: '2026-01-05', status: 'upcoming' }],
+    })
+    renderConnected(AdminDashboard, {})
+
+    expect(await screen.findByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
+  })
 })
 
 describe('DoctorVerification', () => {
