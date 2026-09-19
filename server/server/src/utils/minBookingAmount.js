@@ -1,7 +1,6 @@
 /**
  * Shared formula for the patient-facing "pay the minimum now, rest at the clinic" booking option
- * (BUG FIX — superadmin request, Hinglish: "minimum me platform charge + joo minimum fee doctor
- * decide kiya hai ushka percentage jo admin decide kiya hai").
+ * (BUG FIX — superadmin request).
  *
  * Previously the "Minimum booking amount" shown to the patient — and the amount actually charged
  * via Razorpay for that option — was just the doctor's raw `minBookingAdvanceAmount`, with ZERO
@@ -9,38 +8,54 @@
  * nothing at all on that transaction, unlike the "pay full amount" option (whose totalAmount
  * already bakes in convenience/emergency fee + GST on top of the consultation fee).
  *
- * Fixed formula:
- *   minBookingAmount = platformCharge + (doctor's minBookingAdvanceAmount x admin's commissionPercent / 100)
- * where platformCharge = totalAmount - consultationFee (this booking's convenience fee +
- * emergency fee + GST, whichever applied — the same figure the admin dashboard now calls
- * "platform commission" per the consultation-fee-ownership change made earlier this session; see
- * appointments.service.js#shapeFees / payments.service.js#shapePaymentFees).
+ * The superadmin spelled out the exact formula with a worked example (Hinglish): "platform charge
+ * 25 hai and percentage 3 hai, doctor fee 400 hai to koi patient full payment karta hai to
+ * 400+25+3%=437.75 [400+25, then +3% of that 425 subtotal]. koi minimum charge pay karta hai tab
+ * 100 charge doctor rakha hai to 100+25+100 ka 3%=128" — i.e. the minimum-booking breakdown
+ * mirrors the full-payment breakdown exactly, just with the doctor's minBookingAdvanceAmount
+ * standing in for the full consultationFee:
  *
- * commissionPercent itself must NEVER reach a patient/doctor/receptionist response (rule 8) — only
- * this already-computed rupee total may. Both the read path (what the patient is SHOWN, in
- * appointments.service.js#shapeFees) and the charge path (what the patient is actually CHARGED,
- * in razorpay.service.js#createOrder) must call this exact same function so the two can never
- * drift apart again — that mismatch was the root of this bug.
+ *   minBookingAmount = minBookingAdvanceAmount
+ *                     + platformCharge (this booking's convenienceFee + emergencyFee — the same
+ *                       flat amount the full payment charged; mutually exclusive, one is always 0)
+ *                     + GST on the minimum fee ALONE (not on the platform charge — deliberately
+ *                       asymmetric with the full-payment GST base, which is charged on
+ *                       consultationFee + platformCharge together; see the worked example above,
+ *                       where 3% is taken of the bare 100, not of 100+25).
+ *
+ * The GST rate itself is never stored as a bare percent on the appointment row (only the rupee
+ * gstAmount is) — nor is it safe to just re-fetch the live Platform Charges config, since rates
+ * can change after a booking was made. Instead the rate actually charged on THIS booking is
+ * derived from its own stored fields: gstAmount / (consultationFee + platformCharge). This also
+ * makes GST naturally 0 for a walk-in booking (source != 'online' never charges GST, so
+ * gstAmount is already 0 on the row) without any extra branching here.
+ *
+ * Both the read path (what the patient is SHOWN, in appointments.service.js#shapeFees) and the
+ * charge path (what the patient is actually CHARGED, in razorpay.service.js#createOrder) must
+ * call this exact same function so the two can never drift apart again — that mismatch was the
+ * root of the original bug.
  *
  * All amounts are plain rupee numbers (not Prisma.Decimal) — callers pass `Number(...)` of their
- * Decimal fields; this returns a plain number rounded to 2 decimals, or null when there is nothing
- * to compute (no doctor minimum configured, or platform charges not configured yet).
+ * Decimal fields; this returns a plain number rounded to 2 decimals, or null when there is
+ * nothing to compute (the doctor hasn't configured a minimum).
  *
- * @param {{totalAmount: number, consultationFee: number, minBookingAdvanceAmount: number|null, commissionPercent: number|null}} input
+ * @param {{consultationFee: number, convenienceFee: number, emergencyFee: number, gstAmount: number, minBookingAdvanceAmount: number|null}} input
  * @returns {number|null}
  */
-function computeMinBookingAmount({ totalAmount, consultationFee, minBookingAdvanceAmount, commissionPercent }) {
+function computeMinBookingAmount({ consultationFee, convenienceFee, emergencyFee, gstAmount, minBookingAdvanceAmount }) {
   if (minBookingAdvanceAmount == null || Number(minBookingAdvanceAmount) <= 0) return null;
-  if (commissionPercent == null) return null;
 
-  const platformCharge = Number(totalAmount) - Number(consultationFee);
-  let amount = platformCharge + (Number(minBookingAdvanceAmount) * Number(commissionPercent)) / 100;
+  const minAdvance = Number(minBookingAdvanceAmount);
+  const platformCharge = Number(convenienceFee || 0) + Number(emergencyFee || 0);
+  const subtotal = Number(consultationFee) + platformCharge;
+  // Implied GST rate actually charged on this booking (0 when there's no subtotal to divide by,
+  // or when this was never a GST-charged booking to begin with — same result either way).
+  const gstRate = subtotal > 0 ? Number(gstAmount || 0) / subtotal : 0;
+
+  let amount = minAdvance + platformCharge + minAdvance * gstRate;
   amount = Math.round(amount * 100) / 100;
 
-  // Safety clamps: never below 0, never above the booking's own full total (a very high doctor
-  // minimum + commissionPercent could otherwise overshoot totalAmount).
-  const cap = Math.round(Number(totalAmount) * 100) / 100;
-  if (amount > cap) amount = cap;
+  // Safety clamp: never below 0 (defensive only — every input here is itself non-negative).
   if (amount < 0) amount = 0;
   return amount;
 }

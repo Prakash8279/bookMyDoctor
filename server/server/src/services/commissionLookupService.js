@@ -25,18 +25,4 @@ async function loadCommissionPercentIfAdmin(role) {
   return pc ? pc.commissionPercent : null;
 }
 
-/**
- * Unconditional fetch — no role gate. For internal fee-calculation call sites (e.g.
- * utils/minBookingAmount.js's computeMinBookingAmount) where commissionPercent itself is never
- * returned to the caller, only baked into a derived rupee figure that IS safe to expose (rule 8
- * only blocks the raw percent, not every number it feeds into). Contrast with
- * loadCommissionPercentIfAdmin above, which gates on role because ITS caller returns the raw
- * percent verbatim to admin views.
- * @returns {Promise<import('@prisma/client').Prisma.Decimal|null>}
- */
-async function loadCommissionPercent() {
-  const pc = await prisma.platformCharges.findUnique({ where: { id: 1 }, select: { commissionPercent: true } });
-  return pc ? pc.commissionPercent : null;
-}
-
-module.exports = { loadCommissionPercentIfAdmin, loadCommissionPercent };
+module.exports = { loadCommissionPercentIfAdmin };

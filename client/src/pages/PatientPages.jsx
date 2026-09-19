@@ -310,8 +310,8 @@ export function Booking({ data }) {
     const totalAmount = Number(booked.fees?.totalAmount) || 0
     // MIN-BOOKING-AMOUNT FIX (superadmin request): this used to be the doctor's raw
     // minBookingAdvanceAmount, which left the platform's own cut out of the "pay minimum now"
-    // option entirely. booked.fees.minBookingAmount is now computed server-side as platform
-    // charge + (doctor's minimum x admin's commission %) — see
+    // option entirely. booked.fees.minBookingAmount is now computed server-side as the doctor's
+    // minimum fee + this booking's platform charge + GST on just that minimum fee — see
     // appointments.service.js#shapeFees / utils/minBookingAmount.js — and Razorpay is charged
     // that exact same figure (razorpay.service.js#createOrder), so what's shown here always
     // matches what's actually charged.
