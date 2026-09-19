@@ -144,18 +144,44 @@ async function updateMe(userId, role, body) {
 
   // A doctor's minimum online-booking-advance amount must never exceed their consultation fee
   // (charging a "minimum" that's actually more than the full fee makes no sense to a patient).
-  // Compare against whatever consultationFee is IN EFFECT after this update — the value being
-  // set in this same request if present, otherwise the doctor's existing saved fee.
-  if (role === 'doctor' && 'minBookingAdvanceAmount' in profileUpdates && profileUpdates.minBookingAdvanceAmount != null) {
+  // Compare against whatever consultationFee/minBookingAdvanceAmount are IN EFFECT after this
+  // update — the value(s) being set in this same request if present, otherwise the doctor's
+  // existing saved value(s).
+  //
+  // VALIDATION-GAP FIX (found via multi-agent audit after "abhi bhi problem hai sab jagah" —
+  // superadmin's original request only mentioned minBookingAdvanceAmount, but this check used to
+  // fire ONLY when minBookingAdvanceAmount itself was in the request body. A doctor who lowered
+  // just their consultationFee (leaving a previously-saved, now-too-high minBookingAdvanceAmount
+  // untouched) hit no validation at all, silently leaving minBookingAdvanceAmount > consultationFee
+  // stored — which makes utils/minBookingAmount.js#computeMinBookingRemainder clamp the clinic's
+  // remainder to ₹0 forever for that doctor (consultationFee - minBookingAdvanceAmount < 0). The
+  // check now also fires whenever consultationFee changes, not just when minBookingAdvanceAmount
+  // does.
+  const touchesMinBookingAmount =
+    'minBookingAdvanceAmount' in profileUpdates && profileUpdates.minBookingAdvanceAmount != null;
+  const touchesConsultationFee = 'consultationFee' in profileUpdates;
+  if (role === 'doctor' && (touchesMinBookingAmount || touchesConsultationFee)) {
     let effectiveConsultationFee = profileUpdates.consultationFee;
-    if (effectiveConsultationFee == null) {
+    let effectiveMinBookingAdvanceAmount = 'minBookingAdvanceAmount' in profileUpdates
+      ? profileUpdates.minBookingAdvanceAmount
+      : undefined;
+    if (effectiveConsultationFee == null || effectiveMinBookingAdvanceAmount === undefined) {
       const existing = await prisma.doctorProfile.findUnique({
         where: { userId },
-        select: { consultationFee: true },
+        select: { consultationFee: true, minBookingAdvanceAmount: true },
       });
-      effectiveConsultationFee = existing ? Number(existing.consultationFee) : null;
+      if (effectiveConsultationFee == null) {
+        effectiveConsultationFee = existing ? Number(existing.consultationFee) : null;
+      }
+      if (effectiveMinBookingAdvanceAmount === undefined) {
+        effectiveMinBookingAdvanceAmount =
+          existing && existing.minBookingAdvanceAmount != null ? Number(existing.minBookingAdvanceAmount) : null;
+      }
     }
-    if (effectiveConsultationFee == null || Number(profileUpdates.minBookingAdvanceAmount) > Number(effectiveConsultationFee)) {
+    if (
+      effectiveMinBookingAdvanceAmount != null &&
+      (effectiveConsultationFee == null || Number(effectiveMinBookingAdvanceAmount) > Number(effectiveConsultationFee))
+    ) {
       throw new ApiError(
         400,
         'MIN_BOOKING_AMOUNT_EXCEEDS_FEE',

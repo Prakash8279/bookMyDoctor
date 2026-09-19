@@ -162,6 +162,42 @@ describe('meService.updateMe — per-role field allowlist', () => {
     ).rejects.toMatchObject({ code: 'MIN_BOOKING_AMOUNT_EXCEEDS_FEE' });
   });
 
+  // VALIDATION-GAP FIX: lowering consultationFee ALONE (minBookingAdvanceAmount absent from this
+  // request) used to skip the check entirely, so a doctor could end up with a saved
+  // minBookingAdvanceAmount greater than their new consultationFee — silently clamping
+  // computeMinBookingRemainder()'s clinic remainder to ₹0 forever. The check must now also fire
+  // off a consultationFee-only change, comparing against the EXISTING saved minBookingAdvanceAmount.
+  test('lowering consultationFee alone is rejected when it would fall below the existing saved minBookingAdvanceAmount', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+    prisma.doctorProfile.findUnique.mockResolvedValue({ consultationFee: 500, minBookingAdvanceAmount: 100 });
+
+    await expect(
+      meService.updateMe('user-1', 'doctor', { consultationFee: 80 })
+    ).rejects.toMatchObject({ statusCode: 400, code: 'MIN_BOOKING_AMOUNT_EXCEEDS_FEE' });
+  });
+
+  test('lowering consultationFee alone is accepted when it still covers the existing saved minBookingAdvanceAmount', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+    prisma.doctorProfile.findUnique.mockResolvedValue({ consultationFee: 500, minBookingAdvanceAmount: 100 });
+
+    await meService.updateMe('user-1', 'doctor', { consultationFee: 200 });
+
+    expect(prisma.doctorProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ consultationFee: 200 }) })
+    );
+  });
+
+  test('changing consultationFee alone is accepted without a false rejection when no minBookingAdvanceAmount is configured at all', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+    prisma.doctorProfile.findUnique.mockResolvedValue({ consultationFee: 500, minBookingAdvanceAmount: null });
+
+    await meService.updateMe('user-1', 'doctor', { consultationFee: 50 });
+
+    expect(prisma.doctorProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: expect.objectContaining({ consultationFee: 50 }) })
+    );
+  });
+
   test('a doctor edit busts the public directory cache via the lazy doctors.service require', async () => {
     prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
 
