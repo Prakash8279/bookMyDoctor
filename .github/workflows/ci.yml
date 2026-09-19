@@ -21,7 +21,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # vitest 5 (client/node_modules/vitest's own package.json "engines") requires Node
+          # ^22.12.0 || ^24.0.0 || >=26.0.0 — jsdom 30's bundled undici calls a webidl helper
+          # that doesn't exist on Node 20, crashing every test file with "webidl.util.
+          # markAsUncloneable is not a function" the moment jsdom's CacheStorage loads. Node 20
+          # here reproduced that exact crash; 22 matches what vitest actually supports.
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: client/package-lock.json
       - run: npm ci
@@ -41,7 +46,15 @@ jobs:
           cache: 'npm'
           cache-dependency-path: server/server/package-lock.json
       - run: npm ci
-      - run: npm test
+      # Run serially (--runInBand), not with npm test's default parallel worker pool: GitHub-
+      # hosted runners are memory/CPU-constrained enough that Jest's worker processes were
+      # crashing mid-suite (each crash showing up as "process.exit called with 1" inside
+      # config/env.js, then "Jest worker encountered N child process exceptions, exceeding
+      # retry limit" once Jest gave up retrying that worker) — a CI-resource problem, not a bug
+      # in the tests themselves. Serial execution is slower but doesn't depend on how many
+      # workers the runner can actually sustain at once. `npm test` (parallel) is still what
+      # local development uses.
+      - run: npx jest --runInBand
 
   mobile-test:
     name: Mobile (Flutter) — test
