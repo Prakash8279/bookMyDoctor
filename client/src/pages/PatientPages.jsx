@@ -13,6 +13,7 @@ import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { buildCsv, downloadCsv } from '../lib/csv'
 import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
+import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
 
@@ -171,6 +172,7 @@ export function Booking({ data }) {
   const bookingQueueInfo = useAppStore((state) => state.bookingQueueInfo)
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
   const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
+  const getAppointment = useAppStore((state) => state.getAppointment)
   const currentUser = useAppStore((state) => state.currentUser) || {}
   const [payingNow, setPayingNow] = useState(false)
   const [paymentError, setPaymentError] = useState('')
@@ -289,6 +291,23 @@ export function Booking({ data }) {
             })
             setBooked(appointment)
           } catch (verifyError) {
+            // RESUME/RECONCILE FIX (senior-dev payment audit, "payment sahi nahi hua hai"): this
+            // handler only ever fires after Razorpay has already captured the payment — a failure
+            // in THIS call (request timeout, dropped connection, a transient server error after the
+            // backend's own transaction actually committed) does not mean the money wasn't taken.
+            // Re-check the appointment's real status before showing a scary "payment failed"
+            // message: if it already moved off pending_payment, the payment WAS recorded despite
+            // this call failing, and telling the patient to pay again here would risk a double
+            // charge.
+            try {
+              const fresh = await getAppointment(booked.id)
+              if (fresh && fresh.status !== 'pending_payment') {
+                setBooked(fresh)
+                return
+              }
+            } catch {
+              /* couldn't even re-check — fall through to showing the original error below */
+            }
             setPaymentError(verifyError.message)
           } finally {
             setPayingNow(false)
@@ -391,10 +410,32 @@ export function PatientAppointments({ data, history = false }) {
   const addReview = useAppStore((state) => state.addReview)
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   const fetchPayments = useAppStore((state) => state.fetchPayments)
+  const cancelAppointment = useAppStore((state) => state.cancelAppointment)
   const currentUser = useAppStore((state) => state.currentUser) || {}
+  // PENDING-PAYMENT RESUME FIX (multi-agent senior-dev payment audit, "payment sahi nahi hua
+  // hai"): a `pending_payment` appointment used to have NO way back to a Pay button once the
+  // patient left the one-shot post-booking screen — see hooks/useRazorpayPayment.js's header
+  // comment for the full failure scenario. This list now offers "Resume payment"/"Cancel" for
+  // any pending_payment row it renders.
+  const { payNow, payingId, paymentError, setPaymentError } = useRazorpayPayment()
+  const [cancelError, setCancelError] = useState('')
+  const { deletingId: cancellingId, remove: cancelPendingBooking } = useDeleteWithConfirm({
+    deleteFn: (appointment) => cancelAppointment(appointment.id),
+    confirmMessage: () => 'Cancel this booking? This cannot be undone — you\'ll need to book again if you change your mind.',
+    errorFallback: 'Could not cancel this booking.',
+    setError: setCancelError,
+  })
+  const resumePayment = (appointment, paymentOption) => {
+    setCancelError('')
+    payNow(appointment, paymentOption, { currentUser })
+  }
   const owned = data.appointments || []
   const completed = owned.filter((item) => item.status === 'completed')
   const selectedReviewId = reviewAppointment || completed[0]?.id || ''
+  const hasPendingPayment = owned.some((item) => item.status === 'pending_payment')
+  useEffect(() => {
+    if (hasPendingPayment) loadRazorpayScript().catch(() => {})
+  }, [hasPendingPayment])
   const records = owned.map((appointment) => {
     // PAID/DUE FIX (multi-agent payment audit): an appointment can have TWO payment rows — an
     // online advance (doctor's minimum booking amount) plus the remainder collected later at the
@@ -474,8 +515,17 @@ export function PatientAppointments({ data, history = false }) {
   return <>
   <Page title={history ? 'Booking history' : 'My appointments'} subtitle={history ? 'Review every clinic visit and view/download booking slips.' : 'View upcoming bookings, view/download slips, and review completed consultations.'} action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>
     {refreshError && <p role="alert" className="mb-4 text-sm text-error">{refreshError}</p>}
+    {paymentError && <p role="alert" className="mb-4 text-sm text-error">{paymentError}</p>}
+    {cancelError && <p role="alert" className="mb-4 text-sm text-error">{cancelError}</p>}
     {!history && completed.length > 0 && <form onSubmit={submitReview} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">Review a completed consultation</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Completed appointment" type="select" options={completed.map((item) => `#${item.tokenNumber ?? item.id} · ${item.doctor?.name || 'Doctor'} · ${displayDate(item.appointmentDate)}`)} value={selectedCompleted ? `#${selectedCompleted.tokenNumber ?? selectedCompleted.id} · ${selectedCompleted.doctor?.name || 'Doctor'} · ${displayDate(selectedCompleted.appointmentDate)}` : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setReviewAppointment(completed[index]?.id || '') }} required /><FormField label="Rating" type="select" options={['1', '2', '3', '4', '5']} value={rating} onChange={(event) => setRating(event.target.value)} required /><div className="sm:col-span-2"><FormField label="Review" type="textarea" value={reviewText} onChange={(event) => setReviewText(event.target.value)} required /></div></div><Button type="submit" className="mt-5">Submit review</Button>{reviewError && <p role="alert" className="mt-3 text-sm text-error">{reviewError}</p>}{saved && <p role="status" className="mt-3 text-sm font-semibold text-success">Review submitted — pending moderation before it appears publicly.</p>}</form>}
-    <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">{history ? 'Booking history' : 'Live records'}</h2><span className="text-sm font-semibold text-muted">{records.length} record(s)</span></div><div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading}>{heading}</th>)}</tr></thead><tbody>{records.map(({ appointment, payment, fee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{fee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, fee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
+    <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">{history ? 'Booking history' : 'Live records'}</h2><span className="text-sm font-semibold text-muted">{records.length} record(s)</span></div><div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading}>{heading}</th>)}</tr></thead><tbody>{records.map(({ appointment, payment, fee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{fee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
+    {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
+        pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
+        outside the one-shot post-booking screen and sat stuck forever. */}
+    <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
+    {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
+    <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
+  </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, fee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table>{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</div></section>
   </Page>
   <PdfPreviewModal preview={slip.preview} onClose={slip.close} title="Booking slip preview" />
   </>

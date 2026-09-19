@@ -51,6 +51,15 @@ jest.mock('../../../src/modules/appointments/appointments.service', () => ({
 jest.mock('../../../src/modules/queue/queue.service', () => ({
   invalidateQueueListCaches: jest.fn(),
 }));
+// NO-DOUBLE-CHARGE LOCK FIX: createOrder now serializes on a per-appointment lock (see that
+// function's own comment). Mocked as a passthrough (just calls fn()) so every existing test's
+// happy-path behavior is unaffected — the lock's own acquire/release/contention behavior is
+// lockService.test.js's job, not this file's. Tests below assert createOrder calls withLock with
+// the right key, and separately test the LockAcquisitionError -> 409 mapping.
+jest.mock('../../../src/services/lockService', () => ({
+  withLock: jest.fn((key, fn) => fn()),
+  LockAcquisitionError: class LockAcquisitionError extends Error {},
+}));
 
 const crypto = require('crypto');
 const prisma = require('../../../src/config/db');
@@ -59,6 +68,7 @@ const activityLogService = require('../../../src/services/activityLogService');
 const paymentsService = require('../../../src/modules/payments/payments.service');
 const appointmentsService = require('../../../src/modules/appointments/appointments.service');
 const queueService = require('../../../src/modules/queue/queue.service');
+const lockService = require('../../../src/services/lockService');
 const razorpayService = require('../../../src/modules/payments/razorpay.service');
 
 const KEY_ID = 'rzp_test_key_id';
@@ -182,6 +192,40 @@ describe('razorpay.service.createOrder — ownership and state guards', () => {
       statusCode: 409,
       code: 'APPOINTMENT_NOT_PAYABLE',
     });
+  });
+});
+
+// NO-DOUBLE-CHARGE LOCK FIX (senior-dev payment audit, "payment sahi nahi hua hai"): without a
+// lock, two concurrent createOrder calls for the SAME appointment (a double-click, two open tabs)
+// could each pass the paymentStatus check above before either finishes and each get back a real,
+// separately-payable Razorpay order — a genuine double real charge if the patient completed both.
+// createOrder now serializes on `razorpay-order:{appointmentId}` via lockService#withLock.
+describe('razorpay.service.createOrder — no-double-charge lock', () => {
+  test('serializes order creation on a per-appointment lock key', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
+    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_1', amount: 61360, currency: 'INR' }));
+
+    await razorpayService.createOrder('appt-1', PATIENT);
+
+    expect(lockService.withLock).toHaveBeenCalledWith(
+      'razorpay-order:appt-1',
+      expect.any(Function),
+      expect.objectContaining({ ttlMs: expect.any(Number), waitTimeoutMs: expect.any(Number) })
+    );
+  });
+
+  test('a second concurrent caller that cannot acquire the lock gets a friendly 409, not a raw LockAcquisitionError', async () => {
+    lockService.withLock.mockImplementationOnce(() => {
+      throw new lockService.LockAcquisitionError('razorpay-order:appt-1', 5000);
+    });
+
+    await expect(razorpayService.createOrder('appt-1', PATIENT)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'PAYMENT_ORDER_IN_PROGRESS',
+    });
+    // The appointment lookup (inside the locked function) never even ran — the lock is acquired
+    // BEFORE any DB/gateway work starts.
+    expect(prisma.appointment.findUnique).not.toHaveBeenCalled();
   });
 });
 
@@ -635,5 +679,23 @@ describe('razorpay.service.verifyAndRecordPayment — side effects after a succe
     expect(result).toEqual({ payment: { id: 'pay-1' }, appointment: { id: 'appt-1' } });
     expect(paymentsService.getPaymentById).toHaveBeenCalledWith('pay-1', PATIENT);
     expect(appointmentsService.getAppointmentById).toHaveBeenCalledWith('appt-1', PATIENT);
+  });
+
+  // POST-COMMIT REFETCH FIX (senior-dev payment audit, "payment sahi nahi hua hai"): the payment
+  // is ALREADY correctly recorded by this point (createPaymentForAppointment's own transaction,
+  // mocked above, already "succeeded") — a failure in just reading it back afterwards must not
+  // look like the payment itself failed. This must surface as a distinct, honest error code so
+  // the frontend's own recovery path (re-check the appointment's real status before reporting a
+  // failure) can tell the difference between "your payment failed" and "your payment succeeded,
+  // we just couldn't show you the receipt yet".
+  test('a failure in the post-commit re-fetch is a distinct 502, never a raw/unhandled error — the payment itself was already recorded', async () => {
+    appointmentsService.getAppointmentById.mockRejectedValue(new Error('connection pool exhausted'));
+
+    await expect(run()).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'PAYMENT_RECORDED_REFETCH_FAILED',
+    });
+    // The payment WAS recorded — this failure is purely in reading it back afterwards.
+    expect(paymentsService.createPaymentForAppointment).toHaveBeenCalled();
   });
 });

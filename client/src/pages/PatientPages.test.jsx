@@ -355,6 +355,70 @@ describe('Booking', () => {
     }
   })
 
+  // RESUME/RECONCILE FIX (senior-dev payment audit, "payment sahi nahi hua hai"): the Razorpay
+  // `handler` callback only ever fires after Razorpay has already captured the money — if the
+  // subsequent /payments/razorpay/verify call itself fails (timeout, dropped connection, a
+  // transient error after the backend's own transaction actually committed), the payment may
+  // still have been recorded server-side. Showing a bare "payment failed" here would be a false
+  // negative and risk the patient trying to pay again. The fix re-fetches the appointment before
+  // giving up — if it already moved off pending_payment, treat it as confirmed instead.
+  it('reconciles instead of showing a false payment-failed error when verify fails but the appointment already moved off pending_payment', async () => {
+    vi.useFakeTimers()
+    let capturedOptions = null
+    window.Razorpay = vi.fn(function RazorpayMock(options) {
+      capturedOptions = options
+      return { open: vi.fn(), on: vi.fn() }
+    })
+    try {
+      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      apiClient.post.mockImplementation((url) => {
+        if (url === '/appointments') return Promise.resolve({ jobId: 'job-5', status: 'queued' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3' })
+        if (url === '/payments/razorpay/verify') return Promise.reject(new Error('The request took too long to respond. Please check your connection and try again.'))
+        return Promise.resolve({})
+      })
+      apiClient.get.mockImplementation((url) => {
+        if (url === '/appointments/booking-status/job-5') {
+          return Promise.resolve({
+            status: 'confirmed',
+            appointment: { id: 'appt-11', status: 'pending_payment', doctor: { name: 'Dr. Asha Rao' }, appointmentDate: '2026-09-25', fees: { totalAmount: 600 } },
+          })
+        }
+        if (url === '/appointments/appt-11') {
+          // The verify call's own response was lost, but the payment WAS recorded server-side —
+          // re-fetching shows the appointment already flipped off pending_payment.
+          return Promise.resolve({ id: 'appt-11', status: 'upcoming', doctor: { name: 'Dr. Asha Rao' }, appointmentDate: '2026-09-25', tokenNumber: 11, fees: { totalAmount: 600 }, paymentStatus: 'paid' })
+        }
+        return Promise.resolve([])
+      })
+
+      renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1700)
+      })
+      vi.useRealTimers()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Pay ₹600 now' }))
+      await waitFor(() =>
+        expect(apiClient.post).toHaveBeenCalledWith('/payments/razorpay/order', { appointmentId: 'appt-11', paymentOption: 'full' })
+      )
+
+      await act(async () => {
+        await capturedOptions.handler({ razorpay_order_id: 'order_3', razorpay_payment_id: 'pay_3', razorpay_signature: 'sig_3' })
+      })
+
+      await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments/appt-11'))
+      expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
+      expect(screen.getByText('Token #11')).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument() // no false "payment failed" error shown
+    } finally {
+      vi.useRealTimers()
+      delete window.Razorpay
+    }
+  })
+
   // MIN-BOOKING-AMOUNT FIX (superadmin request) regression test: the "Minimum booking amount"
   // card must read from the appointment's own server-computed `fees.minBookingAmount` — which
   // already bakes in the platform's cut — not the doctor's raw `minBookingAdvanceAmount` (that
@@ -563,6 +627,89 @@ describe('PatientAppointments', () => {
       expect(apiClient.post).toHaveBeenCalledWith('/reviews', { appointmentId: 'a1', rating: 5, text: 'Great doctor' })
     )
     expect(await screen.findByText(/Review submitted/i)).toBeInTheDocument()
+  })
+
+  // PENDING-PAYMENT RESUME FIX (multi-agent senior-dev payment audit, "payment sahi nahi hua
+  // hai"): before this, a pending_payment appointment had no Pay/Cancel action anywhere outside
+  // the one-shot post-booking screen — it just sat stuck forever the moment a patient navigated
+  // away before finishing payment. This list must now offer a way back in.
+  describe('pending_payment rows — resume payment / cancel (RESUME FIX)', () => {
+    const APPT_PENDING_PAYMENT = {
+      id: 'a5',
+      status: 'pending_payment',
+      doctor: { name: 'Dr. Asha Rao' },
+      clinic: { name: 'Heart Care Clinic' },
+      appointmentDate: '2026-09-01',
+      fees: { totalAmount: 600, minBookingAmount: 128 },
+      paymentStatus: 'pending',
+    }
+
+    it('shows Pay/Pay min/Cancel actions for a pending_payment row, and resuming payment pays and updates the row', async () => {
+      let capturedOptions = null
+      window.Razorpay = vi.fn(function RazorpayMock(options) {
+        capturedOptions = options
+        return { open: vi.fn(), on: vi.fn() }
+      })
+      try {
+        seedData({ appointments: [APPT_PENDING_PAYMENT] })
+        apiClient.post.mockImplementation((url) => {
+          if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_9' })
+          if (url === '/payments/razorpay/verify') {
+            return Promise.resolve({
+              payment: { id: 'pay-9', amount: 600 },
+              appointment: { ...APPT_PENDING_PAYMENT, status: 'upcoming', tokenNumber: 5, paymentStatus: 'paid' },
+            })
+          }
+          return Promise.resolve({})
+        })
+
+        renderConnected(PatientAppointments)
+
+        expect(screen.getByRole('button', { name: 'Pay ₹600 now' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Pay min ₹128 now' })).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'Pay ₹600 now' }))
+
+        await waitFor(() =>
+          expect(apiClient.post).toHaveBeenCalledWith('/payments/razorpay/order', { appointmentId: 'a5', paymentOption: 'full' })
+        )
+
+        await act(async () => {
+          await capturedOptions.handler({ razorpay_order_id: 'order_9', razorpay_payment_id: 'pay_9', razorpay_signature: 'sig_9' })
+        })
+
+        expect(await screen.findByText('#5')).toBeInTheDocument() // tokenNumber now assigned
+        expect(screen.queryByRole('button', { name: 'Pay ₹600 now' })).not.toBeInTheDocument() // row is no longer pending_payment
+      } finally {
+        delete window.Razorpay
+      }
+    })
+
+    it('cancels a pending_payment booking after confirmation, via the same cancelAppointment status transition', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      seedData({ appointments: [APPT_PENDING_PAYMENT] })
+      apiClient.patch.mockResolvedValue({ ...APPT_PENDING_PAYMENT, status: 'cancelled' })
+
+      renderConnected(PatientAppointments)
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(confirmSpy).toHaveBeenCalled()
+      await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/appointments/a5/status', { status: 'cancelled' }))
+      expect(await screen.findByRole('button', { name: /View slip/ })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument() // row is no longer pending_payment
+      confirmSpy.mockRestore()
+    })
+
+    it('does not cancel when the confirmation dialog is dismissed', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      seedData({ appointments: [APPT_PENDING_PAYMENT] })
+
+      renderConnected(PatientAppointments)
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(apiClient.patch).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+      confirmSpy.mockRestore()
+    })
   })
 })
 

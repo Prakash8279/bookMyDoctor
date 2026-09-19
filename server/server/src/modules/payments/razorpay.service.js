@@ -28,6 +28,7 @@ const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const paymentsService = require('./payments.service');
 const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
+const { withLock, LockAcquisitionError } = require('../../services/lockService');
 
 const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
 
@@ -138,6 +139,38 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
  */
 async function createOrder(appointmentId, requester, paymentOption = 'full') {
   assertGatewayConfigured();
+  // NO-DOUBLE-CHARGE LOCK FIX (senior-dev payment audit, "payment sahi nahi hua hai"): everything
+  // below this point only checks the appointment's CURRENT paymentStatus via a plain (non-locking)
+  // read — paymentStatus only ever flips away from unpaid once a payment is later VERIFIED, not
+  // when an order is merely created. Without a lock here, two concurrent createOrder calls for the
+  // same appointment (a double-click, two open tabs, a slow-network retry) could both pass that
+  // check and each get back a genuine, separately-payable Razorpay order. If the patient completed
+  // payment on both, Razorpay would capture the money TWICE — our own DB-side idempotency
+  // (payments.service.js's row lock + transactionRef replay guard) only stops a SECOND charge from
+  // being recorded a second time in our database; it can't stop the gateway from already having
+  // taken it. Serializing order creation per appointment closes that window: the second concurrent
+  // caller waits for the first to finish (by which point, if the first succeeds and the patient
+  // pays, a fresh order-creation check nothing has been fixed here yet — this only prevents the two
+  // *concurrent* orders from being created in the first place).
+  try {
+    return await withLock(
+      `razorpay-order:${appointmentId}`,
+      () => createOrderLocked(appointmentId, requester, paymentOption),
+      { ttlMs: 10000, waitTimeoutMs: 5000, retryDelayMs: 150 }
+    );
+  } catch (err) {
+    if (err instanceof LockAcquisitionError) {
+      throw new ApiError(
+        409,
+        'PAYMENT_ORDER_IN_PROGRESS',
+        'A payment for this appointment is already being started. Please wait a moment and try again.'
+      );
+    }
+    throw err;
+  }
+}
+
+async function createOrderLocked(appointmentId, requester, paymentOption) {
   const appointment = await getOwnAppointmentOrThrow(appointmentId, requester);
 
   if (appointment.paymentStatus === 'paid') {
@@ -326,10 +359,31 @@ async function verifyAndRecordPayment(body, requester) {
   // Return BOTH the payment and the freshly re-fetched, fully-shaped appointment — the frontend
   // needs the appointment's (possibly just-flipped) status/tokenNumber/paymentStatus to move a
   // `pending_payment` booking screen to "confirmed", not just the payment record.
-  const [payment, appointment] = await Promise.all([
-    paymentsService.getPaymentById(row.id, requester),
-    appointmentsService.getAppointmentById(appointmentId, requester),
-  ]);
+  //
+  // POST-COMMIT REFETCH FIX (senior-dev payment audit, "payment sahi nahi hua hai"): the payment
+  // itself is ALREADY correctly recorded by this point — createPaymentForAppointment's own
+  // transaction committed above. A failure in just these two read-backs (a transient DB hiccup, a
+  // brief connection-pool exhaustion) used to bubble up as whatever raw error Prisma threw,
+  // surfacing to the frontend as a generic failure that looks exactly like "your payment did not
+  // go through" even though it did. Wrapping this in its own try/catch with a distinct, honest
+  // ApiError means the frontend's own recovery path (PatientPages.jsx's payNow/resumePayment
+  // already re-checks the appointment's real status on ANY verify failure before showing an
+  // error — see hooks/useRazorpayPayment.js) gets a chance to show the true "already paid" state
+  // instead of a false "payment failed".
+  let payment;
+  let appointment;
+  try {
+    [payment, appointment] = await Promise.all([
+      paymentsService.getPaymentById(row.id, requester),
+      appointmentsService.getAppointmentById(appointmentId, requester),
+    ]);
+  } catch (refetchErr) {
+    throw new ApiError(
+      502,
+      'PAYMENT_RECORDED_REFETCH_FAILED',
+      'Your payment was recorded, but we could not load the latest booking details. Please refresh.'
+    );
+  }
   return { payment, appointment };
 }
 

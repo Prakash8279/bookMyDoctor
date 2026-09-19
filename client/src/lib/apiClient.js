@@ -45,7 +45,15 @@ export function clearTokens() {
   saveTokens(null)
 }
 
-const apiClient = axios.create({ baseURL: BASE_URL })
+// REQUEST-TIMEOUT FIX (senior-dev payment audit, "payment sahi nahi hua hai"): this client had NO
+// timeout at all, so a hung response (a slow/overloaded server, or a proxy that silently
+// black-holes the response instead of dropping the connection) left a caller's promise pending
+// forever. The worst case was the Razorpay payment-verification call — Razorpay had ALREADY
+// charged the patient by the time that call fires, so an indefinite hang left the "Opening
+// payment…" button frozen with no error and no way to tell whether the payment succeeded. 30s is
+// generous for a normal request/response but still bounds every call to a real outcome (success or
+// a catchable error) instead of an infinite wait.
+const apiClient = axios.create({ baseURL: BASE_URL, timeout: 30000 })
 
 apiClient.interceptors.request.use((config) => {
   if (tokens && tokens.accessToken) {
@@ -56,9 +64,15 @@ apiClient.interceptors.request.use((config) => {
 })
 
 function shapeError(body, originalError) {
-  const message = body?.error?.message || originalError?.message || 'Request failed'
+  // A timed-out request never reaches a server response, so `body` is always empty here — axios's
+  // own default message ("timeout of 30000ms exceeded") is accurate but not patient-facing.
+  const isTimeout = originalError?.code === 'ECONNABORTED' && /timeout/i.test(originalError?.message || '')
+  const message = body?.error?.message
+    || (isTimeout ? 'The request took too long to respond. Please check your connection and try again.' : null)
+    || originalError?.message
+    || 'Request failed'
   const err = new Error(message)
-  err.code = body?.error?.code || null
+  err.code = body?.error?.code || (isTimeout ? 'REQUEST_TIMEOUT' : null)
   err.details = body?.error?.details || null
   err.status = originalError?.response?.status || null
   return err
