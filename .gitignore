@@ -11,7 +11,7 @@ build/
 .env.*.local
 *.log
 .DS_Store
-uploads/
+server/server/uploads/
 
 # Flutter (mobile/) — see mobile/.gitignore for the full Flutter-specific set; these are the
 # generic patterns worth having apply at the repo root too.

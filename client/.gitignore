@@ -17,6 +17,10 @@ dist-ssr
 .env.*
 *.local
 
+# .env.example is a committed template with no real secrets (see its own header
+# comment) — explicitly un-ignore it despite the broad .env.* rule above.
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
