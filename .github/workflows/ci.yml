@@ -1,0 +1,72 @@
+name: CI
+
+# Runs on every push and every pull request. Nothing here needs a real Postgres/Redis: every
+# existing backend test (unit + integration) mocks config/db and config/redis at the boundary
+# (see server/server/tests/setupEnv.js and tests/integration/*.test.js's own header comments) —
+# so no service containers are wired up here on purpose, not by oversight.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  client-test:
+    name: Client (React) — test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  server-test:
+    name: Server (Node/Express) — test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: server/server/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  mobile-test:
+    name: Mobile (Flutter) — test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      - run: flutter pub get
+      # integration_test/ needs a real device/emulator, which this runner doesn't have — only
+      # the plain widget/unit tests under test/ run in CI. integration_test/app_test.dart still
+      # needs to be run by hand on a real device (flutter test integration_test/app_test.dart -d
+      # <device>) before you trust it; that's a separate, already-flagged manual step.
+      - run: flutter test test/
+
+  docker-build:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build server image
+        run: docker build -t bookmydoctor24-server:ci ./server/server
+      - name: Build client image
+        run: docker build -t bookmydoctor24-client:ci ./client
