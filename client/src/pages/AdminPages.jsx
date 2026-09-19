@@ -658,7 +658,7 @@ export function ManageClinics({ data }) {
       onRetry={load}
       rows={(data.clinics || [])}
       columns={[
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'name', label: 'Clinic' },
         { key: 'address', label: 'Address', render: (item) => item.address || [item.area?.name, item.city?.name].filter(Boolean).join(', ') || '—' },
         { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },
@@ -746,7 +746,7 @@ export function CitiesAreas({ data }) {
     <DataTable
       rows={[...cityRows, ...areaRows]}
       columns={[
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'name', label: 'Name' },
         { key: 'state', label: 'State' },
         { key: 'type', label: 'Type' },
@@ -859,7 +859,7 @@ export function ManagePatients({ data }) {
     </div>
     <ErrorNote>{statusError}</ErrorNote>
     <DataTable loading={loading} error={listError} onRetry={load} rows={patients} columns={[
-      { key: 'id', label: 'ID' },
+      { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
       { key: 'name', label: 'Patient' },
       { key: 'email', label: 'Email', render: (item) => item.email || '—' },
       { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },
@@ -1178,7 +1178,7 @@ export function Complaints({ data }) {
       onRetry={load}
       rows={complaints}
       columns={[
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'subject', label: 'Subject' },
         { key: 'raisedBy', label: 'Raised by', render: (item) => item.raisedBy?.name || '—' },
         { key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' },
