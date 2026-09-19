@@ -5,7 +5,7 @@ import { FormField } from '../components/FormField'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { StatusPill } from '../components/StatusPill'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate, sequenceId } from '../lib/format'
+import { formatDate, sequenceId, shortId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 
@@ -145,6 +145,11 @@ export function PortalAppointments({ data, role = 'patient' }) {
       <ErrorNote>{actionError}</ErrorNote>
       <DataTable loading={loading} error={listError} onRetry={load} rows={rows} columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
+        // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar
+        // admin ke") — 'ID' above is just this row's own display sequence number (DC01, DC02...),
+        // not the real booking id. Same shortId() format already used on doctor/receptionist's
+        // Appointments table and every payment table fixed earlier in this series.
+        { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },

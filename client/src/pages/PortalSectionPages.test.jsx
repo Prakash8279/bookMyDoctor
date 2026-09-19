@@ -22,6 +22,7 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
+import { shortId } from '../lib/format'
 import App from '../App'
 import {
   ContactInbox,
@@ -139,6 +140,17 @@ describe('PortalAppointments', () => {
     const chitraRow = (await screen.findByText('Chitra')).closest('tr')
     fireEvent.click(within(chitraRow).getByRole('button', { name: 'Confirm' }))
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/appointments/a3/status', { status: 'confirmed' }))
+  })
+
+  // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar admin ke")
+  // — the "Appointments registry" (admin view)'s 'ID' column is just this row's own display
+  // sequence number (DC01, DC02...), not the real booking id.
+  it('admin view: shows a "Booking ID" column with the real booking id, separate from the row sequence "ID" column', async () => {
+    mockGetRoutes({ '/appointments': APPOINTMENTS })
+    renderConnected(PortalAppointments, { role: 'admin' })
+
+    expect(await screen.findByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
+    expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
   })
 
   it('patient view: shows a read-only Details action instead of status controls', () => {
