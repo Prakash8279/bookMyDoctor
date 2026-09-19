@@ -355,7 +355,7 @@ export function DoctorVerification({ data }) {
       <ErrorNote>{statusError}</ErrorNote>
       <ErrorNote>{listError}</ErrorNote>
       <DataTable loading={loading} rows={allDoctors} columns={[
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'name', label: 'Doctor' },
         { key: 'registrationNumber', label: 'Registration' },
         { key: 'experienceYears', label: 'Experience', render: (item) => `${item.experienceYears || 0} years` },
@@ -387,7 +387,7 @@ export function DoctorVerification({ data }) {
         <EmptyState title="No doctors awaiting verification" message="Newly self-registered doctors, or any account created above without 'Verify immediately', will show up here." />
       ) : (
         <DataTable rows={pendingDoctors} columns={[
-          { key: 'id', label: 'ID' },
+          { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
           { key: 'name', label: 'Doctor' },
           { key: 'registrationNumber', label: 'Registration' },
           { key: 'experienceYears', label: 'Experience', render: (item) => `${item.experienceYears || 0} years` },
