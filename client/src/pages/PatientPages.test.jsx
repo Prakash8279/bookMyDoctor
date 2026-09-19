@@ -567,6 +567,22 @@ describe('PatientAppointments', () => {
     expect(screen.queryByText('₹309.75')).not.toBeInTheDocument()
   })
 
+  // COLUMN-CLARITY FIX (user request: "feec column ka matlab clear kro") — Paid (₹128) + Due
+  // (₹300) intentionally add up to LESS than the Fee column's ₹437.75 (the platform
+  // convenience/emergency charge and GST are only ever collected once, whichever payment option
+  // the patient picks — see utils/minBookingAmount.js's worked example), which reads as a
+  // calculation bug without an explanation. The column header is now "Full Fee" with a hover
+  // tooltip spelling out why it doesn't equal Paid + Due for a partially-paid booking.
+  it('labels the Fee column "Full Fee" with a tooltip explaining why it can exceed Paid + Due', () => {
+    seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
+    renderConnected(PatientAppointments)
+
+    const header = screen.getByRole('columnheader', { name: 'Full Fee' })
+    expect(header).toBeInTheDocument()
+    expect(header).toHaveAttribute('title', expect.stringMatching(/minimum booking amount/i))
+    expect(screen.queryByRole('columnheader', { name: 'Fee' })).not.toBeInTheDocument()
+  })
+
   it('refresh re-fetches appointments and payments from the server and re-renders with the new rows', async () => {
     seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
     const APPT_NEW = { ...APPT_COMPLETED, id: 'a2', tokenNumber: 4 }
