@@ -416,7 +416,18 @@ export function PatientAppointments({ data, history = false }) {
     const paid = status === 'paid'
       ? fee
       : appointmentPayments.reduce((sum, item) => sum + (Number(item.fees?.amount ?? item.amount) || 0), 0)
-    return { appointment, payment, fee, paid, due: Math.max(0, fee - paid), status, mode: payment?.mode || appointment.paymentMethod || 'pay_at_clinic' }
+    // MIN-BOOKING-REMAINDER FIX ("309 kyu bach raha hai 300 bachna chahiye" — same bug, second
+    // spot): this list re-derived "Due" as fee(totalAmount) - paid, which still counted the
+    // platform's convenience/emergency charge and its GST as owed even though that's fully
+    // collected online the moment the doctor's minimum advance is paid. For a 'partial' booking,
+    // what's actually left for the clinic to collect is the doctor's own remaining consultation-fee
+    // share — server-computed as fees.minBookingRemainder (appointments.service.js#shapeFees /
+    // utils/minBookingAmount.js#computeMinBookingRemainder) — so use that instead whenever it's
+    // available, and keep the old fee-paid fallback only for appointments where the doctor's
+    // minimum booking amount was never configured (computeMinBookingRemainder returns null then).
+    const minRemainder = appointment.fees?.minBookingRemainder != null ? Number(appointment.fees.minBookingRemainder) : null
+    const due = status === 'partial' && minRemainder != null ? minRemainder : Math.max(0, fee - paid)
+    return { appointment, payment, fee, paid, due, status, mode: payment?.mode || appointment.paymentMethod || 'pay_at_clinic' }
   })
   const paymentReference = (payment) => payment?.transactionRef || '—'
   const displayDate = formatDate

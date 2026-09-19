@@ -478,6 +478,31 @@ describe('PatientAppointments', () => {
     expect(screen.queryByText('₹0')).not.toBeInTheDocument()
   })
 
+  // MIN-BOOKING-REMAINDER FIX ("309 kyu bach raha hai 300 bachna chahiye" — same bug as the booking
+  // confirmation screen above, second spot): this list used to re-derive Due as
+  // fee(totalAmount) - paid, which still counted the platform's already-settled convenience/
+  // emergency charge and its GST as owed. Once fees.minBookingRemainder is known (the doctor's own
+  // remaining consultation-fee share — see utils/minBookingAmount.js#computeMinBookingRemainder),
+  // Due must show that instead.
+  it('shows the server-computed minBookingRemainder as Due for a partially-paid appointment, not totalAmount - paid', () => {
+    const APPT_PARTIAL_WITH_REMAINDER = {
+      ...APPT_COMPLETED,
+      id: 'a4',
+      status: 'upcoming',
+      fees: { totalAmount: 437.75, minBookingRemainder: 300 },
+      paymentStatus: 'partial',
+    }
+    const ADVANCE_PAYMENT = { id: 'pay-4', appointment: { id: 'a4' }, status: 'paid', mode: 'online', transactionRef: 'rzp_2', fees: { amount: 128 } }
+    seedData({ appointments: [APPT_PARTIAL_WITH_REMAINDER], payments: [ADVANCE_PAYMENT] })
+
+    renderConnected(PatientAppointments)
+
+    expect(screen.getByText('₹437.75')).toBeInTheDocument() // Fee
+    expect(screen.getByText('₹128')).toBeInTheDocument() // Paid
+    expect(screen.getByText('₹300')).toBeInTheDocument() // Due — minBookingRemainder, not 309.75
+    expect(screen.queryByText('₹309.75')).not.toBeInTheDocument()
+  })
+
   it('refresh re-fetches appointments and payments from the server and re-renders with the new rows', async () => {
     seedData({ appointments: [APPT_COMPLETED], payments: [PAYMENT1] })
     const APPT_NEW = { ...APPT_COMPLETED, id: 'a2', tokenNumber: 4 }
