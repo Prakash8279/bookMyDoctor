@@ -190,6 +190,22 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                                 'Token: ${a.tokenNumber ?? "—"} · Fee: ${a.fees.consultationFee != null ? "₹${a.fees.consultationFee!.toStringAsFixed(0)}" : "—"}${a.isEmergency ? " · Emergency" : ""}',
                                 style: const TextStyle(fontSize: 12),
                               ),
+                              // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua
+                              // hai to receptionist ko v to baki ka due show hoga aur doctor ko")
+                              // — `fees.due` is server-computed and already contextual to
+                              // paymentStatus (0 once paid, the doctor's own remaining share once
+                              // a patient paid just the minimum booking amount online, the full
+                              // fee if nothing's paid yet) — see
+                              // appointments.service.js#shapeFees. Only shown once there's
+                              // actually something left to collect, so a fully-paid row doesn't
+                              // clutter the card with a redundant "Due: ₹0".
+                              if (a.fees.due != null && a.fees.due! > 0) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Due: ₹${a.fees.due!.toStringAsFixed(0)}',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warning),
+                                ),
+                              ],
                               // COMPLETENESS FIX (mobile parity): the web AppointmentTable shows a
                               // dedicated Payment (status) + Payment method column per row
                               // (StaffPages.jsx#AppointmentTable) — the model already parses both

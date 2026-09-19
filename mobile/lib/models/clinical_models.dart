@@ -34,6 +34,14 @@ class Fees {
   final double? amount; // payments (same slot, different key name)
   final double? commission;
   final double? clinicPayout;
+  // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist ko v to
+  // baki ka due show hoga aur doctor ko") — doctor/receptionist only ever receive
+  // {consultationFee, due} from appointments.service.js#shapeFees (mandatory rule 8 masking still
+  // applies — never totalAmount/GST/convenience-fee breakdown for these two roles). `due` is
+  // already contextual to the appointment's paymentStatus server-side (0 once paid, the doctor's
+  // own outstanding share once a patient paid just the minimum booking amount online, the full fee
+  // if nothing's paid yet) — never re-derive it client-side.
+  final double? due;
 
   Fees({
     this.consultationFee,
@@ -44,6 +52,7 @@ class Fees {
     this.amount,
     this.commission,
     this.clinicPayout,
+    this.due,
   });
 
   factory Fees.fromJson(Map<String, dynamic>? json) {
@@ -58,6 +67,7 @@ class Fees {
       amount: d('amount'),
       commission: d('commission'),
       clinicPayout: d('clinicPayout'),
+      due: d('due'),
     );
   }
 }

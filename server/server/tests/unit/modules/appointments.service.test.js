@@ -262,7 +262,7 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
 });
 
 describe('appointmentsService.getAppointmentById — fee masking by role (rule 8)', () => {
-  test('doctor/receptionist see ONLY consultationFee — every other money field is OMITTED, not null', async () => {
+  test('doctor/receptionist see ONLY consultationFee + due — every other money field is OMITTED, not null', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
     loadCommissionPercentIfAdmin.mockResolvedValue(null);
 
@@ -271,7 +271,58 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
     expect(result.fees.consultationFee.toString()).toBe('500');
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'convenienceFee')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'totalAmount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result.fees, 'gstAmount')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result.fees, 'minBookingAmount')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'commission')).toBe(false);
+  });
+
+  // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist ko v
+  // to baki ka due show hoga aur doctor ko") — doctor/receptionist previously had no way to tell
+  // how much was actually left to collect once a patient paid just the minimum booking amount
+  // online. `due` is contextual to the appointment's current paymentStatus, and never exposes any
+  // of the masked platform-business fields (convenienceFee/gstAmount/totalAmount/minBookingAmount)
+  // to compute it — see appointments.service.js#shapeFees.
+  describe('due — contextual to paymentStatus (DUE-AMOUNT VISIBILITY FIX)', () => {
+    test('paid -> due is 0, nothing left to collect', async () => {
+      prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ paymentStatus: 'paid' }));
+      loadCommissionPercentIfAdmin.mockResolvedValue(null);
+
+      const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'receptionist' });
+
+      expect(result.fees.due.toString()).toBe('0');
+    });
+
+    test('pending (nothing paid yet) -> due is the full consultationFee', async () => {
+      prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ paymentStatus: 'pending' }));
+      loadCommissionPercentIfAdmin.mockResolvedValue(null);
+
+      const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'receptionist' });
+
+      expect(result.fees.due.toString()).toBe('500');
+    });
+
+    test('partial, doctor minimum known -> due is the doctor\'s own outstanding share (consultationFee - minBookingAdvanceAmount), NOT the full consultationFee', async () => {
+      prisma.appointment.findUnique.mockResolvedValue(
+        fullAppointmentRow({
+          paymentStatus: 'partial',
+          doctor: { id: DOCTOR_ID, name: 'Dr. Asha', photoUrl: null, doctorProfile: { minBookingAdvanceAmount: dec(100) } },
+        })
+      );
+      loadCommissionPercentIfAdmin.mockResolvedValue(null);
+
+      const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'doctor' });
+
+      expect(result.fees.due.toString()).toBe('400'); // 500 - 100, never totalAmount-based
+    });
+
+    test('partial, doctor minimum NOT known (e.g. cleared after the online payment) -> falls back to the full consultationFee', async () => {
+      prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ paymentStatus: 'partial' })); // fixture's doctorProfile has no minBookingAdvanceAmount
+      loadCommissionPercentIfAdmin.mockResolvedValue(null);
+
+      const result = await appointmentsService.getAppointmentById('appt-1', { id: DOCTOR_ID, role: 'receptionist' });
+
+      expect(result.fees.due.toString()).toBe('500');
+    });
   });
 
   test('a patient sees the full fee breakdown but never commission/clinicPayout', async () => {

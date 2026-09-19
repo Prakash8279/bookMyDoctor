@@ -208,10 +208,14 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
               );
             },
           ),
-          // COMPLETENESS ADD — mirrors web's CashPayment "opens as soon as an appointment is
-          // picked" paid/due summary. A receptionist only ever sees `fees.consultationFee`
-          // (never totalAmount/GST breakdown), so this shows the same fee + a clear paid/due
-          // line rather than numbers that would need the masked breakdown.
+          // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist
+          // ko v to baki ka due show hoga aur doctor ko") — this used to show only a vague
+          // "advance already paid, collecting the remaining balance now" sentence for a partial
+          // appointment, with NO number at all, since a receptionist only ever saw
+          // `fees.consultationFee`. The server now also sends a single, already-contextual
+          // `fees.due` figure (see appointments.service.js#shapeFees) — the doctor's own
+          // outstanding share once a minimum-only payment was made online, without leaking any of
+          // the masked platform-business fields — so the exact amount to collect is shown here.
           if (_selectedAppointment != null) ...[
             const SizedBox(height: AppSpacing.md),
             Container(
@@ -232,8 +236,8 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
                   const SizedBox(height: 4),
                   Text(
                     _selectedAppointment!.paymentStatus == 'partial'
-                        ? 'An advance has already been paid online for this appointment — you\'re collecting the remaining balance now.'
-                        : 'Paid so far: ₹0 · Due now: ₹${_selectedAppointment!.fees.consultationFee?.toStringAsFixed(0) ?? 0}',
+                        ? 'An advance has already been paid online for this appointment — Due now: ₹${(_selectedAppointment!.fees.due ?? _selectedAppointment!.fees.consultationFee)?.toStringAsFixed(0) ?? 0} collected at the clinic.'
+                        : 'Paid so far: ₹0 · Due now: ₹${(_selectedAppointment!.fees.due ?? _selectedAppointment!.fees.consultationFee)?.toStringAsFixed(0) ?? 0}',
                     style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                   ),
                 ],

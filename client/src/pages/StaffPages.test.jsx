@@ -774,17 +774,24 @@ describe('CashPayment', () => {
     })))
   })
 
-  it('shows an "advance already paid" note instead of a due amount for a partial appointment', async () => {
+  // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist ko v to
+  // baki ka due show hoga aur doctor ko") — this used to show a vague "advance already paid,
+  // collecting the remaining balance now" sentence with NO number at all for a partial
+  // appointment (receptionist only ever saw `fees.consultationFee`). The server now also sends a
+  // single, already-contextual `fees.due` figure (the doctor's own outstanding share, never a
+  // masked platform-business field) — see appointments.service.js#shapeFees — so the exact amount
+  // to collect is now shown as a number, not just prose.
+  it('shows the exact server-computed due amount (fees.due) for a partial appointment, not just a vague note', async () => {
     mockGetRoutes({ '/payments': [] })
     renderConnected(CashPayment, {
       data: {
-        appointments: [{ id: 'a1', patient: { id: 'p1', name: 'Asha' }, doctor: { id: 'd1' }, clinic: { id: 'c1' }, fees: { consultationFee: 500 }, paymentStatus: 'partial' }],
+        appointments: [{ id: 'a1', patient: { id: 'p1', name: 'Asha' }, doctor: { id: 'd1' }, clinic: { id: 'c1' }, fees: { consultationFee: 500, due: 400 }, paymentStatus: 'partial' }],
       },
     })
 
     fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
-    expect(screen.getByText(/already been paid online.*collecting the remaining balance now/)).toBeInTheDocument()
-    expect(screen.queryByText(/Due now/)).not.toBeInTheDocument()
+    expect(screen.getByText(/already been paid online/)).toBeInTheDocument()
+    expect(screen.getByText(/Due now: ₹400/)).toBeInTheDocument()
   })
 
   // BUG FIX regression coverage ("eshko sahi review kro proper"): a real appointment id is a full

@@ -175,6 +175,13 @@ const AppointmentTable = ({ data }) => {
         // Doctor/receptionist fee masking exposes ONLY consultationFee (plan §1.8) —
         // never read a flat `.totalAmount`/`.paidAmount`, those fields don't exist here.
         { key: 'consultationFee', label: 'Fee', render: (item) => item.fees?.consultationFee != null ? `₹${Number(item.fees.consultationFee).toFixed(2)}` : '—' },
+        // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist ko
+        // v to baki ka due show hoga aur doctor ko") — `fees.due` is server-computed and already
+        // contextual to paymentStatus (0 once paid, the doctor's own remaining share once a
+        // patient paid just the minimum booking amount online, the full fee if nothing's paid
+        // yet) — see appointments.service.js#shapeFees. Never re-derive this client-side from
+        // totalAmount/consultationFee — doctor/receptionist never even receive those other fields.
+        { key: 'due', label: 'Due', render: (item) => item.fees?.due != null ? `₹${Number(item.fees.due).toFixed(2)}` : '—' },
         { key: 'reason', label: 'Notes', render: (item) => item.reason || '—' },
         {
           key: 'actionCol',
@@ -1140,17 +1147,21 @@ export function CashPayment({ data }) {
         <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map(appointmentLabel)} value={selectedAppointment ? appointmentLabel(selectedAppointment) : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setAppointmentId(unpaidAppointments[index]?.id || '') }} required />
         <input type="hidden" name="appointment" value={appointmentId} />
         <FormField label="Payment method" name="method" type="select" options={['Cash', 'Upi', 'Card', 'Online']} required />
-        {/* COMPLETENESS ADD (request: "koi patient ko select karne ke bad open ho kitna payment
-            hua hai kitna baki hai") — opens as soon as an appointment is picked above. A
-            receptionist only ever sees `fees.consultationFee` (mandatory rule 8 masking, same as
-            everywhere else in this app) — never totalAmount/GST/convenience-fee breakdown — so a
-            'partial' appointment's exact already-paid/remaining split can't be shown as numbers
-            without breaching that rule. Shown as a clear status line instead. */}
+        {/* DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist
+            ko v to baki ka due show hoga aur doctor ko") — this used to show only a vague
+            "advance already paid online, collecting the remaining balance now" sentence for a
+            'partial' appointment, with NO number at all, because the receptionist only ever saw
+            `fees.consultationFee` (mandatory rule 8 masking still applies — never
+            totalAmount/GST/convenience-fee breakdown). The server now also sends a single,
+            already-contextual `fees.due` figure (see appointments.service.js#shapeFees) — the
+            doctor's own outstanding share once a minimum-only payment was made online, without
+            leaking any of the masked platform-business fields — so the exact amount to collect
+            can finally be shown as a number. */}
         {selectedAppointment && <div className="sm:col-span-2 rounded-button border border-border bg-surface px-4 py-3 text-sm">
           <p className="font-semibold text-ink">Consultation fee: ₹{selectedAppointment.fees?.consultationFee ?? 0}</p>
           {selectedAppointment.paymentStatus === 'partial'
-            ? <p className="mt-1 text-muted">An advance has already been paid online for this appointment — you're collecting the remaining balance now.</p>
-            : <p className="mt-1 text-muted">Paid so far: ₹0 · Due now: ₹{selectedAppointment.fees?.consultationFee ?? 0}</p>}
+            ? <p className="mt-1 text-muted">An advance has already been paid online for this appointment — <strong>Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</strong> collected at the clinic.</p>
+            : <p className="mt-1 text-muted">Paid so far: ₹0 · Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</p>}
         </div>}
         <FormField label="UTR / Transaction number" name="transaction" placeholder="Bank/UPI reference number" />
         <FormField label="UPI ID" name="payerUpiId" placeholder="e.g. name@okhdfcbank" />

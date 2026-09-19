@@ -187,7 +187,37 @@ function generateSlotCandidates(startTime, endTime, slotMinutes) {
  */
 function shapeFees(row, role, commissionPercent) {
   if (STAFF_ROLES.includes(role)) {
-    return { consultationFee: row.consultationFee };
+    // DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist ko v
+    // to baki ka due show hoga aur doctor ko") — doctor/receptionist previously saw ONLY
+    // consultationFee, with no way to tell how much is actually left to collect once a patient
+    // paid just the minimum booking amount online (paymentStatus 'partial'). Mandatory rule 8
+    // masking still applies — convenienceFee/emergencyFee/gstAmount/totalAmount/minBookingAmount/
+    // commission/clinicPayout stay admin-only platform-business figures — but a single, already-
+    // contextual `due` figure (what's actually owed right now, given the appointment's current
+    // paymentStatus) doesn't leak any of those, and is exactly what a receptionist/doctor needs at
+    // the counter:
+    //   - 'paid'    -> 0, nothing left.
+    //   - 'partial' -> the doctor's own outstanding consultation-fee share (consultationFee minus
+    //                  the minimum advance already paid online) — see
+    //                  utils/minBookingAmount.js#computeMinBookingRemainder. Falls back to the
+    //                  full consultationFee if the doctor's minimum booking amount can't be
+    //                  determined (e.g. it was cleared after the online payment), same fallback
+    //                  payments.service.js's actual collection logic already uses.
+    //   - anything else (pending/unset) -> the full consultationFee, nothing paid yet.
+    const minBookingAdvanceAmount = row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null;
+    let due;
+    if (row.paymentStatus === 'paid') {
+      due = new Prisma.Decimal(0);
+    } else if (row.paymentStatus === 'partial') {
+      const remainder = computeMinBookingRemainder({
+        consultationFee: row.consultationFee,
+        minBookingAdvanceAmount,
+      });
+      due = remainder != null ? new Prisma.Decimal(remainder) : row.consultationFee;
+    } else {
+      due = row.consultationFee;
+    }
+    return { consultationFee: row.consultationFee, due };
   }
 
   if (ADMIN_ROLES.includes(role)) {
