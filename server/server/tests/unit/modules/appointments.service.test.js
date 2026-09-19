@@ -287,6 +287,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
       gstAmount: dec(93.6),
       totalAmount: dec(613.6),
       minBookingAmount: null, // this fixture's doctor has no minBookingAdvanceAmount configured
+      minBookingRemainder: null, // same fixture — no minBookingAdvanceAmount means no remainder either
     });
     expect(Object.prototype.hasOwnProperty.call(result.fees, 'commission')).toBe(false);
   });

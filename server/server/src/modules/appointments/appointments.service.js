@@ -27,7 +27,7 @@ const env = require('../../config/env');
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { formatDateOnly, todayUTCDateOnly } = require('../../utils/dateOnly');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
-const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
+const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
 // live booking state; see cacheService.js header for the general caching contract.
@@ -218,12 +218,17 @@ function shapeFees(row, role, commissionPercent) {
   }
 
   // patient (their own booking, enforced by the visibility check upstream).
+  const minBookingAdvanceAmount = row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null;
   const minBookingAmount = computeMinBookingAmount({
     consultationFee: row.consultationFee,
     convenienceFee: row.convenienceFee,
     emergencyFee: row.emergencyFee,
     gstAmount: row.gstAmount,
-    minBookingAdvanceAmount: row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+    minBookingAdvanceAmount,
+  });
+  const minBookingRemainder = computeMinBookingRemainder({
+    consultationFee: row.consultationFee,
+    minBookingAdvanceAmount,
   });
   return {
     consultationFee: row.consultationFee,
@@ -238,6 +243,12 @@ function shapeFees(row, role, commissionPercent) {
     // GST on just the doctor's minimum fee (not on the platform charge). See
     // utils/minBookingAmount.js. null when the doctor hasn't configured a minimum.
     minBookingAmount: minBookingAmount != null ? new Prisma.Decimal(minBookingAmount) : null,
+    // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna chahiye")
+    // — what's actually left to pay at the clinic: just the doctor's own outstanding consultation
+    // share (consultationFee - minBookingAdvanceAmount), never totalAmount - minBookingAmount
+    // (that double-subtracts the platform charge/GST, which are already fully settled online).
+    // See utils/minBookingAmount.js#computeMinBookingRemainder.
+    minBookingRemainder: minBookingRemainder != null ? new Prisma.Decimal(minBookingRemainder) : null,
   };
 }
 

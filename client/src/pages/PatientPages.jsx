@@ -316,6 +316,12 @@ export function Booking({ data }) {
     // that exact same figure (razorpay.service.js#createOrder), so what's shown here always
     // matches what's actually charged.
     const minAmount = Number(booked.fees?.minBookingAmount) || 0
+    // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna chahiye")
+    // — this used to be computed here as totalAmount - minAmount, which double-subtracted the
+    // platform charge/GST that are already fully settled by the online minimum payment. The
+    // clinic only ever collects the doctor's own remaining consultation-fee share; see
+    // appointments.service.js#shapeFees / utils/minBookingAmount.js#computeMinBookingRemainder.
+    const minRemainder = Number(booked.fees?.minBookingRemainder) || 0
     if (pendingPayment) {
       // No token yet — an online booking with a fee must be paid before one is issued (see
       // appointments.service.js#runBookingJob). Offer the two payment choices: full amount, or
@@ -334,7 +340,7 @@ export function Booking({ data }) {
             </div>
             {minAmount > 0 && <div className="rounded-button bg-surface p-4">
               <div className="flex items-center justify-between"><span className="text-sm font-medium">Minimum booking amount</span><strong className="text-lg">₹{minAmount}</strong></div>
-              <p className="mt-1 text-xs text-muted">Remaining ₹{Math.max(0, totalAmount - minAmount)} to be paid at the clinic.</p>
+              <p className="mt-1 text-xs text-muted">Remaining ₹{minRemainder} to be paid at the clinic.</p>
               <Button className="mt-3 w-full" onClick={() => payNow('minimum')} disabled={payingNow}>{payingNow ? 'Opening payment…' : `Pay ₹${minAmount} now`}</Button>
             </div>}
           </div>

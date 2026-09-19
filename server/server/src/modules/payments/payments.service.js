@@ -28,6 +28,7 @@ const idGenerators = require('../../utils/idGenerators');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
+const { computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -269,6 +270,11 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         emergencyFee: true,
         gstAmount: true,
         totalAmount: true,
+        // doctor.doctorProfile.minBookingAdvanceAmount added (MIN-BOOKING-REMAINDER FIX) — the
+        // 'partial' branch below needs it to compute the correct clinic-collected remainder
+        // (consultationFee - minBookingAdvanceAmount), not totalAmount - alreadyPaid; see
+        // utils/minBookingAmount.js#computeMinBookingRemainder.
+        doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true } } } },
       },
     });
 
@@ -358,30 +364,51 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
     // double-record this appointment's revenue (already-paid advance + a second "full fee"
     // charge) and silently break the "one paid payment row per appointment" assumption the admin
     // dashboard/revenue-trend aggregates rely on. So for a 'partial' appointment, the amount to
-    // charge is ALWAYS auto-computed as the true remaining balance — never trusted from a caller,
-    // exactly like every other amount in this function.
+    // charge is ALWAYS auto-computed as the doctor's remaining consultation-fee share (see the
+    // MIN-BOOKING-REMAINDER FIX below — deliberately NOT totalAmount-alreadyPaid) — never trusted
+    // from a caller, exactly like every other amount in this function.
     let chargedAmount;
     let alreadyPaid = new Prisma.Decimal(0);
+    // Set only on the "clinic collects the doctor's remaining consultation share" path below —
+    // used afterwards to force isFullPayment/newPaymentStatus without re-comparing to
+    // totalAmount (see the MIN-BOOKING-REMAINDER FIX comment further down for why).
+    let isClinicRemainderSettlement = false;
     if (appointment.paymentStatus === 'partial') {
       const priorPaidAgg = await tx.payment.aggregate({
         where: { appointmentId: appointment.id, status: 'paid' },
         _sum: { amount: true },
       });
       alreadyPaid = priorPaidAgg._sum.amount || new Prisma.Decimal(0);
-      // ACCOUNTING FIX (multi-agent payment audit — critical): this branch used to ALWAYS
-      // recompute chargedAmount as totalAmount-alreadyPaid, discarding whatever `amount` the
-      // caller passed in. For the receptionist/admin counter-payment caller that's correct (it
-      // never passes an explicit amount — see doc comment above). But razorpay.service.js DOES
-      // pass an explicit amount here, and it is never a client-supplied figure — it's whatever
-      // Razorpay's own order API says was actually charged (see
-      // razorpay.service.js#verifyAndRecordPayment). If a patient somehow ends up with two
-      // outstanding Razorpay orders for the same appointment (e.g. two tabs, one for 'minimum'
-      // and one for 'full') and both get verified, silently clamping the second charge down to
-      // "whatever's left" throws away the real amount Razorpay captured — the difference vanishes
-      // with no Payment row, no receipt, and no way to detect it from the admin ledger. Recording
-      // the actual verified amount instead keeps the books accurate even in that edge case (an
-      // overpayment is then visible and refundable, instead of silently lost).
-      chargedAmount = mode === 'online' && amount != null ? new Prisma.Decimal(amount) : appointment.totalAmount.minus(alreadyPaid);
+      if (mode === 'online' && amount != null) {
+        // ACCOUNTING FIX (multi-agent payment audit — critical): razorpay.service.js DOES pass an
+        // explicit amount here, and it is never a client-supplied figure — it's whatever
+        // Razorpay's own order API says was actually charged (see
+        // razorpay.service.js#verifyAndRecordPayment). If a patient somehow ends up with two
+        // outstanding Razorpay orders for the same appointment (e.g. two tabs, one for 'minimum'
+        // and one for 'full') and both get verified, silently clamping the second charge down to
+        // "whatever's left" throws away the real amount Razorpay captured — the difference
+        // vanishes with no Payment row, no receipt, and no way to detect it from the admin
+        // ledger. Recording the actual verified amount instead keeps the books accurate even in
+        // that edge case (an overpayment is then visible and refundable, instead of silently
+        // lost).
+        chargedAmount = new Prisma.Decimal(amount);
+      } else {
+        // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna
+        // chahiye") — this used to ALWAYS recompute chargedAmount as totalAmount - alreadyPaid,
+        // which double-subtracts the platform charge/GST already fully settled by the online
+        // minimum payment (see utils/minBookingAmount.js#computeMinBookingRemainder for the full
+        // rationale). The receptionist/admin counter-payment caller never passes an explicit
+        // amount, so this is the only path that reaches here.
+        const remainder = computeMinBookingRemainder({
+          consultationFee: appointment.consultationFee,
+          minBookingAdvanceAmount: appointment.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+        });
+        // Falls back to the old totalAmount-based remainder if the doctor's minimum can't be
+        // found any more (e.g. cleared from their profile after the online min-payment was made)
+        // — better a defensive answer than a crash on an edge case this rare.
+        chargedAmount = remainder != null ? new Prisma.Decimal(remainder) : appointment.totalAmount.minus(alreadyPaid);
+        isClinicRemainderSettlement = true;
+      }
       if (chargedAmount.lessThanOrEqualTo(0.01)) {
         // Rounding already covered the balance (or somehow over-covered it) — nothing left to
         // collect. Surface the same error a fully-paid appointment gets rather than recording a
@@ -391,13 +418,17 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
     } else {
       chargedAmount = amount != null ? new Prisma.Decimal(amount) : appointment.totalAmount;
     }
-    // A tiny (1 paisa) tolerance absorbs Decimal/paise rounding between our totalAmount and
-    // whatever Razorpay's order API echoes back — without it, a payment for the full fee could
-    // spuriously land one paisa short of `paid` and get recorded as `partial`. Computed against
-    // the CUMULATIVE amount paid so far (this charge plus whatever was already paid), not this
-    // charge alone — otherwise the remaining-balance charge above (which is deliberately less
-    // than the full fee) would itself be misclassified as another 'partial' payment forever.
-    const isFullPayment = alreadyPaid.plus(chargedAmount).greaterThanOrEqualTo(appointment.totalAmount.minus(0.01));
+    // MIN-BOOKING-REMAINDER FIX: once the clinic collects exactly the computed remainder above,
+    // the booking is fully settled BY DESIGN even though alreadyPaid + chargedAmount can land
+    // below totalAmount (the platform's convenience charge is collected online in full either
+    // way, and GST only ever applies to whatever portion of the consultation fee actually went
+    // through the online gateway — so nothing is left owing once this remainder is paid). Every
+    // other path keeps the original totalAmount comparison: a tiny (1 paisa) tolerance absorbs
+    // Decimal/paise rounding between our totalAmount and whatever Razorpay's order API echoes
+    // back, computed against the CUMULATIVE amount paid so far (this charge plus whatever was
+    // already paid), not this charge alone.
+    const isFullPayment =
+      isClinicRemainderSettlement || alreadyPaid.plus(chargedAmount).greaterThanOrEqualTo(appointment.totalAmount.minus(0.01));
     const newPaymentStatus = isFullPayment ? 'paid' : 'partial';
 
     // Every fee field is copied verbatim from the appointment — this is the "never trust client

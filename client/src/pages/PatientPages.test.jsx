@@ -384,10 +384,12 @@ describe('Booking', () => {
                 status: 'pending_payment',
                 doctor: { name: 'Dr. Asha Rao' },
                 appointmentDate: '2026-09-25',
-                // Server-computed: platform charge (₹20 convenience + ₹0.60 GST-ish) + doctor's
-                // minBookingAdvanceAmount x admin commission% — deliberately NOT ₹100 (the raw
-                // doctor-set value), to prove the UI reads the computed field, not the raw one.
-                fees: { totalAmount: 546, minBookingAmount: 33.6 },
+                // Server-computed: platform charge + GST on just the doctor's minimum fee —
+                // deliberately NOT ₹100 (the raw doctor-set value), to prove the UI reads the
+                // computed field, not the raw one. minBookingRemainder (MIN-BOOKING-REMAINDER
+                // FIX) is the doctor's own outstanding consultation share, never
+                // totalAmount - minBookingAmount (546 - 33.6 = 512.4, deliberately NOT shown).
+                fees: { totalAmount: 546, minBookingAmount: 33.6, minBookingRemainder: 400 },
               },
             })
           : Promise.resolve([])
@@ -405,6 +407,8 @@ describe('Booking', () => {
       expect(screen.getByText('Minimum booking amount')).toBeInTheDocument()
       expect(screen.getByText('₹33.6')).toBeInTheDocument()
       expect(screen.queryByText('₹100')).not.toBeInTheDocument()
+      expect(screen.getByText('Remaining ₹400 to be paid at the clinic.')).toBeInTheDocument()
+      expect(screen.queryByText(/Remaining ₹512\.4/)).not.toBeInTheDocument()
 
       fireEvent.click(screen.getByRole('button', { name: 'Pay ₹33.6 now' }))
       await waitFor(() =>

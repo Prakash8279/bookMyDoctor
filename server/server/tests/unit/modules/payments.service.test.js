@@ -16,10 +16,13 @@
  *     clinic match / patient ownership) must be checked BEFORE any state-revealing check
  *     (already-paid, cancelled) — an out-of-scope caller must get the same 403/404 regardless of
  *     the appointment's state, never leaking that state first. A 'partial' appointment must
- *     always charge the true remaining balance (never trust a caller-supplied amount for that
- *     case), and the 1-paisa full-payment tolerance must be computed against the CUMULATIVE
- *     amount paid so far, not the current charge alone (else the deliberately-partial remaining-
- *     balance charge would misclassify itself as 'partial' forever).
+ *     always charge the doctor's remaining consultation-fee share — consultationFee minus the
+ *     doctor's own minBookingAdvanceAmount (MIN-BOOKING-REMAINDER FIX; falls back to
+ *     totalAmount-alreadyPaid only when the doctor's minimum can't be found) — never trusting a
+ *     caller-supplied amount for that case, and the 1-paisa full-payment tolerance must be
+ *     computed against the CUMULATIVE amount paid so far, not the current charge alone (else the
+ *     deliberately-partial remaining-balance charge would misclassify itself as 'partial'
+ *     forever).
  *   - createStandalonePayment's server-side fee computation (never trust a client-sent amount)
  *     and its Redis-backed double-submit guard, which must key on requester+clinic+patient+
  *     doctor+amount so two genuinely different walk-in payments never collide.
@@ -321,7 +324,11 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('partial');
   });
 
-  test('a "partial" appointment always auto-computes the true remaining balance — never trusts a caller-supplied amount', async () => {
+  // buildAppointmentRow's default fixture has no `doctor` relation at all, so
+  // computeMinBookingRemainder can't find a minBookingAdvanceAmount and this falls back to the
+  // pre-existing totalAmount-alreadyPaid math — see the dedicated MIN-BOOKING-REMAINDER test
+  // below for the real doctor-minimum-aware formula.
+  test('a "partial" appointment auto-computes the remaining balance (fallback: totalAmount-alreadyPaid when the doctor\'s minimum can\'t be found) — never trusts a caller-supplied amount', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ paymentStatus: 'partial' }));
     tx.payment.aggregate.mockResolvedValue({ _sum: { amount: dec(100) } });
@@ -333,6 +340,33 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
 
     expect(tx.payment.create.mock.calls[0][0].data.amount.toString()).toBe('513.6'); // 613.6 - 100
     expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('paid'); // fully covers the balance
+  });
+
+  // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna chahiye") —
+  // the clinic-collected remainder for a receptionist/admin counter payment must be the doctor's
+  // own outstanding consultation-fee share (consultationFee - minBookingAdvanceAmount), NOT
+  // totalAmount - alreadyPaid (that double-subtracts the platform charge/GST already settled
+  // online). Fixture: consultationFee 500, doctor's minBookingAdvanceAmount 100 (the amount
+  // already paid online) -> remainder 500-100 = 400, deliberately NOT 613.6-100 = 513.6.
+  test('a "partial" appointment charges the doctor\'s remaining consultation-fee share, not totalAmount-alreadyPaid, when the doctor\'s minimum is known', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(
+      buildAppointmentRow({
+        paymentStatus: 'partial',
+        doctor: { doctorProfile: { minBookingAdvanceAmount: dec(100) } },
+      })
+    );
+    tx.payment.aggregate.mockResolvedValue({ _sum: { amount: dec(100) } });
+    tx.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'clinic-1' });
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
+
+    await paymentsService.createPaymentForAppointment('appt-1', RECEPTIONIST_MATCHING(), 'cash', null);
+
+    expect(tx.payment.create.mock.calls[0][0].data.amount.toString()).toBe('400'); // 500 - 100, NOT 613.6 - 100
+    // Settles the booking even though 100 (already paid online) + 400 (collected now) = 500 is
+    // LESS than totalAmount (613.6) — by design, since the platform charge/GST were already
+    // fully accounted for online; see utils/minBookingAmount.js#computeMinBookingRemainder.
+    expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('paid');
   });
 
   test('a "partial" appointment whose balance is already fully covered (rounding) throws PAYMENT_ALREADY_RECORDED instead of recording a zero/negative payment', async () => {

@@ -60,4 +60,40 @@ function computeMinBookingAmount({ consultationFee, convenienceFee, emergencyFee
   return amount;
 }
 
-module.exports = { computeMinBookingAmount };
+/**
+ * The counterpart to computeMinBookingAmount above: what's left to collect AT THE CLINIC once the
+ * minimum has been paid online (BUG FIX — superadmin request: "309 kyu bach raha hai 300 bachna
+ * chahiye" — the UI was showing totalAmount - minBookingAmount as the clinic-collected remainder,
+ * which double-subtracts the platform charge and GST that were already fully settled online).
+ *
+ * The clinic only ever collects the doctor's own outstanding consultation-fee share — never any
+ * further platform charge or GST on top:
+ *
+ *   minBookingRemainder = consultationFee - minBookingAdvanceAmount
+ *
+ * Worked example: consultationFee 400, minBookingAdvanceAmount 100 -> remainder 300 (not
+ * totalAmount(437.75) - minBookingAmount(128) = 309.75). This is intentionally NOT a shortfall:
+ * the platform's convenience/emergency charge is paid in full online regardless of which option
+ * the patient picks, and GST only ever applies to whatever portion of the consultation fee was
+ * actually processed through the online gateway (the ₹100 minimum here, never the clinic-collected
+ * cash/card/UPI remainder) — so nothing is left uncollected once this remainder is paid; the
+ * booking settles at ₹128 + ₹300 = ₹428 total, deliberately less than the ₹437.75 "pay in full
+ * online" total, because less of the consultation fee went through the gateway.
+ *
+ * Once this remainder is paid, the appointment is fully settled — see
+ * payments.service.js#createPaymentForAppointment, which marks it 'paid' unconditionally on this
+ * path rather than re-comparing against totalAmount.
+ *
+ * @param {{consultationFee: number, minBookingAdvanceAmount: number|null}} input
+ * @returns {number|null} null when the doctor never configured a minimum (nothing to reconcile).
+ */
+function computeMinBookingRemainder({ consultationFee, minBookingAdvanceAmount }) {
+  if (minBookingAdvanceAmount == null || Number(minBookingAdvanceAmount) <= 0) return null;
+
+  let remainder = Number(consultationFee) - Number(minBookingAdvanceAmount);
+  remainder = Math.round(remainder * 100) / 100;
+  if (remainder < 0) remainder = 0;
+  return remainder;
+}
+
+module.exports = { computeMinBookingAmount, computeMinBookingRemainder };
