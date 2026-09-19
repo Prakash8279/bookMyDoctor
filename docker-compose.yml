@@ -48,8 +48,21 @@ services:
   redis:
     image: redis:7
     restart: unless-stopped
+    # PRODUCTION-READINESS FIX: Redis is the sole backing store for the BullMQ booking queue
+    # (jobs/bookingQueue.js), the distributed booking lock (services/lockService.js), and the
+    # rate limiter (middleware/rateLimiter.js). Without persistence, ANY restart of this
+    # container (crash, `docker compose down`, host reboot, OOM-kill) silently drops every
+    # waiting/active/delayed booking job with no trace left behind — a patient who just
+    # submitted a booking gets "job not found" on their next poll. `--appendonly yes` plus the
+    # volume below makes Redis replay its write-ahead log on restart instead of starting empty.
+    # If your REAL production deployment uses a managed Redis (ElastiCache, Upstash, etc.)
+    # instead of this compose file, confirm that service has equivalent persistence/durability
+    # enabled there too — this fix only covers the local/staging stack this file describes.
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -106,3 +119,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
