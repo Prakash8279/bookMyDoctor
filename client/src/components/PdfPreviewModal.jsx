@@ -14,14 +14,35 @@ import { useEffect, useRef } from 'react'
  */
 export function PdfPreviewModal({ preview, onClose, title = 'Document preview' }) {
   const downloadRef = useRef(null)
+  const dialog = useRef(null)
+  const triggerElement = useRef(null)
 
   useEffect(() => {
     if (!preview) return undefined
+    triggerElement.current = document.activeElement
     downloadRef.current?.focus()
     const closeOnEscape = (event) => event.key === 'Escape' && onClose()
     document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape)
+      triggerElement.current?.focus?.()
+    }
   }, [preview, onClose])
+
+  const trapFocus = (event) => {
+    if (event.key !== 'Tab') return
+    const focusable = dialog.current?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    if (!focusable?.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
 
   if (!preview) return null
 
@@ -31,7 +52,7 @@ export function PdfPreviewModal({ preview, onClose, title = 'Document preview' }
       role="presentation"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <section role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title" className="flex h-[90vh] w-full max-w-3xl flex-col rounded-card bg-white p-4 shadow-card">
+      <section ref={dialog} onKeyDown={trapFocus} role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title" className="flex h-[90vh] w-full max-w-3xl flex-col rounded-card bg-white p-4 shadow-card">
         <div className="flex items-center justify-between gap-3">
           <h2 id="pdf-preview-title" className="text-lg font-semibold">{title}</h2>
           <div className="flex items-center gap-2">

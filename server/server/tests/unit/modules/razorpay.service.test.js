@@ -699,3 +699,159 @@ describe('razorpay.service.verifyAndRecordPayment — side effects after a succe
     expect(paymentsService.createPaymentForAppointment).toHaveBeenCalled();
   });
 });
+
+/**
+ * reconcilePendingPaymentsFromWebhook — the Razorpay-calls-us-directly reconciliation path
+ * (production-readiness plan, Phase 2.3), for when a payment genuinely succeeded but the
+ * patient's own browser never came back to call verifyRazorpayPayment above. Its security model
+ * is DELIBERATELY different from that function's: there is no logged-in requester and no
+ * order_id|payment_id signature — instead a separate RAZORPAY_WEBHOOK_SECRET signs the RAW
+ * request body, and ownership comes only from re-fetching the order's own notes off Razorpay,
+ * mirroring the "never trust the caller, only Razorpay's own record of the order" posture
+ * verifyAndRecordPayment already uses.
+ */
+describe('razorpay.service.reconcilePendingPaymentsFromWebhook', () => {
+  const WEBHOOK_SECRET = 'rzp_test_webhook_secret_do_not_use';
+  const ORDER_ID = 'order_webhook_1';
+  const PAYMENT_ID = 'pay_webhook_1';
+
+  function webhookSignature(rawBody, secret = WEBHOOK_SECRET) {
+    return crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  }
+
+  function paymentCapturedBody(overrides = {}) {
+    return Buffer.from(
+      JSON.stringify({
+        event: 'payment.captured',
+        payload: {
+          payment: {
+            entity: { id: PAYMENT_ID, order_id: ORDER_ID, amount: 61360, ...overrides },
+          },
+        },
+      })
+    );
+  }
+
+  beforeEach(() => {
+    env.razorpay.webhookSecret = WEBHOOK_SECRET;
+  });
+
+  test('throws 500 PAYMENT_WEBHOOK_NOT_CONFIGURED when no webhook secret is set, without even looking at the signature', async () => {
+    env.razorpay.webhookSecret = '';
+    const rawBody = paymentCapturedBody();
+
+    await expect(razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody))).rejects.toMatchObject({
+      statusCode: 500,
+      code: 'PAYMENT_WEBHOOK_NOT_CONFIGURED',
+    });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('a TAMPERED webhook body (bytes changed after signing) is rejected with 400, and nothing is recorded', async () => {
+    const rawBody = paymentCapturedBody();
+    const validSig = webhookSignature(rawBody);
+    const tamperedBody = paymentCapturedBody({ amount: 999999 }); // different bytes, old signature reused
+
+    await expect(
+      razorpayService.reconcilePendingPaymentsFromWebhook(tamperedBody, validSig)
+    ).rejects.toMatchObject({ statusCode: 400, code: 'PAYMENT_WEBHOOK_SIGNATURE_INVALID' });
+    expect(paymentsService.createPaymentForAppointment).not.toHaveBeenCalled();
+  });
+
+  test('a signature produced under the WRONG webhook secret is rejected', async () => {
+    const rawBody = paymentCapturedBody();
+    const wrongSecretSig = webhookSignature(rawBody, 'a-totally-different-secret');
+
+    await expect(
+      razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, wrongSecretSig)
+    ).rejects.toMatchObject({ statusCode: 400, code: 'PAYMENT_WEBHOOK_SIGNATURE_INVALID' });
+  });
+
+  test('a signature of the WRONG LENGTH is rejected the same way as any other invalid one, not a crash from timingSafeEqual', async () => {
+    const rawBody = paymentCapturedBody();
+
+    await expect(
+      razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, 'ab')
+    ).rejects.toMatchObject({ statusCode: 400, code: 'PAYMENT_WEBHOOK_SIGNATURE_INVALID' });
+  });
+
+  test('malformed (non-JSON) body with an otherwise-valid signature is rejected as 400, not an unhandled parse crash', async () => {
+    const rawBody = Buffer.from('{not valid json');
+
+    await expect(
+      razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody))
+    ).rejects.toMatchObject({ statusCode: 400, code: 'PAYMENT_WEBHOOK_MALFORMED' });
+  });
+
+  test('an event type other than payment.captured is acknowledged as handled:false, not an error (so Razorpay does not retry it forever)', async () => {
+    const rawBody = Buffer.from(JSON.stringify({ event: 'payment.failed', payload: {} }));
+
+    const result = await razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(result).toEqual({ handled: false, reason: 'ignored_event_type' });
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(paymentsService.createPaymentForAppointment).not.toHaveBeenCalled();
+  });
+
+  test('an order that was never created by our own createOrder (no matching notes) is acknowledged as handled:false, nothing recorded', async () => {
+    const rawBody = paymentCapturedBody();
+    global.fetch.mockResolvedValue(jsonResponse({ amount: 61360, notes: {} }));
+
+    const result = await razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(result).toEqual({ handled: false, reason: 'order_not_ours' });
+    expect(paymentsService.createPaymentForAppointment).not.toHaveBeenCalled();
+  });
+
+  test('a valid payment.captured event for one of our own orders records the payment via the SAME path verifyAndRecordPayment uses, as a synthetic patient requester built only from Razorpay\'s own order notes', async () => {
+    const rawBody = paymentCapturedBody();
+    global.fetch.mockResolvedValue(jsonResponse({ amount: 61360, notes: { appointmentId: 'appt-1', patientUserId: 'patient-1' } }));
+    paymentsService.createPaymentForAppointment.mockResolvedValue({
+      id: 'pay-1',
+      amount: '613.6',
+      receiptNumber: 'CDR-00000002',
+      patientUserId: 'patient-1',
+      doctorUserId: 'doctor-1',
+      clinicId: 'clinic-1',
+    });
+
+    const result = await razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(result).toEqual({ handled: true });
+    expect(paymentsService.createPaymentForAppointment).toHaveBeenCalledWith(
+      'appt-1',
+      { id: 'patient-1', role: 'patient' },
+      'online',
+      PAYMENT_ID,
+      null,
+      613.6
+    );
+    expect(activityLogService.log).toHaveBeenCalled();
+    expect(paymentsService.invalidatePaymentListCaches).toHaveBeenCalled();
+    expect(appointmentsService.invalidateAppointmentListCaches).toHaveBeenCalled();
+    expect(queueService.invalidateQueueListCaches).toHaveBeenCalled();
+  });
+
+  test('a REPLAYED webhook for an already-recorded payment (409 from createPaymentForAppointment) is a benign no-op, not an error — idempotent alongside the patient\'s own verify call', async () => {
+    const rawBody = paymentCapturedBody();
+    global.fetch.mockResolvedValue(jsonResponse({ amount: 61360, notes: { appointmentId: 'appt-1', patientUserId: 'patient-1' } }));
+    const ApiError = require('../../../src/utils/ApiError');
+    paymentsService.createPaymentForAppointment.mockRejectedValue(
+      new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.')
+    );
+
+    const result = await razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody));
+
+    expect(result).toEqual({ handled: false, reason: 'PAYMENT_ALREADY_RECORDED' });
+  });
+
+  test('a genuine, unexpected failure while recording the payment is rethrown, not swallowed — Razorpay should retry once the real problem clears', async () => {
+    const rawBody = paymentCapturedBody();
+    global.fetch.mockResolvedValue(jsonResponse({ amount: 61360, notes: { appointmentId: 'appt-1', patientUserId: 'patient-1' } }));
+    paymentsService.createPaymentForAppointment.mockRejectedValue(new Error('connection pool exhausted'));
+
+    await expect(razorpayService.reconcilePendingPaymentsFromWebhook(rawBody, webhookSignature(rawBody))).rejects.toThrow(
+      'connection pool exhausted'
+    );
+  });
+});

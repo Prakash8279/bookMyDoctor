@@ -15,10 +15,12 @@
     "seed": "node prisma/seed.js",
     "encrypt-bank-details": "node scripts/encryptExistingBankDetails.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
+    "@sentry/node": "^8.42.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.12.0",
     "compression": "^1.7.4",

@@ -10,16 +10,13 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+coverage
 
 # Env files (repo root .gitignore already covers these, but listing them here too means this
 # rule survives even if client/ is ever split into its own repo).
 .env
 .env.*
 *.local
-
-# .env.example is a committed template with no real secrets (see its own header
-# comment) — explicitly un-ignore it despite the broad .env.* rule above.
-!.env.example
 
 # Editor directories and files
 .vscode/*

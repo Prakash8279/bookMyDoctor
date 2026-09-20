@@ -149,6 +149,46 @@ lookups) goes through `src/services/cacheService.js`, a thin cache-aside wrapper
   deliberately left TTL-only — they're touched by too many unrelated write paths across the app
   for precise invalidation to be worth the complexity — documented inline at each call site.
 
+## Payments reconciliation, error tracking & ops visibility
+
+Added during the production-readiness hardening pass — every one of these is optional and the
+app boots and runs exactly the same without it configured, following the same
+"blank env var disables just this feature" pattern as Razorpay/Google/bank-detail encryption
+above. See `.env.example` for the full setup instructions for each.
+
+- **`POST /payments/webhook/razorpay`** — reconciles a payment that genuinely succeeded on
+  Razorpay's side but never got recorded because the patient's browser never came back to call
+  `/payments/razorpay/verify` (tab closed, network drop, app crash right after paying). Verifies
+  Razorpay's own HMAC signature (`RAZORPAY_WEBHOOK_SECRET`, a separate secret from
+  `RAZORPAY_KEY_SECRET`) with `crypto.timingSafeEqual`, and only ever trusts `appointmentId`/
+  `patientUserId` from Razorpay's own order `notes` (never from the webhook body's own claims).
+  Idempotent — safe to receive the same event more than once, or after the patient's own verify
+  call already recorded the same payment. See `src/modules/payments/razorpay.service.js`.
+- **Backend error tracking (Sentry)** — set `SENTRY_DSN` to forward unexpected exceptions and
+  5xx errors to Sentry for alerting; leave blank to keep using `config/logger.js` alone. Requires
+  `npm install` (added to `package.json` but not fetched in the sandbox this was built in) —
+  until installed, a set DSN just logs one startup warning and stays disabled, it never crashes
+  boot. See `src/config/sentry.js`.
+- **`GET /admin/jobs/failed`** — admin/superadmin visibility into failed BullMQ booking-queue
+  jobs (same auth gate as every other admin route: `adminIpAllowlist` + `authenticate` +
+  `authorize('admin','superadmin')`).
+- **`GET /health/live`** — a dependency-free liveness probe (always 200 if the process can
+  handle a request at all), separate from `GET /health/` above which legitimately reports 503
+  when Postgres/Redis are unreachable. Point a k8s `livenessProbe` at `/health/live` and a
+  `readinessProbe` at `/health/`, so a downstream outage takes the instance out of load-balancer
+  rotation instead of restarting an otherwise-healthy process.
+- **Upload rate limiting** — `POST /uploads/photo`, `/uploads/document`, `/uploads/qr` are now
+  rate-limited the same way booking/payment writes already are (`uploadLimiter` in
+  `src/middleware/rateLimiter.js`).
+
+## End-to-end tests
+
+A Playwright suite lives at the repo root (`/e2e`, config at `/playwright.config.js`) covering
+the full register → book → pay flow against a real running frontend + backend. It's a scaffold
+only — it needs a real Postgres/Redis and both dev servers running locally, none of which exist
+in the sandbox this was authored in, so it hasn't been executed yet. See `/e2e/README.md` for
+how to run it on your own machine.
+
 ## Known minor issues — all fixed
 
 Every phase went through Planner → Coder → Verifier → Security-Checker, capped at 3 rounds.

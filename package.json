@@ -1,0 +1,12 @@
+{
+  "name": "bookmydoctor24-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repo-root Playwright end-to-end suite for BookMyDoctor24 (client + server), see e2e/README.md.",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

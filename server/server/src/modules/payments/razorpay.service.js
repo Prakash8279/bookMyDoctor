@@ -319,7 +319,61 @@ async function verifyAndRecordPayment(body, requester) {
   }
 
   // Reuses the receptionist/admin cash-recording path's exact fee-copy/row-lock/already-paid
-  // guards — 'online' mode, Razorpay's payment id as the transaction reference.
+  // guards — 'online' mode, Razorpay's payment id as the transaction reference — via the shared
+  // recordOnlinePayment helper below (also used by the webhook reconciliation path, so both ways
+  // a payment can land in our system go through the exact same recording/cache-busting logic).
+  const row = await recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount);
+
+  // Lazy require to avoid a load cycle, matching payments.service.js#createPayment's own pattern.
+  const appointmentsService = require('../appointments/appointments.service');
+
+  // Return BOTH the payment and the freshly re-fetched, fully-shaped appointment — the frontend
+  // needs the appointment's (possibly just-flipped) status/tokenNumber/paymentStatus to move a
+  // `pending_payment` booking screen to "confirmed", not just the payment record.
+  //
+  // POST-COMMIT REFETCH FIX (senior-dev payment audit, "payment sahi nahi hua hai"): the payment
+  // itself is ALREADY correctly recorded by this point — createPaymentForAppointment's own
+  // transaction committed above. A failure in just these two read-backs (a transient DB hiccup, a
+  // brief connection-pool exhaustion) used to bubble up as whatever raw error Prisma threw,
+  // surfacing to the frontend as a generic failure that looks exactly like "your payment did not
+  // go through" even though it did. Wrapping this in its own try/catch with a distinct, honest
+  // ApiError means the frontend's own recovery path (PatientPages.jsx's payNow/resumePayment
+  // already re-checks the appointment's real status on ANY verify failure before showing an
+  // error — see hooks/useRazorpayPayment.js) gets a chance to show the true "already paid" state
+  // instead of a false "payment failed".
+  let payment;
+  let appointment;
+  try {
+    [payment, appointment] = await Promise.all([
+      paymentsService.getPaymentById(row.id, requester),
+      appointmentsService.getAppointmentById(appointmentId, requester),
+    ]);
+  } catch (refetchErr) {
+    throw new ApiError(
+      502,
+      'PAYMENT_RECORDED_REFETCH_FAILED',
+      'Your payment was recorded, but we could not load the latest booking details. Please refresh.'
+    );
+  }
+  return { payment, appointment };
+}
+
+/**
+ * Shared by verifyAndRecordPayment (the patient's own browser calling back after Checkout) AND
+ * reconcilePendingPaymentsFromWebhook below (Razorpay calling us directly): records the actual
+ * Payment row via payments.service.js#createPaymentForAppointment (fee-copy/row-lock/already-paid
+ * guards), then busts every list cache the new payment affects and writes one activity-log entry.
+ * Deliberately idempotent from the CALLER's point of view because createPaymentForAppointment
+ * itself already is: it looks up any existing Payment row by (appointmentId, transactionRef)
+ * first and returns that instead of creating a duplicate (see its REPLAY-PROTECTION FIX comment).
+ * That is exactly what makes it safe for the SAME real payment to be recorded via this function
+ * twice — once from the patient's own verify call and once from the webhook, in either order.
+ * @param {string} appointmentId
+ * @param {{id:string, role:string}} requester
+ * @param {string} razorpayPaymentId
+ * @param {number} chargedAmount
+ */
+async function recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount) {
   const row = await paymentsService.createPaymentForAppointment(
     appointmentId,
     requester,
@@ -356,35 +410,108 @@ async function verifyAndRecordPayment(body, requester) {
   const queueService = require('../queue/queue.service');
   await queueService.invalidateQueueListCaches({ doctorUserId: row.doctorUserId, clinicId: row.clinicId });
 
-  // Return BOTH the payment and the freshly re-fetched, fully-shaped appointment — the frontend
-  // needs the appointment's (possibly just-flipped) status/tokenNumber/paymentStatus to move a
-  // `pending_payment` booking screen to "confirmed", not just the payment record.
-  //
-  // POST-COMMIT REFETCH FIX (senior-dev payment audit, "payment sahi nahi hua hai"): the payment
-  // itself is ALREADY correctly recorded by this point — createPaymentForAppointment's own
-  // transaction committed above. A failure in just these two read-backs (a transient DB hiccup, a
-  // brief connection-pool exhaustion) used to bubble up as whatever raw error Prisma threw,
-  // surfacing to the frontend as a generic failure that looks exactly like "your payment did not
-  // go through" even though it did. Wrapping this in its own try/catch with a distinct, honest
-  // ApiError means the frontend's own recovery path (PatientPages.jsx's payNow/resumePayment
-  // already re-checks the appointment's real status on ANY verify failure before showing an
-  // error — see hooks/useRazorpayPayment.js) gets a chance to show the true "already paid" state
-  // instead of a false "payment failed".
-  let payment;
-  let appointment;
-  try {
-    [payment, appointment] = await Promise.all([
-      paymentsService.getPaymentById(row.id, requester),
-      appointmentsService.getAppointmentById(appointmentId, requester),
-    ]);
-  } catch (refetchErr) {
-    throw new ApiError(
-      502,
-      'PAYMENT_RECORDED_REFETCH_FAILED',
-      'Your payment was recorded, but we could not load the latest booking details. Please refresh.'
-    );
-  }
-  return { payment, appointment };
+  return row;
 }
 
-module.exports = { createOrder, verifyAndRecordPayment };
+/**
+ * RECONCILIATION FIX (production-readiness plan, Phase 2.3): closes the gap where a patient's
+ * Razorpay Checkout payment genuinely succeeds, but the frontend never gets to call
+ * POST /payments/razorpay/verify — the browser tab is closed, the network drops right after
+ * payment, the app crashes — leaving the appointment permanently stuck at `pending_payment` even
+ * though Razorpay actually captured the money. Razorpay's own webhook is the fix: it calls THIS
+ * server directly, independent of whether the patient's browser ever comes back, whenever a
+ * payment on our account is captured.
+ *
+ * Security model is deliberately DIFFERENT from verifyAndRecordPayment's, because there is no
+ * logged-in `requester` here — Razorpay is calling us, not a patient's browser:
+ *   - The signature is Razorpay's WEBHOOK signature (HMAC-SHA256 of the raw request body, using a
+ *     separate RAZORPAY_WEBHOOK_SECRET configured in the Razorpay dashboard's webhook settings —
+ *     never the same value as RAZORPAY_KEY_SECRET) sent in the `X-Razorpay-Signature` header, NOT
+ *     the order_id|payment_id signature verifyAndRecordPayment checks.
+ *   - Ownership is established by re-fetching the order from Razorpay's own API (fetchOrderDetails)
+ *     and trusting only the {appointmentId, patientUserId} notes createOrder stamped onto it at
+ *     creation time — never anything from the webhook payload's own free-text fields.
+ * app.js registers `express.raw({type:'application/json'})` for this exact route BEFORE the
+ * global express.json() body parser, so `rawBody` here is the untouched Buffer Razorpay signed —
+ * verifying against a re-serialized/re-parsed body would silently invalidate every signature.
+ * @param {Buffer} rawBody
+ * @param {string} signatureHeader - the X-Razorpay-Signature request header, verbatim
+ * @returns {Promise<{handled:boolean, reason?:string}>} never throws for a merely-irrelevant or
+ *   already-settled event — those are legitimate outcomes a webhook must still 200 for (Razorpay
+ *   retries with exponential backoff, then disables the webhook, on repeated non-2xx responses).
+ *   Throws only for a bad signature (the controller maps that to 400) or a real, unexpected
+ *   failure while recording the payment.
+ */
+async function reconcilePendingPaymentsFromWebhook(rawBody, signatureHeader) {
+  if (!env.razorpay.webhookSecret) {
+    // Not configured yet — a webhook call arriving anyway (e.g. someone pasted the URL into the
+    // Razorpay dashboard before setting the secret here) must not be trusted with no secret to
+    // check it against. Same "the app boots fine without it, but the feature is inert" posture as
+    // assertGatewayConfigured() above for the key id/secret.
+    throw new ApiError(500, 'PAYMENT_WEBHOOK_NOT_CONFIGURED', 'Razorpay webhook is not configured on this server.');
+  }
+
+  const expectedSignature = crypto.createHmac('sha256', env.razorpay.webhookSecret).update(rawBody).digest('hex');
+  const providedBuffer = Buffer.from(String(signatureHeader || ''), 'hex');
+  const expectedBuffer = Buffer.from(expectedSignature, 'hex');
+  const isValid = providedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+  if (!isValid) {
+    throw new ApiError(400, 'PAYMENT_WEBHOOK_SIGNATURE_INVALID', 'Webhook signature verification failed.');
+  }
+
+  let event;
+  try {
+    event = JSON.parse(rawBody.toString('utf8'));
+  } catch (parseErr) {
+    throw new ApiError(400, 'PAYMENT_WEBHOOK_MALFORMED', 'Webhook body was not valid JSON.');
+  }
+
+  // Only `payment.captured` actually means "money has landed" — every other Razorpay webhook
+  // event (order.paid, payment.failed, payment.authorized, refund.*, ...) is either redundant
+  // with this one or not something this reconciliation job needs to act on. Acknowledging with
+  // handled:false (not an error) is deliberate: an unrecognized-but-legitimate event must still
+  // get a 2xx back so Razorpay does not retry it forever.
+  const paymentEntity = event && event.payload && event.payload.payment && event.payload.payment.entity;
+  if (event.event !== 'payment.captured' || !paymentEntity || !paymentEntity.order_id || !paymentEntity.id) {
+    return { handled: false, reason: 'ignored_event_type' };
+  }
+
+  const razorpayOrderId = paymentEntity.order_id;
+  const razorpayPaymentId = paymentEntity.id;
+
+  const { amountRupees: chargedAmount, notes } = await fetchOrderDetails(razorpayOrderId);
+  if (!notes || !notes.appointmentId || !notes.patientUserId) {
+    // An order this Razorpay account captured a payment for, but that was never created by
+    // createOrder above (e.g. a manual test payment made directly in the Razorpay dashboard) —
+    // nothing in our system to reconcile it against.
+    return { handled: false, reason: 'order_not_ours' };
+  }
+
+  // Synthetic 'patient' requester built from Razorpay's OWN record of who createOrder made this
+  // order for (notes.patientUserId) — never anything the webhook payload itself claims — so
+  // recordOnlinePayment's normal patient-ownership check (getOwnAppointmentOrThrow is not called
+  // here, but createPaymentForAppointment's own `requester.role === 'patient'` ownership check
+  // inside its transaction is) still applies exactly as it does for the patient's own verify call.
+  const requester = { id: notes.patientUserId, role: 'patient' };
+
+  try {
+    await recordOnlinePayment(notes.appointmentId, requester, razorpayPaymentId, chargedAmount);
+    return { handled: true };
+  } catch (err) {
+    if (err instanceof ApiError && (err.statusCode === 409 || err.statusCode === 404)) {
+      // 409 PAYMENT_ALREADY_RECORDED: the patient's own verify call already recorded this exact
+      // payment (or a replay of this same webhook event, which Razorpay can send more than once)
+      // — createPaymentForAppointment's transactionRef replay guard is what actually makes this
+      // safe; this branch just means "nothing left to do here, and that is a success, not a bug."
+      // 404 APPOINTMENT_NOT_FOUND: the appointment referenced by the order's notes no longer
+      // exists (very unlikely, but not a reason to make Razorpay retry forever).
+      return { handled: false, reason: err.code || 'already_settled_or_missing' };
+    }
+    // Any other failure (a genuine DB error, an unexpected Prisma exception) is a REAL problem —
+    // rethrow so the controller returns a 5xx and Razorpay's normal retry-with-backoff behavior
+    // gets a chance to succeed once whatever broke recovers, instead of us silently swallowing it.
+    throw err;
+  }
+}
+
+module.exports = { createOrder, verifyAndRecordPayment, reconcilePendingPaymentsFromWebhook };

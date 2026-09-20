@@ -14,12 +14,19 @@ const swaggerUi = require('swagger-ui-express');
 
 const env = require('./config/env');
 const swaggerSpec = require('./config/swagger');
+const sentry = require('./config/sentry');
 const requestLogger = require('./middleware/requestLogger');
 const requestContextMiddleware = require('./middleware/requestContext');
 const { defaultLimiter } = require('./middleware/rateLimiter');
 const notFound = require('./middleware/notFound');
 const errorHandler = require('./middleware/errorHandler');
 const routes = require('./routes');
+
+// BACKEND ERROR TRACKING (production-readiness plan, Phase 3) — must run before anything else
+// gets a chance to throw, so every later error in this file's own setup (not just request-time
+// errors, which errorHandler.js reports) is at least attempted to be captured. A safe no-op when
+// SENTRY_DSN is unset or @sentry/node isn't installed yet — see config/sentry.js.
+sentry.init();
 
 const app = express();
 
@@ -76,6 +83,18 @@ app.use(
 
 // 3. Response compression.
 app.use(compression());
+
+// 3.5. RAW body for the Razorpay webhook ONLY (production-readiness plan, Phase 2.3 — reconciles
+// a `pending_payment` booking whose payment actually succeeded but whose patient never came back
+// to call POST /payments/razorpay/verify). MUST run before the global express.json() below:
+// Razorpay's X-Razorpay-Signature is an HMAC over the exact raw request bytes, and body-parser
+// middlewares set an internal req._body flag once they've parsed a request, which express.json()
+// below checks and skips — so mounting this first, scoped to this one path, means this route
+// alone gets an unparsed Buffer in req.body while every other route is completely unaffected and
+// still gets the normal parsed JSON object from step 4. See
+// modules/payments/razorpay.service.js#reconcilePendingPaymentsFromWebhook for the signature
+// check itself, and payments.routes.js for why this route also skips authenticate/authorize.
+app.use('/payments/webhook/razorpay', express.raw({ type: 'application/json', limit: '1mb' }));
 
 // 4. JSON body parsing.
 app.use(express.json({ limit: '1mb' }));

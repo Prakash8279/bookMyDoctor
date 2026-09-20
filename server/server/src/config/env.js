@@ -207,6 +207,15 @@ module.exports = {
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',
     keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    // WEBHOOK RECONCILIATION FIX (production-readiness plan, Phase 2.3) — a completely separate
+    // secret from keySecret above, generated in the Razorpay dashboard when you add the webhook
+    // URL (Settings -> Webhooks -> Add New Webhook, subscribe to "payment.captured"). Used only to
+    // verify the X-Razorpay-Signature header on inbound webhook calls (see
+    // modules/payments/razorpay.service.js#reconcilePendingPaymentsFromWebhook) — never reused for
+    // the order/payment HMAC check the patient's own browser triggers. Deliberately NOT in
+    // REQUIRED_VARS, same optional-feature pattern as keyId/keySecret above: the app boots fine
+    // with the webhook route simply rejecting every call until an operator sets a real value.
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
   },
 
   // GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro") — "Continue with
@@ -230,4 +239,12 @@ module.exports = {
   // a password: never commit it, never log it, and rotating it makes every already-encrypted row
   // undecryptable until re-encrypted under the new key (there is no key-rotation migration yet).
   bankDetailsEncryptionKey: process.env.BANK_DETAILS_ENCRYPTION_KEY || '',
+
+  // BACKEND ERROR TRACKING (production-readiness plan, Phase 3 — "no visibility into production
+  // errors beyond application logs"). See config/sentry.js. Same deliberately-optional pattern as
+  // every other integration above: blank DSN (the default) simply disables it, no boot failure.
+  // Get a DSN at https://sentry.io -> create a project (Node/Express) -> Settings -> Client Keys.
+  sentry: {
+    dsn: process.env.SENTRY_DSN || '',
+  },
 };

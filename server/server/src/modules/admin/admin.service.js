@@ -2,8 +2,9 @@
  * Business logic for the admin module.
  * Responsibility: all Prisma calls for the structured activity log, the system_settings and
  * booking_rules singleton config rows, the real dashboard-stats aggregate, and the
- * revenue-trend chart aggregate. Controllers call these functions; these functions never touch
- * req/res directly.
+ * revenue-trend chart aggregate, plus (see bottom of file) read-only BullMQ booking-queue
+ * failed-job visibility. Controllers call these functions; these functions never touch req/res
+ * directly.
  *
  * Scope strictly limited to what this phase asks (activity log, system_settings, booking_rules,
  * dashboard-stats, revenue-trend) even though admin.routes.js's original header comment gestures
@@ -19,12 +20,15 @@ const cacheService = require('../../services/cacheService');
 const notificationsService = require('../notifications/notifications.service');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { todayUTCDateOnly } = require('../../utils/dateOnly');
+const { bookingQueue } = require('../../jobs/bookingQueue');
 
 const ACTIVITY_LOG_CACHE_TTL_SECONDS = 30;
 const DASHBOARD_STATS_CACHE_TTL_SECONDS = 30;
 const REVENUE_TREND_CACHE_TTL_SECONDS = 30;
 const DEFAULT_REVENUE_TREND_MONTHS = 6;
 const MAX_REVENUE_TREND_MONTHS = 24;
+const DEFAULT_FAILED_BOOKING_JOBS_LIMIT = 20;
+const MAX_FAILED_BOOKING_JOBS_LIMIT = 100;
 
 // ── Activity log ─────────────────────────────────────────────────────────
 
@@ -446,6 +450,63 @@ async function updatePatientStatus(id, status, actor) {
   return { id, status };
 }
 
+// ── booking-queue operational visibility ────────────────────────────────
+
+/**
+ * Recent FAILED jobs from the BullMQ booking queue (src/jobs/bookingQueue.js /
+ * src/jobs/bookingWorker.js) — read-only operational visibility for admin/superadmin into
+ * bookings that permanently failed: either a deterministic business failure
+ * (bookingWorker.js's `UnrecoverableError`, e.g. SLOT_ALREADY_BOOKED) or a job that exhausted
+ * all of enqueueBookingJob's `attempts`/exponential `backoff` retries (e.g. a sustained Redis/DB
+ * blip). This never retries, removes, or otherwise mutates a job — it only reports on the
+ * `failed` set via BullMQ's own `Queue#getFailed`.
+ *
+ * No caching (unlike the aggregates above): this is a live incident-diagnosis view over a queue
+ * that already TTLs its own failed jobs (`removeOnFail: { age: 86400 }`, see bookingQueue.js), not
+ * a dashboard number that every booking write path would need to invalidate.
+ *
+ * LOAD-REVIEW FIX: follows the same "list silently left rows out" convention as
+ * queue.service.js#listQueue (see that function's own `truncated` comment and utils/
+ * apiResponse.js's doc comment on the `truncated` option) instead of clamping `limit` with no
+ * signal — an admin asking for e.g. limit=500 during an incident needs to know whether the 100
+ * jobs they got back are everything or just the cap.
+ * @param {{limit?: number}} params
+ * @returns {Promise<{jobs: Array<{id:string, name:string, failedReason:string|null,
+ *   timestamp:number}>, truncated: boolean}>}
+ */
+async function getFailedBookingJobs({ limit } = {}) {
+  // Defensive clamp, same spirit as getRevenueTrend's re-clamp of `months` above: admin.routes.js
+  // deliberately wires no express-validator chain for this route (admin.validation.js is out of
+  // scope for this change), so this function must not trust a caller-controlled `limit` blindly.
+  const parsedLimit = Number(limit);
+  const resolvedLimit =
+    Number.isInteger(parsedLimit) && parsedLimit >= 1
+      ? Math.min(parsedLimit, MAX_FAILED_BOOKING_JOBS_LIMIT)
+      : DEFAULT_FAILED_BOOKING_JOBS_LIMIT;
+
+  // getFailed(start, end) is an inclusive range over BullMQ's failed set, most-recent-first —
+  // exactly what an admin scanning for a recent spike wants, without pulling the whole set.
+  // getFailedCount() is a cheap separate Redis call (a set cardinality, not a data fetch) that
+  // tells us the TRUE size of the failed set regardless of resolvedLimit, so `truncated` reflects
+  // reality (whether the caller's own limit or MAX_FAILED_BOOKING_JOBS_LIMIT is what capped it)
+  // instead of only detecting the one case where the caller-supplied limit exceeded the max.
+  const [rawJobs, failedCount] = await Promise.all([
+    bookingQueue.getFailed(0, resolvedLimit - 1),
+    bookingQueue.getFailedCount(),
+  ]);
+
+  const jobs = rawJobs.map((job) => ({
+    id: job.id,
+    name: job.name,
+    failedReason: job.failedReason || null,
+    // finishedOn is when BullMQ actually moved the job to 'failed'; timestamp (enqueue time) is
+    // the fallback for the unlikely case finishedOn isn't populated yet.
+    timestamp: job.finishedOn || job.timestamp,
+  }));
+
+  return { jobs, truncated: failedCount > jobs.length };
+}
+
 module.exports = {
   getActivityLog,
   getSystemSettings,
@@ -456,4 +517,5 @@ module.exports = {
   getRevenueTrend,
   listPatients,
   updatePatientStatus,
+  getFailedBookingJobs,
 };

@@ -57,6 +57,15 @@ const updatePatientStatus = asyncHandler(async (req, res) => {
   return success(res, patient, { message: 'Patient account login status updated' });
 });
 
+// Operational visibility into the BullMQ booking queue — see admin.service.js#getFailedBookingJobs.
+// `truncated` follows the same convention as queue.controller.js#listQueue — see that function
+// and admin.service.js#getFailedBookingJobs's own comment on it.
+const getFailedBookingJobs = asyncHandler(async (req, res) => {
+  const { limit } = req.query;
+  const { jobs, truncated } = await adminService.getFailedBookingJobs({ limit });
+  return success(res, jobs, { truncated });
+});
+
 module.exports = {
   getActivityLog,
   getSystemSettings,
@@ -67,4 +76,5 @@ module.exports = {
   getRevenueTrend,
   listPatients,
   updatePatientStatus,
+  getFailedBookingJobs,
 };

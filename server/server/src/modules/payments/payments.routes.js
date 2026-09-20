@@ -57,6 +57,17 @@ router.post(
   controller.verifyRazorpayPayment
 );
 
+// WEBHOOK RECONCILIATION FIX (production-readiness plan, Phase 2.3) — deliberately NO
+// authenticate/authorize here: Razorpay calls this directly with no JWT of ours, and its own
+// X-Razorpay-Signature header (checked inside reconcilePendingPaymentsFromWebhook, using a
+// separate RAZORPAY_WEBHOOK_SECRET) is this endpoint's actual access control. Relies on the
+// global defaultLimiter (app.js) rather than paymentLimiter above, since paymentLimiter's
+// keyGenerator expects req.user which never exists on this route. app.js registers
+// express.raw({type:'application/json'}) for this EXACT path before its global express.json()
+// call, so req.body here is the untouched raw Buffer the signature was computed over — do not
+// add any body-parsing middleware in front of this route.
+router.post('/webhook/razorpay', controller.handleRazorpayWebhook);
+
 router.get('/:id', authenticate, authorize(...ALL_ROLES), validation.getPayment, validateRequest, controller.getPayment);
 
 module.exports = router;

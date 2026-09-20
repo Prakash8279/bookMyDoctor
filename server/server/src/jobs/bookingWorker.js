@@ -68,8 +68,20 @@ worker.on('completed', (job) => {
   logger.info(`[bookingWorker] job ${job.id} completed`);
 });
 
+// Visibility only — does NOT feed back into retry/backoff/processing decisions (those are made
+// entirely by processor() above and the queue's own `attempts`/`backoff` options in
+// bookingQueue.js). A simple in-process counter, reset on every worker restart/deploy — NOT the
+// source of truth for "how many booking jobs have failed" (that's BullMQ's own `failed` set in
+// Redis, surfaced to admin/superadmin via admin.service.js#getFailedBookingJobs /
+// GET /admin/jobs/failed); this is just a cheap, always-available number for the process's own
+// logs/metrics scraping between restarts.
+let failedJobsCount = 0;
+
 worker.on('failed', (job, err) => {
-  logger.warn(`[bookingWorker] job ${job && job.id} failed: ${err.message}`);
+  failedJobsCount += 1;
+  logger.warn(
+    `[bookingWorker] job ${job && job.id} failed (failedJobsCount since process start: ${failedJobsCount}): ${err.message}`
+  );
 });
 
 worker.on('error', (err) => {

@@ -15,6 +15,7 @@ jest.mock('../../../src/config/db', () => ({
 }));
 jest.mock('../../../src/services/tokenService', () => ({
   issueTokenPair: jest.fn(),
+  rotateRefreshToken: jest.fn(),
 }));
 jest.mock('../../../src/services/activityLogService', () => ({
   log: jest.fn(),
@@ -210,6 +211,44 @@ describe('auth.service.login — password comparison', () => {
       authService.login({ email: 'patient@example.com', password: 'anything-they-typed' })
     ).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
     expect(tokenService.issueTokenPair).not.toHaveBeenCalled();
+  });
+});
+
+describe('auth.service.refresh — thin pass-through to tokenService.rotateRefreshToken', () => {
+  // All the interesting rotation/reuse-detection logic lives in tokenService itself (see
+  // tests/unit/services/tokenService.test.js) — this only pins the two things auth.service.js's
+  // own header comment on refresh() promises: (1) it is a pure pass-through of whatever
+  // tokenService.rotateRefreshToken resolves/rejects with, and (2) unlike login/register/logout
+  // it is deliberately NOT audit-logged (too high-frequency to be useful signal).
+  test('returns exactly the {accessToken, refreshToken} pair tokenService.rotateRefreshToken resolves with', async () => {
+    tokenService.rotateRefreshToken.mockResolvedValue({
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      user: { id: 'user-1', role: 'patient', status: 'active' },
+    });
+
+    const result = await authService.refresh({ refreshToken: 'presented-old-refresh-token' });
+
+    expect(tokenService.rotateRefreshToken).toHaveBeenCalledWith('presented-old-refresh-token');
+    expect(result).toEqual({ accessToken: 'new-access-token', refreshToken: 'new-refresh-token' });
+    expect(activityLogService.log).not.toHaveBeenCalled();
+  });
+
+  test('propagates tokenService\'s REFRESH_TOKEN_REUSED ApiError unchanged when reuse is detected', async () => {
+    const reuseError = new ApiError(401, 'REFRESH_TOKEN_REUSED', 'This session has been revoked for security reasons. Please log in again.');
+    tokenService.rotateRefreshToken.mockRejectedValue(reuseError);
+
+    await expect(authService.refresh({ refreshToken: 'already-rotated-out-token' })).rejects.toBe(reuseError);
+    expect(activityLogService.log).not.toHaveBeenCalled();
+  });
+
+  test('propagates a plain INVALID_REFRESH_TOKEN rejection unchanged', async () => {
+    tokenService.rotateRefreshToken.mockRejectedValue(new ApiError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired.'));
+
+    await expect(authService.refresh({ refreshToken: 'garbage' })).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'INVALID_REFRESH_TOKEN',
+    });
   });
 });
 

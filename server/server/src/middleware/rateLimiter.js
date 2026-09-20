@@ -5,8 +5,10 @@
  * protection for PATCH /me/password, keyed per-authenticated-user instead of per-IP),
  * bookingLimiter (moderate, protects the booking write path), paymentLimiter (moderate, protects
  * the payment-recording write path — a financial mutation that also consumes the shared
- * payment_receipt_seq sequence), defaultLimiter (generous, applied globally). Backed by a Redis
- * store in production so limits are shared across horizontally-scaled instances, not per-process.
+ * payment_receipt_seq sequence), uploadLimiter (generous, protects the multipart file/document
+ * upload write paths under /media), defaultLimiter (generous, applied globally). Backed by a
+ * Redis store in production so limits are shared across horizontally-scaled instances, not
+ * per-process.
  */
 const rateLimitModule = require('express-rate-limit');
 const rateLimit = rateLimitModule.default || rateLimitModule;
@@ -98,6 +100,28 @@ const refreshLimiter = rateLimit({
   store: makeRedisStore('rl:refresh:'),
 });
 
+// Generous — protects the multipart file/document upload write paths (POST /media/photo,
+// /media/document, /media/qr — see modules/uploads/uploads.routes.js), which previously had no
+// dedicated limiter at all despite accepting multipart bodies and writing to disk, unlike every
+// other sensitive write path in this app. Keyed by authenticated user when available (authenticate
+// runs before every /media route), falling back to IP for any unauthenticated caller — same
+// pattern as bookingLimiter/paymentLimiter above. GET/download routes (secureDocument.routes.js,
+// the /media list endpoints if any) are deliberately NOT covered by this limiter; only the
+// upload-writing POST routes are.
+// NOTE: unlike the limiters above, this isn't wired through config/env.js's configurable
+// rateLimit block (env.js was out of scope for this change) — windowMs/max are fixed constants
+// here. Wiring in UPLOAD_RATE_LIMIT_MAX / UPLOAD_RATE_LIMIT_WINDOW_MINUTES env vars, following the
+// authMax/bookingMax pattern above, would be a natural follow-up.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: rateLimitHandler,
+  keyGenerator: (req) => (req.user && req.user.id) || ipKeyGenerator(req.ip),
+  store: makeRedisStore('rl:upload:'),
+});
+
 // Generous — applied globally in app.js. Keyed by IP.
 const defaultLimiter = rateLimit({
   windowMs: env.rateLimit.defaultWindowMinutes * 60 * 1000,
@@ -113,6 +137,7 @@ module.exports = {
   passwordChangeLimiter,
   bookingLimiter,
   paymentLimiter,
+  uploadLimiter,
   refreshLimiter,
   defaultLimiter,
 };

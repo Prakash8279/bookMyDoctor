@@ -113,3 +113,23 @@ lib/
     receptionist/           dashboard, walk-in booking, queue, appointments, payments, doctors
     admin/                  dashboard, doctors, clinics, receptionists, reviews, complaints, contact, geography, platform settings, broadcast, activity log
 ```
+
+## Crash reporting & connectivity
+
+- **Crash reporting (Sentry)** — `sentry_flutter` is a dependency (see `pubspec.yaml`). It's
+  initialized in `lib/main.dart`, but only when a `SENTRY_DSN` value is supplied at build time:
+  ```
+  flutter run --dart-define=SENTRY_DSN=https://your-key@oXXXXXX.ingest.sentry.io/XXXXXX
+  ```
+  With no `SENTRY_DSN` (the default for every build so far, including any made in a sandbox with
+  no network access to Sentry) nothing is initialized and nothing is sent anywhere — the app runs
+  exactly the same either way. Never commit a real DSN value into source control.
+- **Offline banner** — `connectivity_plus` is a dependency. `lib/widgets/connectivity_banner.dart`
+  (`ConnectivityBanner`) listens for connectivity changes and shows a small "No internet
+  connection" bar; it's mounted at the top of `RoleScaffold`'s body (`lib/widgets/role_scaffold.dart`),
+  so every signed-in role portal screen shows it automatically the moment the device goes offline,
+  and hides it again once reconnected. It only watches the device's own network interfaces, not
+  whether the backend itself is reachable — a screen's own error banner still covers that.
+  It is not currently mounted on the signed-out screens (login/register/guest home).
+
+Run `flutter pub get` after pulling these dependency changes.

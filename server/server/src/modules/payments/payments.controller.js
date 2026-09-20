@@ -41,4 +41,26 @@ const verifyRazorpayPayment = asyncHandler(async (req, res) => {
   return success(res, result, { statusCode: 201, message: 'Payment verified and recorded.' });
 });
 
-module.exports = { createPayment, listPayments, getPayment, createRazorpayOrder, verifyRazorpayPayment };
+// WEBHOOK RECONCILIATION FIX (production-readiness plan, Phase 2.3) — Razorpay calls this
+// directly (no logged-in user, no req.user), whenever a payment on our account is captured, so a
+// pending_payment booking still gets reconciled even if the patient's own browser never comes
+// back to call verifyRazorpayPayment above. req.body here is the raw Buffer app.js's
+// express.raw({type:'application/json'}) put there for this exact path — mounted BEFORE the
+// global express.json() specifically so the bytes reaching reconcilePendingPaymentsFromWebhook
+// are byte-for-byte what Razorpay actually signed (re-serializing a parsed-then-stringified body
+// would not reliably reproduce the same bytes and would silently break signature verification).
+// Always resolves 200 unless the signature itself was invalid or something genuinely broke —
+// see that function's doc comment for exactly which outcomes are "handled" vs. benign no-ops.
+const handleRazorpayWebhook = asyncHandler(async (req, res) => {
+  const result = await razorpayService.reconcilePendingPaymentsFromWebhook(req.body, req.headers['x-razorpay-signature']);
+  return success(res, result);
+});
+
+module.exports = {
+  createPayment,
+  listPayments,
+  getPayment,
+  createRazorpayOrder,
+  verifyRazorpayPayment,
+  handleRazorpayWebhook,
+};

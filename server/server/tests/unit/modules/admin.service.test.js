@@ -1,6 +1,7 @@
 /**
  * Unit tests for modules/admin/admin.service.js — the activity log, system_settings/booking_rules
- * singleton upserts, the dashboard-stats and revenue-trend aggregates, and the patients directory.
+ * singleton upserts, the dashboard-stats and revenue-trend aggregates, the patients directory, and
+ * (see bottom of file) the read-only BullMQ booking-queue failed-jobs view.
  *
  * ROLE GATING NOTE: this file has NO role check anywhere in it — every function trusts the
  * `actor`/`requester` it's handed and does no `ADMIN_ROLES.includes(...)` branching of its own
@@ -26,10 +27,11 @@
  *     and that it fires the real-time account-status notification with the right title/body pair.
  *
  * config/db is mocked (no real Postgres in this sandbox — see tests/setupEnv.js's header
- * comment); activityLogService/cacheService/notifications.service are mocked to isolate this
- * module's own branching from their internals. cacheService.getOrSet always runs the fetcher
- * (simulated cache miss), matching doctors.service.test.js's convention. pagination and dateOnly
- * are used for real, per this suite's scope.
+ * comment); activityLogService/cacheService/notifications.service/jobs/bookingQueue are mocked to
+ * isolate this module's own branching from their internals (no real Redis in this sandbox either).
+ * cacheService.getOrSet always runs the fetcher (simulated cache miss), matching
+ * doctors.service.test.js's convention. pagination and dateOnly are used for real, per this
+ * suite's scope.
  */
 jest.mock('../../../src/config/db', () => ({
   activityLog: { findMany: jest.fn(), count: jest.fn() },
@@ -49,11 +51,15 @@ jest.mock('../../../src/services/cacheService', () => ({
 jest.mock('../../../src/modules/notifications/notifications.service', () => ({
   notifySystemEventSafe: jest.fn(),
 }));
+jest.mock('../../../src/jobs/bookingQueue', () => ({
+  bookingQueue: { getFailed: jest.fn(), getFailedCount: jest.fn() },
+}));
 
 const prisma = require('../../../src/config/db');
 const activityLogService = require('../../../src/services/activityLogService');
 const cacheService = require('../../../src/services/cacheService');
 const notificationsService = require('../../../src/modules/notifications/notifications.service');
+const { bookingQueue } = require('../../../src/jobs/bookingQueue');
 const { todayUTCDateOnly } = require('../../../src/utils/dateOnly');
 const adminService = require('../../../src/modules/admin/admin.service');
 
@@ -480,5 +486,167 @@ describe('adminService.updatePatientStatus', () => {
       'p1',
       expect.objectContaining({ title: 'Account login re-enabled', type: 'account' })
     );
+  });
+});
+
+describe('adminService.getFailedBookingJobs', () => {
+  function fakeJob({ id, name = 'create', failedReason = 'Something broke', finishedOn, timestamp }) {
+    return { id, name, failedReason, finishedOn, timestamp };
+  }
+
+  // Default: an empty failed set, so `truncated` is false unless a test overrides this to
+  // exercise the LOAD-REVIEW FIX below.
+  beforeEach(() => {
+    bookingQueue.getFailedCount.mockResolvedValue(0);
+  });
+
+  test('defaults to a limit of 20, calling getFailed with an inclusive 0..19 range', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs({});
+
+    expect(bookingQueue.getFailed).toHaveBeenCalledWith(0, 19);
+  });
+
+  test('no argument at all also falls back to the default limit', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs();
+
+    expect(bookingQueue.getFailed).toHaveBeenCalledWith(0, 19);
+  });
+
+  test('an explicit in-range limit is honored (end = limit - 1)', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs({ limit: 5 });
+
+    expect(bookingQueue.getFailed).toHaveBeenCalledWith(0, 4);
+  });
+
+  test('a limit above the 100 cap is clamped down to 100 (defensive clamp — no validation chain wired for this route)', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs({ limit: 9999 });
+
+    expect(bookingQueue.getFailed).toHaveBeenCalledWith(0, 99);
+  });
+
+  test('a non-positive, non-integer, or non-numeric limit falls back to the default', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs({ limit: 0 });
+    expect(bookingQueue.getFailed).toHaveBeenLastCalledWith(0, 19);
+
+    await adminService.getFailedBookingJobs({ limit: -3 });
+    expect(bookingQueue.getFailed).toHaveBeenLastCalledWith(0, 19);
+
+    await adminService.getFailedBookingJobs({ limit: 'not-a-number' });
+    expect(bookingQueue.getFailed).toHaveBeenLastCalledWith(0, 19);
+
+    await adminService.getFailedBookingJobs({ limit: 3.5 });
+    expect(bookingQueue.getFailed).toHaveBeenLastCalledWith(0, 19);
+  });
+
+  // A route query-string value arrives as a string ("5"), not a number — this must still resolve
+  // to a real, non-default limit, not silently fall back to the default via a strict typeof check.
+  test('a numeric string limit (as it arrives from req.query) is honored, not treated as invalid', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+
+    await adminService.getFailedBookingJobs({ limit: '5' });
+
+    expect(bookingQueue.getFailed).toHaveBeenCalledWith(0, 4);
+  });
+
+  test('shapes each job to {id, name, failedReason, timestamp}, preferring finishedOn over timestamp', async () => {
+    bookingQueue.getFailed.mockResolvedValue([
+      fakeJob({ id: 'job-1', name: 'create', failedReason: '{"code":"SLOT_ALREADY_BOOKED","message":"Slot already booked."}', finishedOn: 1700000002000, timestamp: 1700000000000 }),
+    ]);
+    bookingQueue.getFailedCount.mockResolvedValue(1);
+
+    const { jobs } = await adminService.getFailedBookingJobs({ limit: 10 });
+
+    expect(jobs).toEqual([
+      {
+        id: 'job-1',
+        name: 'create',
+        failedReason: '{"code":"SLOT_ALREADY_BOOKED","message":"Slot already booked."}',
+        timestamp: 1700000002000,
+      },
+    ]);
+  });
+
+  test('falls back to the job\'s enqueue timestamp when finishedOn is not set', async () => {
+    bookingQueue.getFailed.mockResolvedValue([
+      fakeJob({ id: 'job-2', finishedOn: undefined, timestamp: 1700000000000 }),
+    ]);
+    bookingQueue.getFailedCount.mockResolvedValue(1);
+
+    const { jobs } = await adminService.getFailedBookingJobs({});
+
+    expect(jobs[0].timestamp).toBe(1700000000000);
+  });
+
+  test('a missing failedReason surfaces as null, not undefined', async () => {
+    bookingQueue.getFailed.mockResolvedValue([{ id: 'job-3', name: 'create', timestamp: 1700000000000 }]);
+    bookingQueue.getFailedCount.mockResolvedValue(1);
+
+    const { jobs } = await adminService.getFailedBookingJobs({});
+
+    expect(jobs[0].failedReason).toBeNull();
+  });
+
+  test('an empty failed set returns an empty array and truncated: false', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+    bookingQueue.getFailedCount.mockResolvedValue(0);
+
+    await expect(adminService.getFailedBookingJobs({})).resolves.toEqual({ jobs: [], truncated: false });
+  });
+
+  // LOAD-REVIEW FIX: `truncated` must reflect the TRUE size of the failed set (via
+  // getFailedCount()), not just "was the caller-supplied limit above the max" — even a caller
+  // asking for exactly the cap needs to know if that cap actually cut anything off.
+  describe('truncated', () => {
+    test('false when the failed set is no larger than what was returned', async () => {
+      bookingQueue.getFailed.mockResolvedValue([fakeJob({ id: 'job-1' }), fakeJob({ id: 'job-2' })]);
+      bookingQueue.getFailedCount.mockResolvedValue(2);
+
+      const { truncated } = await adminService.getFailedBookingJobs({ limit: 10 });
+
+      expect(truncated).toBe(false);
+    });
+
+    test('true when the failed set is larger than what was returned (limit within range)', async () => {
+      bookingQueue.getFailed.mockResolvedValue([fakeJob({ id: 'job-1' }), fakeJob({ id: 'job-2' })]);
+      bookingQueue.getFailedCount.mockResolvedValue(50);
+
+      const { truncated } = await adminService.getFailedBookingJobs({ limit: 2 });
+
+      expect(truncated).toBe(true);
+    });
+
+    // The concrete incident scenario the LOAD-REVIEW FIX addresses: an admin asks for far more
+    // than the 100-row cap, gets 100 jobs back, and previously had no way to tell more existed.
+    test('true when a caller-requested limit above the 100 cap silently clamps the result', async () => {
+      const hundredJobs = Array.from({ length: 100 }, (_, i) => fakeJob({ id: `job-${i}` }));
+      bookingQueue.getFailed.mockResolvedValue(hundredJobs);
+      bookingQueue.getFailedCount.mockResolvedValue(150);
+
+      const { jobs, truncated } = await adminService.getFailedBookingJobs({ limit: 500 });
+
+      expect(jobs).toHaveLength(100);
+      expect(truncated).toBe(true);
+    });
+  });
+
+  // This is a live diagnostic view, not a cached aggregate — cacheService.getOrSet must never be
+  // consulted for it (contrast with getDashboardStats/getRevenueTrend/getActivityLog above).
+  test('does not go through cacheService (always a live read of the failed set)', async () => {
+    bookingQueue.getFailed.mockResolvedValue([]);
+    cacheService.getOrSet.mockClear();
+
+    await adminService.getFailedBookingJobs({});
+
+    expect(cacheService.getOrSet).not.toHaveBeenCalled();
   });
 });

@@ -8,14 +8,16 @@
  * Responsibility: report whether this process, the database, and Redis are all reachable,
  * without ever throwing itself — a DB or Redis outage must downgrade the relevant field
  * instead of taking the health check down with it (that would make the health check useless
- * for exactly the situation it exists to detect).
+ * for exactly the situation it exists to detect). Also exposes a separate, dependency-free
+ * `/live` route (see below) for callers that want a pure liveness signal distinct from this
+ * readiness-style check.
  *
  * Mounted first in routes/index.js, ahead of every other route. It still passes through
  * app.js's global defaultLimiter (generous, 300 req/min by default) and the request-id
  * middleware — it deliberately does NOT get a stricter per-route limiter, since a load
  * balancer/uptime monitor polling every few seconds must never be locked out — and
- * middleware/requestLogger.js's morgan `skip` option excludes this path so high-frequency
- * polling doesn't spam the access log at scale.
+ * middleware/requestLogger.js's morgan `skip` option excludes BOTH `/health` and `/health/live`
+ * by exact path so high-frequency polling of either one doesn't spam the access log at scale.
  */
 const router = require('express').Router();
 
@@ -69,5 +71,18 @@ router.get(
     });
   })
 );
+
+// Pure liveness probe — deliberately separate from the readiness-style check above, which
+// legitimately reports 503 when Postgres/Redis are unreachable (that's the whole point: take the
+// instance out of an LB's rotation). /live answers a narrower question — "is this Node process up
+// and able to handle an HTTP request at all" — with NO DB/Redis dependency, for callers that want
+// exactly that signal (e.g. a k8s livenessProbe: a downstream outage should trigger a
+// readinessProbe failure so traffic stops routing here, not a liveness failure that restarts a
+// perfectly healthy process). Always 200 — if this handler can run at all, the process is alive.
+// Also covered by middleware/requestLogger.js's morgan `skip` (exact-matches `/health/live` in
+// addition to `/health`), so tight-interval liveness polling doesn't spam the access log either.
+router.get('/live', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
+});
 
 module.exports = router;

@@ -220,6 +220,47 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
     expect(res.body.error.code).toBe('TOKEN_INVALID');
   });
 
+  // REFRESH-TOKEN ROTATION + REUSE DETECTION — mobile-style (body-based) flow, exercising the
+  // REAL tokenService.rotateRefreshToken end to end (real JWT verify, real SHA-256 hash lookup
+  // against the in-memory refreshTokensById fake, real atomic revoke) via the actual /auth/refresh
+  // route, not a direct call into auth.service.js — see tests/unit/services/tokenService.test.js
+  // for the same behavior pinned at the unit level with full control over every DB return value.
+  test('refresh rotates the token, and replaying the ORIGINAL (now-rotated-out) token afterward is rejected as REFRESH_TOKEN_REUSED', async () => {
+    const registerRes = await request(app).post('/auth/register').send({
+      name: 'Rotation User',
+      email: 'rotation-user@example.com',
+      password: PASSWORD,
+      phone: '9876543216',
+    });
+    expect(registerRes.status).toBe(201);
+    const originalRefreshToken = registerRes.body.data.refreshToken;
+
+    const firstRefresh = await request(app).post('/auth/refresh').send({ refreshToken: originalRefreshToken });
+    expect(firstRefresh.status).toBe(200);
+    const rotatedRefreshToken = firstRefresh.body.data.refreshToken;
+    // Rotation issues a genuinely different token (different jti), never the same one back.
+    expect(rotatedRefreshToken).not.toBe(originalRefreshToken);
+    expect(typeof rotatedRefreshToken).toBe('string');
+
+    // Replaying the ORIGINAL token (already rotated out by the refresh above) must be rejected
+    // as reuse, not treated as if it were still a live session.
+    const replayRes = await request(app).post('/auth/refresh').send({ refreshToken: originalRefreshToken });
+    expect(replayRes.status).toBe(401);
+    expect(replayRes.body.success).toBe(false);
+    expect(replayRes.body.error.code).toBe('REFRESH_TOKEN_REUSED');
+
+    // NOTE: the real tokenService.rotateRefreshToken also revokes every OTHER active token for
+    // this user on reuse detection (whole-session nuke — see revokeAllForUser), not just the
+    // replayed one. That is intentionally NOT asserted here: this suite's in-memory Prisma fake
+    // (helpers/mockPrisma.js's refreshToken.updateMany, wired up in this file's beforeEach) only
+    // implements the single-row `where: { id, revokedAt: null }` shape rotateRefreshToken uses
+    // for the presented token itself, not the bulk `where: { userId, revokedAt: null }` shape
+    // revokeAllForUser issues — so it can't faithfully simulate that part of the behavior. The
+    // whole-session-revoke guarantee is pinned precisely at the unit level instead, with a mock
+    // that returns the right count for both call shapes — see tokenService.test.js's "reuse
+    // detection revokes EVERY active refresh token for that user" test.
+  });
+
   // WEB-ONLY REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md) — a real
   // end-to-end run of register -> refresh -> logout for a caller identifying itself as the web
   // app (X-Client-Platform: web), using a cookie-jar-carrying supertest agent so the browser-like
