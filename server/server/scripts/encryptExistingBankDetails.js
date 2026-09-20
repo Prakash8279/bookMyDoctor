@@ -22,8 +22,17 @@
  *   2. Take a database backup/snapshot first. This script only ever UPDATEs 5 named columns on
  *      doctor_profiles (never deletes rows, never touches any other table), but "back up before
  *      any live-data script" is a good habit regardless of how narrow the script is.
- *   3. Dry run first to see exactly what it would change, with zero writes:
+ *   3. Run this file with `node` DIRECTLY — do NOT go through `npm run ... -- --dry-run`.
+ *      `--dry-run` happens to also be a real, native npm CLI flag, and on some npm versions/
+ *      platforms npm swallows it for itself even after `--` instead of forwarding it to this
+ *      script, silently turning a dry run into a real one. Calling node directly has no such
+ *      ambiguity:
  *        node scripts/encryptExistingBankDetails.js --dry-run
+ *      (The npm script is still there for convenience once you've confirmed --dry-run reaches
+ *      this script — check the very first log line always prints "argv received: [...]" so you
+ *      can see exactly what this script got, whichever way you invoke it. `DRY_RUN=true` as an
+ *      environment variable also works and cannot be swallowed by npm, e.g. on Windows PowerShell:
+ *      `$env:DRY_RUN='true'; node scripts/encryptExistingBankDetails.js`.)
  *   4. Then run for real:
  *        node scripts/encryptExistingBankDetails.js
  *   5. Re-running it afterwards (accidentally or to confirm) is safe and a no-op — every row it
@@ -33,7 +42,10 @@ const encryptionService = require('../src/services/encryptionService');
 const { BANK_DETAIL_FIELDS } = encryptionService;
 
 const BATCH_SIZE = 200;
-const DRY_RUN = process.argv.includes('--dry-run');
+// Accept BOTH a CLI flag and an env var — belt and suspenders after the npm/`--dry-run`
+// footgun documented above (a swallowed CLI flag silently turns a dry run into a real one, which
+// is exactly the wrong direction to fail in for a script that writes to real production data).
+const DRY_RUN = process.argv.includes('--dry-run') || process.env.DRY_RUN === 'true' || process.env.DRY_RUN === '1';
 
 async function main() {
   if (!process.env.BANK_DETAILS_ENCRYPTION_KEY) {
@@ -51,6 +63,9 @@ async function main() {
   // error to fix than a raw Prisma connection failure.
   const prisma = require('../src/config/db');
 
+  // Print exactly what this script received, every run — the one thing that would have caught
+  // the npm/`--dry-run`-swallowing footgun above immediately instead of only after a failed write.
+  console.log(`[encryptExistingBankDetails] argv received: ${JSON.stringify(process.argv.slice(2))}`);
   console.log(`[encryptExistingBankDetails] Starting${DRY_RUN ? ' (DRY RUN — no writes will happen)' : ''}...`);
 
   let cursor;
