@@ -350,12 +350,24 @@ class BookingRules {
   final int cancellationWindowHours;
   final int maxBookingsPerPatient;
   final int defaultSlotMinutes;
+  // BUG FIX (mobile parity audit): PUT /admin/booking-rules is a full-replace of the platform's
+  // singleton booking-rules row (admin.service.js#updateBookingRules sets every one of these to
+  // `body.field ?? null`, even when the field is simply absent from the request body). The mobile
+  // form used to send only the 3 fields above, which silently NULLED OUT these 3 platform-wide
+  // settings every single time an admin saved the "Booking rules" screen. These 3 are carried
+  // through the form unmodified (no UI to edit them here yet) so a save never erases them.
+  final String? onlineBookingWindowStart;
+  final String? onlineBookingWindowEnd;
+  final int? onlineBookingMaxAdvanceDays;
 
   BookingRules({
     required this.id,
     required this.cancellationWindowHours,
     required this.maxBookingsPerPatient,
     required this.defaultSlotMinutes,
+    this.onlineBookingWindowStart,
+    this.onlineBookingWindowEnd,
+    this.onlineBookingMaxAdvanceDays,
   });
 
   factory BookingRules.fromJson(Map<String, dynamic> json) => BookingRules(
@@ -363,12 +375,19 @@ class BookingRules {
         cancellationWindowHours: asInt(json['cancellationWindowHours']),
         maxBookingsPerPatient: asInt(json['maxBookingsPerPatient']),
         defaultSlotMinutes: asInt(json['defaultSlotMinutes']),
+        onlineBookingWindowStart: json['onlineBookingWindowStart'] as String?,
+        onlineBookingWindowEnd: json['onlineBookingWindowEnd'] as String?,
+        onlineBookingMaxAdvanceDays:
+            json['onlineBookingMaxAdvanceDays'] == null ? null : asInt(json['onlineBookingMaxAdvanceDays']),
       );
 
   Map<String, dynamic> toJson() => {
         'cancellationWindowHours': cancellationWindowHours,
         'maxBookingsPerPatient': maxBookingsPerPatient,
         'defaultSlotMinutes': defaultSlotMinutes,
+        'onlineBookingWindowStart': onlineBookingWindowStart,
+        'onlineBookingWindowEnd': onlineBookingWindowEnd,
+        'onlineBookingMaxAdvanceDays': onlineBookingMaxAdvanceDays,
       };
 }
 

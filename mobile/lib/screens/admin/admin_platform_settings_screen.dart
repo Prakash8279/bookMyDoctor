@@ -291,10 +291,18 @@ class _RulesFormState extends State<_RulesForm> {
       _error = null;
     });
     try {
+      // BUG FIX (mobile parity audit — data corruption): this is a full-replace PUT
+      // (admin.service.js#updateBookingRules writes every field as `body.field ?? null`), so the
+      // 3 fields this form doesn't edit must be carried through unmodified from `widget.initial`
+      // — otherwise every save from this screen silently wiped the platform's online-booking
+      // window and max-advance-days settings.
       await ApiClient.instance.put('/admin/booking-rules', body: {
         'cancellationWindowHours': cancellation,
         'maxBookingsPerPatient': maxBookings,
         'defaultSlotMinutes': slot,
+        'onlineBookingWindowStart': widget.initial.onlineBookingWindowStart,
+        'onlineBookingWindowEnd': widget.initial.onlineBookingWindowEnd,
+        'onlineBookingMaxAdvanceDays': widget.initial.onlineBookingMaxAdvanceDays,
       });
       if (mounted) showSuccessSnack(context, 'Booking rules saved');
       widget.onSaved();

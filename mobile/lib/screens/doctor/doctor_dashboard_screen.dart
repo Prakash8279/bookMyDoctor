@@ -90,7 +90,21 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     setState(() => _dutyBusy = true);
     final next = !current;
     try {
-      await ApiClient.instance.patch('/doctors/profile', body: {'onlineBooking': next});
+      // BUG FIX (mobile parity audit): there is no '/doctors/profile' route on the backend at all
+      // (doctors.routes.js only has PATCH '/:id') — this call was silently failing (404) every
+      // time, so "Go on/off duty" never actually worked on mobile. The real route is a full-
+      // replace of 3 REQUIRED fields (doctors.validation.js#patchDoctor: onlineBooking,
+      // allowRebooking, maxDaysAdvance all `exists({checkNull:true})`), so the other 2 must be
+      // carried through from the current profile — same pattern as web's toggleDuty
+      // (StaffPages.jsx) via updateDoctorBookingPolicy(currentUser.id, {...}).
+      final auth = context.read<AuthProvider>();
+      final doctorId = auth.user?.id;
+      if (doctorId == null) throw Exception('Could not determine your doctor id.');
+      await ApiClient.instance.patch('/doctors/$doctorId', body: {
+        'onlineBooking': next,
+        'allowRebooking': auth.profile?.allowRebooking ?? true,
+        'maxDaysAdvance': auth.profile?.maxDaysAdvance ?? 7,
+      });
       if (mounted) {
         await context.read<AuthProvider>().refreshProfile();
         if (mounted) {
