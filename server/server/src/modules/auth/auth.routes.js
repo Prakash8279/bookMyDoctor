@@ -11,8 +11,21 @@ const router = require('express').Router();
 const authenticate = require('../../middleware/authenticate');
 const validateRequest = require('../../middleware/validateRequest');
 const { authLimiter, refreshLimiter } = require('../../middleware/rateLimiter');
+const { createInFlightGuard } = require('../../middleware/inFlightGuard');
+const env = require('../../config/env');
 const validation = require('./auth.validation');
 const controller = require('./auth.controller');
+
+// LOGIN RESILIENCE (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 1 item 2) — see
+// middleware/inFlightGuard.js's header comment for the full rationale and threshold math. Shared
+// by /register AND /login (both run a bcrypt hash/compare against the same process-wide libuv
+// thread pool), so the cap reflects the real combined bcrypt capacity instead of letting each
+// route separately allow up to `max` concurrent bcrypt operations (2x the intended ceiling).
+const authInFlightGuard = createInFlightGuard({
+  max: env.authResilience.maxInFlight,
+  retryAfterSeconds: env.authResilience.retryAfterSeconds,
+  label: 'auth-bcrypt',
+});
 
 // ── OpenAPI worked example ────────────────────────────────────────────────────────────────────
 // The four blocks below (register/login/refresh/me) are the reference example for annotating a
@@ -89,9 +102,18 @@ const controller = require('./auth.controller');
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       503:
+ *         description: >
+ *           SERVICE_BUSY — too many bcrypt-heavy login/register requests are already in flight
+ *           on this process (see middleware/inFlightGuard.js). Includes a `Retry-After` header;
+ *           safe to retry shortly.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
  */
-// Public — brute-force-protected.
-router.post('/register', authLimiter, validation.register, validateRequest, controller.register);
+// Public — brute-force-protected, and load-shed once too many bcrypt hashes are already in
+// flight (see authInFlightGuard above).
+router.post('/register', authLimiter, authInFlightGuard, validation.register, validateRequest, controller.register);
 
 /**
  * @openapi
@@ -158,8 +180,18 @@ router.post('/register', authLimiter, validation.register, validateRequest, cont
  *         content:
  *           application/json:
  *             schema: { $ref: '#/components/schemas/ApiError' }
+ *       503:
+ *         description: >
+ *           SERVICE_BUSY — too many bcrypt-heavy login/register requests are already in flight
+ *           on this process (see middleware/inFlightGuard.js). Includes a `Retry-After` header;
+ *           safe to retry shortly. Added after the 2026-09-20 load test showed this route
+ *           collapsing to 0% success (every request timing out) at extreme concurrency instead
+ *           of failing fast.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
  */
-router.post('/login', authLimiter, validation.login, validateRequest, controller.login);
+router.post('/login', authLimiter, authInFlightGuard, validation.login, validateRequest, controller.login);
 
 /**
  * @openapi

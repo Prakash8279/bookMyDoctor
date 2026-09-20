@@ -6,9 +6,10 @@
  * bookingLimiter (moderate, protects the booking write path), paymentLimiter (moderate, protects
  * the payment-recording write path — a financial mutation that also consumes the shared
  * payment_receipt_seq sequence), uploadLimiter (generous, protects the multipart file/document
- * upload write paths under /media), defaultLimiter (generous, applied globally). Backed by a
- * Redis store in production so limits are shared across horizontally-scaled instances, not
- * per-process.
+ * upload write paths under /media), defaultLimiter (generous, applied globally, keyed by
+ * authenticated user id when a valid Bearer token is present via a best-effort JWT decode, else
+ * IP — see bestEffortUserIdFromRequest below). Backed by a Redis store in production so limits
+ * are shared across horizontally-scaled instances, not per-process.
  */
 const rateLimitModule = require('express-rate-limit');
 const rateLimit = rateLimitModule.default || rateLimitModule;
@@ -17,6 +18,7 @@ const rateLimit = rateLimitModule.default || rateLimitModule;
 // a plain identity function so bookingLimiter's custom keyGenerator works either way.
 const ipKeyGenerator = rateLimitModule.ipKeyGenerator || ((ip) => ip);
 const { RedisStore } = require('rate-limit-redis');
+const jwt = require('jsonwebtoken');
 const redisClient = require('../config/redis');
 const env = require('../config/env');
 const ApiError = require('../utils/ApiError');
@@ -108,13 +110,15 @@ const refreshLimiter = rateLimit({
 // pattern as bookingLimiter/paymentLimiter above. GET/download routes (secureDocument.routes.js,
 // the /media list endpoints if any) are deliberately NOT covered by this limiter; only the
 // upload-writing POST routes are.
-// NOTE: unlike the limiters above, this isn't wired through config/env.js's configurable
-// rateLimit block (env.js was out of scope for this change) — windowMs/max are fixed constants
-// here. Wiring in UPLOAD_RATE_LIMIT_MAX / UPLOAD_RATE_LIMIT_WINDOW_MINUTES env vars, following the
-// authMax/bookingMax pattern above, would be a natural follow-up.
+// RATE-LIMIT FAIRNESS FOLLOW-UP (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 2 item
+// 2) — window/max now come from config/env.js's rateLimit.uploadMax/uploadWindowMinutes
+// (UPLOAD_RATE_LIMIT_MAX / UPLOAD_RATE_LIMIT_WINDOW_MINUTES), following the exact
+// authMax/bookingMax pattern every other limiter here already uses, instead of being hardcoded
+// constants only this limiter had. Defaults are unchanged (20 per 15 minutes), so this is a pure
+// config-wiring change with no behavior change out of the box.
 const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: env.rateLimit.uploadWindowMinutes * 60 * 1000,
+  max: env.rateLimit.uploadMax,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
@@ -122,13 +126,68 @@ const uploadLimiter = rateLimit({
   store: makeRedisStore('rl:upload:'),
 });
 
-// Generous — applied globally in app.js. Keyed by IP.
+// Best-effort: pulls an authenticated user id out of the Authorization header for RATE-LIMIT
+// KEYING ONLY. Never throws, never enforces authentication — that stays authenticate.js's
+// exclusive job further down the middleware chain. This exists only for defaultLimiter below.
+//
+// RATE-LIMIT FAIRNESS FIX (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 2 item 1):
+// defaultLimiter is mounted globally in app.js's middleware chain BEFORE any route (and
+// therefore before any route's own `authenticate` middleware) runs, so req.user is never set yet
+// at the point defaultLimiter's keyGenerator executes — simply copying the
+// `(req.user && req.user.id) || ipKeyGenerator(req.ip)` pattern the other limiters use would
+// always fall through to IP here. A full authenticate()-style DB lookup on every single request
+// just to pick a rate-limit bucket would also be far too expensive to run unconditionally, so
+// this does a signature-only JWT verify instead (no DB round-trip) — cheap enough to run on every
+// request, and it gets the same fairness benefit bookingLimiter/paymentLimiter/uploadLimiter/
+// passwordChangeLimiter already have: a busy authenticated user gets their OWN bucket instead of
+// sharing one IP-keyed bucket with every other patient/doctor/receptionist behind the same office
+// wifi, hospital network, or mobile carrier NAT gateway.
+//
+// Deliberately does NOT call services/tokenService.js#verifyAccessToken here, even though the
+// check is logically the same one — tokenService.js transitively requires config/db (the Prisma
+// client) for its OTHER exports (issueRefreshToken, rotateRefreshToken, etc.), and this module is
+// loaded by every route in the app at startup purely to compute a rate-limit key. Giving the rate
+// limiter itself a hard dependency on the database being reachable, just to borrow one
+// DB-independent function, is an avoidable coupling. This inlines the same secret-rotation-aware
+// verify (current secret first, then the optional _PREVIOUS one — see config/env.js's
+// jwt.accessVerifySecrets) and the same password-reset-token rejection (a reset token carries a
+// `purpose` claim a real access token never has — see tokenService.js's own comment on this) with
+// no DB dependency at all.
+function bestEffortUserIdFromRequest(req) {
+  const header = req.headers && req.headers.authorization;
+  if (!header) return null;
+
+  const [scheme, token] = header.split(' ');
+  if (scheme !== 'Bearer' || !token) return null;
+
+  for (const secret of env.jwt.accessVerifySecrets) {
+    try {
+      const payload = jwt.verify(token, secret, { algorithms: ['HS256'] });
+      // A password-reset token is signed with this same secret (see tokenService.js) but must
+      // never double as an access token / rate-limit identity.
+      if (payload.purpose) return null;
+      return payload.sub || null;
+    } catch (err) {
+      // This candidate secret didn't match (or the token is expired/malformed) — try the next
+      // candidate secret; if every one fails, fall through to the `return null` below, exactly
+      // like a genuinely unauthenticated caller. Deliberately swallowed: this must never become a
+      // second, redundant place that rejects bad tokens (authenticate.js already owns that for
+      // the routes that actually require auth).
+    }
+  }
+  return null;
+}
+
+// Generous — applied globally in app.js. Keyed by the authenticated user's id when a valid
+// Bearer token is present (see bestEffortUserIdFromRequest above), falling back to IP for
+// unauthenticated callers — same fairness pattern as bookingLimiter/paymentLimiter/etc.
 const defaultLimiter = rateLimit({
   windowMs: env.rateLimit.defaultWindowMinutes * 60 * 1000,
   max: env.rateLimit.defaultMax,
   standardHeaders: true,
   legacyHeaders: false,
   handler: rateLimitHandler,
+  keyGenerator: (req) => bestEffortUserIdFromRequest(req) || ipKeyGenerator(req.ip),
   store: makeRedisStore('rl:default:'),
 });
 
@@ -140,4 +199,7 @@ module.exports = {
   uploadLimiter,
   refreshLimiter,
   defaultLimiter,
+  // Exported for direct unit testing of the Phase 2 item 1 keying fix (see its own header
+  // comment above) — not consumed by any other module.
+  bestEffortUserIdFromRequest,
 };

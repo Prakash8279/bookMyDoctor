@@ -113,6 +113,32 @@ Every endpoint returns one of:
 - Every protected route runs `authenticate` then `authorize('role', ...)` — the frontend's
   route guards are UX only, never trusted as the real access control.
 
+## Login/register resilience under load
+
+A real load test on 2026-09-20 (`docs/api-load-test-results-2026-09-20.md`) found that
+`POST /auth/login`/`/auth/register` have a hard ~30 req/s ceiling — both run a real bcrypt
+hash/compare, which executes on Node's libuv thread pool (default 4 threads system-wide) — and
+that past that ceiling, requests didn't degrade gracefully: they queued silently until the
+client's own timeout fired, collapsing to 0% success at extreme concurrency instead of shedding
+load. Two fixes from `docs/api-load-test-issues-and-plan-2026-09-20.md`'s Phase 1 are now in
+place:
+
+- `npm run dev`/`npm run start` set `UV_THREADPOOL_SIZE=16` (via `cross-env`, so it works the
+  same on Windows/macOS/Linux) — libuv only reads this once at process startup, so it can't be
+  set in `.env` and picked up by the app itself. Run `npm install` after pulling this change to
+  get the new `cross-env` dev dependency.
+- `middleware/inFlightGuard.js` bounds how many of these bcrypt-heavy requests are allowed to
+  actually be in flight on this process at once (`AUTH_MAX_INFLIGHT`, default 90); the excess
+  gets a fast `503 SERVICE_BUSY` + `Retry-After` instead of hanging until it times out.
+
+`defaultLimiter` (the global rate limiter applied to every route in `app.js`) also now keys by
+the authenticated user's id when a valid Bearer token is present (a lightweight, DB-free JWT
+decode — see `middleware/rateLimiter.js`'s `bestEffortUserIdFromRequest`), not just IP — so one
+busy user can no longer exhaust the shared budget for every other patient/doctor/receptionist
+behind the same office wifi or hospital network. See the two docs above for the full analysis,
+the rest of the implementation plan, and the verification re-runs still to be done on your own
+machine (Phase 0/3 there need a real Postgres/Redis, which this sandbox doesn't have).
+
 ## Caching
 
 Every read-heavy list/detail endpoint (doctor search, clinic search, appointment/queue/payment

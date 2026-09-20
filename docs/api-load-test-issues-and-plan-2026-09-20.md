@@ -58,6 +58,30 @@ one prioritized list, now corrected against the actual `.env` values supplied af
   @ 10 concurrent (818 req/s, 0 non-2xx) are both clean, trustworthy numbers with no action
   needed.
 
+## Implementation status (2026-09-20)
+
+Phase 1 items 1-2 and Phase 2 items 1-2 are now implemented in code (see the diffs delivered
+alongside this update). Phase 1 item 3 (a dedicated bcrypt worker pool) is deliberately **not**
+implemented yet — the plan itself flags it as worth doing "only if Phase 0's `UV_THREADPOOL_SIZE`
+experiment shows diminishing returns," and that experiment still needs to run on your own machine
+(a real Postgres/Redis + real network, neither available in the sandbox this was written in).
+Phase 0 (clean data-gathering) and Phase 3 (verification re-runs) are still yours to run for the
+same reason — see each phase's own section below for exact steps.
+
+- **Phase 1, item 1 — done.** `server/package.json`'s `dev`/`start` scripts now set
+  `UV_THREADPOOL_SIZE=16` via `cross-env` (new dev dependency — run `npm install` after pulling).
+- **Phase 1, item 2 — done.** `middleware/inFlightGuard.js` (new file) bounds in-flight
+  `POST /auth/login`/`/auth/register` requests (`AUTH_MAX_INFLIGHT`, default 90) and returns a
+  fast `503 SERVICE_BUSY` + `Retry-After` once exceeded. Wired into `auth.routes.js`.
+- **Phase 1, item 3 — deferred**, pending the Phase 0 experiment above.
+- **Phase 2, item 1 — done.** `defaultLimiter` now keys by the authenticated user's id via a
+  lightweight, DB-free JWT decode (`bestEffortUserIdFromRequest` in `middleware/rateLimiter.js`),
+  falling back to IP — resolving the "runs before `authenticate`" caveat originally flagged below
+  without moving `defaultLimiter` or splitting it into multiple limiters.
+- **Phase 2, item 2 — done.** `uploadLimiter`'s window/max now come from `config/env.js`
+  (`UPLOAD_RATE_LIMIT_MAX` / `UPLOAD_RATE_LIMIT_WINDOW_MINUTES`), same defaults as before (20 per
+  15 minutes) so this is a pure config-wiring change.
+
 ## Implementation plan
 
 ### Phase 0 — Get clean data first (no permanent code changes, ~15 minutes)

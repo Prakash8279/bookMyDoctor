@@ -157,6 +157,26 @@ module.exports = {
     // to refresh freely while closing that gap.
     refreshMax: parseIntWithDefault(process.env.REFRESH_RATE_LIMIT_MAX, 30),
     refreshWindowMinutes: parseIntWithDefault(process.env.REFRESH_RATE_LIMIT_WINDOW_MINUTES, 15),
+    // RATE-LIMIT FAIRNESS FOLLOW-UP (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 2
+    // item 2) — uploadLimiter (middleware/rateLimiter.js) used to have this window/max hardcoded
+    // instead of going through this configurable block like every other limiter; wired in here
+    // now, following the exact authMax/bookingMax pattern above. Same values as the old hardcoded
+    // constants, so this is a pure config-wiring change with no behavior change by default.
+    uploadMax: parseIntWithDefault(process.env.UPLOAD_RATE_LIMIT_MAX, 20),
+    uploadWindowMinutes: parseIntWithDefault(process.env.UPLOAD_RATE_LIMIT_WINDOW_MINUTES, 15),
+  },
+
+  // LOGIN RESILIENCE (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 1 item 2) — bounds
+  // how many bcrypt-heavy auth requests (POST /auth/login, /auth/register) are allowed to
+  // actually be in flight on this process at once, so a burst beyond libuv's default 4-thread
+  // pool capacity gets a fast, honest 503 + Retry-After instead of queueing until the client
+  // times out (the 2026-09-20 load test measured a full collapse — 0 successful logins, 525
+  // timeouts — at 1000 concurrent, with no graceful degradation in between). See
+  // middleware/inFlightGuard.js for the guard itself and the full in-flight-count math behind the
+  // default of 90 (~3x the measured ~30 req/s ceiling's own in-flight estimate).
+  authResilience: {
+    maxInFlight: parseIntWithDefault(process.env.AUTH_MAX_INFLIGHT, 90),
+    retryAfterSeconds: parseIntWithDefault(process.env.AUTH_RETRY_AFTER_SECONDS, 3),
   },
 
   // Optional IP allowlist for the admin API surface (middleware/adminIpAllowlist.js). Empty by

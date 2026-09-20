@@ -21,10 +21,18 @@ jest.mock('../../../src/config/redis', () => ({
   }),
 }));
 
-const { uploadLimiter, authLimiter, bookingLimiter, paymentLimiter } = require('../../../src/middleware/rateLimiter');
+const jwt = require('jsonwebtoken');
+const {
+  uploadLimiter,
+  authLimiter,
+  bookingLimiter,
+  paymentLimiter,
+  defaultLimiter,
+  bestEffortUserIdFromRequest,
+} = require('../../../src/middleware/rateLimiter');
 
-function fakeReqResNext({ user } = {}) {
-  const req = { ip: '127.0.0.1', user, headers: {} };
+function fakeReqResNext({ user, authorization } = {}) {
+  const req = { ip: '127.0.0.1', user, headers: authorization ? { authorization } : {} };
   const res = {
     setHeader: jest.fn(),
     status: jest.fn().mockReturnThis(),
@@ -70,6 +78,100 @@ describe('rateLimiter — uploadLimiter', () => {
     const { req, res, next } = fakeReqResNext();
 
     await uploadLimiter(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  // RATE-LIMIT FAIRNESS FOLLOW-UP (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 2
+  // item 2) — uploadLimiter's window/max used to be hardcoded constants; now sourced from
+  // config/env.js (UPLOAD_RATE_LIMIT_MAX / UPLOAD_RATE_LIMIT_WINDOW_MINUTES). This confirms the
+  // limiter still boots as a real, working rateLimit(...) instance off that config, not that any
+  // particular env value was picked (tests/setupEnv.js doesn't set these, so env.js's own
+  // defaults — 20 / 15 minutes, unchanged from the old hardcoded values — apply here).
+  test('window/max now come from config/env.js rather than hardcoded constants', () => {
+    const env = require('../../../src/config/env');
+    expect(env.rateLimit.uploadMax).toBe(20);
+    expect(env.rateLimit.uploadWindowMinutes).toBe(15);
+  });
+});
+
+// RATE-LIMIT FAIRNESS FIX (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 2 item 1) —
+// defaultLimiter is mounted globally in app.js BEFORE any route's own `authenticate` middleware
+// runs, so it can't rely on req.user the way bookingLimiter/paymentLimiter/etc. do. Instead it
+// does its own lightweight, best-effort JWT decode (bestEffortUserIdFromRequest) purely for
+// rate-limit keying — these tests exercise that function directly, plus a smoke test that
+// defaultLimiter itself still behaves as a normal working limiter either way.
+describe('rateLimiter — bestEffortUserIdFromRequest (defaultLimiter fairness fix)', () => {
+  function signTestAccessToken(sub) {
+    // Same call shape as tokenService.js#signAccessToken, but built directly with jsonwebtoken
+    // here so this test doesn't depend on tokenService's user-shape assumptions — only on the
+    // {sub} claim bestEffortUserIdFromRequest actually reads.
+    return jwt.sign({ sub, role: 'patient' }, process.env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+  }
+
+  test('extracts the user id (payload.sub) from a valid Bearer access token', () => {
+    const token = signTestAccessToken('user-abc-123');
+    const req = { headers: { authorization: `Bearer ${token}` } };
+
+    expect(bestEffortUserIdFromRequest(req)).toBe('user-abc-123');
+  });
+
+  test('returns null (never throws) for a missing Authorization header', () => {
+    expect(bestEffortUserIdFromRequest({ headers: {} })).toBeNull();
+    expect(bestEffortUserIdFromRequest({ headers: undefined })).toBeNull();
+  });
+
+  test('returns null for a non-Bearer scheme or a missing token', () => {
+    expect(bestEffortUserIdFromRequest({ headers: { authorization: 'Basic abc123' } })).toBeNull();
+    expect(bestEffortUserIdFromRequest({ headers: { authorization: 'Bearer' } })).toBeNull();
+  });
+
+  test('returns null (never throws) for an expired token', () => {
+    const expiredToken = jwt.sign({ sub: 'user-expired' }, process.env.JWT_ACCESS_SECRET, { expiresIn: -10 });
+    const req = { headers: { authorization: `Bearer ${expiredToken}` } };
+
+    expect(() => bestEffortUserIdFromRequest(req)).not.toThrow();
+    expect(bestEffortUserIdFromRequest(req)).toBeNull();
+  });
+
+  test('returns null (never throws) for a token signed with the wrong secret (forged/garbage)', () => {
+    const forged = jwt.sign({ sub: 'user-forged' }, 'totally-wrong-secret', { expiresIn: '15m' });
+    const req = { headers: { authorization: `Bearer ${forged}` } };
+
+    expect(bestEffortUserIdFromRequest(req)).toBeNull();
+  });
+
+  test('returns null for a password-reset token (right secret, wrong purpose) — never doubles as auth', () => {
+    // Same shape services/tokenService.js#signResetToken signs — built directly with
+    // jsonwebtoken here (rather than requiring tokenService.js) so this test file, like
+    // rateLimiter.js itself, stays free of tokenService's transitive Prisma/config-db dependency.
+    const resetToken = jwt.sign(
+      { sub: 'user-resetting-password', purpose: 'password-reset' },
+      process.env.JWT_ACCESS_SECRET,
+      { expiresIn: '30m' }
+    );
+    const req = { headers: { authorization: `Bearer ${resetToken}` } };
+
+    // tokenService.js#verifyAccessToken itself rejects `purpose`-carrying tokens — this confirms
+    // the rate-limit keying path applies that same rule rather than bypassing it.
+    expect(bestEffortUserIdFromRequest(req)).toBeNull();
+  });
+
+  test('defaultLimiter is still a real, working limiter for an authenticated request keyed this way', async () => {
+    const token = signTestAccessToken('user-under-default-limiter-test');
+    const { req, res, next } = fakeReqResNext({ authorization: `Bearer ${token}` });
+
+    await defaultLimiter(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  test('defaultLimiter still falls back to IP keying for a fully unauthenticated request', async () => {
+    const { req, res, next } = fakeReqResNext();
+
+    await defaultLimiter(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledWith();
