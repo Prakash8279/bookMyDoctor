@@ -8,6 +8,7 @@ const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 
@@ -54,13 +55,21 @@ if (env.isProduction) {
 // be loadable by the frontend running on a different origin/port.
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-// 2. CORS — single allowed origin (the frontend). No cookies are used for auth (tokens are
-// body/header based, see D1 in the phase plan), so credentials stays false.
+// 2. CORS — single allowed origin (the frontend).
+// WEB-ONLY REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md — see
+// utils/webClientAuth.js for the full flow): credentials is now `true` so the browser actually
+// sends/accepts the httpOnly refresh-token cookie on cross-port/cross-subdomain requests to the
+// API. This is safe specifically BECAUSE origin is a single, exact, non-wildcard value (env.
+// clientOrigin) — `credentials: true` together with a wildcard '*' origin is what would be
+// dangerous (and the `cors` package refuses to even combine them), not a pinned single origin.
+// X-Client-Platform is the header apiClient.js sends on every request so the backend can tell a
+// web caller from the Flutter mobile app (which never sends it, and keeps its existing JSON-body
+// refresh-token flow completely unchanged).
 app.use(
   cors({
     origin: env.clientOrigin,
-    credentials: false,
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Platform'],
     exposedHeaders: ['X-Request-Id'],
   })
 );
@@ -70,6 +79,13 @@ app.use(compression());
 
 // 4. JSON body parsing.
 app.use(express.json({ limit: '1mb' }));
+
+// 4.5. Cookie parsing — populates req.cookies. Only ever needed for the httpOnly refresh-token
+// cookie (see utils/webClientAuth.js); no other part of this app reads req.cookies. No secret
+// passed to cookieParser() because this app never uses SIGNED cookies (the refresh token inside
+// is already a signed JWT — signing the cookie wrapper too would be redundant defense against a
+// threat, cookie tampering, that jwt.verify() in tokenService already fully covers).
+app.use(cookieParser());
 
 // 5. Request id + HTTP access logging.
 app.use(...requestLogger);

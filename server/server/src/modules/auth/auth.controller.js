@@ -6,17 +6,21 @@
 const authService = require('./auth.service');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
+const { applyAuthCookies, clearAuthCookie, resolveIncomingRefreshToken } = require('../../utils/webClientAuth');
 
 const register = asyncHandler(async (req, res) => {
   const { name, email, password, phone, city } = req.body;
   const result = await authService.register({ name, email, password, phone, city });
-  return success(res, result, { statusCode: 201, message: 'Registration successful' });
+  // WEB-ONLY REFRESH-COOKIE FIX (risky-item #2) — see utils/webClientAuth.js. For a web caller
+  // this sets the httpOnly cookie and strips refreshToken out of the body; for anyone else
+  // (mobile, tests, a direct API caller) `result` passes through completely unchanged.
+  return success(res, applyAuthCookies(req, res, result), { statusCode: 201, message: 'Registration successful' });
 });
 
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const result = await authService.login({ email, password });
-  return success(res, result);
+  return success(res, applyAuthCookies(req, res, result));
 });
 
 // GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro"). Handles login,
@@ -24,19 +28,23 @@ const login = asyncHandler(async (req, res) => {
 const googleAuth = asyncHandler(async (req, res) => {
   const { idToken } = req.body;
   const result = await authService.googleAuth({ idToken });
-  return success(res, result);
+  return success(res, applyAuthCookies(req, res, result));
 });
 
 const logout = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  // WEB-ONLY REFRESH-COOKIE FIX — a web caller never sends refreshToken in the body (it lives
+  // only in the httpOnly cookie); resolveIncomingRefreshToken reads whichever one is actually
+  // present, so mobile's existing body-based flow is untouched.
+  const refreshToken = resolveIncomingRefreshToken(req);
   await authService.logout({ userId: req.user.id, role: req.user.role, refreshToken });
+  clearAuthCookie(req, res);
   return success(res, null, { message: 'Logged out' });
 });
 
 const refresh = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const refreshToken = resolveIncomingRefreshToken(req);
   const result = await authService.refresh({ refreshToken });
-  return success(res, result);
+  return success(res, applyAuthCookies(req, res, result));
 });
 
 const me = asyncHandler(async (req, res) => {

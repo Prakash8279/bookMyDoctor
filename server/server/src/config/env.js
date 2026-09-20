@@ -118,6 +118,23 @@ module.exports = {
 
   bcryptSaltRounds: parseIntWithDefault(process.env.BCRYPT_SALT_ROUNDS, 12),
 
+  // WEB-ONLY httpOnly REFRESH-TOKEN COOKIE (risky-item #2, docs/risky-fixes-plan-2026-09-20.md).
+  // See utils/webClientAuth.js for the full flow. 'lax' is correct for the overwhelming majority
+  // of real deployments — it still works across different PORTS (localhost:5173 talking to
+  // localhost:4000) and different SUBDOMAINS of the same registrable domain (app.example.com
+  // talking to api.example.com), which covers this app's own docker-compose setup and any normal
+  // single-domain-family deployment. Only override to 'none' if the web frontend and the API
+  // genuinely live on two unrelated top-level domains (e.g. a frontend on a Vercel default domain
+  // and an API on a Render default domain) — and note that doing so also loses the free
+  // cross-site-POST protection 'lax' gives the refresh/logout endpoints (see webClientAuth.js's
+  // header comment); 'none' additionally requires a real HTTPS deployment (browsers reject
+  // SameSite=None without Secure, which this config always sets together — see
+  // webClientAuth.js#refreshCookieOptions).
+  refreshCookieSameSite: (() => {
+    const value = (process.env.REFRESH_COOKIE_SAME_SITE || 'lax').toLowerCase();
+    return ['lax', 'strict', 'none'].includes(value) ? value : 'lax';
+  })(),
+
   upload: {
     dir: process.env.UPLOAD_DIR || './uploads',
     baseUrl: process.env.UPLOAD_BASE_URL || 'http://localhost:4000/uploads',

@@ -218,4 +218,91 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
     expect(res.body.success).toBe(false);
     expect(res.body.error.code).toBe('TOKEN_INVALID');
   });
+
+  // WEB-ONLY REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md) — a real
+  // end-to-end run of register -> refresh -> logout for a caller identifying itself as the web
+  // app (X-Client-Platform: web), using a cookie-jar-carrying supertest agent so the browser-like
+  // "receive a Set-Cookie, then automatically send it back on the next request" behavior is
+  // exercised for real, not simulated by hand.
+  describe('web client (X-Client-Platform: web) — httpOnly refresh cookie flow', () => {
+    test('register sets an httpOnly refresh cookie and never puts refreshToken in the body', async () => {
+      const res = await request(app)
+        .post('/auth/register')
+        .set('X-Client-Platform', 'web')
+        .send({ name: 'Web User', email: 'web-user@example.com', password: PASSWORD });
+
+      expect(res.status).toBe(201);
+      expect(typeof res.body.data.accessToken).toBe('string');
+      expect(res.body.data.refreshToken).toBeUndefined();
+
+      const setCookie = res.headers['set-cookie'] || [];
+      const refreshCookie = setCookie.find((c) => c.startsWith('refreshToken='));
+      expect(refreshCookie).toBeDefined();
+      expect(refreshCookie).toMatch(/HttpOnly/i);
+      expect(refreshCookie).toMatch(/Path=\/auth/i);
+    });
+
+    test('a mobile-style caller (no X-Client-Platform header) is completely unaffected — refreshToken still in the body, no cookie set', async () => {
+      const res = await request(app)
+        .post('/auth/register')
+        .send({ name: 'Mobile User', email: 'mobile-user@example.com', password: PASSWORD });
+
+      expect(res.status).toBe(201);
+      expect(typeof res.body.data.refreshToken).toBe('string');
+      expect(res.headers['set-cookie']).toBeUndefined();
+    });
+
+    test('full web flow: register -> refresh via cookie only (no body) -> logout clears the cookie', async () => {
+      const agent = request.agent(app); // persists Set-Cookie across requests, like a real browser
+
+      const registerRes = await agent
+        .post('/auth/register')
+        .set('X-Client-Platform', 'web')
+        .send({ name: 'Cookie Flow User', email: 'cookie-flow@example.com', password: PASSWORD });
+      expect(registerRes.status).toBe(201);
+      const firstCookie = (registerRes.headers['set-cookie'] || []).find((c) => c.startsWith('refreshToken='));
+      expect(firstCookie).toBeDefined();
+
+      // No body at all — the agent's cookie jar supplies the refresh token automatically, exactly
+      // as a real browser would with withCredentials: true (see client/src/lib/apiClient.js).
+      const refreshRes = await agent.post('/auth/refresh').set('X-Client-Platform', 'web').send({});
+      expect(refreshRes.status).toBe(200);
+      expect(typeof refreshRes.body.data.accessToken).toBe('string');
+      expect(refreshRes.body.data.refreshToken).toBeUndefined();
+      // Rotation issued a NEW refresh cookie (single-use, rotating — same as the body-based
+      // mobile flow already guarantees via tokenService#rotateRefreshToken). Comparing the COOKIE
+      // (not the access token) for change: signAccessToken's JWT is deterministic for a given
+      // {sub, role, iat}, so two tokens minted within the same wall-clock second are legitimately
+      // byte-identical — that's a harmless property of JWTs, not a sign that rotation didn't
+      // happen. The refresh token's random jti makes it a reliable "did this actually rotate?"
+      // signal instead.
+      const rotatedCookie = (refreshRes.headers['set-cookie'] || []).find((c) => c.startsWith('refreshToken='));
+      expect(rotatedCookie).toBeDefined();
+      expect(rotatedCookie).not.toBe(firstCookie);
+
+      const meRes = await agent
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${refreshRes.body.data.accessToken}`);
+      expect(meRes.status).toBe(200);
+
+      const logoutRes = await agent
+        .post('/auth/logout')
+        .set('Authorization', `Bearer ${refreshRes.body.data.accessToken}`)
+        .set('X-Client-Platform', 'web')
+        .send({});
+      expect(logoutRes.status).toBe(200);
+      const clearedCookie = (logoutRes.headers['set-cookie'] || []).find((c) => c.startsWith('refreshToken='));
+      expect(clearedCookie).toBeDefined();
+      // An expired/cleared cookie's Set-Cookie carries Expires in the past (or Max-Age=0) —
+      // res.clearCookie's actual mechanism — never a real future-dated token value.
+      expect(clearedCookie).toMatch(/Expires=Thu, 01 Jan 1970|Max-Age=0/i);
+
+      // logout's Set-Cookie (asserted above) already removed the token from the agent's own
+      // cookie jar, exactly as it would a real browser's — so the very next /auth/refresh call
+      // has nothing to send at all and correctly fails, the same end state a stolen-then-revoked
+      // cookie would leave an attacker in.
+      const reuseRes = await agent.post('/auth/refresh').set('X-Client-Platform', 'web').send({});
+      expect(reuseRes.status).toBe(401);
+    });
+  });
 });

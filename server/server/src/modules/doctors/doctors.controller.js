@@ -7,6 +7,7 @@ const doctorsService = require('./doctors.service');
 const tokenService = require('../../services/tokenService');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
+const { applyAuthCookies } = require('../../utils/webClientAuth');
 
 const listDoctors = asyncHandler(async (req, res) => {
   const { specializationId, cityId, areaId, minRating, search, emergencyAvailable, sortBy, sortOrder, page, pageSize, status } =
@@ -72,7 +73,9 @@ const registerDoctor = asyncHandler(async (req, res) => {
     null
   );
   const tokens = await tokenService.issueTokenPair({ id: doctor.id, role: 'doctor' });
-  return success(res, { user: doctor, ...tokens }, {
+  // WEB-ONLY REFRESH-COOKIE FIX (risky-item #2) — same treatment as auth.controller.js's
+  // register/login/googleAuth; this is the OTHER place in the app that mints a fresh token pair.
+  return success(res, applyAuthCookies(req, res, { user: doctor, ...tokens }), {
     statusCode: 201,
     message: 'Registration submitted. An admin will review your details before you appear to patients.',
   });

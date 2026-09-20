@@ -350,4 +350,8 @@ module.exports = {
   rotateRefreshToken,
   revokeRefreshToken,
   revokeAllForUser,
+  // Exported for utils/webClientAuth.js, which needs the SAME duration parsing logic to compute
+  // the refresh cookie's maxAge (must match env.jwt.refreshExpiresIn, the value already used to
+  // compute refresh_tokens.expiresAt above) rather than a second, potentially-drifting copy.
+  parseDurationToMs,
 };

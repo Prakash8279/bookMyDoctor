@@ -33,12 +33,19 @@ const googleAuth = [
   body('idToken').notEmpty().withMessage('idToken is required.').isString(),
 ];
 
+// WEB-ONLY REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md) — refreshToken
+// is now OPTIONAL in the body for both of these: a web caller never sends it here at all (it
+// lives only in the httpOnly cookie — see utils/webClientAuth.js), while mobile keeps sending it
+// in the body exactly as before. A request with neither a body token nor a cookie still fails,
+// just later and with a slightly different (but equally clear) error — auth.controller.js's
+// resolveIncomingRefreshToken() finds nothing, and tokenService rejects an undefined token as
+// invalid (401 INVALID_REFRESH_TOKEN for /refresh; a no-op for the already-idempotent /logout).
 const logout = [
-  body('refreshToken').notEmpty().withMessage('refreshToken is required.').isString(),
+  body('refreshToken').optional({ values: 'falsy' }).isString().withMessage('refreshToken must be a string.'),
 ];
 
 const refresh = [
-  body('refreshToken').notEmpty().withMessage('refreshToken is required.').isString(),
+  body('refreshToken').optional({ values: 'falsy' }).isString().withMessage('refreshToken must be a string.'),
 ];
 
 const forgotPassword = [
