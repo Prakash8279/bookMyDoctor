@@ -115,11 +115,23 @@ per-request cost means fewer total requests fit inside the shared per-identity r
 during the 8s window, so they never tripped it, while every fast endpoint (35-45ms, meaning
 1,000+ requests in 8s) blew straight through it in well under a second.
 
-This means `DEFAULT_RATE_LIMIT_MAX` almost certainly was **not** actually raised to 100000 for
-this run (or was raised but the server wasn't restarted after the `.env` edit — the most common
-way this step gets missed). `login-loadtest.js`'s numbers don't have this problem because that
-one only exercises `authLimiter`, which the `errors:0`/no-429-signature output confirms *was*
-raised correctly.
+**Correction (per the actual `.env` values supplied afterward):** `DEFAULT_RATE_LIMIT_MAX` was
+already raised to `10000` (window: 1 minute) for this run — not left at a low default as first
+assumed above. That still fully explains the numbers, just via a slightly different mechanism:
+`10000 requests / 60s ≈ 167 req/s` is the *sustained* rate the budget actually supports, but
+every endpoint here was pushed at **600-1300 req/s** — 4-8x that sustained rate. At that offered
+rate, a single 8-second stage alone generates 8,000-10,200 requests, which is enough to exhaust
+a 10,000-per-minute budget on its own, and because these stages run back-to-back with only a 2s
+gap (not a full minute), a shared identity's budget (same IP for public routes, same demo-user
+token for role-scoped ones) doesn't get a chance to refill between consecutive endpoints either.
+So `10000/min` is a perfectly reasonable production limit, but it is **not high enough to survive
+being intentionally hammered at four-figure req/s by a load-testing tool** — which is expected
+and fine for production traffic, but means this sweep still needs a much higher (or fully
+disabled) limit *for testing purposes only* to get clean per-endpoint ceilings. See the
+dedicated issues-and-plan doc for the exact recommendation.
+`login-loadtest.js`'s numbers don't have this problem because `authLimiter` was raised high
+enough relative to *its own* offered load (max ~32 req/s observed) that it was never the
+limiting factor there — the bcrypt bottleneck capped throughput before the rate limiter could.
 
 **One genuinely clean data point survived**, because it was the very first request pattern
 against its rate-limit bucket: `GET /doctors` at 10 concurrent — **818 req/s, avg 11.75ms, p99
@@ -146,15 +158,11 @@ say confidently where either one's true breaking point is.
 
 ### To get real ceiling numbers for every non-login endpoint
 
-1. Confirm `DEFAULT_RATE_LIMIT_MAX` actually took effect this time — e.g. run one manual
-   `curl -i http://localhost:4000/geography/cities` and check for a `RateLimit-Limit` (or
-   `X-RateLimit-Limit`) response header showing the raised value, *before* starting the sweep.
-2. Make sure Terminal 1 was actually restarted after editing `.env` (a very easy step to miss —
-   Node doesn't hot-reload `.env` changes).
-3. Re-run `node full-api-sweep.js` and send the output back the same way — the validation pass
-   and the two cache-endpoint numbers above already give confidence the tooling and the app's
-   auth gating are correct, so a clean re-run should mostly change the `non-2xx` columns to
-   near-zero and reveal each endpoint's real throughput ceiling.
+`10000`/minute needs to go much higher — purely for this test, not as a permanent production
+value — since the endpoints here can already exceed that sustained rate within a single 8-second
+stage. See `docs/api-load-test-issues-and-plan-2026-09-20.md` for the exact recommended testing
+value and a full implementation plan covering this and every other issue found across both
+test runs.
 
 ## Bottleneck classification summary
 
