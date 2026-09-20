@@ -77,7 +77,18 @@ const CLINIC_DETAIL_SELECT = {
       isOwner: true,
       isPrimary: true,
       onlineBooking: true,
-      doctor: { select: { id: true, name: true, photoUrl: true } },
+      // BUG FIX (mobile parity audit): web's ReceptionAvailability shows each team doctor's
+      // specialization (via the separate public /doctors directory) — this clinic-scoped detail
+      // endpoint never selected it at all, so there was no way to add it to the "Doctors & OPD"
+      // screen (the correct, clinic-scoped data source) without this select.
+      doctor: {
+        select: {
+          id: true,
+          name: true,
+          photoUrl: true,
+          doctorProfile: { select: { specialization: { select: { id: true, name: true } } } },
+        },
+      },
     },
   },
 };
@@ -126,6 +137,10 @@ function shapeClinicDetail(clinic) {
       isOwner: dc.isOwner,
       isPrimary: dc.isPrimary,
       onlineBooking: dc.onlineBooking,
+      // BUG FIX (mobile parity audit): see the doctorClinics select above.
+      specialization: dc.doctor?.doctorProfile?.specialization
+        ? { id: dc.doctor.doctorProfile.specialization.id, name: dc.doctor.doctorProfile.specialization.name }
+        : null,
     })),
   };
 }

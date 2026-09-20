@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/booking_slip_sheet.dart';
@@ -86,13 +87,47 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
                 if (payments.isEmpty) {
                   return const EmptyStateView(icon: Icons.receipt_long_outlined, title: 'No payments recorded yet');
                 }
+                // BUG FIX (mobile parity audit): mirrors web's CashPayment 3-way split
+                // (StaffPages.jsx) — was missing entirely on mobile.
+                final bookingPayments = payments.where(isOnlineBookingPayment).toList();
+                final cashPayments = payments.where((p) => !isOnlineBookingPayment(p) && p.mode.toLowerCase() == 'cash').toList();
+                final clinicOnlinePayments = payments.where((p) => !isOnlineBookingPayment(p) && p.mode.toLowerCase() != 'cash').toList();
+                double sumOf(List<PaymentItem> list) => list.fold<double>(0, (sum, p) => sum + clinicAmount(p));
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    itemCount: payments.length,
+                    itemCount: payments.length + 1,
               separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, i) {
+                if (i == 0) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      StatCard(
+                        label: 'PAID ONLINE AT BOOKING',
+                        value: '₹${sumOf(bookingPayments).toStringAsFixed(0)}',
+                        icon: Icons.public,
+                        detail: '${bookingPayments.length} payment(s) · paid before arrival',
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      StatCard(
+                        label: 'CASH COLLECTED AT CLINIC',
+                        value: '₹${sumOf(cashPayments).toStringAsFixed(0)}',
+                        icon: Icons.currency_rupee,
+                        detail: '${cashPayments.length} payment(s)',
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      StatCard(
+                        label: 'ONLINE COLLECTED AT CLINIC',
+                        value: '₹${sumOf(clinicOnlinePayments).toStringAsFixed(0)}',
+                        icon: Icons.wifi,
+                        detail: '${clinicOnlinePayments.length} payment(s) · UPI/Card/Online',
+                      ),
+                    ],
+                  );
+                }
+                final p = payments[i - 1];
                 final p = payments[i];
                 return Card(
                   child: ListTile(

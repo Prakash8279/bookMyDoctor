@@ -78,7 +78,19 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
                     alignment: Alignment.centerLeft,
                     child: Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: StatusBadge(status: d.onlineBooking ? 'active' : 'paused'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // BUG FIX (mobile parity audit): web shows each doctor's specialization
+                          // (ReceptionAvailability) — was omitted entirely from this list.
+                          Text(
+                            d.specialization?.name ?? 'Specialization not added',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          ),
+                          const SizedBox(height: 4),
+                          StatusBadge(status: d.onlineBooking ? 'active' : 'paused'),
+                        ],
+                      ),
                     ),
                   ),
                   childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),

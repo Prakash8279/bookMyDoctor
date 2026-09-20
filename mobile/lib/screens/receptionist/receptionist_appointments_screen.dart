@@ -165,6 +165,11 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                               Text('${a.appointmentDate} · ${a.appointmentTime}', style: const TextStyle(color: AppColors.textSecondary)),
                               if (a.doctor?.name != null)
                                 Text('Dr. ${a.doctor!.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              // BUG FIX (mobile parity audit): web's AppointmentTable (StaffPages.jsx)
+                              // shows Clinic and Fee/Due columns — this card never rendered either
+                              // even though both were already parsed onto the Appointment/Fees models.
+                              if (a.clinic?.name != null)
+                                Text('Clinic: ${a.clinic!.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                               // Front-desk data only — appointments.service.js#shapePatientRef
                               // deliberately never sends gender/DOB/blood group/medical history
                               // to a receptionist caller (only phone, to call the patient), so
@@ -182,6 +187,14 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                                 'Token: ${a.tokenNumber ?? "—"} · Source: ${a.source} · Payment: ${a.paymentStatus ?? "—"}${a.isEmergency ? " · Emergency" : ""}',
                                 style: const TextStyle(fontSize: 12),
                               ),
+                              if (a.fees.consultationFee != null || a.fees.due != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Fee: ${a.fees.consultationFee != null ? "₹${a.fees.consultationFee!.toStringAsFixed(2)}" : "—"}'
+                                  '   ·   Due: ${a.fees.due != null ? "₹${a.fees.due!.toStringAsFixed(2)}" : "—"}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ],
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),

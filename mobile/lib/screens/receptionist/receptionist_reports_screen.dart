@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -26,12 +27,16 @@ class _ReportPaymentRow {
 class _ReportData {
   final int walkIns;
   final int checkedInCount;
+  final double bookingCollected;
   final double cashCollected;
+  final double onlineCollected;
   final List<_ReportPaymentRow> payments;
   _ReportData({
     required this.walkIns,
     required this.checkedInCount,
+    required this.bookingCollected,
     required this.cashCollected,
+    required this.onlineCollected,
     required this.payments,
   });
 }
@@ -91,15 +96,28 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
       return _ReportPaymentRow(payment: payment, doctorCharge: _doctorCharge(payment.fees, appointment?.fees));
     }).toList();
 
+    // BUG FIX (mobile parity audit): web's ReceptionReports (FeaturePages.jsx) shows 5 metrics —
+    // mobile only ever computed "Cash collected", dropping "Paid online at booking" and "Online
+    // collected at clinic" entirely. isOnlineBookingPayment distinguishes a patient's own Razorpay
+    // payment (mode 'online', transactionRef starting 'pay_') from one a receptionist typed in by
+    // hand at the clinic — see core/payment_visibility.dart.
+    final bookingCollected = rows
+        .where((row) => isOnlineBookingPayment(row.payment))
+        .fold<double>(0, (sum, row) => sum + row.doctorCharge);
     final cashCollected = rows
-        .where((row) => row.payment.mode.toLowerCase() == 'cash')
+        .where((row) => !isOnlineBookingPayment(row.payment) && row.payment.mode.toLowerCase() == 'cash')
+        .fold<double>(0, (sum, row) => sum + row.doctorCharge);
+    final onlineCollected = rows
+        .where((row) => !isOnlineBookingPayment(row.payment) && row.payment.mode.toLowerCase() != 'cash')
         .fold<double>(0, (sum, row) => sum + row.doctorCharge);
     final checkedInCount = appointments.where((a) => a.checkedInAt != null && a.checkedInAt!.isNotEmpty).length;
 
     return _ReportData(
       walkIns: queue.length,
       checkedInCount: checkedInCount,
+      bookingCollected: bookingCollected,
       cashCollected: cashCollected,
+      onlineCollected: onlineCollected,
       payments: rows,
     );
   }
@@ -125,16 +143,27 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
               if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
               if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
               if (data != null) ...[
+                // BUG FIX (mobile parity audit): web shows 5 stat cards — mobile had only 3
+                // (missing "Paid online at booking" and "Online collected at clinic").
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(child: StatCard(label: 'Walk-ins', value: '${data.walkIns}', icon: Icons.directions_walk_outlined)),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(child: StatCard(label: 'Check-ins', value: '${data.checkedInCount}', icon: Icons.how_to_reg_outlined)),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: StatCard(label: 'Paid online at booking', value: '₹${data.bookingCollected.toStringAsFixed(0)}', icon: Icons.public)),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(child: StatCard(label: 'Cash collected', value: '₹${data.cashCollected.toStringAsFixed(0)}', icon: Icons.currency_rupee)),
                   ],
                 ),
+                const SizedBox(height: AppSpacing.sm),
+                StatCard(label: 'Online collected at clinic', value: '₹${data.onlineCollected.toStringAsFixed(0)}', icon: Icons.wifi),
                 const SizedBox(height: AppSpacing.lg),
                 SectionCard(
                   title: 'Payments',

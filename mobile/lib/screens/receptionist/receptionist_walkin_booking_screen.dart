@@ -46,6 +46,10 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
 
   List<ClinicDoctorLink> _clinicDoctors = [];
   List<PatientRef> _knownPatients = [];
+  // BUG FIX (mobile parity audit): web's WalkIn form shows a trailing "recent bookings" table
+  // built from the same already-fetched appointments list (StaffPages.jsx) — mobile fetched this
+  // list only to derive _knownPatients and then discarded it.
+  List<Appointment> _recentAppointments = [];
   final _patientSearchCtrl = TextEditingController();
 
   // "Existing patient" (pick from _knownPatients) vs "New patient" (plain
@@ -118,6 +122,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
       setState(() {
         _clinicDoctors = clinic.doctors;
         _knownPatients = patients;
+        _recentAppointments = appointments;
         _loadingOptions = false;
       });
     } catch (err) {
@@ -154,8 +159,12 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
       ? _newPatientNameCtrl.text.trim().isNotEmpty && _newPatientPhoneCtrl.text.trim().isNotEmpty
       : _selectedPatient != null;
 
-  bool get _canSubmit =>
-      _selectedDoctor != null && _hasPatient && _selectedDate != null && _selectedTime != null && !_submitting;
+  // BUG FIX (mobile parity audit): web's WalkIn form treats the time slot as optional
+  // ("Slot time (optional)", StaffPages.jsx) — appointments.validation.js#createAppointment only
+  // requires doctorUserId + appointmentDate; when appointmentTime is omitted,
+  // appointments.service.js#runBookingJob auto-assigns the doctor's next free slot. Mobile
+  // hard-required a time pick here, making that auto-assign path unreachable from the UI.
+  bool get _canSubmit => _selectedDoctor != null && _hasPatient && _selectedDate != null && !_submitting;
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
@@ -166,7 +175,12 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
     });
     try {
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate!);
-      final timeStr = '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
+      // BUG FIX (mobile parity audit): omit the key entirely when no time was picked (mirrors
+      // web's `appointmentTime: values.time || undefined`), letting runBookingJob auto-assign the
+      // next free slot server-side — sending a forced value here made that path unreachable.
+      final timeStr = _selectedTime == null
+          ? null
+          : '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}';
 
       final postRes = await ApiClient.instance.post('/appointments', body: {
         'doctorUserId': _selectedDoctor!.doctorUserId,
@@ -178,7 +192,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           'patientUserId': _selectedPatient!.id,
         'clinicId': _clinicId,
         'appointmentDate': dateStr,
-        'appointmentTime': timeStr,
+        if (timeStr != null) 'appointmentTime': timeStr,
         if (_reasonController.text.trim().isNotEmpty) 'reason': _reasonController.text.trim(),
         'isEmergency': _isEmergency,
         'paymentMethod': _paymentMethod,
@@ -196,7 +210,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
               id: result.jobId,
               status: 'confirmed',
               appointmentDate: dateStr,
-              appointmentTime: timeStr,
+              appointmentTime: timeStr ?? '',
               tokenNumber: result.appointment?.tokenNumber,
               isEmergency: _isEmergency,
               source: 'walkin',
@@ -432,13 +446,21 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _pickTime,
-                  icon: const Icon(Icons.access_time, size: 18),
-                  label: Text(_selectedTime == null ? 'Select time' : _selectedTime!.format(context)),
+                  onPressed: _selectedTime == null ? _pickTime : () => setState(() => _selectedTime = null),
+                  icon: Icon(_selectedTime == null ? Icons.access_time : Icons.close, size: 18),
+                  // BUG FIX (mobile parity audit): "(optional)" label matches web's placeholder
+                  // copy ("Leave blank to auto-assign the next slot"); once a time is picked,
+                  // tapping the button clears it back to auto-assign (a receptionist who picked
+                  // one by mistake can undo it without a date/time picker round-trip).
+                  label: Text(_selectedTime == null ? 'Select time (optional)' : _selectedTime!.format(context)),
                 ),
               ),
             ],
           ),
+          if (_selectedTime == null) ...[
+            const SizedBox(height: 4),
+            const Text('Leave blank to auto-assign the next slot.', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          ],
           const SizedBox(height: AppSpacing.md),
           TextField(controller: _reasonController, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason for visit (optional)')),
           const SizedBox(height: AppSpacing.md),
@@ -473,6 +495,41 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
             const SizedBox(height: AppSpacing.md),
           ],
           PrimaryButton(label: 'Book walk-in appointment', onPressed: _canSubmit ? _submit : null, loading: _submitting),
+          const SizedBox(height: AppSpacing.lg),
+          // BUG FIX (mobile parity audit): web's WalkIn form has a trailing read-only table of
+          // this clinic's bookings (StaffPages.jsx) — mobile fetched the same list (for
+          // _knownPatients) but never displayed it.
+          SectionCard(
+            title: 'Recent bookings',
+            child: _recentAppointments.isEmpty
+                ? const Text('No bookings yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+                : Column(
+                    children: [
+                      for (var i = 0; i < _recentAppointments.length; i++) ...[
+                        if (i > 0) const Divider(height: AppSpacing.lg),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_recentAppointments[i].patient?.name ?? '—', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${_recentAppointments[i].appointmentDate} · ${_recentAppointments[i].appointmentTime}',
+                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            StatusBadge(status: _recentAppointments[i].status),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
         ],
       );
   }

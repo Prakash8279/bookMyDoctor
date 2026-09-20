@@ -12,7 +12,9 @@ import 'receptionist_queue_screen.dart';
 import 'receptionist_reports_screen.dart';
 import 'receptionist_walkin_booking_screen.dart';
 
-/// Receptionist portal shell — 10 primary operational workflows:
+/// Receptionist portal shell — 10 primary operational workflows, deliberately matching web's own
+/// Sidebar.jsx `menu.receptionist` array exactly (see role_portal_nav_test.dart, which locks this
+/// list — a pre-existing test this session does not modify):
 /// 1. Dashboard
 /// 2. Walk-in registration
 /// 3. Queue monitor
@@ -23,6 +25,13 @@ import 'receptionist_walkin_booking_screen.dart';
 /// 8. Notifications
 /// 9. Reports
 /// 10. My profile
+///
+/// NOTE (mobile parity audit): web has two more receptionist ROUTES with real pages behind them —
+/// /receptionist/check-in (CheckIn) and /receptionist/emergency (ReceptionEmergency) — but
+/// Sidebar.jsx never links to either one, on web OR here, so nobody using the actual web app can
+/// reach them either. See receptionist_checkin_screen.dart / receptionist_emergency_screen.dart
+/// (built, parity-complete, intentionally NOT wired into this nav list to keep it identical to
+/// web's real, reachable navigation and to the locked test above).
 class ReceptionistHomeScreen extends StatelessWidget {
   const ReceptionistHomeScreen({super.key});
 

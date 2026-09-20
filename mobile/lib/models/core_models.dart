@@ -362,6 +362,9 @@ class ClinicDoctorLink {
   final bool isOwner;
   final bool isPrimary;
   final bool onlineBooking;
+  // BUG FIX (mobile parity audit): web's ReceptionAvailability shows each doctor's specialization
+  // — clinics.service.js's clinic-detail select now returns this too (see that file's comment).
+  final Specialization? specialization;
   ClinicDoctorLink({
     required this.doctorUserId,
     required this.name,
@@ -369,6 +372,7 @@ class ClinicDoctorLink {
     required this.isOwner,
     required this.isPrimary,
     required this.onlineBooking,
+    this.specialization,
   });
   factory ClinicDoctorLink.fromJson(Map<String, dynamic> json) => ClinicDoctorLink(
         doctorUserId: asString(json['doctorUserId']),
@@ -377,6 +381,7 @@ class ClinicDoctorLink {
         isOwner: asBool(json['isOwner']),
         isPrimary: asBool(json['isPrimary']),
         onlineBooking: asBool(json['onlineBooking']),
+        specialization: json['specialization'] == null ? null : Specialization.fromJson(json['specialization'] as Map<String, dynamic>),
       );
 }
 
