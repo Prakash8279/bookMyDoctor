@@ -9,8 +9,10 @@ const asyncHandler = require('../../utils/asyncHandler');
 
 const listQueue = asyncHandler(async (req, res) => {
   const { date, status, page, pageSize } = req.query;
-  const { rows, pagination } = await queueService.listQueue({ date, status, page, pageSize }, req.user);
-  return success(res, rows, { pagination });
+  const { rows, pagination, truncated } = await queueService.listQueue({ date, status, page, pageSize }, req.user);
+  // LOAD-REVIEW FIX: surface the defensive-cap signal to the caller instead of only a server log
+  // line — see queue.service.js's MAX_QUEUE_FETCH comment.
+  return success(res, rows, { pagination, truncated });
 });
 
 const updateQueueStatus = asyncHandler(async (req, res) => {

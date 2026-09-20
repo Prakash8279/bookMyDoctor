@@ -708,6 +708,11 @@ model Notification {
 
   recipients NotificationRecipient[]
 
+  // LOAD-REVIEW FIX (audit finding: "Notification table has no index") — low priority today
+  // (this table only grows from admin broadcasts, not per-user events, and listBroadcasts() is
+  // already cached), added for future-proofing since listBroadcasts() always sorts by
+  // createdAt desc.
+  @@index([createdAt])
   @@map("notifications")
 }
 
@@ -819,5 +824,11 @@ model ActivityLog {
 
   @@index([actorUserId])
   @@index([createdAt])
+  // LOAD-REVIEW FIX (audit finding: "ActivityLog.actionType filter has no index" —
+  // admin.service.js filters this table by actionType; a 30s cache keeps today's load low, but
+  // this table only ever grows (one row per action, never pruned), so the filter degrades as it
+  // does). Composite on (actionType, createdAt) since every actionType-filtered admin query also
+  // sorts/paginates by createdAt desc — one index serves both.
+  @@index([actionType, createdAt])
   @@map("activity_log")
 }

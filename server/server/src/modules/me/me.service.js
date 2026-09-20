@@ -12,6 +12,7 @@ const ApiError = require('../../utils/ApiError');
 const tokenService = require('../../services/tokenService');
 const activityLogService = require('../../services/activityLogService');
 const { pickPresentFields } = require('../../utils/pickPresentFields');
+const { signDocumentUrl } = require('../../services/fileUploadService');
 
 const BASE_SELECT = {
   id: true,
@@ -87,6 +88,18 @@ function buildProfile(user) {
   if (user.role === 'doctor') {
     if (!user.doctorProfile) return null;
     const { userId, specializationId, ...rest } = user.doctorProfile;
+    // SECURITY FIX (audit finding: "uploaded documents served without authentication") —
+    // verificationDocuments stores STABLE, token-less URLs (see fileUploadService.js's
+    // buildFileUrl); this is the doctor fetching their OWN profile (no ownership check needed,
+    // same reasoning as doctors.service.js#shapeDoctor's includeContact gate — that function
+    // signs the same field for an admin/superadmin viewer), so a fresh short-lived token is
+    // minted here at response time too, or the "View" link on StaffPages.jsx would 404 the
+    // moment the 10-minute token from upload time (if any) expired.
+    if (Array.isArray(rest.verificationDocuments)) {
+      rest.verificationDocuments = rest.verificationDocuments.map((doc) =>
+        doc && typeof doc === 'object' ? { ...doc, url: signDocumentUrl(doc.url) } : doc
+      );
+    }
     return rest; // `rest.specialization` is the nested {id, name} object from the include.
   }
   if (user.role === 'receptionist') {

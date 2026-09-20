@@ -25,6 +25,7 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
+import { resetAllListLoadCachesForTests } from '../hooks/useListLoad'
 import { shortId } from '../lib/format'
 import App from '../App'
 import {
@@ -53,6 +54,11 @@ beforeEach(() => {
   apiClient.post.mockResolvedValue({})
   apiClient.patch.mockResolvedValue({})
   apiClient.put.mockResolvedValue({})
+  // LOAD-REVIEW FIX (DoctorVerification/ManageClinics/ManagePatients now use useListLoad's TTL
+  // cache — see that hook's header comment) — without this, two tests in this file mounting the
+  // same page within milliseconds of each other would have the second one silently skip its
+  // fetch, inheriting the first test's freshness.
+  resetAllListLoadCachesForTests()
 })
 
 afterEach(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import brandLogoUrl from '../assets/brand-logo.png'
 import { Badge } from '../components/Badge'
@@ -8,6 +8,7 @@ import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
 import { signInWithGoogle } from '../lib/googleSignIn'
 import { useAppStore } from '../store/useAppStore'
+import { usePolling } from '../hooks/usePolling'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
 
@@ -23,18 +24,18 @@ function PatientLiveQueuePreview({ appointment }) {
   const fetchMyQueueStatus = useAppStore((state) => state.fetchMyQueueStatus)
   const [status, setStatus] = useState(null)
   const [error, setError] = useState('')
-  useEffect(() => {
-    if (!appointment) return undefined
-    let cancelled = false
-    const load = () => {
+  // Uses the shared usePolling hook (LOAD-REVIEW FIX — see that hook's header comment) so this
+  // pauses, like every other queue poll in the app, when the tab is hidden.
+  const cancelledRef = useRef(false)
+  useEffect(() => () => { cancelledRef.current = true }, [])
+  usePolling(
+    () => {
       fetchMyQueueStatus(appointment.id)
-        .then((result) => { if (!cancelled) { setStatus(result); setError('') } })
-        .catch((err) => { if (!cancelled) setError(err.message || 'Could not load live queue status.') })
-    }
-    load()
-    const interval = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [appointment, fetchMyQueueStatus])
+        .then((result) => { if (!cancelledRef.current) { setStatus(result); setError('') } })
+        .catch((err) => { if (!cancelledRef.current) setError(err.message || 'Could not load live queue status.') })
+    },
+    { enabled: Boolean(appointment) }
+  )
   return <LiveQueueWidget
     appointmentId={appointment?.id}
     initialQueue={appointment && status ? { appointmentId: appointment.id, token: status.token, nowServing: status.nowServing, patientsAhead: status.patientsAhead, estimatedWait: status.estimatedWaitMinutes, doctorStatus: status.status } : null}

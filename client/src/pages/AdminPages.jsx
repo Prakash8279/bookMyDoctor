@@ -15,6 +15,7 @@ import { formatDate as sharedFormatDate, formatMoney as money, sequenceId, short
 import { COMPLAINT_STATUS_LABELS } from '../lib/statusLabels'
 import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
+import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
 const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
@@ -150,8 +151,6 @@ export function DoctorVerification({ data }) {
   // (doctor_profiles.status) toggle — this one tracks the account-level login toggle
   // (users.status), a genuinely distinct action against a distinct endpoint.
   const [accountUpdatingId, setAccountUpdatingId] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [listError, setListError] = useState('')
   const [viewingDoctor, setViewingDoctor] = useState(null)
   const [viewingId, setViewingId] = useState(null)
   const [viewError, setViewError] = useState('')
@@ -182,21 +181,10 @@ export function DoctorVerification({ data }) {
   const searchDoctors = useAppStore((state) => state.searchDoctors)
   const specializations = data.specializations || []
 
-  const load = () => {
-    setLoading(true)
-    setListError('')
-    return searchDoctors({ pageSize: 100 }).catch((err) => setListError(err.message || 'Could not load doctors.')).finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setListError('')
-    searchDoctors({ pageSize: 100 })
-      .catch((err) => { if (!cancelled) setListError(err.message || 'Could not load doctors.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [searchDoctors])
+  // LOAD-REVIEW FIX (audit finding: "admin list pages refetch their full list on every mount") —
+  // see hooks/useListLoad.js's header comment. `load` below (the "↻ Refresh" button) always
+  // bypasses the cache via `refresh`; only the automatic on-mount fetch is TTL-gated.
+  const { loading, error: listError, refresh: load } = useListLoad('admin:doctors', () => searchDoctors({ pageSize: 100 }))
 
   const save = async (event) => {
     event.preventDefault()
@@ -610,26 +598,13 @@ export function ManageClinics({ data }) {
   const toggleClinicEmergency = useAppStore((state) => state.toggleClinicEmergency)
   const toggleClinicStatus = useAppStore((state) => state.toggleClinicStatus)
   const fetchClinics = useAppStore((state) => state.fetchClinics)
-  const [loading, setLoading] = useState(true)
-  const [listError, setListError] = useState('')
   const [actionError, setActionError] = useState('')
   const [busyKey, setBusyKey] = useState(null)
 
-  const load = () => {
-    setLoading(true)
-    setListError('')
-    return fetchClinics({}).catch((err) => setListError(err.message || 'Could not load clinics.')).finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setListError('')
-    fetchClinics({})
-      .catch((err) => { if (!cancelled) setListError(err.message || 'Could not load clinics.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [fetchClinics])
+  // LOAD-REVIEW FIX (audit finding: "admin list pages refetch their full list on every mount") —
+  // see hooks/useListLoad.js's header comment. The "↻ Refresh" button always bypasses the cache
+  // via `refresh`; only the automatic on-mount fetch is TTL-gated.
+  const { loading, error: listError, refresh: load } = useListLoad('admin:clinics', () => fetchClinics({}))
 
   const handleToggleStatus = async (id) => {
     setBusyKey(`${id}:status`)
@@ -787,29 +762,17 @@ export function ManagePatients({ data }) {
   // /patients endpoint" comment was (Priority 1 #4): true when written, false by the time this
   // was read.
   const updatePatientStatus = useAppStore((state) => state.updatePatientStatus)
-  const [loading, setLoading] = useState(true)
-  const [listError, setListError] = useState('')
   const [search, setSearch] = useState('')
   const [statusError, setStatusError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
 
-  const load = (filters = {}) => {
-    setLoading(true)
-    setListError('')
-    return Promise.all([fetchPatients({ pageSize: 100, ...filters }), fetchAppointments({}), fetchPayments({})])
-      .catch((err) => setListError(err.message || 'Could not load patient records.'))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setListError('')
-    Promise.all([fetchPatients({ pageSize: 100 }), fetchAppointments({}), fetchPayments({})])
-      .catch((err) => { if (!cancelled) setListError(err.message || 'Could not load patient records.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [fetchPatients, fetchAppointments, fetchPayments])
+  // LOAD-REVIEW FIX (audit finding: "admin list pages refetch their full list on every mount") —
+  // see hooks/useListLoad.js's header comment. The "↻ Refresh" button (which also doubles as
+  // "search" here — see searchSubmit below) always bypasses the cache via `refresh`; only the
+  // automatic on-mount (unfiltered) fetch is TTL-gated.
+  const { loading, error: listError, refresh: load } = useListLoad('admin:patients', (filters = {}) =>
+    Promise.all([fetchPatients({ pageSize: 100, ...filters }), fetchAppointments({}), fetchPayments({})])
+  )
 
   const searchSubmit = (event) => {
     event.preventDefault()

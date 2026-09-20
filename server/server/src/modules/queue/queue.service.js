@@ -63,14 +63,25 @@ const MINUTES_PER_WAITING_PATIENT = 9;
 // needs the whole ordered queue, not just one page of it — see the findMany call below. An
 // unbounded findMany on a query with no LIMIT is still an unbounded-memory/unbounded-latency
 // risk if a single day's queue ever grows pathologically large (a stuck integration retry-
-// looping walk-in inserts, a data-entry bug, etc.), so cap it defensively. 500 is chosen as
-// "far beyond what any single doctor/clinic could plausibly see booked in one real day" (a
-// packed clinic doing a token every ~2 minutes for 16 hours is under 500) rather than a tuned
-// value. The real fix is a windowed SQL query — patientsAhead computed via
+// looping walk-in inserts, a data-entry bug, etc.), so cap it defensively.
+//
+// LOAD-REVIEW FIX (audit finding: "queue list capped at 500, not real pagination" — a busy
+// multi-doctor clinic/camp genuinely can cross the old 500 cap in one day, at which point
+// patientsAhead silently became wrong for every token past the cutoff with nothing but a log
+// line to show for it). Raised to 2000 (4x the original "far beyond any single doctor's real
+// day" estimate, now sized for a multi-doctor CLINIC's combined daily total, which is what this
+// query actually scopes to for a receptionist — see the `where` clause below) as a stronger
+// safety margin, and — more importantly than the number itself — listQueue's return value now
+// carries an explicit `truncated: true` flag whenever the cap IS hit, instead of only a log
+// line. Callers (queue.controller.js and, eventually, a frontend banner) can act on that
+// signal directly rather than silently trusting numbers that may be wrong. The real fix is
+// still a windowed SQL query — patientsAhead computed via
 // COUNT(*) OVER (PARTITION BY doctor_user_id ORDER BY token_number) directly in Postgres, so
 // pagination and the running count both happen in the database instead of in application
-// memory — left as a documented follow-up, not attempted here.
-const MAX_QUEUE_FETCH = 500;
+// memory — left as a documented follow-up, not attempted here (a live-queue correctness rewrite
+// this central deserves real end-to-end testing against a real database before shipping, which
+// isn't available in this environment).
+const MAX_QUEUE_FETCH = 2000;
 
 const QUEUE_SELECT = {
   id: true,
@@ -286,7 +297,7 @@ async function listQueue({ date, status, page, pageSize }, actor) {
       where.doctorUserId = actor.id;
     } else {
       if (!receptionistClinicId) {
-        return { rows: [], pagination: buildPaginationMeta({ page: p, pageSize: ps, total: 0 }) };
+        return { rows: [], pagination: buildPaginationMeta({ page: p, pageSize: ps, total: 0 }), truncated: false };
       }
       where.clinicId = receptionistClinicId;
     }
@@ -309,7 +320,8 @@ async function listQueue({ date, status, page, pageSize }, actor) {
       take: MAX_QUEUE_FETCH,
     });
 
-    if (allRows.length === MAX_QUEUE_FETCH) {
+    const truncated = allRows.length === MAX_QUEUE_FETCH;
+    if (truncated) {
       logger.warn('queue.listQueue: row count hit MAX_QUEUE_FETCH cap; patientsAhead may be inaccurate', {
         queueDate: queueDate.toISOString().slice(0, 10),
         doctorUserId: where.doctorUserId,
@@ -337,6 +349,11 @@ async function listQueue({ date, status, page, pageSize }, actor) {
         shapeQueueListRow(row, patientsAhead, estimatedWaitMinutes, actor.role)
       ),
       pagination: buildPaginationMeta({ page: p, pageSize: ps, total }),
+      // LOAD-REVIEW FIX — see MAX_QUEUE_FETCH's comment above. true only when this date's true row
+      // count hit the defensive cap, meaning patientsAhead/estimatedWaitMinutes for tokens near/
+      // after the cutoff may be understated. Callers (queue.controller.js and, eventually, a
+      // frontend banner) can surface this directly instead of trusting numbers silently.
+      truncated,
     };
   });
 }
@@ -445,4 +462,12 @@ async function updateQueueStatus(id, targetStatus, actor) {
   return shapeQueueToken(updated);
 }
 
-module.exports = { listQueue, updateQueueStatus, getMyQueueStatus, invalidateQueueListCaches };
+module.exports = {
+  listQueue,
+  updateQueueStatus,
+  getMyQueueStatus,
+  invalidateQueueListCaches,
+  // Exported so tests can build exactly MAX_QUEUE_FETCH rows to hit the cap, instead of a
+  // hardcoded row count that silently drifts out of sync with the real constant.
+  MAX_QUEUE_FETCH,
+};

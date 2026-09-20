@@ -21,17 +21,29 @@
  * with the same {to, subject, text, html} shape regardless of which provider answers it.
  */
 const logger = require('../config/logger');
+const env = require('../config/env');
 
 /**
  * The only provider wired up today. Writes a structured log line instead of actually sending
  * anything, so the intent ("this app would have emailed X about Y here") stays visible in
  * server logs for local/dev/staging use, and so no call site anywhere in the app has to
  * special-case "email isn't configured yet" — sendEmail() always succeeds.
+ *
+ * SECURITY FIX (audit finding: "password-reset token/link written to logs in plaintext") — this
+ * placeholder was logging the FULL body, which for auth.service.js#forgotPassword is a live,
+ * valid password-reset link (the token itself). Anyone with read access to application logs
+ * (a log-aggregation tool, an over-permissioned ops role, a misconfigured log-shipping
+ * destination) could lift that link and take over the account, without ever touching email. In
+ * production the body is redacted; subject/recipient still log (useful for "did we even try to
+ * send this") without leaking the sensitive payload. Local/dev/staging keep the full body —
+ * that's exactly where a developer needs to read the reset link out of the console since no real
+ * provider is wired up yet (see this file's header comment on why that's still true).
  */
 const logProvider = {
   name: 'log',
   async send({ to, subject, text }) {
-    logger.info(`[email:log] to=${to} subject="${subject}" body="${text}"`);
+    const body = env.isProduction ? '[redacted in production — see EMAIL_PROVIDER setup]' : text;
+    logger.info(`[email:log] to=${to} subject="${subject}" body="${body}"`);
   },
 };
 

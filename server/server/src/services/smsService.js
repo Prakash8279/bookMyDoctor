@@ -8,15 +8,19 @@
  * swapped in later by adding one provider object + an env var, no call site changes).
  */
 const logger = require('../config/logger');
+const env = require('../config/env');
 
 /**
  * The only provider wired up today — see emailService.js#logProvider for why a log line (not a
- * thrown error, not a silent black hole) is the right placeholder behavior.
+ * thrown error, not a silent black hole) is the right placeholder behavior, and for why the
+ * body is redacted in production (SECURITY FIX — same OTP/reset-link-in-plaintext-logs finding
+ * applies here identically, e.g. auth.service.js#forgotPassword's SMS variant).
  */
 const logProvider = {
   name: 'log',
   async send({ to, message }) {
-    logger.info(`[sms:log] to=${to} message="${message}"`);
+    const body = env.isProduction ? '[redacted in production — see SMS_PROVIDER setup]' : message;
+    logger.info(`[sms:log] to=${to} message="${body}"`);
   },
 };
 

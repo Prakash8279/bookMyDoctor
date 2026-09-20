@@ -652,6 +652,36 @@ describe('appointments — createAppointment async booking poll', () => {
     expect(useAppStore.getState().bookingQueueInfo).toBeNull()
   })
 
+  // LOAD-REVIEW FIX (audit finding: "booking-status polling has no backoff") — see
+  // useAppStore.js#createAppointment's comment for the rationale (1.5s → 2.25s → 3.375s → ...,
+  // capped at 5s, instead of a fixed 1.7s cadence for the whole 40s budget).
+  it('backs off the poll interval (capped at 5s) instead of polling at a fixed fast rate the whole time', async () => {
+    apiClient.post.mockResolvedValue({ jobId: 'job-4', status: 'queued' })
+    apiClient.get.mockResolvedValue({ status: 'queued' })
+
+    const promise = useAppStore.getState().createAppointment({ doctorId: 'd1' })
+
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(2250)
+    expect(apiClient.get).toHaveBeenCalledTimes(2)
+
+    await vi.advanceTimersByTimeAsync(3375)
+    expect(apiClient.get).toHaveBeenCalledTimes(3)
+
+    // The 4th-and-onward interval is capped at 5s, not still growing (3.375 * 1.5 = 5.0625,
+    // which would exceed the cap).
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(apiClient.get).toHaveBeenCalledTimes(4)
+
+    // Attach the rejection assertion before advancing past the 40s budget, same reasoning as the
+    // other tests in this suite — avoids vitest ever seeing a briefly-unhandled rejection.
+    const assertion = expect(promise).rejects.toMatchObject({ code: 'BOOKING_TIMEOUT' })
+    await vi.advanceTimersByTimeAsync(40000)
+    await assertion
+  })
+
   it('cancelAppointment(): delegates to updateAppointmentStatus with "cancelled"', async () => {
     apiClient.patch.mockResolvedValue({ id: 'appt-1', status: 'cancelled' })
 

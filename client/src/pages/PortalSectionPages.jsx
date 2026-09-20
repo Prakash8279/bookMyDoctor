@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
 import { FormField } from '../components/FormField'
@@ -8,6 +8,7 @@ import { useAppStore } from '../store/useAppStore'
 import { formatDate, sequenceId, shortId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
+import { usePolling } from '../hooks/usePolling'
 
 const Page = ({ title, subtitle, children, action }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal ${className}`} {...props}>{children}</button>
@@ -30,32 +31,30 @@ export function QueueTracker({ data, role = 'patient' }) {
   // was never able to fetch their own queue position from anywhere. `fetchMyQueueStatus` (GET
   // /queue/mine/:appointmentId — see queue.service.js#getMyQueueStatus) is the patient-scoped
   // equivalent. Polls every 15s while this page stays open — shorter than the notifications
-  // inbox's 30s poll, deliberately: this page's whole point is watching a live token move.
+  // inbox's 30s poll, deliberately: this page's whole point is watching a live token move. Uses
+  // the shared usePolling hook (LOAD-REVIEW FIX — see that hook's header comment) so this pauses,
+  // like every other queue poll in the app, when the tab is hidden.
+  const patientCancelledRef = useRef(false)
+  useEffect(() => () => { patientCancelledRef.current = true }, [])
+  // Mirrors the old effect's leading-edge behavior exactly: no appointment yet -> not loading;
+  // an appointment to poll for -> loading, until the first poll's `finally` below clears it.
   useEffect(() => {
-    if (role !== 'patient') return undefined
-    if (!appointment) { setLoading(false); return undefined }
-    let cancelled = false
-    const load = () => {
+    if (role === 'patient') setLoading(Boolean(appointment))
+  }, [role, appointment])
+  usePolling(
+    () => {
       fetchMyQueueStatus(appointment.id)
-        .then((result) => { if (!cancelled) { setMyStatus(result); setStatusError('') } })
-        .catch((err) => { if (!cancelled) setStatusError(err.message || 'Could not load your live queue status.') })
-        .finally(() => { if (!cancelled) setLoading(false) })
-    }
-    setLoading(true)
-    load()
-    const interval = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [role, appointment, fetchMyQueueStatus])
+        .then((result) => { if (!patientCancelledRef.current) { setMyStatus(result); setStatusError('') } })
+        .catch((err) => { if (!patientCancelledRef.current) setStatusError(err.message || 'Could not load your live queue status.') })
+        .finally(() => { if (!patientCancelledRef.current) setLoading(false) })
+    },
+    { enabled: role === 'patient' && Boolean(appointment) }
+  )
 
   // Staff view (kept for role !== 'patient' — no route mounts it that way today, but this is the
-  // one path that legitimately reads the doctor/receptionist-only GET /queue list).
-  useEffect(() => {
-    if (role === 'patient') return undefined
-    let cancelled = false
-    fetchQueue({}).catch(() => {})
-    const interval = setInterval(() => { if (!cancelled) fetchQueue({}).catch(() => {}) }, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [role, fetchQueue])
+  // one path that legitimately reads the doctor/receptionist-only GET /queue list). Same shared
+  // hook, same pause-on-hidden-tab behavior.
+  usePolling(() => { fetchQueue({}).catch(() => {}) }, { enabled: role !== 'patient' })
 
   const widgetQueue = appointment && myStatus
     ? { appointmentId: appointment.id, token: myStatus.token, nowServing: myStatus.nowServing, patientsAhead: myStatus.patientsAhead, estimatedWait: myStatus.estimatedWaitMinutes, doctorStatus: myStatus.status }

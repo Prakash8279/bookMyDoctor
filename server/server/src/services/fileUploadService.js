@@ -30,6 +30,7 @@ const multer = require('multer');
 
 const env = require('../config/env');
 const ApiError = require('../utils/ApiError');
+const tokenService = require('./tokenService');
 
 // Same directory app.js's static mount (`app.use('/uploads', express.static(...))`, step 7)
 // serves back out — resolved once, identically (path.resolve against env.upload.dir), so a file
@@ -39,6 +40,18 @@ const ApiError = require('../utils/ApiError');
 // unlucky user's first upload attempt.
 const UPLOAD_DIR = path.resolve(env.upload.dir);
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+// SECURITY FIX (audit finding: "uploaded documents served without authentication" — a doctor
+// verification document's URL was reachable by anyone who ever saw it, forever, since it was
+// served by the same unauthenticated express.static mount as public profile photos/QR codes).
+// Profile photos and QR codes stay directly under UPLOAD_DIR (unchanged, still public — that's
+// correct, they're meant to be shown on public pages). Documents now go into this separate
+// subdirectory, which app.js's express.static mount does NOT expose; they're served only via
+// modules/uploads/secureDocument.routes.js's short-lived-signed-URL route. One constant here is
+// the single source of truth both files build their path from, so they can't drift apart.
+const DOCUMENTS_SUBDIR = 'documents';
+const DOCUMENTS_DIR = path.join(UPLOAD_DIR, DOCUMENTS_SUBDIR);
+fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
 // mimetype -> file extension. This is the ONLY source of truth for both (a) which mimetypes an
 // upload use case accepts and (b) what extension a saved file gets — the client's original
@@ -64,17 +77,49 @@ const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10MB — verification documents 
  * nothing else in this file, and nothing in modules/uploads/*, needs to change.
  * @param {Buffer} buffer
  * @param {string} filename - already server-generated (crypto.randomUUID() + validated ext).
+ * @param {boolean} isPrivate - true for documentUpload's files (see DOCUMENTS_SUBDIR above).
  */
-async function saveBufferToDisk(buffer, filename) {
-  await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), buffer);
+async function saveBufferToDisk(buffer, filename, isPrivate) {
+  const dir = isPrivate ? DOCUMENTS_DIR : UPLOAD_DIR;
+  await fs.promises.writeFile(path.join(dir, filename), buffer);
 }
 
 /**
  * @param {string} filename
- * @returns {string} the URL a browser can load this file from (app.js's `/uploads` static mount).
+ * @param {boolean} isPrivate - true for documentUpload's files.
+ * @returns {string} the STABLE url stored on the Prisma row forever (doctorProfile.
+ *   verificationDocuments persists this — a doctor uploads once, an admin may review it weeks
+ *   later, so this can never be a short-lived link). A public file loads directly off app.js's
+ *   `/uploads` express.static mount, same as always. A private (document) file's stored URL has
+ *   no access token yet — signDocumentUrl below mints a fresh one at RESPONSE time instead (see
+ *   doctors.service.js's shapeDoctor), which is the only way a 10-minute-lived token could ever
+ *   still be valid when someone actually clicks "View".
  */
-function buildFileUrl(filename) {
+function buildFileUrl(filename, isPrivate) {
+  if (isPrivate) {
+    return `${env.upload.baseUrl}/${DOCUMENTS_SUBDIR}/${filename}`;
+  }
   return `${env.upload.baseUrl}/${filename}`;
+}
+
+/**
+ * Appends a freshly-signed, short-lived access token to a private document's stored (stable)
+ * URL — called at RESPONSE time (doctors.service.js's shapeDoctor, only within its
+ * includeContact gate: the caller is already confirmed to be the owning doctor or an
+ * admin/superadmin), never at upload time, so the link is only ever as old as the request that
+ * returned it. If `storedUrl` doesn't look like one of this service's document URLs (e.g. it's
+ * already an external/absolute URL from some other source), it's returned unchanged rather than
+ * throwing — this stays a pure best-effort formatting helper, not a validator.
+ * @param {string} storedUrl
+ * @returns {string}
+ */
+function signDocumentUrl(storedUrl) {
+  if (typeof storedUrl !== 'string') return storedUrl;
+  const prefix = `${env.upload.baseUrl}/${DOCUMENTS_SUBDIR}/`;
+  if (!storedUrl.startsWith(prefix)) return storedUrl;
+  const filename = storedUrl.slice(prefix.length).split('?')[0];
+  const token = tokenService.signFileAccessToken(filename);
+  return `${storedUrl.split('?')[0]}?token=${token}`;
 }
 
 /**
@@ -125,7 +170,7 @@ function translateMulterError(maxBytes) {
  * filename/extension, writes the file, and hands the controller a ready-to-persist URL. Every
  * route wired to one of these arrays treats the file as required.
  */
-function attachUploadedFileUrl(mimeExtensions) {
+function attachUploadedFileUrl(mimeExtensions, isPrivate) {
   return async function attachUploadedFileUrlMiddleware(req, res, next) {
     try {
       if (!req.file) {
@@ -138,9 +183,9 @@ function attachUploadedFileUrl(mimeExtensions) {
       const ext = mimeExtensions[req.file.mimetype] || 'bin';
       const filename = `${crypto.randomUUID()}.${ext}`;
 
-      await saveBufferToDisk(req.file.buffer, filename);
+      await saveBufferToDisk(req.file.buffer, filename, isPrivate);
 
-      req.uploadedFile = { filename, url: buildFileUrl(filename) };
+      req.uploadedFile = { filename, url: buildFileUrl(filename, isPrivate) };
       next();
     } catch (err) {
       next(err);
@@ -152,8 +197,9 @@ function attachUploadedFileUrl(mimeExtensions) {
  * Builds one exported *Upload middleware array for a given use case.
  * @param {Record<string,string>} mimeExtensions
  * @param {number} maxBytes
+ * @param {boolean} [isPrivate=false] - true only for documentUpload — see DOCUMENTS_SUBDIR above.
  */
-function buildUploadMiddleware(mimeExtensions, maxBytes) {
+function buildUploadMiddleware(mimeExtensions, maxBytes, isPrivate = false) {
   const multerInstance = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxBytes },
@@ -162,11 +208,18 @@ function buildUploadMiddleware(mimeExtensions, maxBytes) {
 
   // Multipart field name is always 'file' across all three upload endpoints — one convention,
   // documented once here rather than per-route.
-  return [multerInstance.single('file'), translateMulterError(maxBytes), attachUploadedFileUrl(mimeExtensions)];
+  return [
+    multerInstance.single('file'),
+    translateMulterError(maxBytes),
+    attachUploadedFileUrl(mimeExtensions, isPrivate),
+  ];
 }
 
 module.exports = {
   photoUpload: buildUploadMiddleware(IMAGE_MIME_EXTENSIONS, MAX_IMAGE_BYTES),
-  documentUpload: buildUploadMiddleware(DOCUMENT_MIME_EXTENSIONS, MAX_DOCUMENT_BYTES),
+  documentUpload: buildUploadMiddleware(DOCUMENT_MIME_EXTENSIONS, MAX_DOCUMENT_BYTES, true),
   qrUpload: buildUploadMiddleware(IMAGE_MIME_EXTENSIONS, MAX_IMAGE_BYTES),
+  signDocumentUrl,
+  DOCUMENTS_DIR,
+  DOCUMENTS_SUBDIR,
 };

@@ -761,11 +761,21 @@ export const useAppStore = create(
       createAppointment: async (fields) => {
         const enqueued = await apiClient.post('/appointments', fields) // { jobId, status: 'queued' }
         const jobId = enqueued.jobId
-        const pollIntervalMs = 1700
+        // LOAD-REVIEW FIX (audit finding: "booking-status polling has no backoff" — a fixed
+        // 1.7s interval for the full 40s budget means every single patient mid-booking hammers
+        // this endpoint ~23 times, even though a booking that's still queued/processing after a
+        // few seconds is realistically going to take a while longer, not resolve on the very next
+        // tick). Starts at the same 1.5s cadence (fast confirmation feels instant when the booking
+        // really is quick) and backs off 1.5x per poll, capped at 5s, so a slow booking settles
+        // into a gentler cadence instead of polling at full speed for the whole 40s window.
+        const basePollIntervalMs = 1500
+        const maxPollIntervalMs = 5000
         const timeoutMs = 40000
         const startedAt = Date.now()
+        let pollIntervalMs = basePollIntervalMs
         while (Date.now() - startedAt < timeoutMs) {
           await sleep(pollIntervalMs)
+          pollIntervalMs = Math.min(pollIntervalMs * 1.5, maxPollIntervalMs)
           const statusResult = await apiClient.get(`/appointments/booking-status/${jobId}`)
           if (statusResult.status === 'confirmed') {
             const appointment = statusResult.appointment

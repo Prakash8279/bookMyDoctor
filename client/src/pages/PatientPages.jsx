@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
 import { FormField } from '../components/FormField'
@@ -11,6 +11,7 @@ import { useAppStore } from '../store/useAppStore'
 import { formatDate, sequenceId, shortId } from '../lib/format'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { usePolling } from '../hooks/usePolling'
 import { buildCsv, downloadCsv } from '../lib/csv'
 import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
@@ -35,19 +36,20 @@ export function PatientDashboard({ data }) {
   // — this dashboard's "Patients ahead" figure and Live queue widget used to read from it anyway,
   // so both silently showed nothing for every patient regardless of their real queue position.
   // fetchMyQueueStatus (GET /queue/mine/:appointmentId) is the patient-scoped fix; polled every
-  // 15s while the dashboard is open, same as the dedicated /patient/queue tracker page.
-  useEffect(() => {
-    if (!upcoming) return undefined
-    let cancelled = false
-    const load = () => {
+  // 15s while the dashboard is open, same as the dedicated /patient/queue tracker page. Uses the
+  // shared usePolling hook (LOAD-REVIEW FIX — see that hook's header comment) so this pauses like
+  // every other queue poll in the app when the tab is hidden.
+  const cancelledRef = useRef(false)
+  useEffect(() => () => { cancelledRef.current = true }, [])
+  usePolling(
+    () => {
+      if (!upcoming) return
       fetchMyQueueStatus(upcoming.id)
-        .then((result) => { if (!cancelled) { setQueueStatus(result); setQueueStatusError('') } })
-        .catch((err) => { if (!cancelled) setQueueStatusError(err.message || 'Could not load live queue status.') })
-    }
-    load()
-    const interval = setInterval(load, 15000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [upcoming, fetchMyQueueStatus])
+        .then((result) => { if (!cancelledRef.current) { setQueueStatus(result); setQueueStatusError('') } })
+        .catch((err) => { if (!cancelledRef.current) setQueueStatusError(err.message || 'Could not load live queue status.') })
+    },
+    { enabled: Boolean(upcoming) }
+  )
 
   return (
     <Page

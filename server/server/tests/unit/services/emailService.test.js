@@ -46,6 +46,28 @@ describe('emailService.sendEmail', () => {
     expect(logger.info).toHaveBeenCalled();
   });
 
+  // SECURITY FIX (audit finding: "password-reset token/link written to logs in plaintext") —
+  // auth.service.js#forgotPassword's email body IS a live, valid reset link; logging it in
+  // production hands account takeover to anyone with log read access. See emailService.js's
+  // logProvider comment for the full rationale.
+  test('redacts the body (but still logs to/subject) when running in production', async () => {
+    jest.resetModules();
+    jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+    jest.doMock('../../../src/config/env', () => ({ ...jest.requireActual('../../../src/config/env'), isProduction: true }));
+    const isolatedLogger = require('../../../src/config/logger');
+    const { sendEmail: isolatedSendEmail } = require('../../../src/services/emailService');
+
+    await isolatedSendEmail({ to: 'user@example.com', subject: 'Reset your password', text: 'Click https://app/reset?token=SECRET to reset.' });
+
+    const loggedLine = isolatedLogger.info.mock.calls[0][0];
+    expect(loggedLine).toContain('to=user@example.com subject="Reset your password"');
+    expect(loggedLine).not.toContain('SECRET');
+    expect(loggedLine).not.toContain('https://app/reset');
+
+    jest.dontMock('../../../src/config/logger');
+    jest.dontMock('../../../src/config/env');
+  });
+
   test('never throws even if the resolved provider itself fails — logs a warning instead', async () => {
     jest.resetModules();
     jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(() => { throw new Error('logger exploded'); }), warn: jest.fn(), error: jest.fn() }));

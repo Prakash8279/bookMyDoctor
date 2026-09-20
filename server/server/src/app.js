@@ -49,8 +49,9 @@ if (env.isProduction) {
 }
 
 // 1. Security headers. crossOriginResourcePolicy is relaxed to 'cross-origin' because
-// /uploads static files (profile photos, doctor documents, clinic QR codes) must be
-// loadable by the frontend running on a different origin/port.
+// /uploads files — public ones (profile photos, clinic QR codes) via express.static below, and
+// private ones (doctor verification documents) via the authenticated route just above it — must
+// be loadable by the frontend running on a different origin/port.
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // 2. CORS — single allowed origin (the frontend). No cookies are used for auth (tokens are
@@ -76,25 +77,35 @@ app.use(...requestLogger);
 // 6. Global rate limit (generous) — protects every route, on top of any per-route limiter.
 app.use(defaultLimiter);
 
-// 7. Static file serving for uploaded content (profile photos, documents, QR codes).
-// maxAge lets browsers/CDNs cache a repeat view of the same file (a profile photo or clinic QR
-// code shown on every doctor-profile/queue-display load) instead of re-downloading it every
-// time, which is real bandwidth at scale for files that rarely change. NOT `immutable: true`
-// though — filenames here are the original upload names, not content-hashed, so the same URL
-// can legitimately point at new bytes after a re-upload; immutable would tell caches to never
-// even revalidate, silently serving the stale file for up to a year. etag stays on so a cache
-// still revalidates (304) after maxAge expires and picks up a changed file within 7 days.
+// 6.5. Authenticated serving for PRIVATE uploaded documents (doctor verification documents) —
+// SECURITY FIX, see modules/uploads/secureDocument.routes.js's header comment for the full
+// rationale. Mounted at the more specific '/uploads/documents' path, BEFORE the general
+// '/uploads' express.static mount below — Express matches routes in registration order, so a
+// request under here is always handled by this authenticated route and never falls through to
+// the static server, even though the physical directory is a subdirectory of the same
+// UPLOAD_DIR express.static serves from.
+app.use('/uploads/documents', require('./modules/uploads/secureDocument.routes'));
+
+// 7. Static file serving for PUBLIC uploaded content only (profile photos, clinic QR codes) —
+// private documents are excluded from this and served by the authenticated route mounted just
+// above instead (step 6.5; Express's registration-order route matching means a '/uploads/
+// documents/*' request never reaches this middleware at all). maxAge lets browsers/CDNs cache a
+// repeat view of the same file (a profile photo or clinic QR code shown on every doctor-profile/
+// queue-display load) instead of re-downloading it every time, which is real bandwidth at scale
+// for files that rarely change. NOT `immutable: true` though — filenames here are the original
+// upload names, not content-hashed, so the same URL can legitimately point at new bytes after a
+// re-upload; immutable would tell caches to never even revalidate, silently serving the stale
+// file for up to a year. etag stays on so a cache still revalidates (304) after maxAge expires
+// and picks up a changed file within 7 days.
 app.use(
   '/uploads',
   express.static(path.resolve(env.upload.dir), {
     maxAge: '7d',
     etag: true,
-    // PDFs (doctor verification documents — see fileUploadService.js's DOCUMENT_MIME_EXTENSIONS)
-    // default to rendering inline in the browser's built-in PDF viewer. SVG/HTML are already
-    // excluded from every upload MIME allowlist so stored-XSS-via-upload isn't reachable, but a
-    // malicious PDF rendered inline could still exploit a PDF-viewer bug in some browsers — force
-    // it to download instead. Images are left alone (inline is exactly what a profile photo or
-    // clinic QR code needs).
+    // Belt-and-braces: PDFs can, in principle, only ever reach this public mount as a leftover
+    // from before this fix (documentUpload now writes into the private DOCUMENTS_SUBDIR this
+    // mount doesn't serve) — kept so nothing already-served-inline-by-a-browser-cache changes
+    // behavior, and so a hand-placed file here can't be rendered inline either.
     setHeaders: (res, filePath) => {
       if (filePath.toLowerCase().endsWith('.pdf')) {
         res.setHeader('Content-Disposition', 'attachment');

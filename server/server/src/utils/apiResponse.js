@@ -11,13 +11,18 @@
  * @param {object} [options]
  * @param {string} [options.message] - optional human-readable message.
  * @param {{page:number,pageSize:number,total:number,totalPages:number}} [options.pagination]
+ * @param {boolean} [options.truncated] - LOAD-REVIEW FIX: set only by endpoints (e.g. queue
+ *   listing) whose service layer enforces a defensive result cap, so a caller can tell "this list
+ *   silently left rows out" apart from "this is genuinely everything." Omitted entirely (not sent
+ *   as false) when the endpoint has no such cap, so its presence itself is meaningful.
  * @param {number} [options.statusCode=200]
  */
 function success(res, data, options = {}) {
-  const { message, pagination, statusCode = 200 } = options;
+  const { message, pagination, truncated, statusCode = 200 } = options;
 
   const body = { success: true, data };
   if (pagination) body.pagination = pagination;
+  if (truncated !== undefined) body.truncated = truncated;
   if (message) body.message = message;
 
   return res.status(statusCode).json(body);

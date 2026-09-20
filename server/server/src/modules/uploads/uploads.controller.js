@@ -6,6 +6,7 @@
  * exposed the file as req.uploadedFile = {filename, url}.
  */
 const uploadsService = require('./uploads.service');
+const { signDocumentUrl } = require('../../services/fileUploadService');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
@@ -15,8 +16,14 @@ const uploadPhoto = asyncHandler(async (req, res) => {
 });
 
 const uploadDocument = asyncHandler(async (req, res) => {
+  // saveVerificationDocument persists (and returns) the STABLE, token-less URL — correct for
+  // storage, but returning it as-is here would make the "View" link on StaffPages.jsx's own
+  // upload form 404 immediately after upload. The caller here IS the owning doctor (no
+  // ownership check needed, unlike every other read of this list — see
+  // doctors.service.js#shapeDoctor's includeContact comment for why signing normally happens at
+  // response time rather than at upload time), so it's safe to hand back an already-signed URL.
   const url = await uploadsService.saveVerificationDocument(req.user, req.uploadedFile.url, req.body.name);
-  return success(res, { url }, { statusCode: 201, message: 'Verification document uploaded.' });
+  return success(res, { url: signDocumentUrl(url) }, { statusCode: 201, message: 'Verification document uploaded.' });
 });
 
 const uploadQr = asyncHandler(async (req, res) => {

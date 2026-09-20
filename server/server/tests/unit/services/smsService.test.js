@@ -36,6 +36,26 @@ describe('smsService.sendSms', () => {
     expect(logger.info).toHaveBeenCalled();
   });
 
+  // SECURITY FIX (audit finding: "password-reset token/link written to logs in plaintext") —
+  // an OTP/reset-code SMS body must not survive in production logs verbatim. See
+  // smsService.js's logProvider comment / emailService.js's equivalent test for the rationale.
+  test('redacts the body (but still logs to) when running in production', async () => {
+    jest.resetModules();
+    jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+    jest.doMock('../../../src/config/env', () => ({ ...jest.requireActual('../../../src/config/env'), isProduction: true }));
+    const isolatedLogger = require('../../../src/config/logger');
+    const { sendSms: isolatedSendSms } = require('../../../src/services/smsService');
+
+    await isolatedSendSms({ to: '9999999999', message: 'Your OTP is 424242' });
+
+    const loggedLine = isolatedLogger.info.mock.calls[0][0];
+    expect(loggedLine).toContain('to=9999999999');
+    expect(loggedLine).not.toContain('424242');
+
+    jest.dontMock('../../../src/config/logger');
+    jest.dontMock('../../../src/config/env');
+  });
+
   test('never throws even if the resolved provider itself fails — logs a warning instead', async () => {
     jest.resetModules();
     jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(() => { throw new Error('logger exploded'); }), warn: jest.fn(), error: jest.fn() }));

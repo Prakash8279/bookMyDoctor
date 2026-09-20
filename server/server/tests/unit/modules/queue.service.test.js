@@ -148,7 +148,11 @@ describe('queueService.listQueue', () => {
 
     const result = await queueService.listQueue({}, { id: 'recep-1', role: 'receptionist' });
 
-    expect(result).toEqual({ rows: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } });
+    expect(result).toEqual({
+      rows: [],
+      pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      truncated: false,
+    });
     expect(prisma.queueToken.findMany).not.toHaveBeenCalled();
   });
 
@@ -170,6 +174,7 @@ describe('queueService.listQueue', () => {
     expect(byId.q2.patientsAhead).toBe(1);
     expect(byId.q3.patientsAhead).toBe(0); // reset, not carried over from doc-A's queue
     expect(byId.q3.estimatedWaitMinutes).toBe(0);
+    expect(result.truncated).toBe(false); // well under MAX_QUEUE_FETCH
   });
 
   test('a `status` filter narrows the returned rows but never changes their patientsAhead/ETA, which stay computed against the true unfiltered queue', async () => {
@@ -189,8 +194,8 @@ describe('queueService.listQueue', () => {
     expect(result.pagination.total).toBe(2); // total counts the filtered set, not the full queue
   });
 
-  test('logs a warning when the defensive MAX_QUEUE_FETCH cap (500) is hit, since patientsAhead becomes understated beyond it', async () => {
-    const rows = Array.from({ length: 500 }, (_, i) => ({
+  test('logs a warning and sets truncated:true when the defensive MAX_QUEUE_FETCH cap is hit, since patientsAhead becomes understated beyond it', async () => {
+    const rows = Array.from({ length: queueService.MAX_QUEUE_FETCH }, (_, i) => ({
       id: `q${i}`,
       appointmentId: `a${i}`,
       doctorUserId: 'doc-A',
@@ -202,9 +207,29 @@ describe('queueService.listQueue', () => {
     }));
     prisma.queueToken.findMany.mockResolvedValue(rows);
 
-    await queueService.listQueue({}, { id: 'doc-A', role: 'doctor' });
+    const result = await queueService.listQueue({}, { id: 'doc-A', role: 'doctor' });
 
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('MAX_QUEUE_FETCH'), expect.any(Object));
+    expect(result.truncated).toBe(true);
+  });
+
+  test('truncated stays false when the row count is one short of the MAX_QUEUE_FETCH cap', async () => {
+    const rows = Array.from({ length: queueService.MAX_QUEUE_FETCH - 1 }, (_, i) => ({
+      id: `q${i}`,
+      appointmentId: `a${i}`,
+      doctorUserId: 'doc-A',
+      clinicId: 'clinic-1',
+      tokenNumber: i + 1,
+      status: 'waiting',
+      queueDate: '2026-09-10',
+      appointment: null,
+    }));
+    prisma.queueToken.findMany.mockResolvedValue(rows);
+
+    const result = await queueService.listQueue({}, { id: 'doc-A', role: 'doctor' });
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(result.truncated).toBe(false);
   });
 });
 

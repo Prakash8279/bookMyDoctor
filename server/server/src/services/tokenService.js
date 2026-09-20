@@ -111,6 +111,20 @@ function verifyAccessToken(token) {
 // refuse to treat one as a login session, and verifyResetToken (below) can refuse to treat a
 // real access/refresh token as a reset token.
 const RESET_TOKEN_PURPOSE = 'password-reset';
+
+// SECURITY FIX (audit finding: "uploaded documents served without authentication" —
+// /uploads/documents/* used to be plain express.static, so anyone with a leaked URL — browser
+// history, a server/analytics log, a pasted support-ticket link — could fetch a doctor's
+// verification document forever, with no login required). A doctor verification document is
+// opened via a plain `<a href target="_blank">` in AdminPages.jsx (see doctors.service.js's
+// shapeDoctor, which appends this token to the URL only when the CALLER is already the owning
+// doctor or an admin/superadmin — see the includeContact gate there), so a real Bearer-header
+// check isn't reachable here the way it is for a normal API call: the browser's own navigation
+// never attaches one. A short-lived, filename-scoped signed token in the URL's query string
+// (the same shape S3/GCS "pre-signed URLs" use) fixes the actual reported problem — a leaked
+// link stops working within minutes — without needing any frontend rework.
+const FILE_ACCESS_TOKEN_PURPOSE = 'file-access';
+const FILE_ACCESS_TOKEN_EXPIRES_IN = '10m';
 // Deliberately short — long enough for someone to receive and act on a reset link, short enough
 // that a link sitting unused (in an inbox, or a server log — see auth.service.js#forgotPassword)
 // stops being useful quickly.
@@ -150,6 +164,41 @@ function verifyResetToken(token) {
   }
 
   return payload.sub;
+}
+
+/**
+ * Signs a short-lived token scoped to exactly one uploaded filename — see the
+ * FILE_ACCESS_TOKEN_PURPOSE comment above for why this exists instead of a normal auth check.
+ * @param {string} filename - the exact server-generated filename (e.g. a crypto.randomUUID()
+ *   + extension from fileUploadService.js) this token authorizes fetching. Binding the filename
+ *   into the token itself (not just "this caller may fetch *some* document") means one leaked
+ *   link can never be reused to guess/fetch a different doctor's document.
+ * @returns {string} signed JWT, meant to be appended as a `?token=` query param
+ */
+function signFileAccessToken(filename) {
+  return jwt.sign({ purpose: FILE_ACCESS_TOKEN_PURPOSE, filename }, env.jwt.accessSecret, {
+    expiresIn: FILE_ACCESS_TOKEN_EXPIRES_IN,
+  });
+}
+
+/**
+ * Verifies a token minted by signFileAccessToken for THIS specific filename.
+ * @param {string} token
+ * @param {string} filename - the filename being requested; must match the one the token was
+ *   signed for, or verification fails (prevents reusing one document's link to fetch another).
+ * @returns {boolean} true only if the token is well-formed, unexpired, the right purpose, and
+ *   scoped to this exact filename — every other case (including any thrown error) returns
+ *   false rather than throwing, since the caller treats "no valid token" as a plain 403/404,
+ *   not a distinguishable error state (same anti-enumeration reasoning as verifyResetToken).
+ */
+function verifyFileAccessToken(token, filename) {
+  if (!token) return false;
+  try {
+    const payload = verifyWithSecrets(token, env.jwt.accessVerifySecrets);
+    return payload.purpose === FILE_ACCESS_TOKEN_PURPOSE && payload.filename === filename;
+  } catch (err) {
+    return false;
+  }
 }
 
 /**
@@ -294,6 +343,8 @@ module.exports = {
   verifyAccessToken,
   signResetToken,
   verifyResetToken,
+  signFileAccessToken,
+  verifyFileAccessToken,
   issueRefreshToken,
   issueTokenPair,
   rotateRefreshToken,

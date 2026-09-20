@@ -50,9 +50,15 @@ function runMiddleware(middleware, req) {
 }
 
 describe('fileUploadService — require-time directory setup never touches the real filesystem', () => {
+  // SECURITY FIX (private documents subdirectory): this module now creates TWO directories at
+  // require time — UPLOAD_DIR (public files) and its DOCUMENTS_DIR subdirectory (private
+  // documents, served only via modules/uploads/secureDocument.routes.js) — see
+  // fileUploadService.js's DOCUMENTS_SUBDIR comment.
   test('fs.mkdirSync was called (mocked) instead of creating a real directory', () => {
-    expect(mkdirSyncCallsAtRequireTime).toHaveLength(1);
-    expect(mkdirSyncCallsAtRequireTime[0]).toEqual([expect.any(String), { recursive: true }]);
+    expect(mkdirSyncCallsAtRequireTime).toHaveLength(2);
+    mkdirSyncCallsAtRequireTime.forEach((call) => {
+      expect(call).toEqual([expect.any(String), { recursive: true }]);
+    });
   });
 });
 
@@ -165,5 +171,53 @@ describe('fileUploadService — qrUpload uses the same image-only mimetype allow
 
     expect(req.uploadedFile.filename).toMatch(/^[0-9a-f-]{36}\.png$/);
     expect(req.uploadedFile.filename).not.toBe('qr-original.png');
+  });
+});
+
+// SECURITY FIX (audit finding: "uploaded documents served without authentication") — documents
+// now save into a separate, non-publicly-served subdirectory, and their stored URL carries no
+// access token (a fresh one is signed later, at response time — see doctors.service.js#shapeDoctor
+// and me.service.js#buildProfile). Public files (photo/qr) are completely unaffected.
+describe('fileUploadService — private documents are split from public files', () => {
+  const { signDocumentUrl } = require('../../../src/services/fileUploadService');
+  const tokenService = require('../../../src/services/tokenService');
+
+  test('documentUpload writes under a "documents" subpath, with no token in the stored URL', async () => {
+    const attachDocument = documentUpload[2];
+    const req = fakeReq({ mimetype: 'application/pdf', buffer: Buffer.from('%PDF-1.4'), originalname: 'cert.pdf' });
+
+    await runMiddleware(attachDocument, req);
+
+    expect(req.uploadedFile.url).toContain('/documents/');
+    expect(req.uploadedFile.url).not.toContain('?token=');
+    expect(req.uploadedFile.url).toContain(req.uploadedFile.filename);
+  });
+
+  test('photoUpload and qrUpload are unaffected — no "documents" subpath, same as before', async () => {
+    const attachPhoto = photoUpload[2];
+    const req = fakeReq({ mimetype: 'image/png', buffer: Buffer.from('x'), originalname: 'photo.png' });
+
+    await runMiddleware(attachPhoto, req);
+
+    expect(req.uploadedFile.url).not.toContain('/documents/');
+  });
+
+  test('signDocumentUrl appends a token that verifyFileAccessToken accepts for that exact filename', async () => {
+    const attachDocument = documentUpload[2];
+    const req = fakeReq({ mimetype: 'application/pdf', buffer: Buffer.from('%PDF-1.4'), originalname: 'cert.pdf' });
+    await runMiddleware(attachDocument, req);
+
+    const signedUrl = signDocumentUrl(req.uploadedFile.url);
+    const token = new URL(signedUrl).searchParams.get('token');
+
+    expect(token).toEqual(expect.any(String));
+    expect(tokenService.verifyFileAccessToken(token, req.uploadedFile.filename)).toBe(true);
+    // A token minted for one document must not authorize a DIFFERENT filename — otherwise one
+    // leaked/expired-and-reused link could be replayed against any other document.
+    expect(tokenService.verifyFileAccessToken(token, 'some-other-uuid-0000-0000-000000000000.pdf')).toBe(false);
+  });
+
+  test('signDocumentUrl leaves a non-document URL (e.g. already-public) unchanged', () => {
+    expect(signDocumentUrl('https://cdn.example.com/whatever.jpg')).toBe('https://cdn.example.com/whatever.jpg');
   });
 });

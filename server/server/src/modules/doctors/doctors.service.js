@@ -10,6 +10,7 @@ const env = require('../../config/env');
 const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
+const { signDocumentUrl } = require('../../services/fileUploadService');
 const notificationsService = require('../notifications/notifications.service');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { pickPresentFields } = require('../../utils/pickPresentFields');
@@ -299,7 +300,19 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     // Only ever populated here — see the doctorProfile select comment above for why this is
     // gated behind includeContact rather than includeDetail (privacy: unlike bio/booking-window,
     // these are direct links to a doctor's uploaded ID/certificate files).
-    shaped.verificationDocuments = Array.isArray(dp.verificationDocuments) ? dp.verificationDocuments : [];
+    // SECURITY FIX (audit finding: "uploaded documents served without authentication") — the
+    // stored URL (fileUploadService.js's buildFileUrl) is a stable, token-less path that isn't
+    // servable on its own anymore (see modules/uploads/secureDocument.routes.js). A fresh,
+    // 10-minute-lived access token is signed in HERE, at response time, specifically because
+    // this code only runs inside the includeContact gate — i.e. only after confirming the
+    // caller is the owning doctor or an admin/superadmin. Signing any earlier (e.g. once at
+    // upload time) would either leak a token to nobody yet, or bake in an expiry no viewer could
+    // still be within by the time an admin actually reviews it days later.
+    shaped.verificationDocuments = Array.isArray(dp.verificationDocuments)
+      ? dp.verificationDocuments.map((doc) =>
+          doc && typeof doc === 'object' ? { ...doc, url: signDocumentUrl(doc.url) } : doc
+        )
+      : [];
     // COMPLETENESS ADD (request: "doctor bank details v only admin and super admin dekh sakta
     // hai"): bank details for payouts, same includeContact-only visibility as
     // verificationDocuments above. Grouped into one object (null when nothing has been entered
