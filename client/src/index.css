@@ -5,9 +5,19 @@
 @tailwind utilities;
 
 @layer base {
-  body { @apply min-h-screen bg-surface font-sans text-ink antialiased; }
+  /* MOBILE OFF-SCREEN FIX (user report: "dropdown karne par screen se bahar tak ja raha hai" —
+     opening the "Payment method"/other <select> fields on a phone let the page scroll
+     horizontally, pushing content past the right edge of the screen). A native <select>'s open
+     option list is drawn by the phone's OS, not this CSS, but ANY element on the page that's even
+     slightly wider than the viewport (a long unbroken string, a stray fixed width) makes the
+     WHOLE document horizontally scrollable on mobile — and that scroll position is what let
+     content end up "outside the screen". html/body now hard-clip horizontal overflow so the page
+     itself can never scroll sideways, and form fields get an explicit max-width safety net so an
+     individual input/select can't be the element that stretches the page in the first place. */
+  html { @apply overflow-x-hidden; }
+  body { @apply min-h-screen overflow-x-hidden bg-surface font-sans text-ink antialiased; }
   h1, h2, h3, h4, h5, h6 { @apply font-sans font-normal text-ink; }
-  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+  button, a, input, select, textarea { max-width: 100%; -webkit-tap-highlight-color: transparent; }
   :focus-visible { @apply outline-none ring-2 ring-primary-dark ring-offset-2 ring-offset-surface; }
 }
 
