@@ -40,3 +40,10 @@ process.env.BCRYPT_SALT_ROUNDS = process.env.BCRYPT_SALT_ROUNDS || '4';
 // external dependency in that suite). Individual tests still override env.google.clientId = ''
 // to cover the "not configured" case.
 process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'test-only-google-client-id.apps.googleusercontent.com';
+
+// BANK-DETAIL ENCRYPTION (services/encryptionService.js) — a throwaway 32-byte hex key so
+// env.bankDetailsEncryptionKey is truthy by default, letting me.service.test.js /
+// doctors.service.test.js / encryptionService.test.js exercise the real encrypt/decrypt code
+// path instead of every test needing to set this itself. NEVER use this value anywhere real.
+process.env.BANK_DETAILS_ENCRYPTION_KEY =
+  process.env.BANK_DETAILS_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';

@@ -13,6 +13,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "node prisma/seed.js",
+    "encrypt-bank-details": "node scripts/encryptExistingBankDetails.js",
     "test": "jest",
     "test:watch": "jest --watch"
   },

@@ -202,4 +202,15 @@ module.exports = {
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
   },
+
+  // BANK-DETAIL ENCRYPTION (risky-item #3, docs/risky-fixes-plan-2026-09-20.md — "doctor bank
+  // details are stored plaintext in doctor_profiles"). See services/encryptionService.js for the
+  // AES-256-GCM implementation. Deliberately NOT in REQUIRED_VARS, same optional-feature pattern
+  // as razorpay/google above: the app must still boot with bank-detail encryption simply
+  // unavailable (a doctor trying to save/edit bank details gets a clean 503, everything else is
+  // unaffected) until an operator sets a real key — this code never generates or sets that value
+  // itself. A 64-character hex string (32 raw bytes), e.g. `openssl rand -hex 32`. Treat it like
+  // a password: never commit it, never log it, and rotating it makes every already-encrypted row
+  // undecryptable until re-encrypted under the new key (there is no key-rotation migration yet).
+  bankDetailsEncryptionKey: process.env.BANK_DETAILS_ENCRYPTION_KEY || '',
 };

@@ -16,6 +16,7 @@ const { parsePagination, buildPaginationMeta } = require('../../utils/pagination
 const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { ADMIN_ROLES } = require('../../utils/roles');
 const idGenerators = require('../../utils/idGenerators');
+const encryptionService = require('../../services/encryptionService');
 
 // Public directory data — output is role-invariant (no masking), so list keys need only the
 // query params. TTL 60s: staleness here is low-stakes (a doctor bio/rating going stale for a
@@ -319,15 +320,28 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     // yet) rather than 5 loose top-level fields, purely for a tidier response shape. upiId
     // (request: "upiid dalne ka v option de do") is independent of the 4 bank fields — a doctor
     // may fill in either, both, or neither — so it alone can also make hasBankDetails true.
-    const hasBankDetails =
-      dp.bankAccountHolderName || dp.bankAccountNumber || dp.bankIfscCode || dp.bankName || dp.bankUpiId;
+    //
+    // BANK-DETAIL ENCRYPTION FIX (risky-item #3) — `dp.*` here is the raw doctorProfile row off
+    // Prisma, which stores these 5 columns as `enc:v1:...` ciphertext (see
+    // encryptionService.js). Decrypted once into local consts here, reused for both the
+    // hasBankDetails truthy-check and the shaped object below, so a real caller (the owning
+    // doctor or an admin/superadmin — same includeContact gate as everything else in this block)
+    // sees plaintext exactly as before. decrypt() passes a not-yet-migrated plaintext row through
+    // unchanged, so this is safe whether or not scripts/encryptExistingBankDetails.js has run yet
+    // for this row.
+    const bankAccountHolderName = encryptionService.decrypt(dp.bankAccountHolderName);
+    const bankAccountNumber = encryptionService.decrypt(dp.bankAccountNumber);
+    const bankIfscCode = encryptionService.decrypt(dp.bankIfscCode);
+    const bankName = encryptionService.decrypt(dp.bankName);
+    const bankUpiId = encryptionService.decrypt(dp.bankUpiId);
+    const hasBankDetails = bankAccountHolderName || bankAccountNumber || bankIfscCode || bankName || bankUpiId;
     shaped.bankDetails = hasBankDetails
       ? {
-          accountHolderName: dp.bankAccountHolderName ?? null,
-          accountNumber: dp.bankAccountNumber ?? null,
-          ifscCode: dp.bankIfscCode ?? null,
-          bankName: dp.bankName ?? null,
-          upiId: dp.bankUpiId ?? null,
+          accountHolderName: bankAccountHolderName ?? null,
+          accountNumber: bankAccountNumber ?? null,
+          ifscCode: bankIfscCode ?? null,
+          bankName: bankName ?? null,
+          upiId: bankUpiId ?? null,
         }
       : null;
     // Doctor-configured token-numbering rule (see schema.prisma's DoctorProfile.tokenNumberingMode

@@ -13,6 +13,7 @@ const tokenService = require('../../services/tokenService');
 const activityLogService = require('../../services/activityLogService');
 const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { signDocumentUrl } = require('../../services/fileUploadService');
+const encryptionService = require('../../services/encryptionService');
 
 const BASE_SELECT = {
   id: true,
@@ -100,6 +101,15 @@ function buildProfile(user) {
         doc && typeof doc === 'object' ? { ...doc, url: signDocumentUrl(doc.url) } : doc
       );
     }
+    // BANK-DETAIL ENCRYPTION FIX (risky-item #3) — the raw doctorProfile row off Prisma carries
+    // these 5 fields as `enc:v1:...` ciphertext (see encryptionService.js). This is the doctor
+    // fetching their OWN profile (no ownership check needed, same reasoning as the
+    // verificationDocuments re-signing right above), so it's decrypted back to plaintext here at
+    // response time — `decrypt()` passes a not-yet-migrated plaintext row through unchanged, so
+    // this is safe to call unconditionally regardless of whether the migration script has run.
+    for (const field of encryptionService.BANK_DETAIL_FIELDS) {
+      if (field in rest) rest[field] = encryptionService.decrypt(rest[field]);
+    }
     return rest; // `rest.specialization` is the nested {id, name} object from the include.
   }
   if (user.role === 'receptionist') {
@@ -153,6 +163,28 @@ async function updateMe(userId, role, body) {
     const raw = Array.isArray(profileUpdates.languages) ? profileUpdates.languages : [];
     const deduped = [...new Set(raw.map((l) => String(l).trim()).filter((l) => l.length > 0))];
     profileUpdates.languages = deduped;
+  }
+
+  // BANK-DETAIL ENCRYPTION FIX (risky-item #3, docs/risky-fixes-plan-2026-09-20.md) — encrypt
+  // every present, non-null bank field before it ever reaches Prisma, so doctor_profiles never
+  // stores these 5 columns as plain text again. `null` (a doctor clearing a field) is left as-is
+  // — encryptionService.encrypt() already passes null through unchanged, but the explicit check
+  // here is what lets us give a clean 503 instead of a confusing crash deep inside crypto when
+  // the operator hasn't set BANK_DETAILS_ENCRYPTION_KEY yet, without blocking a doctor from
+  // editing any of their OTHER profile fields (bio, fee, etc.) in the same request.
+  if (role === 'doctor') {
+    const presentBankFields = encryptionService.BANK_DETAIL_FIELDS.filter((field) => field in profileUpdates);
+    const hasNonNullBankValue = presentBankFields.some((field) => profileUpdates[field] !== null);
+    if (hasNonNullBankValue && !env.bankDetailsEncryptionKey) {
+      throw new ApiError(
+        503,
+        'BANK_ENCRYPTION_NOT_CONFIGURED',
+        'Bank detail encryption is not configured on this server yet. Please try again later or contact support.'
+      );
+    }
+    for (const field of presentBankFields) {
+      profileUpdates[field] = encryptionService.encrypt(profileUpdates[field]);
+    }
   }
 
   // A doctor's minimum online-booking-advance amount must never exceed their consultation fee

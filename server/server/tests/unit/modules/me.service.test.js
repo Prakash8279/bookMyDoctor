@@ -52,6 +52,7 @@ const prisma = require('../../../src/config/db');
 const tokenService = require('../../../src/services/tokenService');
 const activityLogService = require('../../../src/services/activityLogService');
 const doctorsService = require('../../../src/modules/doctors/doctors.service');
+const encryptionService = require('../../../src/services/encryptionService');
 const meService = require('../../../src/modules/me/me.service');
 
 function fullUserRow(overrides = {}) {
@@ -76,6 +77,61 @@ describe('meService.getMe', () => {
   test('401 UNAUTHORIZED when the user row is gone (e.g. deleted between token issue and this call)', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
     await expect(meService.getMe('user-1')).rejects.toMatchObject({ statusCode: 401, code: 'UNAUTHORIZED' });
+  });
+});
+
+describe('meService.getMe — bank-detail decryption on read', () => {
+  // BANK-DETAIL ENCRYPTION FIX (risky-item #3) — buildProfile() must decrypt these 5 fields back
+  // to plaintext for the doctor viewing their OWN profile, exactly as doctors.service.js does
+  // for an admin/superadmin viewer (see doctors.service.test.js).
+  test('a doctor fetching their own profile sees decrypted plaintext, not the stored ciphertext', async () => {
+    prisma.user.findUnique.mockResolvedValue(
+      fullUserRow({
+        role: 'doctor',
+        doctorProfile: {
+          userId: 'user-1',
+          specializationId: 'spec-1',
+          specialization: { id: 'spec-1', name: 'Cardiology' },
+          verificationDocuments: [],
+          bankAccountHolderName: encryptionService.encrypt('Asha Rao'),
+          bankAccountNumber: encryptionService.encrypt('123456789012'),
+          bankIfscCode: encryptionService.encrypt('HDFC0001234'),
+          bankName: encryptionService.encrypt('HDFC Bank'),
+          bankUpiId: encryptionService.encrypt('asha@okhdfcbank'),
+        },
+      })
+    );
+
+    const result = await meService.getMe('user-1');
+
+    expect(result.profile.bankAccountHolderName).toBe('Asha Rao');
+    expect(result.profile.bankAccountNumber).toBe('123456789012');
+    expect(result.profile.bankIfscCode).toBe('HDFC0001234');
+    expect(result.profile.bankName).toBe('HDFC Bank');
+    expect(result.profile.bankUpiId).toBe('asha@okhdfcbank');
+  });
+
+  test('a not-yet-migrated plaintext doctorProfile row still reads correctly (no crash, no re-encryption needed)', async () => {
+    prisma.user.findUnique.mockResolvedValue(
+      fullUserRow({
+        role: 'doctor',
+        doctorProfile: {
+          userId: 'user-1',
+          specializationId: 'spec-1',
+          specialization: { id: 'spec-1', name: 'Cardiology' },
+          verificationDocuments: [],
+          bankAccountHolderName: 'Asha Rao', // legacy plaintext, migration script not run yet
+          bankAccountNumber: null,
+          bankIfscCode: null,
+          bankName: null,
+          bankUpiId: null,
+        },
+      })
+    );
+
+    const result = await meService.getMe('user-1');
+
+    expect(result.profile.bankAccountHolderName).toBe('Asha Rao');
   });
 });
 
@@ -218,7 +274,14 @@ describe('meService.updateMe — per-role field allowlist', () => {
   // hai add kro") — bank details are self-editable via PATCH /me exactly like any other doctor
   // profile field; their admin/superadmin-only READ-side visibility is doctors.service.js's
   // concern (see doctors.service.test.js), not this module's.
-  test('a doctor can set their own bank details via PATCH /me', async () => {
+  //
+  // BANK-DETAIL ENCRYPTION FIX (risky-item #3) — updateMe now encrypts these 4 fields before
+  // they ever reach Prisma, so the value written is `enc:v1:...` ciphertext, never the plaintext
+  // the doctor sent. Asserted here by round-tripping each written value back through the real
+  // encryptionService.decrypt() (not mocked in this file — see this file's header comment) rather
+  // than asserting an exact ciphertext string, since a fresh random IV means the exact ciphertext
+  // differs on every run even for the same plaintext.
+  test('a doctor can set their own bank details via PATCH /me — stored encrypted, not plaintext', async () => {
     prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
 
     await meService.updateMe('user-1', 'doctor', {
@@ -228,16 +291,43 @@ describe('meService.updateMe — per-role field allowlist', () => {
       bankName: 'HDFC Bank',
     });
 
-    expect(prisma.doctorProfile.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: {
-          bankAccountHolderName: 'Asha Rao',
-          bankAccountNumber: '123456789012',
-          bankIfscCode: 'HDFC0001234',
-          bankName: 'HDFC Bank',
-        },
-      })
+    expect(prisma.doctorProfile.upsert).toHaveBeenCalledTimes(1);
+    const { update } = prisma.doctorProfile.upsert.mock.calls[0][0];
+    expect(Object.keys(update).sort()).toEqual(
+      ['bankAccountHolderName', 'bankAccountNumber', 'bankIfscCode', 'bankName'].sort()
     );
+    // Every stored value is ciphertext, never the raw plaintext that was sent in.
+    expect(update.bankAccountHolderName).not.toBe('Asha Rao');
+    expect(encryptionService.isEncrypted(update.bankAccountHolderName)).toBe(true);
+    expect(encryptionService.decrypt(update.bankAccountHolderName)).toBe('Asha Rao');
+    expect(encryptionService.decrypt(update.bankAccountNumber)).toBe('123456789012');
+    expect(encryptionService.decrypt(update.bankIfscCode)).toBe('HDFC0001234');
+    expect(encryptionService.decrypt(update.bankName)).toBe('HDFC Bank');
+  });
+
+  test('clearing a bank field with an explicit null stores a clean null, not an encrypted empty value', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+
+    await meService.updateMe('user-1', 'doctor', { bankAccountNumber: null });
+
+    expect(prisma.doctorProfile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { bankAccountNumber: null } })
+    );
+  });
+
+  test('503 BANK_ENCRYPTION_NOT_CONFIGURED when the operator has not set an encryption key yet', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+    const env = require('../../../src/config/env');
+    const originalKey = env.bankDetailsEncryptionKey;
+    env.bankDetailsEncryptionKey = '';
+    try {
+      await expect(
+        meService.updateMe('user-1', 'doctor', { bankAccountHolderName: 'Asha Rao' })
+      ).rejects.toMatchObject({ statusCode: 503, code: 'BANK_ENCRYPTION_NOT_CONFIGURED' });
+      expect(prisma.doctorProfile.upsert).not.toHaveBeenCalled();
+    } finally {
+      env.bankDetailsEncryptionKey = originalKey;
+    }
   });
 
   test('a patient CANNOT set bank-detail fields — silently dropped like any other out-of-allowlist field', async () => {
@@ -250,15 +340,17 @@ describe('meService.updateMe — per-role field allowlist', () => {
   });
 
   // COMPLETENESS ADD (request: "upiid dalne ka v option de do") — bankUpiId is independent of
-  // the 4 bank fields above; a doctor can set it alone.
-  test('a doctor can set just their UPI ID, independent of the 4 bank fields', async () => {
+  // the 4 bank fields above; a doctor can set it alone. Also encrypted (risky-item #3) same as
+  // the other 4 fields — asserted via round-trip decrypt, same reasoning as the test above.
+  test('a doctor can set just their UPI ID, independent of the 4 bank fields — stored encrypted', async () => {
     prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
 
     await meService.updateMe('user-1', 'doctor', { bankUpiId: 'asha@okhdfcbank' });
 
-    expect(prisma.doctorProfile.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ update: { bankUpiId: 'asha@okhdfcbank' } })
-    );
+    const { update } = prisma.doctorProfile.upsert.mock.calls[0][0];
+    expect(Object.keys(update)).toEqual(['bankUpiId']);
+    expect(update.bankUpiId).not.toBe('asha@okhdfcbank');
+    expect(encryptionService.decrypt(update.bankUpiId)).toBe('asha@okhdfcbank');
   });
 
   test('audit log description never includes field VALUES, only field NAMES', async () => {
