@@ -119,5 +119,24 @@ describe('DataTable', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }))
       expect(onPageChange).toHaveBeenCalledWith(3)
     })
+
+    // OFF-SCREEN VALUE FIX (user report: "ye fix karo", screenshot of a card whose long clinic/
+    // doctor name and "Public profile" booking-link URL ran off the right edge of the card) — a
+    // flex item's default min-width:auto refuses to shrink below an unbroken value's full width,
+    // so a URL with no spaces pushed the row wider than the card instead of wrapping.
+    it('lets a long, unbroken value (e.g. a URL with no spaces) wrap inside the card instead of overflowing it', () => {
+      mockMobileViewport(true)
+      const longValueColumns = [
+        { key: 'name', label: 'Clinic' },
+        { key: 'link', label: 'Public profile' },
+      ]
+      const LONG_URL = 'https://bookmydoctor24.example.com/book?clinic=Doctor%20Connect%20Demo&doctor=Dr.%20Priya%20Sharma&ref=abcdefghijklmnopqrstuvwxyz'
+      const rows = [{ id: 1, name: 'Doctor Connect Demo', link: LONG_URL }]
+      render(<DataTable columns={longValueColumns} rows={rows} />)
+
+      const valueCell = screen.getByText(LONG_URL)
+      expect(valueCell.className).toMatch(/\bmin-w-0\b/)
+      expect(valueCell.className).toMatch(/overflow-wrap:anywhere/)
+    })
   })
 })

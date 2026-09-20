@@ -18,6 +18,14 @@ import { useIsMobile } from '../hooks/useIsMobile'
 // column (key 'actionCol' or 'actions' — the two spellings already used across the app) renders
 // full-width below the rest of a card's fields instead of squeezed into a label/value row, since
 // it usually holds several buttons.
+//
+// OFF-SCREEN VALUE FIX (user report: "ye fix karo", screenshot of a card whose long clinic/doctor
+// name and "Public profile" booking-link URL ran off the right edge of the card) — a flex item's
+// default `min-width: auto` refuses to shrink below its content's UNBROKEN width, so a value with
+// no natural spaces (a URL, a long joined name) pushed the whole row wider than the card instead
+// of wrapping. `min-w-0` lets the value column actually shrink to the row's real width, and
+// `break-words` (plus `break-all` as a second line of defense for a value with literally no word
+// boundaries at all, like a query string) wraps it inside that width instead of overflowing.
 const isActionColumn = (column) => column.key === 'actionCol' || column.key === 'actions'
 export function DataTable({ columns, rows = [], pagination, loading = false, error, onRetry, onPageChange }) {
   const isMobile = useIsMobile()
@@ -31,7 +39,7 @@ export function DataTable({ columns, rows = [], pagination, loading = false, err
   return <div className="rounded-card border border-border bg-white shadow-card">
     {isMobile
       ? <ul className="grid gap-3 p-3">{rows.map((row, index) => <li key={row.id} className="rounded-button border border-border p-3">
-          <dl className="grid gap-2">{detailColumns.map((column) => <div key={column.key} className="flex items-start justify-between gap-3 text-sm"><dt className="shrink-0 font-semibold text-muted">{column.label}</dt><dd className="text-right text-ink">{column.render ? column.render(row, index) : row[column.key]}</dd></div>)}</dl>
+          <dl className="grid gap-2">{detailColumns.map((column) => <div key={column.key} className="flex items-start justify-between gap-3 text-sm"><dt className="shrink-0 font-semibold text-muted">{column.label}</dt><dd className="min-w-0 flex-1 text-right text-ink [overflow-wrap:anywhere]">{column.render ? column.render(row, index) : row[column.key]}</dd></div>)}</dl>
           {actionColumn && <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{actionColumn.render ? actionColumn.render(row, index) : row[actionColumn.key]}</div>}
         </li>)}</ul>
       : <div className="data-scroll"><table className="min-w-full text-left text-sm"><thead className="bg-primary-light/50 text-muted"><tr>{columns.map((column) => <th scope="col" className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id} className="border-t border-border">{columns.map((column) => <td className="whitespace-nowrap px-4 py-3" key={column.key}>{column.render ? column.render(row, index) : row[column.key]}</td>)}</tr>)}</tbody></table></div>}
