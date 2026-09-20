@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "cross-env UV_THREADPOOL_SIZE=16 nodemon src/server.js",
     "start": "cross-env UV_THREADPOOL_SIZE=16 node src/server.js",
+    "start:cluster": "cross-env UV_THREADPOOL_SIZE=16 node src/cluster.js",
     "worker": "node src/jobs/worker.process.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
