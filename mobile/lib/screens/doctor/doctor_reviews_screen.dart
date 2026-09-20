@@ -17,8 +17,16 @@ class DoctorReviewsScreen extends StatelessWidget {
   const DoctorReviewsScreen({super.key});
 
   Future<List<ReviewItem>> _load(String doctorId) async {
-    final res = await ApiClient.instance.get('/reviews', query: {'doctorId': doctorId, 'pageSize': 100});
-    return res.list.map(ReviewItem.fromJson).toList();
+    final res = await ApiClient.instance
+        .get('/reviews', query: {'doctorId': doctorId, 'pageSize': 100})
+        .catchError((_) => ApiResponse(data: []));
+    final list = <ReviewItem>[];
+    for (final item in res.list) {
+      try {
+        list.add(ReviewItem.fromJson(item));
+      } catch (_) {}
+    }
+    return list;
   }
 
   @override

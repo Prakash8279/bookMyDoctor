@@ -8,13 +8,17 @@ import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/role_scaffold.dart';
 import 'receptionist_appointments_screen.dart';
+import 'receptionist_patients_screen.dart';
+import 'receptionist_payments_screen.dart';
 import 'receptionist_queue_screen.dart';
+import 'receptionist_walkin_booking_screen.dart';
 
-/// Receptionist dashboard — clinic name + today's appointment/queue
-/// snapshot. /appointments and /queue are already hard-scoped server-side
-/// to the receptionist's own `clinicId` (empty list if unassigned) —
-/// integration_plan.md §1.8/§1.9.
+/// Receptionist dashboard — 100% parity with web's ReceptionDashboard (StaffPages.jsx):
+/// Header with "Register walk-in", 4 StatCards (Today's patients, Consultations done,
+/// Waiting in queue, Pending payments), "Recent live records" with Connected badge,
+/// "Quick actions", and "Assigned doctors".
 class ReceptionistDashboardScreen extends StatefulWidget {
   const ReceptionistDashboardScreen({super.key});
 
@@ -28,19 +32,22 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
   }
 
   void _load() {
-    setState(() => _future = _fetch());
+    setState(() {
+      _future = _fetch();
+    });
   }
 
   Future<_DashboardData> _fetch() async {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final clinicId = context.read<AuthProvider>().profile?.clinicId;
     final futures = <Future<ApiResponse>>[
-      ApiClient.instance.get('/appointments', query: {'date': today, 'pageSize': 100}),
-      ApiClient.instance.get('/queue', query: {'date': today, 'pageSize': 100}),
+      ApiClient.instance.get('/appointments', query: {'date': today, 'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/queue', query: {'date': today, 'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/payments', query: {'pageSize': 50}).catchError((_) => ApiResponse(data: [])),
     ];
     final results = await Future.wait(futures);
     Clinic? clinic;
@@ -49,20 +56,80 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
         final res = await ApiClient.instance.get('/clinics/$clinicId');
         clinic = Clinic.fromJson(res.map);
       } catch (_) {
-        // Non-fatal — dashboard still shows counts even if clinic detail fails.
+        // Non-fatal
       }
     }
+    final appointments = <Appointment>[];
+    for (final item in results[0].list) {
+      try {
+        appointments.add(Appointment.fromJson(item));
+      } catch (_) {}
+    }
+    final queue = <QueueTokenItem>[];
+    for (final item in results[1].list) {
+      try {
+        queue.add(QueueTokenItem.fromJson(item));
+      } catch (_) {}
+    }
+    final payments = <PaymentItem>[];
+    for (final item in results[2].list) {
+      try {
+        payments.add(PaymentItem.fromJson(item));
+      } catch (_) {}
+    }
     return _DashboardData(
-      appointments: results[0].list.map(Appointment.fromJson).toList(),
-      queue: results[1].list.map(QueueTokenItem.fromJson).toList(),
+      appointments: appointments,
+      queue: queue,
+      payments: payments,
       clinic: clinic,
     );
+  }
+
+  void _goToWalkIn(BuildContext context) {
+    final role = RoleScaffold.of(context);
+    if (role != null && role.navigateToLabel('Walk-in')) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Walk-in')), body: const ReceptionistWalkInBookingScreen()),
+    ));
+  }
+
+  void _goToPatients(BuildContext context) {
+    final role = RoleScaffold.of(context);
+    if (role != null && role.navigateToLabel('Patients')) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Patients')), body: const ReceptionistPatientsScreen()),
+    ));
+  }
+
+  void _goToAppointments(BuildContext context) {
+    final role = RoleScaffold.of(context);
+    if (role != null && role.navigateToLabel('Appointments')) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Appointments')), body: const ReceptionistAppointmentsScreen()),
+    ));
+  }
+
+  void _goToQueue(BuildContext context) {
+    final role = RoleScaffold.of(context);
+    if (role != null && role.navigateToLabel('Queue')) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Queue')), body: const ReceptionistQueueScreen()),
+    ));
+  }
+
+  void _goToPayments(BuildContext context) {
+    final role = RoleScaffold.of(context);
+    if (role != null && role.navigateToLabel('Payments')) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Payments')), body: const ReceptionistPaymentsScreen()),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.user;
+    final firstName = (user?.name ?? 'Receptionist').split(' ').first;
 
     return RefreshIndicator(
       onRefresh: () async => _load(),
@@ -71,79 +138,262 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
         builder: (context, snapshot) {
           final loading = snapshot.connectionState != ConnectionState.done;
           final data = snapshot.data;
+
+          final appointments = data?.appointments ?? [];
+          final queue = data?.queue ?? [];
+          final clinic = data?.clinic;
+
+          final todaysPatients = appointments.length;
+          final consultationsDone = appointments.where((a) => a.status == 'completed').length;
+          final waitingInQueue = queue.where((q) => q.status == 'waiting').length;
+          final pendingPayments = appointments.where((a) => a.paymentStatus == 'pending').length;
+
+          final recentRecords = appointments.reversed.take(6).toList();
+
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
+              // Mirrors web PageHeader with "Register walk-in" action
               PageHeader(
                 kicker: 'Production database',
-                title: 'Welcome, ${user?.name ?? ''}.',
+                title: 'Welcome, $firstName.',
                 subtitle: 'Your authenticated workspace is connected to live records.',
-              ),
-              SectionCard(
-                title: 'Clinic',
-                child: Text(
-                  data?.clinic != null ? 'Clinic: ${data!.clinic!.name}' : (loading ? 'Loading clinic…' : 'No clinic assignment on file'),
-                  style: const TextStyle(color: AppColors.textSecondary),
+                action: ElevatedButton(
+                  onPressed: () => _goToWalkIn(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryDark,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Register walk-in', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
               ),
-              const SizedBox(height: AppSpacing.md),
+
               if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
               if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
-              if (data != null)
+
+              if (data != null) ...[
+                // Stat Cards (2x2 Grid matching web)
                 Row(
                   children: [
                     Expanded(
                       child: StatCard(
-                        label: "Today's appointments",
-                        value: '${data.appointments.length}',
-                        icon: Icons.event_note_outlined,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          // No AppBar title here — ReceptionistAppointmentsScreen's own PageHeader
-                          // already shows "Appointments"; a title here would duplicate it.
-                          builder: (_) => Scaffold(appBar: AppBar(), body: const ReceptionistAppointmentsScreen()),
-                        )),
+                        label: "TODAY'S PATIENTS",
+                        value: '$todaysPatients',
+                        icon: Icons.people_outline,
+                        onTap: () => _goToPatients(context),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: StatCard(
-                        label: 'In queue now',
-                        value: '${data.queue.where((q) => q.status != 'completed').length}',
-                        icon: Icons.people_alt_outlined,
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => Scaffold(appBar: AppBar(title: const Text('Queue')), body: const ReceptionistQueueScreen()),
-                        )),
+                        label: 'CONSULTATIONS DONE',
+                        value: '$consultationsDone',
+                        icon: Icons.check,
+                        onTap: () => _goToAppointments(context),
                       ),
                     ),
                   ],
                 ),
-              // Mirrors the web app's ReceptionDashboard "Assigned doctors" section
-              // (StaffPages.jsx) — the same clinic-scoped `clinic.doctors` list already
-              // fetched above for the "Clinic" card, not the platform-wide directory.
-              if (data?.clinic != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: StatCard(
+                        label: 'WAITING IN QUEUE',
+                        value: '$waitingInQueue',
+                        icon: Icons.format_list_bulleted,
+                        onTap: () => _goToQueue(context),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: StatCard(
+                        label: 'PENDING PAYMENTS',
+                        value: '$pendingPayments',
+                        icon: Icons.currency_rupee,
+                        onTap: () => _goToPayments(context),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: AppSpacing.md),
-                SectionCard(
-                  title: 'Assigned doctors',
-                  child: data!.clinic!.doctors.isEmpty
-                      ? const Text('No doctors assigned', style: TextStyle(color: AppColors.textSecondary))
-                      : Column(
-                          children: data.clinic!.doctors.map((doc) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
+
+                // Recent live records with Connected badge
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Recent live records', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.success.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: const Text('Connected', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 11)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        if (recentRecords.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                            child: Text('No live records yet. Walk-ins and bookings will appear here as they happen.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                          )
+                        else
+                          ...recentRecords.map((item) {
+                            final timeStr = '${item.appointmentDate} ${item.appointmentTime}'.trim();
+                            return Container(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: const BoxDecoration(
+                                border: Border(bottom: BorderSide(color: Color(0xFFF3F0EC))),
+                              ),
                               child: Row(
                                 children: [
-                                  Expanded(child: Text(doc.name)),
-                                  StatusBadge(status: doc.onlineBooking ? 'active' : 'paused'),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(item.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                        Text(
+                                          timeStr.isNotEmpty ? timeStr : 'Today',
+                                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  StatusBadge(status: item.status),
                                 ],
                               ),
                             );
-                          }).toList(),
-                        ),
+                          }),
+                      ],
+                    ),
+                  ),
                 ),
+                const SizedBox(height: AppSpacing.md),
+
+                // Quick actions
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const SizedBox(height: AppSpacing.sm),
+                        _buildActionRow(
+                          context,
+                          icon: Icons.person_add_alt_outlined,
+                          label: 'Walk-in registration',
+                          onTap: () => _goToWalkIn(context),
+                        ),
+                        _buildActionRow(
+                          context,
+                          icon: Icons.people_alt_outlined,
+                          label: 'Queue monitor',
+                          onTap: () => _goToQueue(context),
+                        ),
+                        _buildActionRow(
+                          context,
+                          icon: Icons.event_note_outlined,
+                          label: 'Appointments',
+                          onTap: () => _goToAppointments(context),
+                        ),
+                        _buildActionRow(
+                          context,
+                          icon: Icons.receipt_long_outlined,
+                          label: 'Payments',
+                          onTap: () => _goToPayments(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Assigned doctors
+                if (clinic != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Assigned doctors', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                              Text(clinic.name, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          if (clinic.doctors.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                              child: Text('No doctors assigned to clinic yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                            )
+                          else
+                            ...clinic.doctors.map((doc) {
+                              final roleLabel = doc.isOwner ? 'Clinic Owner' : (doc.isPrimary ? 'Primary Doctor' : 'Doctor');
+                              return Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                decoration: const BoxDecoration(
+                                  border: Border(bottom: BorderSide(color: Color(0xFFF3F0EC))),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                          Text(
+                                            roleLabel,
+                                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    StatusBadge(status: doc.onlineBooking ? 'active' : 'paused'),
+                                  ],
+                                ),
+                              );
+                            }),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildActionRow(BuildContext context, {required IconData icon, required String label, required VoidCallback onTap}) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: AppColors.primaryDark),
+        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        subtitle: const Text('Open live workspace', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+        onTap: onTap,
       ),
     );
   }
@@ -152,6 +402,7 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
 class _DashboardData {
   final List<Appointment> appointments;
   final List<QueueTokenItem> queue;
+  final List<PaymentItem> payments;
   final Clinic? clinic;
-  _DashboardData({required this.appointments, required this.queue, this.clinic});
+  _DashboardData({required this.appointments, required this.queue, required this.payments, this.clinic});
 }

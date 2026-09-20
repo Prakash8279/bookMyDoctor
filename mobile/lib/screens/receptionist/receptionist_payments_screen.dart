@@ -23,14 +23,29 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<PaymentItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/payments', query: {'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <PaymentItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(PaymentItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/payments', query: {'pageSize': 50})
-          .then((res) => res.list.map(PaymentItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -128,7 +143,16 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
     super.initState();
     _appointmentsFuture = ApiClient.instance
         .get('/appointments', query: {'pageSize': 100})
-        .then((res) => res.list.map(Appointment.fromJson).toList().where((a) => a.paymentStatus == 'pending').toList());
+        .then((res) {
+          final list = <Appointment>[];
+          for (final item in res.list) {
+            try {
+              final a = Appointment.fromJson(item);
+              if (a.paymentStatus == 'pending') list.add(a);
+            } catch (_) {}
+          }
+          return list;
+        }).catchError((_) => <Appointment>[]);
   }
 
   @override
@@ -192,7 +216,7 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
                 return const Text('No appointments with pending payment right now.', style: TextStyle(color: AppColors.textSecondary));
               }
               return DropdownButtonFormField<Appointment>(
-                value: _selectedAppointment,
+                initialValue: _selectedAppointment,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Appointment (payment pending)'),
                 items: appts
@@ -246,7 +270,7 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
           ],
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
-            value: _mode,
+            initialValue: _mode,
             decoration: const InputDecoration(labelText: 'Payment mode'),
             items: const [
               DropdownMenuItem(value: 'cash', child: Text('Cash')),

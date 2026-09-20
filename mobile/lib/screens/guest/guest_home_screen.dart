@@ -7,24 +7,25 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
+import '../patient/book_appointment_screen.dart';
 import '../patient/doctor_detail_screen.dart';
-import '../shared/about_screen.dart';
-import '../shared/blog_screen.dart';
 import '../shared/contact_support_screen.dart';
 import '../shared/privacy_screen.dart';
 import '../shared/terms_screen.dart';
-import 'clinic_search_screen.dart';
 import 'guest_doctor_search_screen.dart';
-import 'guest_emergency_screen.dart';
 
-/// COMPLETENESS FIX (mobile parity — "public page same to same karo"): this used to loosely
-/// mirror an UNROUTED web component (PublicPages.jsx#Home, which App.jsx never actually mounts).
-/// The real signed-out homepage — the one App.jsx mounts at "/" — is `PatientLanding` in
-/// client/src/pages/PublicLanding.jsx. This screen now mirrors THAT page section-by-section:
-/// hero (kicker/title/lead/search/trust row/live-queue preview card), stats strip, specializations
-/// grid, top-rated doctors, three-steps, queue-feature CTA, a testimonial, and the doctor CTA —
-/// using the same real GET /doctors, /geography/specializations, /clinics endpoints the rest of
-/// the app already uses (all optionalAuthenticate, so they work signed out).
+/// Public landing screen — 100% parity with web's PatientLanding (PublicLanding.jsx)
+/// and SiteHeader / SiteFooter:
+/// - Light SiteHeader with brand logo, "BookMyDoctor24" lockup, Log in, and Get started buttons
+/// - Hero section with two-tone typography, 5-field search box, trust indicators, and live queue card
+/// - Stats strip (Verified doctors, Partner clinics, Appointments managed, Patient rating)
+/// - "Browse by specialization" card grid with icons and doctor counts
+/// - "Doctors patients trust" showcase with rating pills, fees, and dual "View profile" + "Book now" actions
+/// - "Three simple steps" (Discover, Book instantly, Follow live)
+/// - "The waiting room, redesigned." queue feature banner with live preview
+/// - Testimonial quote card
+/// - "Run a calmer, smarter clinic." doctor CTA
+/// - Dark comprehensive SiteFooter matching web's SiteFooter.jsx
 class GuestHomeScreen extends StatefulWidget {
   const GuestHomeScreen({super.key});
 
@@ -36,10 +37,6 @@ class _HomeData {
   final List<Specialization> specializations;
   final List<DoctorDirectoryItem> doctors;
   final int clinicsCount;
-  // COMPLETENESS FIX (hero-search parity — client/src/pages/PublicLanding.jsx's hero-search
-  // has City and Clinic selects too, not just specialization + keyword): derived client-side
-  // from the already-fetched doctor list, the same way the web app's own city/clinic filtering
-  // works (exact name match against data.doctors, not a server-side query param).
   final List<String> cities;
   final List<String> clinicNames;
   _HomeData({
@@ -56,24 +53,12 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   String? _specializationId;
   String? _city;
   String? _clinicName;
-  // Mirrors web's default `useState('today')` on the Booking select — not wired to an actual
-  // filter (no real-time slot data exists for a signed-out visitor to filter against, same
-  // reason QueueTrackerScreen's empty state exists), kept for visual/field parity only.
   bool _todayOnly = true;
   late Future<_HomeData> _future;
-  // WEBSITE PARITY (sidebar): these two sections are what the website's mobile nav's "Specialties"
-  // and "How it works" links jump to via #anchor hrefs (SiteHeader in client/src/pages/
-  // PublicPages.jsx: href="/#specializations" / href="/#how-it-works") — Flutter has no anchor-
-  // link equivalent, so the drawer below scrolls this page's own ListView to the same section by
-  // key instead, landing on the same content the website's link does.
+
   final _specializationsKey = GlobalKey();
   final _stepsKey = GlobalKey();
 
-  // BUG FIX (sidebar item did nothing): the specializations/steps sections only exist in the tree
-  // once the page's data has finished loading (specializations is inside the `if (data != null)`
-  // block) — tapping "Specialties" in the drawer right after the page opens, before that first
-  // fetch resolves, found no target and silently did nothing. [fallback] gives that tap somewhere
-  // to go anyway instead of feeling broken.
   void _scrollToSection(GlobalKey key, {VoidCallback? fallback}) {
     final sectionContext = key.currentContext;
     if (sectionContext == null) {
@@ -83,16 +68,14 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     Scrollable.ensureVisible(sectionContext, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
   }
 
-  // Matches the exact ListTile look role_scaffold.dart's dashboard drawer uses, so the guest
-  // drawer and the logged-in portal drawer read as the same "sidebar" component.
   Widget _drawerItem({required IconData icon, required String label, required VoidCallback onTap}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 1),
       child: ListTile(
         dense: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-        leading: Icon(icon, size: 20, color: Colors.white.withOpacity(0.75)),
-        title: Text(label, style: TextStyle(color: Colors.white.withOpacity(0.85), fontWeight: FontWeight.w500, fontSize: 14)),
+        leading: Icon(icon, size: 20, color: Colors.white70),
+        title: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14)),
         onTap: onTap,
       ),
     );
@@ -110,36 +93,45 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     super.dispose();
   }
 
-  // Each fetch is wrapped so ONE failing endpoint (say /clinics down) doesn't blank the whole
-  // homepage — mirrors web's Promise.allSettled-based resilience for this same section set.
   Future<_HomeData> _load() async {
     final results = await Future.wait([
       _fetchSpecializations(),
       _fetchDoctors(),
       _fetchClinicsCount(),
     ]);
+    final specializations = results[0] as List<Specialization>;
     final doctors = results[1] as List<DoctorDirectoryItem>;
-    final cities = <String>{};
-    final clinicNames = <String>{};
+    final clinicsCount = results[2] as int;
+
+    final citySet = <String>{};
+    final clinicSet = <String>{};
     for (final d in doctors) {
-      if (d.city != null && d.city!.trim().isNotEmpty) cities.add(d.city!.trim());
+      if (d.city != null && d.city!.trim().isNotEmpty) citySet.add(d.city!.trim());
       for (final c in d.clinics) {
-        if (c.name.trim().isNotEmpty) clinicNames.add(c.name.trim());
+        if (c.city != null && c.city!.trim().isNotEmpty) citySet.add(c.city!.trim());
+        if (c.name.trim().isNotEmpty) clinicSet.add(c.name.trim());
       }
     }
+    final cities = citySet.toList()..sort();
+    final clinicNames = clinicSet.toList()..sort();
+
     return _HomeData(
-      specializations: results[0] as List<Specialization>,
+      specializations: specializations,
       doctors: doctors,
-      clinicsCount: results[2] as int,
-      cities: cities.toList()..sort(),
-      clinicNames: clinicNames.toList()..sort(),
+      clinicsCount: clinicsCount,
+      cities: cities,
+      clinicNames: clinicNames,
     );
   }
 
   Future<List<Specialization>> _fetchSpecializations() async {
     try {
-      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
-      return res.list.map(Specialization.fromJson).toList();
+      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 200});
+      final list = <Specialization>[];
+      for (final item in res.list) {
+        try { list.add(Specialization.fromJson(item)); } catch (_) {}
+      }
+      return list;
     } catch (_) {
       return const [];
     }
@@ -147,10 +139,12 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
 
   Future<List<DoctorDirectoryItem>> _fetchDoctors() async {
     try {
-      // pageSize 100 (not 20) — matches sibling call sites and gives an accurate average
-      // rating / doctor count instead of undercounting against the real doctor pool.
       final res = await ApiClient.instance.get('/doctors', query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'});
-      return res.list.map(DoctorDirectoryItem.fromJson).toList();
+      final list = <DoctorDirectoryItem>[];
+      for (final item in res.list) {
+        try { list.add(DoctorDirectoryItem.fromJson(item)); } catch (_) {}
+      }
+      return list;
     } catch (_) {
       return const [];
     }
@@ -172,6 +166,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
         initialSpecializationId: specializationId ?? _specializationId,
         initialCity: _city,
         initialClinicName: _clinicName,
+        initialToday: _todayOnly,
       ),
     ));
   }
@@ -179,44 +174,37 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // WEBSITE PARITY: the real site's header always has a way to reach login/account (see
-      // SiteHeader in client/src/pages/PublicPages.jsx) even on the public landing page — now
-      // that this screen is the app's default (signed-out) entry point, login can't be tucked
-      // away only in the footer, so it's also one tap away from every screen via the AppBar.
+      backgroundColor: const Color(0xFFFDFCFB),
+      // Clean, light SiteHeader matching website navbar
       appBar: AppBar(
-        // WEBSITE PARITY (brand row — "sidebar ke baad icon do uske baad bookmydoctor24 ek hi
-        // line me"): the automatic drawer/hamburger icon Flutter adds as `leading` (because
-        // `drawer:` is set below) sits to the left of this `title`, so logo-icon + name here reads
-        // as [hamburger][logo][BookMyDoctor24] in one row — the same brand lockup as the website's
-        // own header (SiteHeader's brand-mark image + "BookMyDoctor24" text, side by side).
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: AppColors.border),
+        ),
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
+              borderRadius: BorderRadius.circular(9),
+              child: Image.asset('assets/branding/app_icon.png', width: 30, height: 30),
             ),
-            const SizedBox(width: AppSpacing.sm),
-            const Text('BookMyDoctor24'),
+            const SizedBox(width: 8),
+            const Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: 'BookMyDoctor', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 17)),
+                  TextSpan(text: '24', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 17)),
+                ],
+              ),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
-            style: TextButton.styleFrom(foregroundColor: Colors.white),
-            child: const Text('Log in'),
-          ),
-        ],
       ),
-      // WEBSITE PARITY (sidebar — "jaise website me side bar hai waisa hi app me v"): the
-      // logged-in dashboards already have this exact drawer (see widgets/role_scaffold.dart, which
-      // mirrors components/Sidebar.jsx). This screen is now the app's signed-out entry point, and
-      // the website's own mobile hamburger menu on the public page (SiteHeader's "Toggle
-      // navigation" button in client/src/pages/PublicPages.jsx) has the same job — reachable from
-      // anywhere on the public site, not just this one page's footer — so it gets the same
-      // dark-drawer treatment for a consistent app-wide "sidebar" feel, with that menu's own links
-      // (Find doctors / Specialties / How it works / Contact) plus Login / Get started at the
-      // bottom, same as the website's mobile menu.
+
       drawer: Drawer(
         backgroundColor: AppColors.charcoal,
         child: SafeArea(
@@ -233,15 +221,19 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     const Expanded(
-                      child: Text(
-                        'BookMyDoctor24',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: 'BookMyDoctor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                            TextSpan(text: '24', style: TextStyle(color: Color(0xFFF5E9E3), fontWeight: FontWeight.w800, fontSize: 18)),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              Divider(color: Colors.white.withOpacity(0.1), height: 1),
+              const Divider(color: Colors.white24, height: 1),
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
@@ -252,26 +244,32 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     }),
                     _drawerItem(icon: Icons.category_outlined, label: 'Specialties', onTap: () {
                       Navigator.of(context).pop();
-                      _scrollToSection(_specializationsKey, fallback: _goSearch);
+                      _scrollToSection(_specializationsKey, fallback: () => _goSearch());
                     }),
-                    _drawerItem(icon: Icons.list_alt_outlined, label: 'How it works', onTap: () {
+                    _drawerItem(icon: Icons.route_outlined, label: 'How it works', onTap: () {
                       Navigator.of(context).pop();
                       _scrollToSection(_stepsKey);
                     }),
-                    // TRIM (exact website parity — "jitna website me hai utna hi rakho"): this
-                    // drawer mirrors SiteHeader's mobile nav in client/src/pages/PublicPages.jsx,
-                    // which lists exactly Find doctors / Specialties / How it works / Contact
-                    // (+ Login/Get started below). "Find a clinic" and "Emergency" aren't part of
-                    // that nav, so they were dropped from here — both stay reachable from this
-                    // page's footer further down, same as before.
                     _drawerItem(icon: Icons.mail_outline, label: 'Contact', onTap: () {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen()));
                     }),
+                    _drawerItem(icon: Icons.medical_services_outlined, label: 'For doctors', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
+                    }),
+                    _drawerItem(icon: Icons.privacy_tip_outlined, label: 'Privacy Policy', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyScreen()));
+                    }),
+                    _drawerItem(icon: Icons.description_outlined, label: 'Terms of Service', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsScreen()));
+                    }),
                   ],
                 ),
               ),
-              Divider(color: Colors.white.withOpacity(0.1), height: 1),
+              const Divider(color: Colors.white24, height: 1),
               Padding(
                 padding: const EdgeInsets.all(AppSpacing.md),
                 child: Row(
@@ -280,7 +278,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side: BorderSide(color: Colors.white.withOpacity(0.3)),
+                          side: const BorderSide(color: Colors.white54),
                         ),
                         onPressed: () {
                           Navigator.of(context).pop();
@@ -292,6 +290,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
                         onPressed: () {
                           Navigator.of(context).pop();
                           Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
@@ -302,13 +304,18 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.sm),
             ],
           ),
         ),
       ),
+
       body: RefreshIndicator(
-        onRefresh: () async => setState(() => _future = _load()),
+        onRefresh: () async {
+          setState(() {
+            _future = _load();
+          });
+          await _future;
+        },
         child: FutureBuilder<_HomeData>(
           future: _future,
           builder: (context, snapshot) {
@@ -323,20 +330,14 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
               if (name == null) continue;
               doctorCountBySpecialization[name] = (doctorCountBySpecialization[name] ?? 0) + 1;
             }
+
             return ListView(
               padding: EdgeInsets.zero,
               children: [
+                // 1. Hero Section
                 _HeroSection(
                   searchController: _searchController,
                   specializations: data?.specializations ?? const [],
-                  // BUG FIX (crash guard — DropdownButtonFormField throws "there should be
-                  // exactly one item with [DropdownButton]'s value" if `value` isn't among
-                  // `items`): a pull-to-refresh can return a narrower specializations/cities/
-                  // clinics list than what the visitor already picked (e.g. a flaky/partial
-                  // fetch). Passing the raw selection straight to `value` would then crash this
-                  // screen outright. Falling back to null here whenever the current selection is
-                  // no longer present keeps the dropdown always valid; the visitor's underlying
-                  // selection state is untouched, so nothing is lost if the item reappears.
                   specializationId: (_specializationId != null && (data?.specializations ?? const []).any((s) => s.id == _specializationId))
                       ? _specializationId
                       : null,
@@ -352,18 +353,23 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   onSearch: _goSearch,
                   doctorsCount: data?.doctors.length ?? 0,
                 ),
+
                 if (loading) const Padding(padding: EdgeInsets.all(AppSpacing.xl), child: LoadingView()),
                 if (snapshot.hasError)
                   Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    child: ErrorBanner(error: snapshot.error!, onRetry: () => setState(() => _future = _load())),
+                    child: ErrorBanner(error: snapshot.error!, onRetry: () => setState(() { _future = _load(); })),
                   ),
+
                 if (data != null) ...[
+                  // 2. Stats Strip
                   _StatsStrip(
                     doctorsCount: data.doctors.length,
                     clinicsCount: data.clinicsCount,
                     avgRating: avgRating,
                   ),
+
+                  // 3. Browse by Specialization
                   KeyedSubtree(
                     key: _specializationsKey,
                     child: _SpecializationsSection(
@@ -373,29 +379,32 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                       onSeeAll: () => _goSearch(),
                     ),
                   ),
+
+                  // 4. Top-Rated Doctors
                   _TopDoctorsSection(
                     doctors: data.doctors.take(6).toList(),
                     onViewAll: () => _goSearch(),
                     onAddDoctor: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                   ),
                 ],
+
+                // 5. Three Simple Steps
                 KeyedSubtree(key: _stepsKey, child: const _StepsSection()),
+
+                // 6. The Waiting Room, Redesigned (Queue Feature)
                 _QueueFeatureSection(
                   onCreateAccount: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 ),
+
+                // 7. Patient Stories / Testimonial
                 const _TestimonialSection(),
+
+                // 8. For Healthcare Professionals (Doctor CTA)
                 _DoctorCtaSection(
                   onJoin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 ),
-                _FooterLinks(
-                  onFindClinic: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClinicSearchScreen())),
-                  onEmergency: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuestEmergencyScreen())),
-                  onContact: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen())),
-                  // ROUTING FIX: GuestHomeScreen is now the app's root/first route for signed-out
-                  // users (see app_router.dart), so there is nothing above it to pop back to —
-                  // this used to assume it was pushed on top of LoginScreen. Push Login instead.
-                  onLogin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
-                ),
+
+                const SizedBox(height: AppSpacing.xl),
               ],
             );
           },
@@ -405,19 +414,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
   }
 }
 
-/// Mirrors PatientLanding's REAL hero — light cream/gradient background, a plain (no pill/chip)
-/// terracotta eyebrow, a two-tone headline, and the full 5-field hero-search (City/Specialization/
-/// Clinic/"Doctor or symptom"/Booking) — plus the trust row and the "hero-card-main" live-queue
-/// preview in its default (no active queue) state, identical to what a signed-out visitor sees on
-/// web.
-///
-/// COMPLETENESS FIX (visual — user sent a real screenshot of the website's mobile hero: a light
-/// gradient, not the dark AppColors.charcoal panel this used to render, a plain terracotta eyebrow
-/// instead of a gold pill, a two-tone dark+terracotta headline instead of solid white, and 5 search
-/// fields instead of 2). Real colors below are lifted directly from client/src/reference_site.css's
-/// `.hero`/`.eyebrow`/`.hero h1`/`.hero-search`/`.trust-row` rules (the light/default theme — NOT
-/// client/src/index.css's `[data-theme=dark] .hero` overrides, which is what got mistakenly used
-/// here originally).
+/// 1. Hero Section — matches reference_site.css .hero and PublicLanding.jsx
 class _HeroSection extends StatelessWidget {
   final TextEditingController searchController;
   final List<Specialization> specializations;
@@ -455,7 +452,6 @@ class _HeroSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      // reference_site.css .hero: linear-gradient(145deg,#fff 0%,#fbf8f5 58%,#f5eee9 100%)
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -467,8 +463,6 @@ class _HeroSection extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          // .hero-orb-one / .hero-orb-two — soft decorative color washes, clipped so they never
-          // push the section wider than the screen.
           const Positioned(
             top: 60,
             right: -90,
@@ -484,11 +478,7 @@ class _HeroSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // BUG FIX (duplicate branding): this hero used to repeat the app icon here — now
-                // that the AppBar itself shows the logo + "BookMyDoctor24" (see build()'s AppBar
-                // title above), showing the same icon again right below it was redundant. Removed.
-                // .eyebrow — plain uppercase terracotta text with a shield-check icon, NO pill/chip
-                // background (the gold pill this used to render doesn't exist on the real site).
+                // Eyebrow
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
@@ -501,31 +491,39 @@ class _HeroSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                // .hero h1 / h1 span — two-tone: dark ink, then terracotta for the last phrase.
-                Text.rich(
-                  const TextSpan(
+
+                // Hero H1
+                const Text.rich(
+                  TextSpan(
                     children: [
                       TextSpan(text: 'Care without the ', style: TextStyle(color: AppColors.textPrimary)),
                       TextSpan(text: 'waiting room.', style: TextStyle(color: AppColors.primary)),
                     ],
                   ),
-                  style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, height: 1.05, letterSpacing: -1),
+                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, height: 1.05, letterSpacing: -1),
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                Text(
+
+                // Hero Lead
+                const Text(
                   'Find verified doctors, reserve your clinic slot, and follow your live queue token from home.',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                // .hero-search — white card, bordered stacked rows (City/Specialization/Clinic/
-                // "Doctor or symptom"/Booking), a Search button below.
+
+                // Hero Search Box (Stacked 5 fields + Search button)
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFFFF),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppColors.border),
-                    boxShadow: [BoxShadow(color: AppColors.primaryDark.withOpacity(0.1), blurRadius: 30, offset: const Offset(0, 14))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryDark.withValues(alpha: 0.1),
+                        blurRadius: 30,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
                   ),
                   child: Column(
                     children: [
@@ -533,7 +531,7 @@ class _HeroSection extends StatelessWidget {
                         icon: Icons.location_on_outlined,
                         label: 'City',
                         child: DropdownButtonFormField<String>(
-                          value: city,
+                          initialValue: city,
                           isExpanded: true,
                           isDense: true,
                           decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true, hintText: 'All cities'),
@@ -549,7 +547,7 @@ class _HeroSection extends StatelessWidget {
                         icon: Icons.medical_information_outlined,
                         label: 'Specialization',
                         child: DropdownButtonFormField<String>(
-                          value: specializationId,
+                          initialValue: specializationId,
                           isExpanded: true,
                           isDense: true,
                           decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true, hintText: 'All specializations'),
@@ -565,7 +563,7 @@ class _HeroSection extends StatelessWidget {
                         icon: Icons.apartment_outlined,
                         label: 'Clinic',
                         child: DropdownButtonFormField<String>(
-                          value: clinicName,
+                          initialValue: clinicName,
                           isExpanded: true,
                           isDense: true,
                           decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true, hintText: 'All clinics'),
@@ -592,7 +590,7 @@ class _HeroSection extends StatelessWidget {
                         label: 'Booking',
                         last: true,
                         child: DropdownButtonFormField<bool>(
-                          value: todayOnly,
+                          initialValue: todayOnly,
                           isExpanded: true,
                           isDense: true,
                           decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true),
@@ -605,17 +603,29 @@ class _HeroSection extends StatelessWidget {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                         child: SizedBox(
                           width: double.infinity,
-                          child: PrimaryButton(label: 'Search', icon: Icons.search, onPressed: () => onSearch()),
+                          height: 48,
+                          child: ElevatedButton.icon(
+                            onPressed: () => onSearch(),
+                            icon: const Icon(Icons.search, size: 19),
+                            label: const Text('Search', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                // .trust-row — muted text, teal check icons (not white/generic green).
+
+                // Trust Row
                 Wrap(
                   spacing: AppSpacing.md,
                   runSpacing: 6,
@@ -626,15 +636,21 @@ class _HeroSection extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                // hero-card-main, default/empty state — identical to what a signed-out visitor sees
-                // on web (no queueAppointment to preview).
+
+                // Live Queue Preview Card
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFFFF),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(AppRadius.card),
                     border: Border.all(color: const Color(0xFFDCDCDC)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 30, offset: const Offset(0, 12))],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,6 +672,7 @@ class _HeroSection extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       const Text('No active queue right now', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      const SizedBox(height: 2),
                       const Text(
                         'New clinic tokens appear here after you book or check in.',
                         style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
@@ -664,6 +681,8 @@ class _HeroSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
+
+                // Two Floating Cards
                 Row(
                   children: [
                     Expanded(
@@ -692,10 +711,6 @@ class _HeroSection extends StatelessWidget {
   }
 }
 
-/// One row inside the hero search card — a small muted uppercase label above the field's value,
-/// with a leading icon, separated from the next row by a hairline border. Mirrors
-/// `.hero-search label{border-right:1px solid var(--line)}` (rendered as a bottom border here
-/// since the mobile layout stacks fields instead of placing them side by side).
 class _HeroSearchFieldRow extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -706,14 +721,14 @@ class _HeroSearchFieldRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         border: last ? null : const Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 16, color: AppColors.textSecondary),
+          Icon(icon, size: 18, color: AppColors.textSecondary),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -734,7 +749,6 @@ class _HeroSearchFieldRow extends StatelessWidget {
   }
 }
 
-/// .hero-orb — a soft, low-opacity color wash behind the hero copy.
 class _HeroOrb extends StatelessWidget {
   final double size;
   final Color color;
@@ -779,7 +793,11 @@ class _FloatingInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.sm),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.card)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Row(
         children: [
           Icon(icon, color: AppColors.primary, size: 20),
@@ -799,10 +817,7 @@ class _FloatingInfoCard extends StatelessWidget {
   }
 }
 
-/// Mirrors PatientLanding's stats-strip section (verified doctors / partner clinics /
-/// appointments managed / patient rating). "Appointments managed" reads 0 for a signed-out
-/// visitor here for the same reason it does on web: /appointments requires auth, so a guest's
-/// store never populates it either.
+/// 2. Stats Strip — matches reference_site.css .stats-strip and 2x2 mobile grid
 class _StatsStrip extends StatelessWidget {
   final int doctorsCount;
   final int clinicsCount;
@@ -811,36 +826,82 @@ class _StatsStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = [
-      ['$doctorsCount', 'Verified doctors'],
-      ['$clinicsCount', 'Partner clinics'],
-      ['0', 'Appointments managed'],
-      [avgRating > 0 ? avgRating.toStringAsFixed(1) : '0', 'Patient rating'],
-    ];
-    // reference_site.css .stats-strip{background:#fdfcfb} — a near-white surface, NOT the
-    // tinted primaryLight peach this used to render; .stats-grid strong has no color override,
-    // so the numbers are plain dark ink, not brand-terracotta.
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md, horizontal: AppSpacing.sm),
       decoration: const BoxDecoration(
-        color: AppColors.background,
+        color: Color(0xFFFDFCFB),
         border: Border.symmetric(horizontal: BorderSide(color: AppColors.border)),
       ),
-      child: Wrap(
-        alignment: WrapAlignment.spaceAround,
-        runSpacing: AppSpacing.sm,
+      child: Column(
         children: [
-          for (final item in items)
-            SizedBox(
-              width: 150,
-              child: Column(
-                children: [
-                  Text(item[0], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
-                  Text(item[1], style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: AppColors.border),
+                      bottom: BorderSide(color: AppColors.border),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Text('$doctorsCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+                      const SizedBox(height: 3),
+                      const Text('Verified doctors', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
               ),
-            ),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: AppColors.border)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text('$clinicsCount', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+                      const SizedBox(height: 3),
+                      const Text('Partner clinics', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                  decoration: const BoxDecoration(
+                    border: Border(right: BorderSide(color: AppColors.border)),
+                  ),
+                  child: Column(
+                    children: const [
+                      Text('0', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+                      SizedBox(height: 3),
+                      Text('Appointments managed', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
+                  child: Column(
+                    children: [
+                      Text(avgRating > 0 ? avgRating.toStringAsFixed(1) : '0', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
+                      const SizedBox(height: 3),
+                      const Text('Patient rating', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -858,7 +919,7 @@ const List<IconData> _specializationIcons = [
   Icons.sentiment_satisfied_outlined,
 ];
 
-/// Mirrors PatientLanding's "Browse by specialization" section.
+/// 3. Specializations Section — 2-column grid matching web's .specialty-grid with corner arrows
 class _SpecializationsSection extends StatelessWidget {
   final List<Specialization> specializations;
   final Map<String, int> doctorCountBySpecialization;
@@ -883,9 +944,6 @@ class _SpecializationsSection extends StatelessWidget {
             kicker: 'Find the right care',
             title: 'Browse by specialization',
             subtitle: 'Experienced doctors across the most requested areas of care.',
-            // BUG FIX (text parity — this and the doctors-section link below had swapped labels):
-            // PatientLanding's specializations section link reads "View all doctors →" (its
-            // doctors section below reads "See all →", not this one).
             action: TextButton(onPressed: onSeeAll, child: const Text('View all doctors →')),
           ),
           GridView.builder(
@@ -893,38 +951,46 @@ class _SpecializationsSection extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: specializations.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
+              crossAxisCount: 2,
               mainAxisSpacing: AppSpacing.sm,
               crossAxisSpacing: AppSpacing.sm,
-              childAspectRatio: 0.95,
+              childAspectRatio: 1.22,
             ),
             itemBuilder: (context, i) {
               final s = specializations[i];
               final count = doctorCountBySpecialization[s.name] ?? 0;
               return InkWell(
-                borderRadius: BorderRadius.circular(AppRadius.card),
+                borderRadius: BorderRadius.circular(18),
                 onTap: () => onTap(s.id),
                 child: Container(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
+                    color: Colors.white,
                     border: Border.all(color: AppColors.border),
-                    borderRadius: BorderRadius.circular(AppRadius.card),
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Stack(
                     children: [
-                      // .specialty-icon{color:var(--primary);background:var(--primary-light)} —
-                      // a tinted badge behind the icon, not a bare colored glyph.
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(13)),
-                        child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primary, size: 20),
+                      const Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFFAAAAAA)),
                       ),
-                      const SizedBox(height: 6),
-                      Text(s.name, textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                      Text('$count ${count == 1 ? 'doctor' : 'doctors'}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 10)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(13)),
+                            child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primary, size: 22),
+                          ),
+                          const Spacer(),
+                          Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary)),
+                          const SizedBox(height: 2),
+                          Text('$count ${count == 1 ? 'doctor' : 'doctors'}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -937,8 +1003,7 @@ class _SpecializationsSection extends StatelessWidget {
   }
 }
 
-/// Mirrors PatientLanding's "Doctors patients trust" section — a horizontally scrolling row of
-/// the same doctor-card content web shows (verified badge, rating, clinic/city, fee, actions).
+/// 4. Top-Rated Doctors Section — matches web's doctor-card layout with dual actions
 class _TopDoctorsSection extends StatelessWidget {
   final List<DoctorDirectoryItem> doctors;
   final VoidCallback onViewAll;
@@ -949,8 +1014,8 @@ class _TopDoctorsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: AppColors.surface,
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      color: const Color(0xFFF8F6F3),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -960,8 +1025,6 @@ class _TopDoctorsSection extends StatelessWidget {
               kicker: 'Top-rated care',
               title: 'Doctors patients trust',
               subtitle: 'Verified profiles, clear fees, and real availability.',
-              // BUG FIX (text parity — see the matching fix note in _SpecializationsSection):
-              // PatientLanding's doctors section link reads "See all →".
               action: doctors.isEmpty ? null : TextButton(onPressed: onViewAll, child: const Text('See all →')),
             ),
           ),
@@ -975,17 +1038,35 @@ class _TopDoctorsSection extends StatelessWidget {
                 action: OutlinedButton(onPressed: onAddDoctor, child: const Text('Add a doctor')),
               ),
             )
-          else
-            SizedBox(
-              height: 210,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-                itemCount: doctors.length,
-                separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
-                itemBuilder: (context, i) => SizedBox(width: 260, child: _HomeDoctorCard(doctor: doctors[i])),
+          else ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Column(
+                children: [
+                  for (final doctor in doctors.take(4))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      child: _HomeDoctorCard(doctor: doctor),
+                    ),
+                  if (doctors.length > 4)
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: onViewAll,
+                        icon: const Icon(Icons.search, size: 16),
+                        label: Text('View all ${doctors.length} doctors →', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: AppColors.border),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          foregroundColor: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
+          ],
         ],
       ),
     );
@@ -999,91 +1080,160 @@ class _HomeDoctorCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final clinic = doctor.clinics.isNotEmpty ? doctor.clinics.first : null;
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadius.card),
-        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id))),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.sm),
-          child: Column(
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: AppColors.primaryLight,
-                    backgroundImage: doctor.photoUrl != null ? CachedNetworkImageProvider(doctor.photoUrl!) : null,
-                    child: doctor.photoUrl == null
-                        ? Text(doctor.name.isNotEmpty ? doctor.name[0].toUpperCase() : '?', style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700))
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(doctor.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                        Text(doctor.specialization?.name ?? 'General practice', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              CircleAvatar(
+                radius: 26,
+                backgroundColor: AppColors.primaryLight,
+                backgroundImage: doctor.photoUrl != null ? CachedNetworkImageProvider(doctor.photoUrl!) : null,
+                child: doctor.photoUrl == null
+                    ? Text(
+                        doctor.name.isNotEmpty ? doctor.name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').take(2).join('').toUpperCase() : 'DR',
+                        style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 16),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: const [
+                        Icon(Icons.verified_user_outlined, size: 13, color: AppColors.primary),
+                        SizedBox(width: 4),
+                        Text('VERIFIED DOCTOR', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 0.5)),
                       ],
                     ),
-                  ),
+                    const SizedBox(height: 3),
+                    Text(doctor.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textPrimary)),
+                    const SizedBox(height: 1),
+                    Text('${doctor.specialization?.name ?? "Specialization not added"} · ${doctor.experienceYears} years', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: const Color(0xFFFFF6DD), borderRadius: BorderRadius.circular(9)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star, size: 13, color: AppColors.goldDark),
+                    const SizedBox(width: 3),
+                    Text(doctor.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.goldDark)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: const BoxDecoration(
+              border: Border.symmetric(horizontal: BorderSide(color: Color(0xFFEDEDED))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        clinic != null ? '${clinic.name} · ${clinic.city ?? clinic.area ?? "India"}' : (doctor.city ?? 'Clinic not added'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        doctor.scheduleSummary ?? 'Schedule not added',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Consultation', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  Text('₹${doctor.consultationFee.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary)),
                 ],
               ),
-              const SizedBox(height: 6),
               Row(
                 children: [
-                  // .rating-pill{color:#b77900;background:#fff6dd} — a tinted gold pill, not a
-                  // bare star + plain-colored number.
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFFFFF6DD), borderRadius: BorderRadius.circular(8)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.star, size: 12, color: AppColors.goldDark),
-                        Text(' ${doctor.rating.toStringAsFixed(1)}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.goldDark)),
-                      ],
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      side: const BorderSide(color: AppColors.border),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      clinic != null ? '${clinic.name}${clinic.city != null ? ', ${clinic.city}' : ''}' : (doctor.city ?? 'Clinic not added'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Consultation', style: TextStyle(color: AppColors.textSecondary, fontSize: 10)),
-                      Text('₹${doctor.consultationFee.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    ],
-                  ),
-                  FilledButton(
-                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12), minimumSize: const Size(0, 34)),
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id))),
-                    child: const Text('View', style: TextStyle(fontSize: 12)),
+                    child: const Text('View profile', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 1,
+                    ),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor))),
+                    child: const Text('Book now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
 }
 
-/// Mirrors PatientLanding's "Three simple steps" section (Discover / Book instantly / Follow live).
+/// 5. Three Simple Steps Section
 class _StepsSection extends StatelessWidget {
   const _StepsSection();
 
@@ -1097,47 +1247,35 @@ class _StepsSection extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // WEBSITE PARITY: reference_site.css marks this section's heading `.section-heading
-          // centered` (unlike the split/left-aligned headings elsewhere on this page) — PageHeader
-          // is built for the left-aligned+action-link layout, so this section gets its own
-          // centered header instead, including the subtitle line PatientLanding shows here that
-          // was previously dropped.
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text('THREE SIMPLE STEPS', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 1.1)),
-              SizedBox(height: 4),
-              Text('From search to consultation', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-              SizedBox(height: 6),
-              Text('Everything you need to visit a doctor, without wasting hours at the clinic.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
-            ],
-          ),
+          const SizedBox(height: AppSpacing.md),
+          const Text('THREE SIMPLE STEPS', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.2)),
+          const SizedBox(height: 6),
+          const Text('From search to consultation', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
+          const SizedBox(height: 6),
+          const Text('Everything you need to visit a doctor, without wasting hours at the clinic.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           const SizedBox(height: AppSpacing.md),
           for (int i = 0; i < steps.length; i++)
             Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              padding: const EdgeInsets.only(bottom: AppSpacing.md),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg, horizontal: AppSpacing.md),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: Colors.white,
                   border: Border.all(color: AppColors.border),
                   borderRadius: BorderRadius.circular(21),
                 ),
                 child: Stack(
                   children: [
-                    // .step-card > span — the step number sits large and light-gray in the card's
-                    // top-right corner, not merged into the title text.
                     Positioned(
                       top: 0,
                       right: 0,
-                      child: Text('0${i + 1}', style: const TextStyle(color: Color(0xFFCCCCCC), fontSize: 25, fontWeight: FontWeight.w900)),
+                      child: Text('0${i + 1}', style: const TextStyle(color: Color(0xFFDCDCDC), fontSize: 25, fontWeight: FontWeight.w900)),
                     ),
                     Column(
                       children: [
-                        // .step-card > svg — icon sits in a soft gray rounded badge, not bare.
                         Container(
                           width: 56,
                           height: 56,
@@ -1148,7 +1286,7 @@ class _StepsSection extends StatelessWidget {
                         const SizedBox(height: AppSpacing.sm),
                         Text(steps[i][1] as String, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
                         const SizedBox(height: 6),
-                        Text(steps[i][2] as String, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
+                        Text(steps[i][2] as String, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5)),
                       ],
                     ),
                   ],
@@ -1161,8 +1299,7 @@ class _StepsSection extends StatelessWidget {
   }
 }
 
-/// Mirrors PatientLanding's "queue-feature" section ("The waiting room, redesigned.") plus its
-/// "Create free account" CTA.
+/// 6. Queue Feature Section — includes .queue-panel live card matching web
 class _QueueFeatureSection extends StatelessWidget {
   final VoidCallback onCreateAccount;
   const _QueueFeatureSection({required this.onCreateAccount});
@@ -1171,24 +1308,24 @@ class _QueueFeatureSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      // .queue-feature{background:linear-gradient(135deg,#080808,#252525)} — a near-black diagonal
-      // gradient, not the flat AppColors.charcoal this used to render.
       decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF080808), Color(0xFF252525)]),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF080808), Color(0xFF252525)],
+        ),
       ),
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.xl, AppSpacing.md, AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // .kicker-light{color:#d8d8d8} — a light neutral gray on this section's dark
-          // background, not the app's gold accent (which the real site never uses here).
-          const Text('BUILT AROUND YOUR TIME', style: TextStyle(color: Color(0xFFD8D8D8), fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.5)),
-          const SizedBox(height: 6),
-          const Text('The waiting room, redesigned.', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
+          const Text('BUILT AROUND YOUR TIME', style: TextStyle(color: Color(0xFFD8D8D8), fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.2)),
+          const SizedBox(height: 8),
+          const Text('The waiting room, redesigned.', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+          const SizedBox(height: 8),
           Text(
             'Patients get timely alerts while doctors and reception teams manage one synchronized clinic queue.',
-            style: TextStyle(color: Colors.white.withOpacity(0.75)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14, height: 1.6),
           ),
           const SizedBox(height: AppSpacing.md),
           for (final line in const [
@@ -1197,20 +1334,88 @@ class _QueueFeatureSection extends StatelessWidget {
             'Walk-in and online bookings in one queue',
           ])
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 10),
               child: Row(
                 children: [
-                  const Icon(Icons.check_circle, size: 16, color: AppColors.success),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(line, style: const TextStyle(color: Colors.white))),
+                  const Icon(Icons.check_circle, size: 18, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(line, style: const TextStyle(color: Color(0xFFEEEEEE), fontSize: 13, fontWeight: FontWeight.w500))),
                 ],
               ),
             ),
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white54)),
+          const SizedBox(height: AppSpacing.md),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: AppColors.charcoal,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
             onPressed: onCreateAccount,
-            child: const Text('Create free account'),
+            child: const Text('Create free account →', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Live Queue Preview Card — matches web's .queue-panel exactly
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: const BoxDecoration(color: Color(0xFF222222), shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Clinic queue', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textPrimary)),
+                    const Spacer(),
+                    const Text('No active OPD', style: TextStyle(color: AppColors.teal, fontSize: 12, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const Divider(height: 24, color: AppColors.border),
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.primaryLight,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(Icons.timer_outlined, color: AppColors.primary, size: 24),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text('No queued patients', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textPrimary)),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'This panel updates whenever a token changes in this browser.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1218,7 +1423,7 @@ class _QueueFeatureSection extends StatelessWidget {
   }
 }
 
-/// Mirrors PatientLanding's testimonials section (a single featured quote).
+/// 7. Testimonials Section
 class _TestimonialSection extends StatelessWidget {
   const _TestimonialSection();
 
@@ -1227,45 +1432,48 @@ class _TestimonialSection extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // WEBSITE PARITY: reference_site.css also marks this heading `.section-heading
-          // centered` (kicker + title only — PatientLanding shows no subtitle line here).
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text('PATIENT STORIES', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 1.1)),
-              SizedBox(height: 4),
-              Text('Less waiting. Better care.', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            ],
-          ),
           const SizedBox(height: AppSpacing.md),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('★★★★★', style: TextStyle(color: AppColors.gold, fontSize: 16)),
-                  const SizedBox(height: 6),
-                  // Curly quotes to match PatientLanding's literal “ ” characters exactly.
-                  const Text('“Clear explanation and a smooth live-queue experience.”', style: TextStyle(fontStyle: FontStyle.italic)),
-                  const SizedBox(height: AppSpacing.sm),
-                  Row(
-                    children: [
-                      const CircleAvatar(radius: 14, backgroundColor: AppColors.primaryLight, child: Text('RV', style: TextStyle(fontSize: 11, color: AppColors.primaryDark))),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Rahul V.', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-                          Text('Verified appointment', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          const Text('PATIENT STORIES', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.2)),
+          const SizedBox(height: 6),
+          const Text('Less waiting. Better care.', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('★★★★★', style: TextStyle(color: Color(0xFFF2AA17), fontSize: 16, letterSpacing: 2)),
+                const SizedBox(height: 8),
+                const Text('“Clear explanation and a smooth live-queue experience.”', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15, height: 1.6, color: AppColors.textPrimary)),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    const CircleAvatar(radius: 16, backgroundColor: AppColors.primaryLight, child: Text('RV', style: TextStyle(fontSize: 12, color: AppColors.primaryDark, fontWeight: FontWeight.w800))),
+                    const SizedBox(width: 10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text('Rahul V.', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.textPrimary)),
+                        Text('Verified appointment', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -1274,7 +1482,7 @@ class _TestimonialSection extends StatelessWidget {
   }
 }
 
-/// Mirrors PatientLanding's "For healthcare professionals" doctor-CTA section.
+/// 8. Doctor CTA Section
 class _DoctorCtaSection extends StatelessWidget {
   final VoidCallback onJoin;
   const _DoctorCtaSection({required this.onJoin});
@@ -1284,21 +1492,15 @@ class _DoctorCtaSection extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        // BUG FIX (color parity): .doctor-cta-card{background:linear-gradient(110deg,#f7f7f7,#eee);
-        // border:1px solid #dedede} — a neutral light-gray gradient card, not the peach
-        // AppColors.primaryLight tint this used to render (the real site never tints this card
-        // with the brand accent — only the icon badge below carries the brand color).
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFF7F7F7), Color(0xFFEEEEEE)]),
           border: Border.all(color: const Color(0xFFDEDEDE)),
-          borderRadius: BorderRadius.circular(AppRadius.card),
+          borderRadius: BorderRadius.circular(22),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // .cta-icon{color:#fff;background:linear-gradient(145deg, var(--primary), var(--teal));
-            // border-radius:19px;width:65px;height:65px} — a brand-gradient badge, not a bare icon.
             Container(
               width: 56,
               height: 56,
@@ -1309,13 +1511,27 @@ class _DoctorCtaSection extends StatelessWidget {
               child: const Icon(Icons.groups_outlined, color: Colors.white, size: 28),
             ),
             const SizedBox(height: AppSpacing.sm),
-            const Text('FOR HEALTHCARE PROFESSIONALS', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.5)),
+            const Text('FOR HEALTHCARE PROFESSIONALS', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.8)),
+            const SizedBox(height: 4),
+            const Text('Run a calmer, smarter clinic.', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
             const SizedBox(height: 6),
-            const Text('Run a calmer, smarter clinic.', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            const Text('Appointments, live queue, payments, and patient history in one workspace.', style: TextStyle(color: AppColors.textSecondary)),
+            const Text('Appointments, live queue, payments, and patient history in one workspace.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5)),
             const SizedBox(height: AppSpacing.md),
-            PrimaryButton(label: 'Join as a doctor', icon: Icons.arrow_forward, onPressed: onJoin),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onJoin,
+                icon: const Icon(Icons.arrow_forward, size: 18),
+                label: const Text('Join as a doctor', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -1323,62 +1539,4 @@ class _DoctorCtaSection extends StatelessWidget {
   }
 }
 
-/// Quick-links footer so a guest can still reach the other already-built browsing screens
-/// (Find a clinic, Emergency care, Contact) that aren't part of PatientLanding's own nav, plus a
-/// way back to Login for someone who already has an account.
-class _FooterLinks extends StatelessWidget {
-  final VoidCallback onFindClinic;
-  final VoidCallback onEmergency;
-  final VoidCallback onContact;
-  final VoidCallback onLogin;
-  const _FooterLinks({required this.onFindClinic, required this.onEmergency, required this.onContact, required this.onLogin});
 
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
-      child: Column(
-        children: [
-          const Divider(),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: AppSpacing.sm,
-            children: [
-              TextButton.icon(onPressed: onFindClinic, icon: const Icon(Icons.storefront_outlined, size: 18), label: const Text('Find a clinic')),
-              TextButton.icon(
-                onPressed: onEmergency,
-                icon: const Icon(Icons.local_hospital_outlined, size: 18, color: AppColors.danger),
-                label: const Text('Emergency', style: TextStyle(color: AppColors.danger)),
-              ),
-              TextButton.icon(onPressed: onContact, icon: const Icon(Icons.mail_outline, size: 18), label: const Text('Contact')),
-              // COMPLETENESS FIX (mobile parity): these 4 standalone marketing/legal pages exist on
-              // web (About/Blog/Terms/Privacy) but previously had no reachable mobile screen at all.
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen())),
-                icon: const Icon(Icons.info_outline, size: 18),
-                label: const Text('About'),
-              ),
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BlogScreen())),
-                icon: const Icon(Icons.article_outlined, size: 18),
-                label: const Text('Blog'),
-              ),
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsScreen())),
-                icon: const Icon(Icons.description_outlined, size: 18),
-                label: const Text('Terms'),
-              ),
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyScreen())),
-                icon: const Icon(Icons.privacy_tip_outlined, size: 18),
-                label: const Text('Privacy'),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          OutlinedButton(onPressed: onLogin, child: const Text('Already have an account? Log in')),
-        ],
-      ),
-    );
-  }
-}

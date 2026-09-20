@@ -25,14 +25,29 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<ReviewItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/reviews', query: {'status': _statusFilter, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <ReviewItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(ReviewItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/reviews', query: {'status': _statusFilter, 'pageSize': 100})
-          .then((res) => res.list.map(ReviewItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 

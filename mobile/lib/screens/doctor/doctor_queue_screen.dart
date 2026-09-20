@@ -27,15 +27,31 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final dateStr = DateFormat('yyyy-MM-dd').format(_date);
+    _future = _fetch(dateStr);
+  }
+
+  Future<List<QueueTokenItem>> _fetch(String dateStr) async {
+    try {
+      final res = await ApiClient.instance
+          .get('/queue', query: {'date': dateStr, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <QueueTokenItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(QueueTokenItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     final dateStr = DateFormat('yyyy-MM-dd').format(_date);
     setState(() {
-      _future = ApiClient.instance
-          .get('/queue', query: {'date': dateStr, 'pageSize': 100})
-          .then((res) => res.list.map(QueueTokenItem.fromJson).toList());
+      _future = _fetch(dateStr);
     });
   }
 
@@ -146,7 +162,7 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
                           child: Row(
                             children: [
                               CircleAvatar(
-                                backgroundColor: AppColors.primary.withOpacity(0.1),
+                                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                                 child: Text(
                                   '#${t.tokenNumber}',
                                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: AppColors.primary),

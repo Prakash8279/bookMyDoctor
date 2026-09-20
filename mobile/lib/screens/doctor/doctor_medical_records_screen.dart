@@ -25,16 +25,23 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
   }
 
   void _load() {
-    setState(() {
-      _future = ApiClient.instance
-          .get('/medical-records', query: {'pageSize': 50})
-          .then((res) => res.list.map(MedicalRecordItem.fromJson).toList());
-    });
+    _future = ApiClient.instance
+        .get('/medical-records', query: {'pageSize': 50})
+        .then((res) {
+          final list = <MedicalRecordItem>[];
+          for (final item in res.list) {
+            try {
+              list.add(MedicalRecordItem.fromJson(item));
+            } catch (_) {}
+          }
+          return list;
+        }).catchError((_) => <MedicalRecordItem>[]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _openNew() async {
     final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const _NewRecordScreen()),
+      MaterialPageRoute(builder: (_) => const DoctorNewMedicalRecordScreen()),
     );
     if (result == true) _load();
   }
@@ -102,14 +109,16 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
   }
 }
 
-class _NewRecordScreen extends StatefulWidget {
-  const _NewRecordScreen();
+class DoctorNewMedicalRecordScreen extends StatefulWidget {
+  const DoctorNewMedicalRecordScreen({super.key, this.initialAppointment});
+
+  final Appointment? initialAppointment;
 
   @override
-  State<_NewRecordScreen> createState() => _NewRecordScreenState();
+  State<DoctorNewMedicalRecordScreen> createState() => _DoctorNewMedicalRecordScreenState();
 }
 
-class _NewRecordScreenState extends State<_NewRecordScreen> {
+class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScreen> {
   Future<List<Appointment>>? _appointmentsFuture;
   Appointment? _selectedAppointment;
   final _titleCtrl = TextEditingController();
@@ -122,9 +131,21 @@ class _NewRecordScreenState extends State<_NewRecordScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedAppointment = widget.initialAppointment;
     _appointmentsFuture = ApiClient.instance
         .get('/appointments', query: {'status': 'confirmed', 'pageSize': 100})
-        .then((res) => res.list.map(Appointment.fromJson).toList());
+        .then((res) {
+          final list = <Appointment>[];
+          for (final item in res.list) {
+            try {
+              list.add(Appointment.fromJson(item));
+            } catch (_) {}
+          }
+          if (widget.initialAppointment != null && !list.any((a) => a.id == widget.initialAppointment!.id)) {
+            list.insert(0, widget.initialAppointment!);
+          }
+          return list;
+        }).catchError((_) => widget.initialAppointment != null ? [widget.initialAppointment!] : <Appointment>[]);
   }
 
   @override
@@ -180,7 +201,7 @@ class _NewRecordScreenState extends State<_NewRecordScreen> {
               if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
               final appts = snapshot.data ?? [];
               return DropdownButtonFormField<Appointment>(
-                value: _selectedAppointment,
+                initialValue: _selectedAppointment,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Appointment'),
                 items: appts

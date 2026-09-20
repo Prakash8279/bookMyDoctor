@@ -22,14 +22,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<AppNotification>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/notifications', query: {'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <AppNotification>[];
+      for (final item in res.list) {
+        try {
+          list.add(AppNotification.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/notifications', query: {'pageSize': 50})
-          .then((res) => res.list.map(AppNotification.fromJson).toList());
+      _future = _fetch();
     });
   }
 

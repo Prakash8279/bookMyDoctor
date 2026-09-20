@@ -77,7 +77,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
     _searchController.addListener(() => setState(() => _search = _searchController.text.trim().toLowerCase()));
   }
 
@@ -87,35 +87,49 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
     super.dispose();
   }
 
+  Future<List<_PatientRow>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/appointments', query: {'pageSize': 200})
+          .catchError((_) => ApiResponse(data: []));
+      final appointments = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          appointments.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
+      final map = <String, _PatientRow>{};
+      for (final appointment in appointments) {
+        final patient = appointment.patient;
+        if (patient == null || patient.id.isEmpty) continue;
+        final existing = map[patient.id];
+        if (existing == null) {
+          map[patient.id] = _PatientRow(
+            id: patient.id,
+            name: patient.name,
+            phone: patient.phone,
+            gender: patient.gender,
+            dateOfBirth: patient.dateOfBirth,
+            bloodGroup: patient.bloodGroup,
+            medicalHistory: patient.medicalHistory,
+            emergencyContact: patient.emergencyContact,
+            visits: 1,
+            lastStatus: appointment.status,
+          );
+        } else {
+          existing.visits += 1;
+          existing.lastStatus = appointment.status;
+        }
+      }
+      return map.values.toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   void _load() {
     setState(() {
-      _future = ApiClient.instance.get('/appointments', query: {'pageSize': 200}).then((res) {
-        final appointments = res.list.map(Appointment.fromJson).toList();
-        final map = <String, _PatientRow>{};
-        for (final appointment in appointments) {
-          final patient = appointment.patient;
-          if (patient == null || patient.id.isEmpty) continue;
-          final existing = map[patient.id];
-          if (existing == null) {
-            map[patient.id] = _PatientRow(
-              id: patient.id,
-              name: patient.name,
-              phone: patient.phone,
-              gender: patient.gender,
-              dateOfBirth: patient.dateOfBirth,
-              bloodGroup: patient.bloodGroup,
-              medicalHistory: patient.medicalHistory,
-              emergencyContact: patient.emergencyContact,
-              visits: 1,
-              lastStatus: appointment.status,
-            );
-          } else {
-            existing.visits += 1;
-            existing.lastStatus = appointment.status;
-          }
-        }
-        return map.values.toList();
-      });
+      _future = _fetch();
     });
   }
 

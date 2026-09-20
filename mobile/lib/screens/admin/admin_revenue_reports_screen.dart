@@ -43,14 +43,29 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
     final now = DateTime.now();
     _from = DateTime(now.year, now.month, 1);
     _to = now;
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<PaymentItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/payments', query: {'pageSize': 200})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <PaymentItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(PaymentItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/payments', query: {'pageSize': 200})
-          .then((res) => res.list.map(PaymentItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -314,7 +329,7 @@ class _StatTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md, horizontal: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.08),
+        color: AppColors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(

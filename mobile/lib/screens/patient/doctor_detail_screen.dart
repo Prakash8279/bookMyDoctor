@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -29,10 +28,18 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 
   Future<_DoctorDetailData> _load() async {
     final doctorRes = await ApiClient.instance.get('/doctors/${widget.doctorId}');
-    final reviewsRes = await ApiClient.instance.get('/reviews', query: {'doctorId': widget.doctorId, 'pageSize': 20});
+    final reviewsRes = await ApiClient.instance
+        .get('/reviews', query: {'doctorId': widget.doctorId, 'pageSize': 20})
+        .catchError((_) => ApiResponse(data: []));
+    final reviews = <ReviewItem>[];
+    for (final item in reviewsRes.list) {
+      try {
+        reviews.add(ReviewItem.fromJson(item));
+      } catch (_) {}
+    }
     return _DoctorDetailData(
       doctor: DoctorDirectoryItem.fromJson(doctorRes.map),
-      reviews: reviewsRes.list.map(ReviewItem.fromJson).toList(),
+      reviews: reviews,
     );
   }
 
@@ -47,152 +54,382 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
           if (snapshot.hasError) {
             return Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
-              child: ErrorBanner(error: snapshot.error!, onRetry: () => setState(() => _future = _load())),
+              child: ErrorBanner(error: snapshot.error!, onRetry: () => setState(() { _future = _load(); })),
             );
           }
           final data = snapshot.data!;
           final doctor = data.doctor;
+          final primaryClinic = doctor.clinics.isNotEmpty ? doctor.clinics.first : null;
+          final initials = doctor.name.split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0]).join().toUpperCase();
+          final minAdvance = doctor.minBookingAdvanceAmount ?? 0.0;
+
           return ListView(
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: EdgeInsets.zero,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 34,
-                    backgroundColor: AppColors.primary.withOpacity(0.12),
-                    // CachedNetworkImageProvider is a drop-in ImageProvider that disk-caches
-                    // doctor photos, avoiding a re-download every time this screen rebuilds.
-                    backgroundImage: doctor.photoUrl != null ? CachedNetworkImageProvider(doctor.photoUrl!) : null,
-                    child: doctor.photoUrl == null
-                        ? Text(doctor.name.isNotEmpty ? doctor.name[0].toUpperCase() : '?',
-                            style: const TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.bold))
-                        : null,
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(doctor.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                        if (doctor.specialization != null)
-                          Text(doctor.specialization!.name, style: const TextStyle(color: AppColors.textSecondary)),
-                        if (doctor.qualification != null) Text(doctor.qualification!),
-                        Row(
-                          children: [
-                            const Icon(Icons.star, size: 16, color: AppColors.warning),
-                            const SizedBox(width: 2),
-                            Text('${doctor.rating.toStringAsFixed(1)} (${doctor.reviewCount} reviews)'),
-                          ],
-                        ),
-                        // COMPLETENESS FIX (mobile parity — web's DoctorProfile header shows a
-                        // red "Emergency available" Badge tone="error" for doctor.emergencyAvailable;
-                        // mobile parsed this field but never rendered it).
-                        if (doctor.emergencyAvailable) ...[
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppColors.danger.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: const Text(
-                              'Emergency available',
-                              style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600, fontSize: 11),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.md),
-              // Website's DoctorProfile always renders the "About" card, falling back to
-              // "No description added yet." when the doctor hasn't written a bio — mobile used
-              // to hide the whole section instead, which read as missing content rather than an
-              // empty one.
-              SectionCard(title: 'About ${doctor.name}', child: Text(doctor.bio ?? 'No description added yet.')),
-              const SizedBox(height: AppSpacing.md),
-              SectionCard(
-                title: 'Consultation',
+              // 1. Charcoal Hero Section (mirrors web DoctorProfile hero)
+              Container(
+                color: AppColors.charcoal,
+                padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Fee: ₹${doctor.consultationFee.toStringAsFixed(0)}'),
-                    if (doctor.emergencyFee != null) Text('Emergency fee: ₹${doctor.emergencyFee!.toStringAsFixed(0)}'),
-                    if (doctor.experienceYears != null) Text('Experience: ${doctor.experienceYears} years'),
-                    if (doctor.languages.isNotEmpty) Text('Languages: ${doctor.languages.join(", ")}'),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 64,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(AppRadius.card),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            initials.isNotEmpty ? initials : 'DR',
+                            style: const TextStyle(
+                              color: AppColors.primaryDark,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.verified, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'VERIFIED PRACTITIONER',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.75),
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                      letterSpacing: 1.1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                doctor.name,
+                                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                doctor.qualification ?? doctor.specialization?.name ?? 'General practitioner',
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 13),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.location_on_outlined, size: 14, color: Colors.white.withValues(alpha: 0.6)),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      '${primaryClinic?.name ?? "Clinic not added"}${primaryClinic?.city != null ? ", ${primaryClinic!.city}" : ""}',
+                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (doctor.emergencyAvailable) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.danger,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    'Emergency available',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    const Divider(color: Colors.white12),
+                    const SizedBox(height: AppSpacing.xs),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              doctor.rating.toStringAsFixed(1),
+                              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(width: 6),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.star, color: AppColors.gold, size: 14),
+                                    SizedBox(width: 2),
+                                    Text('Patient rating', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                                Text(
+                                  '${doctor.reviewCount} verified review(s)',
+                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Consultation', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
+                            Text(
+                              '₹${doctor.consultationFee.toStringAsFixed(0)}',
+                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.md),
-              SectionCard(
-                title: 'Clinics',
-                child: doctor.clinics.isEmpty
-                    ? const Text('No clinics listed', style: TextStyle(color: AppColors.textSecondary))
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final c in doctor.clinics)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
-                              child: Text('${c.name}${c.area != null ? " · ${c.area}" : ""}${c.city != null ? ", ${c.city}" : ""}'),
-                            ),
-                        ],
+
+              // 2. Main Content Body
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Book clinic appointment card (prominent top card, matching web sidebar)
+                    Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        side: const BorderSide(color: AppColors.primary, width: 1.5),
                       ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              SectionCard(
-                title: 'Reviews (${data.reviews.length})',
-                child: data.reviews.isEmpty
-                    ? const Text('Reviews will appear after completed appointments.', style: TextStyle(color: AppColors.textSecondary))
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final r in data.reviews)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(r.patient.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                      const SizedBox(width: 8),
-                                      Row(
-                                        children: List.generate(
-                                          5,
-                                          (i) => Icon(
-                                            i < r.rating ? Icons.star : Icons.star_border,
-                                            size: 14,
-                                            color: AppColors.warning,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                      child: Padding(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.calendar_month, size: 16, color: AppColors.primaryDark),
+                                SizedBox(width: 6),
+                                Text(
+                                  'BOOK CLINIC APPOINTMENT',
+                                  style: TextStyle(
+                                    color: AppColors.primaryDark,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                    letterSpacing: 1.1,
                                   ),
-                                  if (r.text != null && r.text!.isNotEmpty) Text(r.text!),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: AppSpacing.sm),
+                            Text(
+                              '₹${doctor.consultationFee.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              minAdvance > 0
+                                  ? '₹${minAdvance.toStringAsFixed(0)} online advance confirms the booking — the remaining fee is payable at the clinic.'
+                                  : 'Online payment of the full consultation fee confirms the booking.',
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Your visit time and queue token are assigned from the doctor\'s OPD schedule.',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            PrimaryButton(
+                              label: 'Continue to booking',
+                              onPressed: doctor.onlineBooking ? () => _handleBook(context, doctor) : null,
+                            ),
+                            if (!doctor.onlineBooking)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'This doctor is not accepting online bookings right now.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    // About Doctor card
+                    SectionCard(
+                      title: 'About ${doctor.name}',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            doctor.bio ?? 'No description added yet.',
+                            style: const TextStyle(height: 1.5, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          const Divider(height: 1),
+                          const SizedBox(height: AppSpacing.md),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Experience', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    const SizedBox(height: 2),
+                                    Text('${doctor.experienceYears ?? 0} years', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Languages', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      doctor.languages.isNotEmpty ? doctor.languages.join(', ') : 'Not specified',
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-              PrimaryButton(
-                label: 'Book appointment',
-                onPressed: doctor.onlineBooking ? () => _handleBook(context, doctor) : null,
-              ),
-              if (!doctor.onlineBooking)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text(
-                    'This doctor is not accepting online bookings right now.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    // Clinic Information & Weekly OPD Schedule (matches web's table)
+                    SectionCard(
+                      title: 'Clinic information',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            primaryClinic?.name ?? 'Clinic not added',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${primaryClinic?.area != null ? "${primaryClinic!.area}, " : ""}${primaryClinic?.city ?? ""}',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          const Text(
+                            'Weekly OPD Schedule',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          if (doctor.schedule.isNotEmpty) ...[
+                            for (final slot in doctor.schedule)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                                decoration: BoxDecoration(
+                                  color: AppColors.background,
+                                  borderRadius: BorderRadius.circular(AppRadius.button),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(slot.day, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                                    Text(slot.hours, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                          ] else ...[
+                            Text(
+                              doctor.scheduleSummary ?? 'Weekly OPD schedule not added yet.',
+                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+
+                    // Patient Reviews card
+                    SectionCard(
+                      title: 'Patient reviews',
+                      trailing: Text(
+                        '${doctor.rating.toStringAsFixed(1)} / 5 (${data.reviews.length} reviews)',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                      child: data.reviews.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                              child: Text(
+                                'Reviews will appear after completed appointments.',
+                                style: TextStyle(color: AppColors.textSecondary),
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                for (final r in data.reviews.take(5))
+                                  Container(
+                                    margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                                    padding: const EdgeInsets.all(AppSpacing.md),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.background,
+                                      borderRadius: BorderRadius.circular(AppRadius.button),
+                                      border: Border.all(color: AppColors.border),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              r.patient.name ?? 'Verified patient',
+                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                            ),
+                                            Row(
+                                              children: List.generate(
+                                                5,
+                                                (i) => Icon(
+                                                  i < r.rating ? Icons.star : Icons.star_border,
+                                                  size: 13,
+                                                  color: AppColors.warning,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (r.text != null && r.text!.isNotEmpty) ...[
+                                          const SizedBox(height: 6),
+                                          Text(r.text!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
+              ),
             ],
           );
         },

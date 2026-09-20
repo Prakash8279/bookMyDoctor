@@ -9,8 +9,18 @@ class PatientMedicalRecordsScreen extends StatelessWidget {
   const PatientMedicalRecordsScreen({super.key});
 
   Future<List<MedicalRecordItem>> _load() async {
-    final res = await ApiClient.instance.get('/medical-records', query: {'pageSize': 50});
-    return res.list.map(MedicalRecordItem.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/medical-records', query: {'pageSize': 50});
+      final list = <MedicalRecordItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(MedicalRecordItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   @override

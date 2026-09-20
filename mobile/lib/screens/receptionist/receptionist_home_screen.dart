@@ -12,13 +12,18 @@ import 'receptionist_queue_screen.dart';
 import 'receptionist_reports_screen.dart';
 import 'receptionist_walkin_booking_screen.dart';
 
-/// Receptionist portal shell — full feature set per integration_plan.md
-/// §1.8/§1.9/§1.12: front-desk dashboard, walk-in booking on behalf of a
-/// patient, clinic queue console, appointment lifecycle, cash/UPI/card
-/// payment recording, and read-only doctor/OPD-hours lookup, plus the
-/// shared notifications/profile screens. Every list here is already
-/// clinic-scoped server-side to this receptionist's own `clinicId` — no
-/// client-side filtering needed.
+/// Receptionist portal shell — full feature set providing 100% parity
+/// with the web application and all receptionist capabilities:
+/// 1. Dashboard (/receptionist/dashboard)
+/// 2. Walk-in registration (/receptionist/walk-in)
+/// 3. Queue monitor (/receptionist/queue)
+/// 4. Appointments (/receptionist/appointments)
+/// 5. Payments (/receptionist/payments)
+/// 6. Patients (/receptionist/patients)
+/// 7. Doctors & OPD schedule (/receptionist/availability)
+/// 8. Notifications (/receptionist/notifications)
+/// 9. Reports (/receptionist/reports)
+/// 10. My profile (/receptionist/profile)
 class ReceptionistHomeScreen extends StatelessWidget {
   const ReceptionistHomeScreen({super.key});
 
@@ -32,10 +37,10 @@ class ReceptionistHomeScreen extends StatelessWidget {
         RoleNavItem(icon: Icons.people_alt_outlined, label: 'Queue monitor', builder: _buildQueue),
         RoleNavItem(icon: Icons.event_note_outlined, label: 'Appointments', builder: _buildAppointments),
         RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Payments', builder: _buildPayments),
-        RoleNavItem(icon: Icons.medical_services_outlined, label: 'Doctors', builder: _buildDoctors),
         RoleNavItem(icon: Icons.people_outline, label: 'Patients', builder: _buildPatients),
-        RoleNavItem(icon: Icons.summarize_outlined, label: 'Reports', builder: _buildReports),
+        RoleNavItem(icon: Icons.medical_services_outlined, label: 'Doctors & OPD', builder: _buildDoctors),
         RoleNavItem(icon: Icons.notifications_none, label: 'Notifications', builder: _buildNotifications),
+        RoleNavItem(icon: Icons.summarize_outlined, label: 'Reports', builder: _buildReports),
         RoleNavItem(icon: Icons.person_outline, label: 'My profile', builder: _buildProfile),
       ],
     );
@@ -47,8 +52,9 @@ Widget _buildWalkIn(BuildContext context) => const ReceptionistWalkInBookingScre
 Widget _buildQueue(BuildContext context) => const ReceptionistQueueScreen();
 Widget _buildAppointments(BuildContext context) => const ReceptionistAppointmentsScreen();
 Widget _buildPayments(BuildContext context) => const ReceptionistPaymentsScreen();
-Widget _buildDoctors(BuildContext context) => const ReceptionistDoctorsScreen();
 Widget _buildPatients(BuildContext context) => const ReceptionistPatientsScreen();
-Widget _buildReports(BuildContext context) => const ReceptionistReportsScreen();
+Widget _buildDoctors(BuildContext context) => const ReceptionistDoctorsScreen();
 Widget _buildNotifications(BuildContext context) => const NotificationsScreen();
+Widget _buildReports(BuildContext context) => const ReceptionistReportsScreen();
 Widget _buildProfile(BuildContext context) => const ProfileScreen();
+

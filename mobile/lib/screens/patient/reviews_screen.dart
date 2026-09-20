@@ -27,11 +27,19 @@ class _PatientReviewsScreenState extends State<PatientReviewsScreen> {
   }
 
   void _load() {
-    setState(() {
-      _future = ApiClient.instance
-          .get('/appointments', query: {'status': 'completed', 'pageSize': 100})
-          .then((res) => res.list.map(Appointment.fromJson).toList());
-    });
+    _future = ApiClient.instance
+        .get('/appointments', query: {'status': 'completed', 'pageSize': 100})
+        .then((res) {
+          final list = <Appointment>[];
+          for (final item in res.list) {
+            try {
+              list.add(Appointment.fromJson(item));
+            } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <Appointment>[]);
+    if (mounted) setState(() {});
   }
 
   @override

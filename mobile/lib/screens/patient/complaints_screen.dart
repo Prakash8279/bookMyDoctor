@@ -22,11 +22,19 @@ class _ComplaintsScreenState extends State<ComplaintsScreen> {
   }
 
   void _load() {
-    setState(() {
-      _future = ApiClient.instance
-          .get('/complaints', query: {'pageSize': 50})
-          .then((res) => res.list.map(ComplaintItem.fromJson).toList());
-    });
+    _future = ApiClient.instance
+        .get('/complaints', query: {'pageSize': 50})
+        .then((res) {
+          final list = <ComplaintItem>[];
+          for (final item in res.list) {
+            try {
+              list.add(ComplaintItem.fromJson(item));
+            } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <ComplaintItem>[]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _openNewComplaint() async {

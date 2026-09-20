@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import 'payment_required_screen.dart';
 import 'queue_tracker_screen.dart';
 
 /// GET /appointments (server-scoped to the caller — a patient only ever
@@ -18,7 +19,8 @@ import 'queue_tracker_screen.dart';
 /// queue token: a token is created when the appointment is checked in/paid
 /// for and is done once the appointment is completed/cancelled/no_show).
 class PatientAppointmentsScreen extends StatefulWidget {
-  const PatientAppointmentsScreen({super.key});
+  final bool isHistory;
+  const PatientAppointmentsScreen({super.key, this.isHistory = false});
 
   @override
   State<PatientAppointmentsScreen> createState() => _PatientAppointmentsScreenState();
@@ -31,7 +33,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
   }
 
   void _load() {
@@ -41,11 +43,21 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   }
 
   Future<List<Appointment>> _fetch() async {
-    final res = await ApiClient.instance.get('/appointments', query: {
-      'pageSize': 50,
-      if (_statusFilter != null) 'status': _statusFilter,
-    });
-    return res.list.map(Appointment.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/appointments', query: {
+        'pageSize': 50,
+        if (_statusFilter != null) 'status': _statusFilter,
+      }).catchError((_) => ApiResponse(data: []));
+      final list = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          list.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> _cancel(Appointment appt) async {
@@ -94,11 +106,13 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
-            title: 'My appointments',
-            subtitle: 'View upcoming bookings, download slips, and review completed consultations.',
+            title: widget.isHistory ? 'Booking history' : 'My appointments',
+            subtitle: widget.isHistory
+                ? 'Review every clinic visit and view/download booking slips.'
+                : 'View upcoming bookings, download slips, and review completed consultations.',
           ),
         ),
         Padding(
@@ -110,6 +124,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
               children: [
                 _StatusChip(label: 'All', selected: _statusFilter == null, onTap: () => setState(() { _statusFilter = null; _load(); })),
                 _StatusChip(label: 'Upcoming', selected: _statusFilter == 'upcoming', onTap: () => setState(() { _statusFilter = 'upcoming'; _load(); })),
+                _StatusChip(label: 'Pending payment', selected: _statusFilter == 'pending_payment', onTap: () => setState(() { _statusFilter = 'pending_payment'; _load(); })),
                 _StatusChip(label: 'Confirmed', selected: _statusFilter == 'confirmed', onTap: () => setState(() { _statusFilter = 'confirmed'; _load(); })),
                 _StatusChip(label: 'Completed', selected: _statusFilter == 'completed', onTap: () => setState(() { _statusFilter = 'completed'; _load(); })),
                 _StatusChip(label: 'Cancelled', selected: _statusFilter == 'cancelled', onTap: () => setState(() { _statusFilter = 'cancelled'; _load(); })),
@@ -142,13 +157,24 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
                     final appt = appointments[i];
                     return _AppointmentCard(
                       appointment: appt,
-                      onCancel: (appt.status == 'upcoming' || appt.status == 'confirmed') ? () => _cancel(appt) : null,
+                      onCancel: (appt.status == 'upcoming' || appt.status == 'confirmed' || appt.status == 'pending_payment')
+                          ? () => _cancel(appt)
+                          : null,
                       onReview: appt.status == 'completed' ? () => _leaveReview(appt) : null,
                       onTrackQueue: (appt.status == 'upcoming' || appt.status == 'confirmed')
                           ? () => Navigator.of(context).push(
                                 MaterialPageRoute(builder: (_) => QueueTrackerScreen(appointmentId: appt.id)),
                               )
                           : null,
+                      onPayNow: appt.status == 'pending_payment'
+                          ? () async {
+                              final updated = await Navigator.of(context).push<Appointment>(
+                                MaterialPageRoute(builder: (_) => PaymentRequiredScreen(appointment: appt)),
+                              );
+                              if (updated != null && mounted) _load();
+                            }
+                          : null,
+                      onViewSlip: () => _showBookingSlip(context, appt),
                     );
                   },
                 ),
@@ -157,6 +183,15 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showBookingSlip(BuildContext context, Appointment appt) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BookingSlipSheet(appointment: appt),
     );
   }
 }
@@ -181,81 +216,361 @@ class _AppointmentCard extends StatelessWidget {
   final VoidCallback? onCancel;
   final VoidCallback? onReview;
   final VoidCallback? onTrackQueue;
-  const _AppointmentCard({required this.appointment, this.onCancel, this.onReview, this.onTrackQueue});
+  final VoidCallback? onPayNow;
+  final VoidCallback onViewSlip;
+
+  const _AppointmentCard({
+    required this.appointment,
+    this.onCancel,
+    this.onReview,
+    this.onTrackQueue,
+    this.onPayNow,
+    required this.onViewSlip,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
+    final paymentStatus = appointment.paymentStatus ?? (appointment.status == 'pending_payment' ? 'pending' : 'pending');
+
     return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    appointment.doctor?.name ?? 'Doctor',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        appointment.doctor?.name ?? 'Doctor',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      ),
+                      if (appointment.doctor?.specialization != null)
+                        Text(
+                          appointment.doctor!.specialization!.name,
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                        ),
+                    ],
                   ),
+                ),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    StatusBadge(status: appointment.status),
+                    StatusBadge(status: paymentStatus),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 14, color: AppColors.textSecondary),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${appointment.appointmentDate} · ${appointment.appointmentTime}',
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ),
+                        if (appointment.clinic?.name != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textSecondary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  appointment.clinic!.name!,
+                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (appointment.tokenNumber != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text('TOKEN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                          Text(
+                            '#${appointment.tokenNumber}',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primaryDark),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  appointment.familyMember != null
+                      ? 'For: ${appointment.familyMember!.name} (${appointment.familyMember!.relation})'
+                      : 'For: Myself',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+                Text(
+                  'Fee: ₹${fee.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const Divider(height: 18),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onViewSlip,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  icon: const Icon(Icons.remove_red_eye_outlined, size: 15),
+                  label: const Text('View slip'),
+                ),
+                if (onTrackQueue != null)
+                  ElevatedButton.icon(
+                    onPressed: onTrackQueue,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.charcoal,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    icon: const Icon(Icons.timelapse, size: 15),
+                    label: const Text('Track queue'),
+                  ),
+                if (onPayNow != null)
+                  ElevatedButton(
+                    onPressed: onPayNow,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    child: Text('Pay ₹${fee.toStringAsFixed(0)} now'),
+                  ),
+                if (onReview != null)
+                  TextButton.icon(
+                    onPressed: onReview,
+                    icon: const Icon(Icons.star_outline, size: 15, color: AppColors.warning),
+                    label: const Text('Leave review', style: TextStyle(color: AppColors.warning, fontSize: 12)),
+                  ),
+                if (onCancel != null)
+                  TextButton(
+                    onPressed: onCancel,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BookingSlipSheet extends StatelessWidget {
+  final Appointment appointment;
+  const _BookingSlipSheet({required this.appointment});
+
+  @override
+  Widget build(BuildContext context) {
+    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
+    final isPaid = appointment.paymentStatus == 'paid';
+    final isPartial = appointment.paymentStatus == 'partial';
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      builder: (_, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: ListView(
+          controller: scrollController,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('BookMyDoctor24', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    Text('CLINIC BOOKING SLIP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppColors.textSecondary)),
+                  ],
                 ),
                 StatusBadge(status: appointment.status),
               ],
             ),
-            if (appointment.doctor?.specialization != null)
-              Text(appointment.doctor!.specialization!.name, style: const TextStyle(color: AppColors.textSecondary)),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 14, color: AppColors.textSecondary),
-                const SizedBox(width: 4),
-                Text('${appointment.appointmentDate} · ${appointment.appointmentTime}'),
+            const Divider(height: 24),
+            // Token Box
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('APPOINTMENT TOKEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                      Text(
+                        '#${appointment.tokenNumber ?? "—"}',
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.primaryDark),
+                      ),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(appointment.appointmentDate, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(appointment.appointmentTime, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            // Doctor & Clinic
+            _buildSection(
+              title: 'Practitioner & Clinic',
+              rows: [
+                MapEntry('Doctor', appointment.doctor?.name ?? '—'),
+                if (appointment.doctor?.specialization != null)
+                  MapEntry('Specialization', appointment.doctor!.specialization!.name),
+                MapEntry('Clinic', appointment.clinic?.name ?? '—'),
               ],
             ),
-            if (appointment.clinic?.name != null) ...[
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textSecondary),
-                  const SizedBox(width: 4),
-                  Expanded(child: Text(appointment.clinic!.name!)),
-                ],
-              ),
-            ],
-            if (appointment.tokenNumber != null) ...[
-              const SizedBox(height: 2),
-              Text('Token: ${appointment.tokenNumber}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            ],
-            if (appointment.familyMember != null) ...[
-              const SizedBox(height: 2),
-              Text('For: ${appointment.familyMember!.name} (${appointment.familyMember!.relation})'),
-            ],
-            if (appointment.fees.consultationFee != null) ...[
-              const SizedBox(height: 2),
-              Text('Consultation: ₹${appointment.fees.consultationFee!.toStringAsFixed(0)}'),
-            ],
-            if (appointment.fees.totalAmount != null)
-              Text('Total: ₹${appointment.fees.totalAmount!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-            if (onCancel != null || onReview != null || onTrackQueue != null) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Row(
-                children: [
-                  if (onTrackQueue != null)
-                    TextButton.icon(onPressed: onTrackQueue, icon: const Icon(Icons.timelapse, size: 16), label: const Text('Track queue')),
-                  if (onReview != null)
-                    TextButton.icon(onPressed: onReview, icon: const Icon(Icons.star_outline, size: 16), label: const Text('Leave review')),
-                  const Spacer(),
-                  if (onCancel != null)
-                    TextButton(
-                      onPressed: onCancel,
-                      style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-                      child: const Text('Cancel'),
-                    ),
-                ],
-              ),
-            ],
+            const SizedBox(height: AppSpacing.md),
+            // Patient details
+            _buildSection(
+              title: 'Patient Details',
+              rows: [
+                MapEntry(
+                  'Patient Name',
+                  appointment.familyMember?.name ?? appointment.patient?.name ?? 'Self',
+                ),
+                if (appointment.familyMember?.relation != null)
+                  MapEntry('Relation', appointment.familyMember!.relation!),
+                if (appointment.reason != null && appointment.reason!.isNotEmpty)
+                  MapEntry('Reason for Visit', appointment.reason!),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            // Payment Summary
+            _buildSection(
+              title: 'Financial Summary',
+              rows: [
+                MapEntry('Consultation Fee', '₹${fee.toStringAsFixed(0)}'),
+                MapEntry(
+                  'Payment Status',
+                  isPaid ? 'Paid in Full' : isPartial ? 'Partially Paid (Online)' : 'Pending / Pay at Clinic',
+                ),
+                if (appointment.paymentMethod != null)
+                  MapEntry('Payment Mode', appointment.paymentMethod!.toUpperCase()),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const Text(
+              'Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            PrimaryButton(
+              label: 'Done',
+              onPressed: () => Navigator.of(context).pop(),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSection({required String title, required List<MapEntry<String, String>> rows}) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 8),
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(row.key, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  Text(row.value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

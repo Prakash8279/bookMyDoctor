@@ -278,6 +278,9 @@ class DoctorDirectoryItem {
   // public/patient caller only ever sees already-verified rows, so this is always 'verified'
   // there.
   final String? doctorStatus;
+  final String? scheduleSummary;
+  final List<DoctorScheduleSlot> schedule;
+  final double? minBookingAdvanceAmount;
 
   DoctorDirectoryItem({
     required this.id,
@@ -301,6 +304,9 @@ class DoctorDirectoryItem {
     this.maxDaysAdvance,
     this.accountStatus,
     this.doctorStatus,
+    this.scheduleSummary,
+    this.schedule = const [],
+    this.minBookingAdvanceAmount,
   });
 
   factory DoctorDirectoryItem.fromJson(Map<String, dynamic> json) => DoctorDirectoryItem(
@@ -329,6 +335,23 @@ class DoctorDirectoryItem {
         maxDaysAdvance: json['maxDaysAdvance'] == null ? null : asInt(json['maxDaysAdvance']),
         accountStatus: json['accountStatus'] as String?,
         doctorStatus: json['status'] as String?,
+        scheduleSummary: json['scheduleSummary'] as String?,
+        schedule: (json['schedule'] as List? ?? [])
+            .map((e) => DoctorScheduleSlot.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+      );
+}
+
+class DoctorScheduleSlot {
+  final String day;
+  final String hours;
+  final int? slotMinutes;
+  DoctorScheduleSlot({required this.day, required this.hours, this.slotMinutes});
+  factory DoctorScheduleSlot.fromJson(Map<String, dynamic> json) => DoctorScheduleSlot(
+        day: asString(json['day']),
+        hours: asString(json['hours']),
+        slotMinutes: json['slotMinutes'] == null ? null : asInt(json['slotMinutes']),
       );
 }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:provider/provider.dart';
 
 import '../state/auth_provider.dart';
@@ -13,11 +14,9 @@ class RoleNavItem {
 
 /// Shared shell for every role portal — a drawer listing that role's
 /// sections (mirrors the web app's sidebar), an app bar showing the
-/// section title + a live/connected badge, and a body that swaps between
-/// sections without losing the drawer. Each role's home screen supplies its
-/// own [items]; this widget owns none of the navigation-list content
-/// itself so adding/removing a section per role stays a one-line change in
-/// that role's home screen file.
+/// section title + interactive profile and notification actions matching
+/// web's PortalHeader, and back-navigation handling via PopScope to prevent
+/// closing the app accidentally.
 class RoleScaffold extends StatefulWidget {
   final String portalTitle;
   final List<RoleNavItem> items;
@@ -30,12 +29,42 @@ class RoleScaffold extends StatefulWidget {
     this.initialIndex = 0,
   });
 
+  static RoleScaffoldState? of(BuildContext context) {
+    return context.findAncestorStateOfType<RoleScaffoldState>();
+  }
+
   @override
-  State<RoleScaffold> createState() => _RoleScaffoldState();
+  State<RoleScaffold> createState() => RoleScaffoldState();
 }
 
-class _RoleScaffoldState extends State<RoleScaffold> {
+class RoleScaffoldState extends State<RoleScaffold> {
   late int _index = widget.initialIndex;
+  final List<int> _history = [0];
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  DateTime? _lastBackPressTime;
+
+  void navigateTo(int i) {
+    if (i < 0 || i >= widget.items.length) return;
+    if (_index == i) return;
+    setState(() {
+      _history.add(i);
+      _index = i;
+    });
+  }
+
+  bool navigateToLabel(String label) {
+    final needle = label.toLowerCase().trim();
+    final idx = widget.items.indexWhere(
+      (it) => it.label.toLowerCase().contains(needle),
+    );
+    if (idx != -1) {
+      navigateTo(idx);
+      return true;
+    }
+    return false;
+  }
+
+  void _navigateTo(int i) => navigateTo(i);
 
   @override
   Widget build(BuildContext context) {
@@ -44,27 +73,89 @@ class _RoleScaffoldState extends State<RoleScaffold> {
     final displayName = auth.user?.name.isNotEmpty == true ? auth.user!.name : 'Account';
     final initials = displayName.trim().isNotEmpty ? displayName.trim()[0].toUpperCase() : '?';
 
-    return Scaffold(
-      // COMPLETENESS FIX (brand consistency — "same to same as the website"): background/avatar
-      // colors below match the web app's own PortalHeader (src/components/Sidebar.jsx) exactly —
-      // bg-surface top bar, a primary-light/primary-dark initials avatar — rather than Material's
-      // default white app bar with a generic "Live" badge that has no web equivalent.
-      appBar: AppBar(
-        title: Text(current.label),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primaryLight,
-              child: Text(
-                initials,
-                style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 13),
+    final profileIndex = widget.items.indexWhere((it) => it.label.toLowerCase().contains('profile'));
+    final notificationsIndex = widget.items.indexWhere((it) => it.label.toLowerCase().contains('notification'));
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+          _scaffoldKey.currentState?.closeDrawer();
+          return;
+        }
+        if (_history.length > 1) {
+          _history.removeLast();
+          setState(() => _index = _history.last);
+          return;
+        }
+        if (_index != 0) {
+          setState(() {
+            _index = 0;
+            _history.clear();
+            _history.add(0);
+          });
+          return;
+        }
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit BookMyDoctor24'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        key: _scaffoldKey,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            tooltip: 'Open navigation',
+          ),
+          title: Text(
+            current.label,
+            style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700, fontSize: 18),
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Container(color: AppColors.border, height: 1),
+          ),
+          actions: [
+            if (notificationsIndex != -1)
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded, color: AppColors.textPrimary, size: 22),
+                onPressed: () => _navigateTo(notificationsIndex),
+                tooltip: 'Notifications',
+              ),
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.md, left: AppSpacing.xs),
+              child: Tooltip(
+                message: 'Open profile ($displayName)',
+                child: InkWell(
+                  onTap: profileIndex != -1 ? () => _navigateTo(profileIndex) : null,
+                  borderRadius: BorderRadius.circular(999),
+                  child: CircleAvatar(
+                    radius: 17,
+                    backgroundColor: AppColors.primaryLight,
+                    child: Text(
+                      initials,
+                      style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 13),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       drawer: Drawer(
         backgroundColor: AppColors.charcoal,
         child: SafeArea(
@@ -93,9 +184,9 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                 margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(AppRadius.button),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,7 +197,7 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                       displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
                     ),
                   ],
                 ),
@@ -124,11 +215,11 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                       child: ListTile(
                         dense: true,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                        leading: Icon(item.icon, size: 20, color: selected ? Colors.white : Colors.white.withOpacity(0.75)),
+                        leading: Icon(item.icon, size: 20, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75)),
                         title: Text(
                           item.label,
                           style: TextStyle(
-                            color: selected ? Colors.white : Colors.white.withOpacity(0.75),
+                            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75),
                             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                             fontSize: 14,
                           ),
@@ -136,8 +227,8 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                         selected: selected,
                         selectedTileColor: AppColors.primaryDark,
                         onTap: () {
-                          setState(() => _index = i);
                           Navigator.of(context).pop();
+                          _navigateTo(i);
                         },
                       ),
                     );
@@ -149,8 +240,8 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                 child: ListTile(
                   dense: true,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                  leading: Icon(Icons.logout, size: 20, color: Colors.white.withOpacity(0.75)),
-                  title: Text('Sign out', style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 14)),
+                  leading: Icon(Icons.logout, size: 20, color: Colors.white.withValues(alpha: 0.75)),
+                  title: Text('Sign out', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14)),
                   onTap: () async {
                     Navigator.of(context).pop();
                     await context.read<AuthProvider>().logout();
@@ -163,6 +254,7 @@ class _RoleScaffoldState extends State<RoleScaffold> {
         ),
       ),
       body: current.builder(context),
-    );
-  }
+    ),
+  );
+}
 }

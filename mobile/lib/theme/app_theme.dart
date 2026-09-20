@@ -96,7 +96,7 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: AppColors.surface,
         elevation: 1,
-        shadowColor: AppColors.charcoal.withOpacity(0.12),
+        shadowColor: AppColors.charcoal.withValues(alpha: 0.12),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.card),
@@ -175,7 +175,7 @@ StatusTone statusTone(String status) {
     case 'upcoming':
     case 'serving':
     case 'responded':
-      return StatusTone(AppColors.teal.withOpacity(0.14), AppColors.tealDark);
+      return StatusTone(AppColors.teal.withValues(alpha: 0.14), AppColors.tealDark);
     case 'completed':
     case 'paid':
     case 'active':
@@ -183,7 +183,7 @@ StatusTone statusTone(String status) {
     case 'resolved':
     case 'verified':
     case 'running':
-      return StatusTone(AppColors.success.withOpacity(0.12), AppColors.success);
+      return StatusTone(AppColors.success.withValues(alpha: 0.12), AppColors.success);
     case 'cancelled':
     case 'rejected':
     case 'no_show':
@@ -192,7 +192,7 @@ StatusTone statusTone(String status) {
     case 'open':
     case 'failed':
     case 'disabled':
-      return StatusTone(AppColors.danger.withOpacity(0.1), AppColors.danger);
+      return StatusTone(AppColors.danger.withValues(alpha: 0.1), AppColors.danger);
     case 'pending':
     case 'waiting':
     case 'called':
@@ -203,7 +203,7 @@ StatusTone statusTone(String status) {
     case 'partial':
     case 'processing':
     case 'queued':
-      return StatusTone(AppColors.gold.withOpacity(0.18), AppColors.goldDark);
+      return StatusTone(AppColors.gold.withValues(alpha: 0.18), AppColors.goldDark);
     default:
       return StatusTone(AppColors.background, AppColors.textSecondary);
   }

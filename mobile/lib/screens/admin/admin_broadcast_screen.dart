@@ -28,7 +28,7 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    _historyFuture = _fetchHistory();
   }
 
   @override
@@ -39,11 +39,26 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
     super.dispose();
   }
 
+  Future<List<BroadcastLogItem>> _fetchHistory() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/notifications/broadcast', query: {'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <BroadcastLogItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(BroadcastLogItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
   void _loadHistory() {
     setState(() {
-      _historyFuture = ApiClient.instance
-          .get('/notifications/broadcast', query: {'pageSize': 50})
-          .then((res) => res.list.map(BroadcastLogItem.fromJson).toList());
+      _historyFuture = _fetchHistory();
     });
   }
 

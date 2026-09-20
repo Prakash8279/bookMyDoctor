@@ -83,7 +83,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loadingSpecializations = true);
     try {
       final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
-      final items = res.list.map(Specialization.fromJson).toList();
+      final items = <Specialization>[];
+      for (final item in res.list) {
+        try {
+          items.add(Specialization.fromJson(item));
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() => _specializations = items);
     } catch (_) {

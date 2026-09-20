@@ -35,7 +35,11 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
   Future<void> _loadCities() async {
     try {
       final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 200});
-      setState(() => _cities = res.list.map(City.fromJson).toList());
+      final list = <City>[];
+      for (final item in res.list) {
+        try { list.add(City.fromJson(item)); } catch (_) {}
+      }
+      if (mounted) setState(() => _cities = list);
     } catch (_) {
       // Non-fatal — city/area filters just won't show if this fails.
     }
@@ -44,21 +48,30 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
   Future<void> _loadAreas(String cityId) async {
     try {
       final res = await ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200});
-      setState(() => _areas = res.list.map(Area.fromJson).toList());
+      final list = <Area>[];
+      for (final item in res.list) {
+        try { list.add(Area.fromJson(item)); } catch (_) {}
+      }
+      if (mounted) setState(() => _areas = list);
     } catch (_) {
-      setState(() => _areas = []);
+      if (mounted) setState(() => _areas = []);
     }
   }
 
   void _search() {
-    setState(() {
-      _future = ApiClient.instance.get('/clinics', query: {
-        'pageSize': 100,
-        if (_cityId != null) 'city': _cityId,
-        if (_areaId != null) 'area': _areaId,
-        if (_emergencyOnly) 'emergencyAvailable': true,
-      }).then((res) => res.list.map(Clinic.fromJson).toList());
-    });
+    _future = ApiClient.instance.get('/clinics', query: {
+      'pageSize': 100,
+      if (_cityId != null) 'city': _cityId,
+      if (_areaId != null) 'area': _areaId,
+      if (_emergencyOnly) 'emergencyAvailable': true,
+    }).then((res) {
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try { list.add(Clinic.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    }).catchError((_) => <Clinic>[]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _call(String phone) async {
@@ -88,7 +101,7 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _cityId,
+                        initialValue: _cityId,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'City'),
                         items: [
@@ -109,7 +122,7 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _areaId,
+                        initialValue: _areaId,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Area'),
                         items: [

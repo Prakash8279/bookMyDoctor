@@ -30,7 +30,7 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
   }
 
   @override
@@ -40,12 +40,27 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
     super.dispose();
   }
 
-  void _load() {
-    setState(() {
-      _future = ApiClient.instance.get('/admin/patients', query: {
+  Future<List<PatientDirectoryItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance.get('/admin/patients', query: {
         'pageSize': 100,
         if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
-      }).then((res) => res.list.map(PatientDirectoryItem.fromJson).toList());
+      }).catchError((_) => ApiResponse(data: []));
+      final list = <PatientDirectoryItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(PatientDirectoryItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _load() {
+    setState(() {
+      _future = _fetch();
     });
   }
 

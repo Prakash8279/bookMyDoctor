@@ -43,7 +43,14 @@ describe('GET /uploads/documents/:filename', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toContain('attachment');
-    expect(res.text).toContain('fake certificate bytes');
+    // `res.text` stays undefined here — superagent only populates it for text/* content types,
+    // and res.sendFile correctly serves this as application/pdf (binary), so it buffers into
+    // `res.body` (a Buffer) instead. Confirmed by re-running this test against the real Express
+    // app once bcrypt (a transitive `require('../../src/app')` dependency via auth routes) was
+    // finally installable in this environment — this bug had been masked until now by every
+    // suite in this file failing to even load.
+    expect(Buffer.isBuffer(res.body)).toBe(true);
+    expect(res.body.toString('utf8')).toContain('fake certificate bytes');
   });
 
   test('no token at all -> 404 (not 401/403 — avoids confirming the file exists to a prober)', async () => {

@@ -42,6 +42,8 @@ class Fees {
   // own outstanding share once a patient paid just the minimum booking amount online, the full fee
   // if nothing's paid yet) — never re-derive it client-side.
   final double? due;
+  final double? minBookingAmount;
+  final double? minBookingRemainder;
 
   Fees({
     this.consultationFee,
@@ -53,6 +55,8 @@ class Fees {
     this.commission,
     this.clinicPayout,
     this.due,
+    this.minBookingAmount,
+    this.minBookingRemainder,
   });
 
   factory Fees.fromJson(Map<String, dynamic>? json) {
@@ -68,6 +72,8 @@ class Fees {
       commission: d('commission'),
       clinicPayout: d('clinicPayout'),
       due: d('due'),
+      minBookingAmount: d('minBookingAmount'),
+      minBookingRemainder: d('minBookingRemainder'),
     );
   }
 }

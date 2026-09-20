@@ -15,7 +15,8 @@ import '../../widgets/common_widgets.dart';
 /// backend guards deletion against a city/area still in use by a clinic (geography.service.js#
 /// deleteCity / #deleteArea) — that failure surfaces here as a normal error snackbar.
 class AdminGeographyScreen extends StatefulWidget {
-  const AdminGeographyScreen({super.key});
+  final bool focusSpecializations;
+  const AdminGeographyScreen({super.key, this.focusSpecializations = false});
 
   @override
   State<AdminGeographyScreen> createState() => _AdminGeographyScreenState();
@@ -30,26 +31,76 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCities();
-    _loadSpecializations();
+    _citiesFuture = _fetchCities();
+    _specializationsFuture = _fetchSpecializations();
+  }
+
+  Future<List<City>> _fetchCities() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/geography/cities', query: {'pageSize': 200})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <City>[];
+      for (final item in res.list) {
+        try {
+          list.add(City.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Specialization>> _fetchSpecializations() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/geography/specializations', query: {'pageSize': 200})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Specialization>[];
+      for (final item in res.list) {
+        try {
+          list.add(Specialization.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Area>> _fetchAreas(String cityId) async {
+    try {
+      final res = await ApiClient.instance
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Area>[];
+      for (final item in res.list) {
+        try {
+          list.add(Area.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _loadCities() {
     setState(() {
-      _citiesFuture = ApiClient.instance.get('/geography/cities', query: {'pageSize': 200}).then((res) => res.list.map(City.fromJson).toList());
+      _citiesFuture = _fetchCities();
     });
   }
 
   void _loadSpecializations() {
     setState(() {
-      _specializationsFuture =
-          ApiClient.instance.get('/geography/specializations', query: {'pageSize': 200}).then((res) => res.list.map(Specialization.fromJson).toList());
+      _specializationsFuture = _fetchSpecializations();
     });
   }
 
   void _loadAreas(String cityId) {
     setState(() {
-      _areasFuture = ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200}).then((res) => res.list.map(Area.fromJson).toList());
+      _areasFuture = _fetchAreas(cityId);
     });
   }
 
@@ -225,6 +276,41 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.focusSpecializations) {
+      return ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: [
+          const PageHeader(
+            title: 'Specializations',
+            subtitle: 'Manage medical specializations and categories.',
+          ),
+          SectionCard(
+            title: 'Specializations',
+            trailing: TextButton.icon(onPressed: _addSpecialization, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+            child: FutureBuilder<List<Specialization>>(
+              future: _specializationsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                final items = snapshot.data ?? [];
+                if (items.isEmpty) return const Text('No specializations yet', style: TextStyle(color: AppColors.textSecondary));
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: items
+                      .map((s) => Chip(
+                            label: Text(s.name),
+                            onDeleted: () => _deleteSpecialization(s),
+                            deleteIcon: const Icon(Icons.close, size: 16),
+                          ))
+                      .toList(),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [

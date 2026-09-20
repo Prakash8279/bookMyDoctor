@@ -13,8 +13,16 @@ class DoctorPaymentsScreen extends StatelessWidget {
   const DoctorPaymentsScreen({super.key});
 
   Future<List<PaymentItem>> _load() async {
-    final res = await ApiClient.instance.get('/payments', query: {'pageSize': 50});
-    return res.list.map(PaymentItem.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 50});
+      final list = <PaymentItem>[];
+      for (final item in res.list) {
+        try { list.add(PaymentItem.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   @override

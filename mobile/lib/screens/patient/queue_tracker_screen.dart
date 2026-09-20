@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -51,28 +52,45 @@ class MyQueueStatus {
 /// of this screen is watching a live token move without the patient having
 /// to manually pull-to-refresh.
 class QueueTrackerScreen extends StatefulWidget {
-  final String appointmentId;
-  const QueueTrackerScreen({super.key, required this.appointmentId});
+  final String? appointmentId;
+  final bool embedded;
+  const QueueTrackerScreen({super.key, this.appointmentId, this.embedded = false});
 
   @override
   State<QueueTrackerScreen> createState() => _QueueTrackerScreenState();
 }
 
-class _QueueTrackerScreenState extends State<QueueTrackerScreen> {
+class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBindingObserver {
   MyQueueStatus? _status;
+  String? _resolvedAppointmentId;
   Object? _error;
   bool _loading = true;
-  bool _pollScheduled = false;
+  Timer? _pollTimer;
+  bool _isPaused = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _resolvedAppointmentId = widget.appointmentId;
     _load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _isPaused = true;
+      _pollTimer?.cancel();
+    } else if (state == AppLifecycleState.resumed) {
+      _isPaused = false;
+      if (mounted) _load();
+    }
+  }
+
+  @override
   void dispose() {
-    _pollScheduled = false;
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
     super.dispose();
   }
 
@@ -82,12 +100,33 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> {
       _error = null;
     });
     try {
-      final res = await ApiClient.instance.get('/queue/mine/${widget.appointmentId}');
-      if (!mounted) return;
-      setState(() {
-        _status = MyQueueStatus.fromJson(res.map);
-        _loading = false;
-      });
+      String? targetId = _resolvedAppointmentId;
+      if (targetId == null) {
+        final res = await ApiClient.instance.get('/appointments', query: {'pageSize': 20});
+        final appts = res.list.where((a) {
+          final s = a['status'] as String?;
+          return s == 'upcoming' || s == 'confirmed';
+        }).toList();
+        if (appts.isNotEmpty) {
+          targetId = appts.first['id'] as String?;
+          _resolvedAppointmentId = targetId;
+        }
+      }
+
+      if (targetId != null) {
+        final res = await ApiClient.instance.get('/queue/mine/$targetId');
+        if (!mounted) return;
+        setState(() {
+          _status = MyQueueStatus.fromJson(res.map);
+          _loading = false;
+        });
+      } else {
+        if (!mounted) return;
+        setState(() {
+          _status = null;
+          _loading = false;
+        });
+      }
     } catch (err) {
       if (!mounted) return;
       setState(() {
@@ -99,17 +138,22 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> {
   }
 
   void _schedulePoll() {
-    if (_pollScheduled) return;
-    _pollScheduled = true;
-    Future.delayed(const Duration(seconds: 15), () {
-      _pollScheduled = false;
-      if (!mounted) return;
+    _pollTimer?.cancel();
+    if (_isPaused || !mounted) return;
+    _pollTimer = Timer(const Duration(seconds: 15), () {
+      if (!mounted || _isPaused) return;
       _load();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: _buildBody(),
+      );
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('Live queue tracker')),
       body: RefreshIndicator(

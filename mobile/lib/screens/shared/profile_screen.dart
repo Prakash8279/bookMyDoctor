@@ -148,7 +148,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadSpecializations() async {
     try {
       final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
-      if (mounted) setState(() => _specializations = res.list.map(Specialization.fromJson).toList());
+      final list = <Specialization>[];
+      for (final item in res.list) {
+        try { list.add(Specialization.fromJson(item)); } catch (_) {}
+      }
+      if (mounted) setState(() => _specializations = list);
     } catch (_) {
       // Non-fatal — the dropdown just won't have options if this fails; the rest of the form
       // (and saving it) still works.
@@ -377,7 +381,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   CircleAvatar(
                     radius: 44,
-                    backgroundColor: AppColors.primary.withOpacity(0.12),
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                     backgroundImage: auth.user?.photoUrl != null ? CachedNetworkImageProvider(auth.user!.photoUrl!) : null,
                     // Website's PortalProfile/DoctorProfileEdit fall back to the user's own
                     // initials (up to 2 letters) rather than a generic person icon.
@@ -444,14 +448,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
-                      value: _gender,
+                      initialValue: _gender,
                       decoration: const InputDecoration(labelText: 'Gender'),
                       items: _dropdownItems(_genderOptions, _gender),
                       onChanged: (v) => setState(() => _gender = v),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
-                      value: _bloodGroup,
+                      initialValue: _bloodGroup,
                       decoration: const InputDecoration(labelText: 'Blood group'),
                       items: _dropdownItems(_bloodGroupOptions, _bloodGroup),
                       onChanged: (v) => setState(() => _bloodGroup = v),
@@ -479,7 +483,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     DropdownButtonFormField<String>(
-                      value: _specializationId,
+                      initialValue: _specializationId,
                       isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Specialization'),
                       items: [

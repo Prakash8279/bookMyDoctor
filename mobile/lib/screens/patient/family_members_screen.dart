@@ -23,14 +23,29 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<FamilyMember>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/family-members', query: {'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <FamilyMember>[];
+      for (final item in res.list) {
+        try {
+          list.add(FamilyMember.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/family-members', query: {'pageSize': 50})
-          .then((res) => res.list.map(FamilyMember.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -232,7 +247,7 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
-            value: _gender,
+            initialValue: _gender,
             decoration: const InputDecoration(labelText: 'Gender (optional)'),
             items: const [
               DropdownMenuItem(value: 'male', child: Text('Male')),
@@ -243,7 +258,7 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
-            value: _bloodGroup,
+            initialValue: _bloodGroup,
             decoration: const InputDecoration(labelText: 'Blood group (optional)'),
             items: const [
               DropdownMenuItem(value: 'A+', child: Text('A+')),

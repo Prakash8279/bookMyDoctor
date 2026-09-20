@@ -56,21 +56,33 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
   }
 
   void _load() {
-    setState(() => _future = _fetch());
+    setState(() {
+      _future = _fetch();
+    });
   }
 
   Future<_ReportData> _fetch() async {
     final results = await Future.wait([
-      ApiClient.instance.get('/appointments', query: {'pageSize': 200}),
-      ApiClient.instance.get('/payments', query: {'pageSize': 200}),
-      ApiClient.instance.get('/queue', query: {'pageSize': 200}),
+      ApiClient.instance.get('/appointments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/payments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/queue', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
     ]);
-    final appointments = results[0].list.map(Appointment.fromJson).toList();
-    final payments = results[1].list.map(PaymentItem.fromJson).toList();
+    final appointments = <Appointment>[];
+    for (final item in results[0].list) {
+      try {
+        appointments.add(Appointment.fromJson(item));
+      } catch (_) {}
+    }
+    final payments = <PaymentItem>[];
+    for (final item in results[1].list) {
+      try {
+        payments.add(PaymentItem.fromJson(item));
+      } catch (_) {}
+    }
     final queue = results[2].list;
 
     final appointmentsById = {for (final a in appointments) a.id: a};

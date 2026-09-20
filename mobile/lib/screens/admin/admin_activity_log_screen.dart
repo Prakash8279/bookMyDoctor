@@ -12,8 +12,16 @@ class AdminActivityLogScreen extends StatelessWidget {
   const AdminActivityLogScreen({super.key});
 
   Future<List<ActivityLogEntry>> _load() async {
-    final res = await ApiClient.instance.get('/admin/activity-log', query: {'pageSize': 100});
-    return res.list.map(ActivityLogEntry.fromJson).toList();
+    final res = await ApiClient.instance
+        .get('/admin/activity-log', query: {'pageSize': 100})
+        .catchError((_) => ApiResponse(data: []));
+    final list = <ActivityLogEntry>[];
+    for (final item in res.list) {
+      try {
+        list.add(ActivityLogEntry.fromJson(item));
+      } catch (_) {}
+    }
+    return list;
   }
 
   @override

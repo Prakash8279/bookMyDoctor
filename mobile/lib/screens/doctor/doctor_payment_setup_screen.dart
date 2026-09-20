@@ -206,7 +206,7 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
                                     width: 160,
                                     height: 160,
                                     decoration: BoxDecoration(
-                                      color: AppColors.border.withOpacity(0.2),
+                                      color: AppColors.border.withValues(alpha: 0.2),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Icon(Icons.qr_code_2_outlined, size: 48, color: AppColors.textSecondary),

@@ -28,11 +28,17 @@ class _GuestEmergencyScreenState extends State<GuestEmergencyScreen> {
   }
 
   void _load() {
-    setState(() {
-      _future = ApiClient.instance
-          .get('/doctors', query: {'emergencyAvailable': true, 'pageSize': 100})
-          .then((res) => res.list.map(DoctorDirectoryItem.fromJson).toList());
-    });
+    _future = ApiClient.instance
+        .get('/doctors', query: {'emergencyAvailable': true, 'pageSize': 100})
+        .then((res) {
+          final list = <DoctorDirectoryItem>[];
+          for (final item in res.list) {
+            try { list.add(DoctorDirectoryItem.fromJson(item)); } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <DoctorDirectoryItem>[]);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -53,7 +59,7 @@ class _GuestEmergencyScreenState extends State<GuestEmergencyScreen> {
           ),
           Container(
             width: double.infinity,
-            color: AppColors.danger.withOpacity(0.08),
+            color: AppColors.danger.withValues(alpha: 0.08),
             padding: const EdgeInsets.all(AppSpacing.md),
             child: const Text(
               'For life-threatening emergencies, contact local emergency services immediately. This platform is not an emergency helpline.',
@@ -90,7 +96,7 @@ class _GuestEmergencyScreenState extends State<GuestEmergencyScreen> {
                       return Card(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: AppColors.danger.withOpacity(0.3)),
+                          side: BorderSide(color: AppColors.danger.withValues(alpha: 0.3)),
                         ),
                         child: ListTile(
                           onTap: () => Navigator.of(context).push(

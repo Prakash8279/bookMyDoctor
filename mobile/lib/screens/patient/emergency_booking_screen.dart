@@ -28,11 +28,19 @@ class _EmergencyBookingScreenState extends State<EmergencyBookingScreen> {
   }
 
   void _load() {
-    setState(() {
-      _future = ApiClient.instance
-          .get('/clinics', query: {'emergencyAvailable': true, 'pageSize': 100})
-          .then((res) => res.list.map(Clinic.fromJson).toList());
-    });
+    _future = ApiClient.instance
+        .get('/clinics', query: {'emergencyAvailable': true, 'pageSize': 100})
+        .then((res) {
+          final list = <Clinic>[];
+          for (final item in res.list) {
+            try {
+              list.add(Clinic.fromJson(item));
+            } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <Clinic>[]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _call(String phone) async {
@@ -83,7 +91,7 @@ class _EmergencyBookingScreenState extends State<EmergencyBookingScreen> {
                       return Card(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: AppColors.danger.withOpacity(0.3)),
+                          side: BorderSide(color: AppColors.danger.withValues(alpha: 0.3)),
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(AppSpacing.md),

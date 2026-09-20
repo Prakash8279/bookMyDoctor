@@ -97,10 +97,15 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
     try {
       final results = await Future.wait([
         ApiClient.instance.get('/clinics/$clinicId'),
-        ApiClient.instance.get('/appointments', query: {'pageSize': 100}),
+        ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
       ]);
       final clinic = Clinic.fromJson(results[0].map);
-      final appointments = results[1].list.map(Appointment.fromJson).toList();
+      final appointments = <Appointment>[];
+      for (final item in results[1].list) {
+        try {
+          appointments.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
       final seen = <String>{};
       final patients = <PatientRef>[];
       for (final a in appointments) {
@@ -272,7 +277,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
+                color: AppColors.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
@@ -309,7 +314,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
+                color: AppColors.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Text(
@@ -332,7 +337,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
             ),
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<PatientRef>(
-              value: _selectedPatient,
+              initialValue: _selectedPatient,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Patient'),
               items: _filteredPatients
@@ -346,7 +351,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           ],
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<ClinicDoctorLink>(
-            value: _selectedDoctor,
+            initialValue: _selectedDoctor,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Doctor'),
             items: _clinicDoctors.map((d) => DropdownMenuItem(value: d, child: Text(d.name, overflow: TextOverflow.ellipsis))).toList(),
@@ -383,7 +388,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
-            value: _paymentMethod,
+            initialValue: _paymentMethod,
             decoration: const InputDecoration(labelText: 'Payment method'),
             items: const [
               DropdownMenuItem(value: 'cash', child: Text('Cash')),

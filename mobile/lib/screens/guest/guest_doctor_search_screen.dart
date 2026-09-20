@@ -20,6 +20,7 @@ class GuestDoctorSearchScreen extends StatelessWidget {
   final String? initialSpecializationId;
   final String? initialCity;
   final String? initialClinicName;
+  final bool? initialToday;
 
   const GuestDoctorSearchScreen({
     super.key,
@@ -27,6 +28,7 @@ class GuestDoctorSearchScreen extends StatelessWidget {
     this.initialSpecializationId,
     this.initialCity,
     this.initialClinicName,
+    this.initialToday,
   });
 
   @override
@@ -38,6 +40,7 @@ class GuestDoctorSearchScreen extends StatelessWidget {
         initialSpecializationId: initialSpecializationId,
         initialCity: initialCity,
         initialClinicName: initialClinicName,
+        initialToday: initialToday,
       ),
     );
   }

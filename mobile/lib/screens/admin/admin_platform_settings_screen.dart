@@ -24,7 +24,9 @@ class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScree
   @override
   void initState() {
     super.initState();
-    _loadAll();
+    _chargesFuture = ApiClient.instance.get('/platform-charges').then((res) => PlatformCharges.fromJson(res.map));
+    _settingsFuture = ApiClient.instance.get('/admin/system-settings').then((res) => SystemSettings.fromJson(res.map));
+    _rulesFuture = ApiClient.instance.get('/admin/booking-rules').then((res) => BookingRules.fromJson(res.map));
   }
 
   void _loadAll() {

@@ -37,22 +37,31 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<Clinic>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/clinics', query: {'mine': true, 'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final ids = res.list.map((json) => asString(json['id'])).where((id) => id.isNotEmpty).toList();
+      final clinics = <Clinic>[];
+      for (final id in ids) {
+        try {
+          final detail = await ApiClient.instance.get('/clinics/$id');
+          clinics.add(Clinic.fromJson(detail.map));
+        } catch (_) {}
+      }
+      return clinics;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      // The list endpoint's rows are a SUBSET of the full clinic shape (see the Clinic model's
-      // doc comment in core_models.dart) — shapeClinicListItem in the server's
-      // clinics.service.js never includes `doctors`, so ownership can't be read off a
-      // list-sourced Clinic. Fetch each clinic's full detail (which does include `doctors`,
-      // via shapeClinicDetail) so `_isOwner` below has real data to check.
-      _future = ApiClient.instance
-          .get('/clinics', query: {'mine': true, 'pageSize': 50})
-          .then((res) => res.list.map((json) => asString(json['id'])).toList())
-          .then((ids) => Future.wait(ids.map(
-                (id) => ApiClient.instance.get('/clinics/$id').then((res) => Clinic.fromJson(res.map)),
-              )));
+      _future = _fetch();
     });
   }
 
@@ -282,7 +291,16 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
   @override
   void initState() {
     super.initState();
-    _citiesFuture = ApiClient.instance.get('/geography/cities', query: {'pageSize': 200}).then((res) => res.list.map(City.fromJson).toList());
+    _citiesFuture = ApiClient.instance
+        .get('/geography/cities', query: {'pageSize': 200})
+        .then((res) {
+          final list = <City>[];
+          for (final item in res.list) {
+            try { list.add(City.fromJson(item)); } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <City>[]);
     if (widget.existing?.city != null) {
       _selectedCity = widget.existing!.city;
       _loadAreas(widget.existing!.city!.id);
@@ -292,7 +310,16 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
 
   void _loadAreas(String cityId) {
     setState(() {
-      _areasFuture = ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200}).then((res) => res.list.map(Area.fromJson).toList());
+      _areasFuture = ApiClient.instance
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200})
+          .then((res) {
+            final list = <Area>[];
+            for (final item in res.list) {
+              try { list.add(Area.fromJson(item)); } catch (_) {}
+            }
+            return list;
+          })
+          .catchError((_) => <Area>[]);
     });
   }
 
@@ -549,7 +576,15 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
       _future = ApiClient.instance.get('/doctors', query: {
         'pageSize': 30,
         if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
-      }).then((res) => res.list.map(DoctorDirectoryItem.fromJson).toList());
+      }).then((res) {
+        final list = <DoctorDirectoryItem>[];
+        for (final item in res.list) {
+          try {
+            list.add(DoctorDirectoryItem.fromJson(item));
+          } catch (_) {}
+        }
+        return list;
+      }).catchError((_) => <DoctorDirectoryItem>[]);
     });
   }
 

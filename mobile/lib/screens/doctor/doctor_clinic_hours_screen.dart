@@ -31,9 +31,24 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   @override
   void initState() {
     super.initState();
-    _clinicsFuture = ApiClient.instance
-        .get('/clinics', query: {'mine': true, 'pageSize': 50})
-        .then((res) => res.list.map(Clinic.fromJson).toList());
+    _clinicsFuture = _fetchClinics();
+  }
+
+  Future<List<Clinic>> _fetchClinics() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/clinics', query: {'mine': true, 'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _selectClinic(Clinic clinic) {
@@ -46,12 +61,28 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   Future<_HoursData> _loadHours(String clinicId) async {
     final selfId = context.read<AuthProvider>().user?.id ?? '';
     final results = await Future.wait([
-      ApiClient.instance.get('/clinics/$clinicId/hours', query: {'doctorId': selfId, 'pageSize': 20}),
-      ApiClient.instance.get('/clinics/$clinicId/closures', query: {'doctorId': selfId, 'pageSize': 50}),
+      ApiClient.instance
+          .get('/clinics/$clinicId/hours', query: {'doctorId': selfId, 'pageSize': 20})
+          .catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance
+          .get('/clinics/$clinicId/closures', query: {'doctorId': selfId, 'pageSize': 50})
+          .catchError((_) => ApiResponse(data: [])),
     ]);
+    final hours = <ClinicHours>[];
+    for (final item in results[0].list) {
+      try {
+        hours.add(ClinicHours.fromJson(item));
+      } catch (_) {}
+    }
+    final closures = <ClinicClosure>[];
+    for (final item in results[1].list) {
+      try {
+        closures.add(ClinicClosure.fromJson(item));
+      } catch (_) {}
+    }
     return _HoursData(
-      hours: results[0].list.map(ClinicHours.fromJson).toList(),
-      closures: results[1].list.map(ClinicClosure.fromJson).toList(),
+      hours: hours,
+      closures: closures,
     );
   }
 

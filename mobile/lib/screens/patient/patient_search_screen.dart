@@ -28,6 +28,7 @@ class PatientSearchScreen extends StatefulWidget {
   final String? initialSpecializationId;
   final String? initialCity;
   final String? initialClinicName;
+  final bool? initialToday;
 
   const PatientSearchScreen({
     super.key,
@@ -35,6 +36,7 @@ class PatientSearchScreen extends StatefulWidget {
     this.initialSpecializationId,
     this.initialCity,
     this.initialClinicName,
+    this.initialToday,
   });
 
   @override
@@ -114,6 +116,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     name: widget.initialQuery ?? '',
     city: widget.initialCity ?? '',
     clinic: widget.initialClinicName ?? '',
+    today: widget.initialToday ?? false,
   );
   late _SearchFilters _applied = _draft.copy();
 
@@ -165,33 +168,73 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   }
 
   Future<List<Specialization>> _fetchSpecializations() async {
-    final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
-    return res.list.map(Specialization.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
+      final list = <Specialization>[];
+      for (final item in res.list) {
+        try { list.add(Specialization.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<DoctorDirectoryItem>> _fetchDoctors() async {
-    final res = await ApiClient.instance.get('/doctors', query: {'pageSize': 100});
-    return res.list.map(DoctorDirectoryItem.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/doctors', query: {'pageSize': 100});
+      final list = <DoctorDirectoryItem>[];
+      for (final item in res.list) {
+        try { list.add(DoctorDirectoryItem.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   // Full master lists — same source and same pageSize cap (the backend rejects pageSize over 100)
   // clinic_search_screen.dart already uses for its own City/Area filters.
   Future<List<City>> _fetchCities() async {
-    final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 100});
-    return res.list.map(City.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 100});
+      final list = <City>[];
+      for (final item in res.list) {
+        try { list.add(City.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<Area>> _fetchAreas() async {
     // Unscoped (no cityId) — fetched once like SearchResults' own `data.areas`, then narrowed to
     // the selected city client-side in _areaOptions below, so picking a City never needs a second
     // network round trip.
-    final res = await ApiClient.instance.get('/geography/areas', query: {'pageSize': 100});
-    return res.list.map(Area.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/geography/areas', query: {'pageSize': 100});
+      final list = <Area>[];
+      for (final item in res.list) {
+        try { list.add(Area.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<Clinic>> _fetchClinics() async {
-    final res = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
-    return res.list.map(Clinic.fromJson).toList();
+    try {
+      final res = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try { list.add(Clinic.fromJson(item)); } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   List<String> get _cityOptions => (_cities.map((c) => c.name).toList()..sort());
@@ -413,7 +456,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     return _FilterField(
       label: label,
       child: DropdownButtonFormField<String>(
-        value: safeValue,
+        initialValue: safeValue,
         isExpanded: true,
         hint: Text('Select $label'),
         items: [for (final option in options) DropdownMenuItem(value: option, child: Text(option, overflow: TextOverflow.ellipsis))],
@@ -465,7 +508,7 @@ class _DoctorCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor: AppColors.primary.withOpacity(0.12),
+                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
                 // CachedNetworkImageProvider is a drop-in ImageProvider that disk-caches
                 // doctor photos, avoiding a re-download on every list rebuild/scroll.
                 backgroundImage: doctor.photoUrl != null ? CachedNetworkImageProvider(doctor.photoUrl!) : null,

@@ -71,4 +71,4 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/app_icon.png
+    - assets/branding/

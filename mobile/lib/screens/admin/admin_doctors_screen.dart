@@ -30,14 +30,29 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<DoctorDirectoryItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/doctors', query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <DoctorDirectoryItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(DoctorDirectoryItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/doctors', query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'})
-          .then((res) => res.list.map(DoctorDirectoryItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -119,7 +134,7 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
             width: double.infinity,
             margin: const EdgeInsets.all(AppSpacing.md),
             padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
             child: const Text(
               'An admin sees every doctor here, including those awaiting verification — see "Pending verification" below. New doctors are onboarded via "Add doctor" below (with an option to verify immediately).',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
@@ -271,8 +286,18 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
   @override
   void initState() {
     super.initState();
-    _specializationsFuture =
-        ApiClient.instance.get('/geography/specializations', query: {'pageSize': 200}).then((res) => res.list.map(Specialization.fromJson).toList());
+    _specializationsFuture = ApiClient.instance
+        .get('/geography/specializations', query: {'pageSize': 200})
+        .then((res) {
+          final list = <Specialization>[];
+          for (final item in res.list) {
+            try {
+              list.add(Specialization.fromJson(item));
+            } catch (_) {}
+          }
+          return list;
+        })
+        .catchError((_) => <Specialization>[]);
   }
 
   @override

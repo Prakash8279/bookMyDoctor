@@ -24,6 +24,7 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
   static const _filters = <(String?, String)>[
     (null, 'All'),
     ('upcoming', 'Upcoming'),
+    ('pending_payment', 'Pending payment'),
     ('confirmed', 'Confirmed'),
     ('completed', 'Completed'),
     ('cancelled', 'Cancelled'),
@@ -33,14 +34,29 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<Appointment>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          list.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .then((res) => res.list.map(Appointment.fromJson).toList());
+      _future = _fetch();
     });
   }
 

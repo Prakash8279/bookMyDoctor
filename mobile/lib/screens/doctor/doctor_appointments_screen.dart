@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import 'doctor_medical_records_screen.dart';
 
 /// Doctor's full appointment list with status-lifecycle actions.
 /// integration_plan.md §1.8: doctor may set any of the 4 terminal/interim
@@ -34,14 +35,29 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<Appointment>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          list.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .then((res) => res.list.map(Appointment.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -148,6 +164,7 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                       final a = appts[i];
                       final targets = _legalTargets(a.status);
                       final busy = _busyId == a.id;
+                      final canAddEmr = a.status == 'in_consultation' || a.status == 'completed' || a.status == 'confirmed';
                       return Card(
                         child: Padding(
                           padding: const EdgeInsets.all(AppSpacing.md),
@@ -224,17 +241,30 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                              ] else if (targets.isNotEmpty) ...[
+                              ] else if (targets.isNotEmpty || canAddEmr) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: targets
-                                      .map((s) => OutlinedButton(
-                                            onPressed: () => s == 'cancelled' ? _confirmCancel(a) : _setStatus(a, s),
-                                            child: Text(s.replaceAll('_', ' ')),
-                                          ))
-                                      .toList(),
+                                  children: [
+                                    ...targets.map((s) => OutlinedButton(
+                                          onPressed: () => s == 'cancelled' ? _confirmCancel(a) : _setStatus(a, s),
+                                          child: Text(s.replaceAll('_', ' ')),
+                                        )),
+                                    if (canAddEmr)
+                                      OutlinedButton.icon(
+                                        onPressed: () async {
+                                          await Navigator.of(context).push(
+                                            MaterialPageRoute(
+                                              builder: (_) => DoctorNewMedicalRecordScreen(initialAppointment: a),
+                                            ),
+                                          );
+                                          _load();
+                                        },
+                                        icon: const Icon(Icons.note_add_outlined, size: 16),
+                                        label: const Text('EMR / Notes'),
+                                      ),
+                                  ],
                                 ),
                               ],
                             ],

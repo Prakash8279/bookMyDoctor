@@ -82,7 +82,7 @@ const options = {
   // `*.controller.js`/`*.service.js`) — this is where this codebase's own header-comment
   // convention already documents each route's method/path/roles, so `@openapi` blocks live
   // alongside that, not scattered into files that have nothing to do with the HTTP surface.
-  apis: [path.join(__dirname, '..', 'modules', '**', '*.routes.js')],
+  apis: [path.join(__dirname, '..', 'modules', '**', '*.routes.js').replace(/\\/g, '/')],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

@@ -89,9 +89,12 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
                         if (hSnap.connectionState != ConnectionState.done) {
                           return const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LoadingView());
                         }
-                        if (hSnap.hasError) return ErrorBanner(error: hSnap.error!);
-                        final hours = (hSnap.data?.list ?? []).map(ClinicHours.fromJson).toList()
-                          ..sort((a, b) => a.weekday.compareTo(b.weekday));
+                        final rawList = hSnap.data?.list ?? [];
+                        final hours = <ClinicHours>[];
+                        for (final item in rawList) {
+                          try { hours.add(ClinicHours.fromJson(item)); } catch (_) {}
+                        }
+                        hours.sort((a, b) => a.weekday.compareTo(b.weekday));
                         if (hours.isEmpty) {
                           return const Align(
                             alignment: Alignment.centerLeft,

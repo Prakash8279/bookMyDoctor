@@ -24,14 +24,29 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<ReceptionistRow>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/receptionists', query: {'pageSize': 50})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <ReceptionistRow>[];
+      for (final item in res.list) {
+        try {
+          list.add(ReceptionistRow.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/receptionists', query: {'pageSize': 50})
-          .then((res) => res.list.map(ReceptionistRow.fromJson).toList());
+      _future = _fetch();
     });
   }
 
@@ -143,7 +158,15 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
   @override
   void initState() {
     super.initState();
-    _clinicsFuture = ApiClient.instance.get('/clinics', query: {'mine': true, 'pageSize': 50}).then((res) => res.list.map(Clinic.fromJson).toList());
+    _clinicsFuture = ApiClient.instance
+        .get('/clinics', query: {'mine': true, 'pageSize': 50})
+        .then((res) {
+          final list = <Clinic>[];
+          for (final item in res.list) {
+            try { list.add(Clinic.fromJson(item)); } catch (_) {}
+          }
+          return list;
+        }).catchError((_) => <Clinic>[]);
   }
 
   @override
@@ -229,7 +252,7 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
               builder: (context, snapshot) {
                 final clinics = snapshot.data ?? [];
                 return DropdownButtonFormField<Clinic>(
-                  value: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
+                  initialValue: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: _isEdit ? 'Reassign clinic (optional)' : 'Clinic'),
                   items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),

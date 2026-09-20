@@ -31,14 +31,29 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<ComplaintItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/complaints', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <ComplaintItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(ComplaintItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/complaints', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .then((res) => res.list.map(ComplaintItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 

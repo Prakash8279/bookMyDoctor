@@ -26,7 +26,8 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
   @override
   void initState() {
     super.initState();
-    _load();
+    _pendingFuture = _fetchPending();
+    _allFuture = _fetchAll();
   }
 
   @override
@@ -35,12 +36,44 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
     super.dispose();
   }
 
+  Future<List<Clinic>> _fetchPending() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/clinics', query: {'approvalStatus': 'pending', 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Clinic>> _fetchAll() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/clinics', query: {'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
   void _load() {
     setState(() {
-      _pendingFuture = ApiClient.instance
-          .get('/clinics', query: {'approvalStatus': 'pending', 'pageSize': 100})
-          .then((res) => res.list.map(Clinic.fromJson).toList());
-      _allFuture = ApiClient.instance.get('/clinics', query: {'pageSize': 100}).then((res) => res.list.map(Clinic.fromJson).toList());
+      _pendingFuture = _fetchPending();
+      _allFuture = _fetchAll();
     });
   }
 

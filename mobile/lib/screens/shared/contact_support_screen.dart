@@ -115,7 +115,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             DropdownButtonFormField<String>(
-              value: _subject,
+              initialValue: _subject,
               decoration: const InputDecoration(labelText: 'Subject'),
               items: [for (final s in _subjectOptions) DropdownMenuItem(value: s, child: Text(s))],
               onChanged: (v) => setState(() => _subject = v ?? _subjectOptions.first),

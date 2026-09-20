@@ -30,14 +30,29 @@ class _AdminContactScreenState extends State<AdminContactScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _future = _fetch();
+  }
+
+  Future<List<ContactRequestItem>> _fetch() async {
+    try {
+      final res = await ApiClient.instance
+          .get('/contact', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
+          .catchError((_) => ApiResponse(data: []));
+      final list = <ContactRequestItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(ContactRequestItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
 
   void _load() {
     setState(() {
-      _future = ApiClient.instance
-          .get('/contact', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .then((res) => res.list.map(ContactRequestItem.fromJson).toList());
+      _future = _fetch();
     });
   }
 

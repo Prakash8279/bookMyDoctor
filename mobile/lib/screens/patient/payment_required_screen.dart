@@ -49,7 +49,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
     super.dispose();
   }
 
-  Future<void> _payNow() async {
+  Future<void> _payNow([String option = 'full']) async {
     setState(() {
       _error = null;
       _payingNow = true;
@@ -57,7 +57,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
     try {
       final res = await ApiClient.instance.post('/payments/razorpay/order', body: {
         'appointmentId': _appointment.id,
-        'paymentOption': 'full',
+        'paymentOption': option,
       });
       final order = res.map;
       _razorpay.open({
@@ -66,14 +66,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
         'currency': order['currency'],
         'order_id': order['orderId'],
         'name': 'BookMyDoctor24',
-        'description': 'Consultation with ${_appointment.doctor?.name ?? "doctor"}',
-        // Web's Razorpay Checkout uses AppColors.primary's exact hex (see
-        // PatientPages.jsx#Booking's payNow: theme:{color:'#ad5d3b'}) — this
-        // previously hardcoded '#EA580C', the old pre-rebrand orange that
-        // app_theme.dart's own header comment calls out as no longer matching
-        // anything in the app, so the one native-styled part of this screen
-        // (the Razorpay widget itself, which can't read Flutter theme data)
-        // silently broke brand consistency right at the moment of payment.
+        'description': 'Consultation with ${_appointment.doctor?.name ?? "doctor"}${option == "minimum" ? " · Booking amount" : ""}',
         'theme': {'color': '#AD5D3B'},
       });
     } catch (err) {
@@ -87,9 +80,6 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
 
   Future<void> _onPaymentSuccess(PaymentSuccessResponse response) async {
     try {
-      // Backend returns the authoritative, freshly re-fetched appointment (status may have just
-      // flipped pending_payment -> upcoming, with a newly-minted token number) — trust that
-      // instead of guessing the new shape ourselves, same as the web client does.
       final res = await ApiClient.instance.post('/payments/razorpay/verify', body: {
         'appointmentId': _appointment.id,
         'razorpayOrderId': response.orderId,
@@ -124,28 +114,118 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
   @override
   Widget build(BuildContext context) {
     final total = _appointment.fees.totalAmount ?? 0;
+    final minAmount = _appointment.fees.minBookingAmount ?? 0;
+    final minRemainder = _appointment.fees.minBookingRemainder ?? 0;
     final paid = _appointment.status != 'pending_payment';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Payment')),
+      appBar: AppBar(title: Text(paid ? 'Appointment booked' : 'Payment')),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: paid
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const PageHeader(
-                      title: 'Appointment booked',
-                      subtitle: 'Your booking has been confirmed.',
-                    ),
-                    const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 56),
-                    const SizedBox(height: AppSpacing.md),
-                    const Text('Booking confirmed', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text('Token number: ${_appointment.tokenNumber ?? "—"}', style: const TextStyle(fontSize: 16)),
-                    const SizedBox(height: AppSpacing.lg),
-                    PrimaryButton(label: 'Done', onPressed: () => Navigator.of(context).pop(_appointment)),
-                  ],
+              ? Container(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check, color: AppColors.success, size: 28),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      const Text(
+                        'Booking confirmed',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_appointment.doctor?.name ?? "Doctor"} · ${_appointment.appointmentDate}',
+                        style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Token #${_appointment.tokenNumber ?? "—"}',
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primaryDark,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        "You'll be seen in this order after check-in — track live queue status under My Appointments.",
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Consultation amount', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                                Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            if (_appointment.paymentStatus == 'paid')
+                              const Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                                  SizedBox(width: 6),
+                                  Text('Paid online', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+                                ],
+                              )
+                            else if (_appointment.paymentStatus == 'partial')
+                              const Row(
+                                children: [
+                                  Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                                  SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Booking amount paid online — balance due at the clinic',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
+                              const Text('No online payment was required for this booking.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      PrimaryButton(
+                        label: 'View my appointments',
+                        onPressed: () => Navigator.of(context).pop(_appointment),
+                      ),
+                    ],
+                  ),
                 )
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -159,8 +239,8 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${_appointment.doctor?.name ?? "—"} · ${_appointment.appointmentDate}'),
-                          const SizedBox(height: AppSpacing.sm),
+                          Text('${_appointment.doctor?.name ?? "—"} · ${_appointment.appointmentDate}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: AppSpacing.xs),
                           const Text(
                             'Your token number will be issued as soon as payment is received.',
                             style: TextStyle(color: AppColors.textSecondary),
@@ -173,15 +253,41 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                       ErrorBanner(error: _error!),
                       const SizedBox(height: AppSpacing.md),
                     ],
-                    // Mirrors web's inner "rounded-button bg-surface p-4" fee box inside the same
-                    // pending_payment card (PatientPages.jsx#Booking) — same "Full consultation
-                    // amount" label wording, amount, and its own Pay button, rather than a bare
-                    // Row + button floating in the page padding.
                     SectionCard(
                       title: 'Full consultation amount',
                       trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      child: PrimaryButton(label: 'Pay ₹${total.toStringAsFixed(0)} now', onPressed: _payNow, loading: _payingNow),
+                      child: PrimaryButton(
+                        label: 'Pay ₹${total.toStringAsFixed(0)} now',
+                        onPressed: () => _payNow('full'),
+                        loading: _payingNow,
+                      ),
                     ),
+                    if (minAmount > 0) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      SectionCard(
+                        title: 'Minimum booking amount',
+                        trailing: Text('₹${minAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Remaining ₹${minRemainder.toStringAsFixed(0)} to be paid at the clinic.',
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: AppColors.primaryDark),
+                                foregroundColor: AppColors.primaryDark,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: _payingNow ? null : () => _payNow('minimum'),
+                              child: Text('Pay ₹${minAmount.toStringAsFixed(0)} now', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
         ),

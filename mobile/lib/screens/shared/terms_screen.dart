@@ -79,8 +79,8 @@ class TermsScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(AppSpacing.sm),
             decoration: BoxDecoration(
-              color: AppColors.gold.withOpacity(0.1),
-              border: Border.all(color: AppColors.gold.withOpacity(0.4)),
+              color: AppColors.gold.withValues(alpha: 0.1),
+              border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
               borderRadius: BorderRadius.circular(AppRadius.button),
             ),
             child: const Text.rich(

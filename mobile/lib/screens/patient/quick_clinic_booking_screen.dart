@@ -47,10 +47,13 @@ class _QuickClinicBookingScreenState extends State<QuickClinicBookingScreen> {
     });
     try {
       final listRes = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
-      final match = listRes.list.cast<Map<String, dynamic>>().firstWhere(
-            (row) => _digitsOnly((row['phone'] as String?) ?? '').contains(query),
-            orElse: () => const {},
-          );
+      Map<String, dynamic> match = const {};
+      for (final row in listRes.list) {
+        if (_digitsOnly((row['phone'] as String?) ?? '').contains(query)) {
+          match = row;
+          break;
+        }
+      }
       if (match.isEmpty) {
         setState(() => _searching = false);
         return;
