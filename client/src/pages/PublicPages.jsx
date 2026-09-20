@@ -66,7 +66,7 @@ export function SiteHeader() {
   return (
     <header className="site-header relative">
       <div className="container nav-wrap">
-        <Link to="/" className="brand" aria-label="BookMyDoctor24 home" onClick={() => setMobileOpen(false)}>
+        <Link to="/" className="brand [grid-column:1]" aria-label="BookMyDoctor24 home" onClick={() => setMobileOpen(false)}>
           {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
               the PDF receipts. */}
@@ -77,7 +77,7 @@ export function SiteHeader() {
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className="main-nav hidden md:flex items-center gap-6" aria-label="Main navigation">
+        <nav className="main-nav hidden md:flex items-center gap-6 [grid-column:2]" aria-label="Main navigation">
           <Link to="/search">Find doctors</Link>
           <a href="/#specializations">Specialties</a>
           <a href="/#how-it-works">How it works</a>
@@ -88,8 +88,19 @@ export function SiteHeader() {
         {/* Header Utilities: Theme Toggle & Mobile Menu Hamburger.
             SIDEBAR-TOGGLE POSITION FIX (user report: "side bar sahi jagah karo" → tried moving the
             hamburger to the top-left next to the brand → user confirmed that was wrong, hamburger
-            should stay on the top-RIGHT here, next to the dark-mode toggle, same as before). */}
-        <div className="header-utilities flex items-center gap-2">
+            should stay on the top-RIGHT here, next to the dark-mode toggle, same as before).
+            RIGHT-CORNER GAP FIX (user report: "right cornor me karo, name pe bad space do" — the
+            hamburger sat ~65px short of the true right edge with an oddly small gap after the
+            brand name). Root cause: .nav-wrap is a 3-column grid (brand | nav | utilities), but on
+            mobile the middle <nav> is `display:none`, and CSS Grid auto-placement skips it
+            entirely — so this utilities div silently landed in the MIDDLE (flexible 1fr) column
+            instead of its own last column, leaving the real last column empty/0-width at the true
+            edge and stranding a chunk of dead space after the icons instead of after the name.
+            Pinning every child to its explicit grid-column (see brand's and nav's [grid-column:*]
+            below) fixes both symptoms at once: the empty middle column now correctly absorbs all
+            the leftover width BETWEEN the name and the icons (more space after the name), and this
+            utilities block sits in the real last column, flush against the true right edge/corner. */}
+        <div className="header-utilities flex items-center gap-2 [grid-column:3]">
           <button type="button" className="theme-toggle" aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'} title={dark ? 'Switch to light theme' : 'Switch to dark theme'} onClick={toggle}>
             {dark ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-sun"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
