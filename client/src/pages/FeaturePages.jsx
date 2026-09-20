@@ -4,6 +4,7 @@ import { DataTable } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
+import { Select } from '../components/Select'
 import { StatCard } from '../components/StatCard'
 import { StatusPill } from '../components/StatusPill'
 import { DoctorCard, SiteHeader } from './PublicPages'
@@ -271,17 +272,11 @@ export function DoctorClinics({ data }) {
         <FormField label="Clinic phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">City<span className="text-error"> *</span></span>
-          <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={form.cityId} onChange={(event) => setForm({ ...form, cityId: event.target.value, areaId: '' })} required>
-            <option value="">Select city</option>
-            {(data.cities || []).map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
-          </select>
+          <Select label="city" placeholder="Select city" required options={(data.cities || []).map((city) => ({ value: city.id, label: city.name }))} value={form.cityId} onChange={(event) => setForm({ ...form, cityId: event.target.value, areaId: '' })} />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Area</span>
-          <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={form.areaId} onChange={(event) => setForm({ ...form, areaId: event.target.value })}>
-            <option value="">Select area</option>
-            {areaOptions.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
-          </select>
+          <Select label="area" placeholder="Select area" options={areaOptions.map((area) => ({ value: area.id, label: area.name }))} value={form.areaId} onChange={(event) => setForm({ ...form, areaId: event.target.value })} />
         </label>
         <div className="sm:col-span-2"><FormField label="Full address" type="textarea" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div>
       </div>
@@ -294,17 +289,11 @@ export function DoctorClinics({ data }) {
       <form onSubmit={assignDoctor} className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Clinic<span className="text-error"> *</span></span>
-          <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={assignClinicId} onChange={(event) => setAssignClinicId(event.target.value)} required>
-            <option value="">Select clinic</option>
-            {clinics.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
+          <Select placeholder="Select clinic" required options={clinics.map((item) => ({ value: item.id, label: item.name }))} value={assignClinicId} onChange={(event) => setAssignClinicId(event.target.value)} />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Verified doctor<span className="text-error"> *</span></span>
-          <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={assignDoctorId} onChange={(event) => setAssignDoctorId(event.target.value)} required>
-            <option value="">Select doctor</option>
-            {(data.doctors || []).map((member) => <option key={member.id} value={member.id}>{member.name} ({member.specialization?.name || 'General Medicine'}, {member.experienceYears || 0} years)</option>)}
-          </select>
+          <Select placeholder="Select doctor" required options={(data.doctors || []).map((member) => ({ value: member.id, label: `${member.name} (${member.specialization?.name || 'General Medicine'}, ${member.experienceYears || 0} years)` }))} value={assignDoctorId} onChange={(event) => setAssignDoctorId(event.target.value)} />
         </label>
         <Button type="submit" className="sm:col-span-2 sm:w-max" disabled={assigning}>{assigning ? 'Adding…' : 'Add doctor'}</Button>
       </form>
@@ -549,10 +538,7 @@ export function DoctorStaff() {
       <FormField label="Temporary password" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required />
       <label className="block sm:col-span-2">
         <span className="mb-1.5 block text-sm font-medium text-ink">Clinic<span className="text-error"> *</span></span>
-        <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={form.clinicId} onChange={(event) => setForm({ ...form, clinicId: event.target.value })} required>
-          <option value="">Select clinic</option>
-          {clinics.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </select>
+        <Select placeholder="Select clinic" required options={clinics.map((item) => ({ value: item.id, label: item.name }))} value={form.clinicId} onChange={(event) => setForm({ ...form, clinicId: event.target.value })} />
       </label>
       <div className="sm:col-span-2"><ErrorNote>{formError}</ErrorNote></div>
       <Button type="submit" className="sm:col-span-2" disabled={submitting}>{submitting ? 'Saving…' : 'Create account'}</Button>

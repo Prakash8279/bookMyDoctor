@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
 import { Modal } from '../components/Modal'
+import { Select } from '../components/Select'
 import { StatCard } from '../components/StatCard'
 import { StatusPill } from '../components/StatusPill'
 import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
@@ -342,10 +343,7 @@ export function DoctorVerification({ data }) {
         <FormField label="Temporary password" name="password" type="password" required />
         <label className="block">
           <span className="mb-1.5 block text-sm font-medium text-ink">Specialization<span className="text-error"> *</span></span>
-          <select name="specializationId" required className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark">
-            <option value="">Select Specialization</option>
-            {specializations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
+          <Select name="specializationId" required placeholder="Select Specialization" options={specializations.map((item) => ({ value: item.id, label: item.name }))} />
         </label>
         <FormField label="Qualification" name="qualification" />
         <FormField label="Registration number" name="registrationNumber" />
@@ -741,10 +739,7 @@ export function CitiesAreas({ data }) {
     {mode === 'area' && <form onSubmit={saveArea} className="mb-5 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card sm:grid-cols-3">
       <label className="block">
         <span className="mb-1.5 block text-sm font-medium text-ink">City<span className="text-error"> *</span></span>
-        <select name="cityId" required className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark">
-          <option value="">Select City</option>
-          {(data.cities || []).map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
-        </select>
+        <Select name="cityId" required placeholder="Select City" options={(data.cities || []).map((city) => ({ value: city.id, label: city.name }))} />
       </label>
       <FormField label="Area" name="area" required />
       <FormField label="Pincode" name="pincode" inputMode="numeric" required />
@@ -955,10 +950,7 @@ export function ManageReceptionists({ data }) {
       <FormField label="Temporary password" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} required />
       <label className="block sm:col-span-2">
         <span className="mb-1.5 block text-sm font-medium text-ink">Assigned clinic<span className="text-error"> *</span></span>
-        <select className="min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark" value={form.clinicId} onChange={(event) => setForm({ ...form, clinicId: event.target.value })} required>
-          <option value="">Select clinic</option>
-          {(data.clinics || []).map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}
-        </select>
+        <Select required placeholder="Select clinic" options={(data.clinics || []).map((clinic) => ({ value: clinic.id, label: clinic.name }))} value={form.clinicId} onChange={(event) => setForm({ ...form, clinicId: event.target.value })} />
       </label>
       <div className="sm:col-span-2"><ErrorNote>{formError}</ErrorNote></div>
       <Button type="submit" className="sm:col-span-2" disabled={submitting}>{submitting ? 'Saving…' : 'Save receptionist'}</Button>
@@ -1106,7 +1098,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="flex flex-wrap items-end gap-2"><label className="text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label><label className="text-xs font-semibold text-muted">To<input aria-label="Revenue end date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label>{!doctorOnly && <select aria-label="Filter by doctor" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} className="min-h-11 rounded-button border border-border bg-white px-3 text-sm"><option value="all">All doctors</option>{doctorNames.map((name) => <option value={name} key={name}>{name}</option>)}</select>}<button type="button" onClick={downloadExcel} className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal">Download Excel</button></div>}>
+  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="flex flex-wrap items-end gap-2"><label className="text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label><label className="text-xs font-semibold text-muted">To<input aria-label="Revenue end date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal">Download Excel</button></div>}>
     {invalidRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
     <ErrorNote>{loadError}</ErrorNote>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Selected range revenue" value={money(total)} detail={`${reportPayments.length} payment${reportPayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail={periodLabel} icon="≈" /><StatCard label="Platform commission" value={doctorOnly ? '—' : money(commission)} detail={doctorOnly ? 'Shown to admin only' : 'Convenience/emergency/GST charges'} icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail={doctorOnly ? 'Your consultation charges' : "Full consultation fee (doctor's share)"} icon="✓" /></div>
