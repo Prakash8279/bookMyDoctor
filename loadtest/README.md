@@ -44,3 +44,60 @@ exactly what needs fixing first, and exactly what Phase 1 is for.
   down / crash partway through a stage?
 - **Task Manager**: does `node.exe` (the server process) pin one CPU core at 100% while others
   sit idle? (This is expected — it's the single-process bottleneck Phase 2 fixes.)
+
+---
+
+# Full API sweep (`full-api-sweep.js`)
+
+Companion script that goes wider instead of deeper: `login-loadtest.js` above is a focused,
+multi-stage ramp on one endpoint (`/auth/login`); `full-api-sweep.js` covers every `GET` route
+in the real route table (read straight out of `src/modules/*/*.routes.js` — see the API
+inventory in `docs/api-load-test-report-2026-09-20.md` for the full list with auth
+requirements) with one validation request and one load stage each, plus a deeper ramp on two
+representative endpoints (a cache-fronted public read and an always-hits-Postgres
+authenticated read).
+
+**Why this exists as a separate script, not more stages bolted onto `login-loadtest.js`**:
+different endpoints need different auth (or none), and testing 25+ endpoints at
+`login-loadtest.js`'s 5-stage depth would take well over an hour; this instead does one
+broad, fast pass so you can see at a glance whether anything is obviously slow or broken, and
+only goes deep on the two endpoint shapes that matter most (cached vs. uncached reads).
+
+**It intentionally never touches a write endpoint** (no `POST`/`PATCH`/`DELETE` is ever load
+tested) — every write in this API has a real side effect in whatever database `LOADTEST_BASE_URL`
+points at, and load-testing those needs a disposable database and your own explicit decision to
+do it, not a default script.
+
+## Steps
+
+1. Same prerequisite as above, but raise **both** rate limits temporarily in `server/.env`
+   (this script logs in 5 times, then deliberately exceeds the normal read rate on every
+   endpoint):
+   - `AUTH_RATE_LIMIT_MAX=100000`
+   - `DEFAULT_RATE_LIMIT_MAX=100000`
+   - Restart Terminal 1.
+2. Same 3 terminals + Redis running as above.
+3. Run it:
+   ```
+   cd loadtest
+   npm install   (skip if you already ran this for login-loadtest.js)
+   node full-api-sweep.js
+   ```
+   Expect roughly 5-7 minutes total (login pass + ~20 endpoint validations + ~20 flat load
+   stages at 8s each + two 4-stage ramps).
+4. Copy everything from `=== Full API sweep` onward and send it back.
+5. **Revert both rate limits** back to their original values (`AUTH_RATE_LIMIT_MAX=10`,
+   `DEFAULT_RATE_LIMIT_MAX=300` unless you'd changed those defaults already) and restart
+   Terminal 1. Do not leave the API unprotected after this test.
+
+## Endpoints this does NOT cover, and why
+
+- Any `GET /.../:id` route (a specific doctor, clinic, appointment, payment, or a document
+  download) — there's no generic way to pick a valid id without querying your database first.
+  If you want these covered, pass real ids from your own seeded data:
+  ```
+  set DETAIL_ROUTE_IDS={"doctorId":"...","clinicId":"...","appointmentId":"...","paymentId":"..."}
+  node full-api-sweep.js
+  ```
+- Every `POST`/`PATCH`/`DELETE` endpoint (registration, booking, payments, admin writes, etc.)
+  — deliberately excluded, see above.

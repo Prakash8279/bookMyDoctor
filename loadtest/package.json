@@ -4,7 +4,8 @@
   "private": true,
   "description": "Phase 1 scalability baseline: measures how the backend actually behaves under concurrent login load, before any of the Phase 2+ fixes are applied.",
   "scripts": {
-    "test:login": "node login-loadtest.js"
+    "test:login": "node login-loadtest.js",
+    "test:full-sweep": "node full-api-sweep.js"
   },
   "dependencies": {
     "autocannon": "^7.15.0"
