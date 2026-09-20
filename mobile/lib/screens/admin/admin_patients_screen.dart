@@ -1,11 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/admin_models.dart';
+import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+
+// COMPLETENESS FIX (mobile parity audit): matches web's `formatDate` (client/src/lib/format.js) —
+// "DD Mon YYYY", or an em dash for a falsy/invalid value.
+String _formatDate(String? value) {
+  if (value == null || value.isEmpty) return '—';
+  final parsed = DateTime.tryParse(value);
+  return parsed == null ? value : DateFormat('dd MMM yyyy').format(parsed);
+}
 
 /// COMPLETENESS FIX (audit Priority 3 #5 — mobile parity): real backend endpoint
 /// (GET /admin/patients), real web page (AdminPages.jsx#ManagePatients) — no mobile screen
@@ -42,17 +53,43 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
 
   Future<List<PatientDirectoryItem>> _fetch() async {
     try {
-      final res = await ApiClient.instance.get('/admin/patients', query: {
-        'pageSize': 100,
-        if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
-      }).catchError((_) => ApiResponse(data: []));
+      final results = await Future.wait([
+        ApiClient.instance.get('/admin/patients', query: {
+          'pageSize': 100,
+          if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
+        }).catchError((_) => ApiResponse(data: [])),
+        // COMPLETENESS FIX (mobile parity audit): web's ManagePatients "Health notes" column
+        // (AdminPages.jsx#ManagePatients) comes from a `clinicalMap` built out of GET
+        // /appointments's already-loaded `patient` sub-object, NOT the plain directory endpoint
+        // above (which never carries medicalHistory/emergencyContact) — an admin caller to
+        // GET /appointments gets the full clinical view (appointments.service.js#shapePatientRef).
+        ApiClient.instance.get('/appointments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+      ]);
       final list = <PatientDirectoryItem>[];
-      for (final item in res.list) {
+      for (final item in results[0].list) {
         try {
           list.add(PatientDirectoryItem.fromJson(item));
         } catch (_) {}
       }
-      return list;
+      final clinicalById = <String, PatientRef>{};
+      for (final item in results[1].list) {
+        try {
+          final appointment = Appointment.fromJson(item);
+          final patient = appointment.patient;
+          if (patient != null && patient.id.isNotEmpty && !clinicalById.containsKey(patient.id)) {
+            clinicalById[patient.id] = patient;
+          }
+        } catch (_) {}
+      }
+      return [
+        for (final p in list)
+          clinicalById.containsKey(p.id)
+              ? p.mergedWithHealthNotes(
+                  medicalHistory: clinicalById[p.id]!.medicalHistory,
+                  emergencyContact: clinicalById[p.id]!.emergencyContact,
+                )
+              : p,
+      ];
     } catch (_) {
       return [];
     }
@@ -67,6 +104,19 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
   void _onSearchChanged(String _) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), _load);
+  }
+
+  // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action (AdminPages.jsx
+  // ManagePatients#exportCsv) had no mobile equivalent. Same header/column order/values.
+  Future<void> _exportCsv(List<PatientDirectoryItem> patients) async {
+    await shareCsv(
+      filename: 'patients.csv',
+      headers: const ['Id', 'Name', 'Email', 'Phone', 'City', 'Registered', 'Status'],
+      rows: [
+        for (final p in patients)
+          [p.id, p.name, p.email ?? '', p.phone ?? '', p.city ?? '', _formatDate(p.registeredAt), p.status],
+      ],
+    );
   }
 
   // COMPLETENESS FIX (audit Priority 4 — "no way to disable a doctor's or patient's login"):
@@ -93,11 +143,23 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
         children: [
           // Mirrors the web app's ManagePatients `Page` header (AdminPages.jsx) —
           // same title + subtitle copy.
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Patient management',
               subtitle: 'Every registered patient account — not just ones seen in a booking or payment.',
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action — see _exportCsv.
+              action: FutureBuilder<List<PatientDirectoryItem>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  final patients = snapshot.data ?? const <PatientDirectoryItem>[];
+                  return TextButton.icon(
+                    onPressed: patients.isEmpty ? null : () => _exportCsv(patients),
+                    icon: const Icon(Icons.file_download_outlined, size: 16),
+                    label: const Text('Export CSV'),
+                  );
+                },
+              ),
             ),
           ),
           Padding(
@@ -138,19 +200,38 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
                         if (p.gender != null) p.gender,
                         if (p.bloodGroup != null) p.bloodGroup,
                         if (p.city != null) p.city,
+                        // COMPLETENESS FIX (mobile parity audit): web's ManagePatients table shows
+                        // a "Registered" column (formatDate(item.registeredAt)) — mobile parsed
+                        // this field already but never displayed it.
+                        'Registered: ${_formatDate(p.registeredAt)}',
                       ].join(' · ');
                       final busy = _busyId == p.id;
                       return Card(
                         child: ListTile(
                           title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text(
-                            [
-                              if (p.email != null) p.email!,
-                              if (p.phone != null) p.phone!,
-                              if (details.isNotEmpty) details,
-                            ].join('\n'),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                [
+                                  if (p.email != null) p.email!,
+                                  if (p.phone != null) p.phone!,
+                                  if (details.isNotEmpty) details,
+                                ].join('\n'),
+                              ),
+                              // COMPLETENESS FIX (mobile parity audit): web's "Health notes"
+                              // column — see _fetch()'s clinicalMap merge above.
+                              if (p.healthNotesSummary != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  p.healthNotesSummary!,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                                ),
+                              ],
+                            ],
                           ),
-                          isThreeLine: true,
                           trailing: busy
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                               : Row(

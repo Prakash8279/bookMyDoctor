@@ -29,6 +29,13 @@ Future<void> shareCsv({
   required List<String> headers,
   required List<List<dynamic>> rows,
 }) async {
-  final csv = buildCsv(headers, rows);
-  await Share.share(csv, subject: filename);
+  await shareText(filename: filename, content: buildCsv(headers, rows));
+}
+
+/// Generic version of [shareCsv] for content that isn't CSV — e.g. the HTML-table-as-.xls trick
+/// admin's revenue report export uses (mirrors AdminPages.jsx's `downloadExcel`, which builds an
+/// HTML table and saves it with a `.xls` extension rather than pulling in a real spreadsheet
+/// library). Same OS-share-sheet approach and same reasoning as [shareCsv] above.
+Future<void> shareText({required String filename, required String content}) async {
+  await Share.share(content, subject: filename);
 }

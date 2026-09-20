@@ -65,6 +65,21 @@ class AdminActivityLogScreen extends StatelessWidget {
                         '${e.actor?.name ?? "System"}${e.actorRole != null ? " (${e.actorRole})" : ""}${e.createdAt != null ? " · ${e.createdAt!.split("T").first}" : ""}',
                         style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                       ),
+                      // COMPLETENESS FIX (mobile parity audit): web's AuditLog table has its own
+                      // "Target" and "IP address" columns (AdminPages.jsx) — mobile only ever
+                      // showed the description/actor line above even though the API already
+                      // sends this data (admin.service.js's activity-log select/shape).
+                      if (e.targetEntityType != null || e.ipAddress != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            if (e.targetEntityType != null)
+                              'Target: ${e.targetEntityType}${e.targetEntityId != null ? " #${e.targetEntityId}" : ""}',
+                            if (e.ipAddress != null) 'IP: ${e.ipAddress}',
+                          ].join(' · '),
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                        ),
+                      ],
                     ],
                   ),
                 );

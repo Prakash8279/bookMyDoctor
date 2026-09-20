@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -114,6 +115,27 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     if (result == true) _load();
   }
 
+  // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action (AdminPages.jsx
+  // DoctorVerification#exportCsv) had no mobile equivalent. Same header/column order/values.
+  Future<void> _exportCsv(List<DoctorDirectoryItem> doctors) async {
+    await shareCsv(
+      filename: 'doctors.csv',
+      headers: const ['Id', 'Doctor', 'Registration', 'Experience', 'Fee', 'Rating', 'Status'],
+      rows: [
+        for (final d in doctors)
+          [
+            d.id,
+            d.name,
+            d.registrationNumber ?? '',
+            '${d.experienceYears ?? 0} years',
+            d.consultationFee,
+            d.rating,
+            d.doctorStatus ?? '',
+          ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,12 +144,24 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
         children: [
           // Mirrors the web app's DoctorVerification `Page` header (AdminPages.jsx) —
           // same kicker + title + subtitle copy.
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'Doctor management',
               subtitle: 'Create, verify, enable, and disable doctor accounts.',
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action — see _exportCsv.
+              action: FutureBuilder<List<DoctorDirectoryItem>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  final doctors = snapshot.data ?? const <DoctorDirectoryItem>[];
+                  return TextButton.icon(
+                    onPressed: doctors.isEmpty ? null : () => _exportCsv(doctors),
+                    icon: const Icon(Icons.file_download_outlined, size: 16),
+                    label: const Text('Export CSV'),
+                  );
+                },
+              ),
             ),
           ),
           Container(

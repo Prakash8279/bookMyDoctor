@@ -85,6 +85,14 @@ class PatientDirectoryItem {
   final String? gender;
   final String? dateOfBirth;
   final String? bloodGroup;
+  // COMPLETENESS FIX (mobile parity audit): GET /admin/patients (the directory endpoint this
+  // model comes from) never returns these — mirrors web's ManagePatients, which enriches its
+  // directory rows with a `clinicalMap` built from GET /appointments + GET /payments's already-
+  // loaded `patient` sub-objects (the same appointments.service.js#shapePatientRef payload that
+  // gives an admin caller the full clinical view). Left null until AdminPatientsScreen merges
+  // that data in client-side via [mergedWithHealthNotes]; never sent by fromJson itself.
+  final String? medicalHistory;
+  final String? emergencyContact;
 
   PatientDirectoryItem({
     required this.id,
@@ -97,6 +105,8 @@ class PatientDirectoryItem {
     this.gender,
     this.dateOfBirth,
     this.bloodGroup,
+    this.medicalHistory,
+    this.emergencyContact,
   });
 
   factory PatientDirectoryItem.fromJson(Map<String, dynamic> json) => PatientDirectoryItem(
@@ -110,6 +120,37 @@ class PatientDirectoryItem {
         gender: json['gender'] as String?,
         dateOfBirth: json['dateOfBirth'] as String?,
         bloodGroup: json['bloodGroup'] as String?,
+      );
+
+  bool get hasHealthNotes =>
+      (medicalHistory != null && medicalHistory!.trim().isNotEmpty) ||
+      (emergencyContact != null && emergencyContact!.trim().isNotEmpty);
+
+  /// "History: ... · Emergency contact: ..." — mirrors PatientRef.healthNotesSummary /
+  /// web's ManagePatients `healthNotes` column render.
+  String? get healthNotesSummary {
+    if (!hasHealthNotes) return null;
+    final parts = <String>[];
+    if (medicalHistory != null && medicalHistory!.trim().isNotEmpty) parts.add('History: $medicalHistory');
+    if (emergencyContact != null && emergencyContact!.trim().isNotEmpty) {
+      parts.add('Emergency contact: $emergencyContact');
+    }
+    return parts.join(' · ');
+  }
+
+  PatientDirectoryItem mergedWithHealthNotes({String? medicalHistory, String? emergencyContact}) => PatientDirectoryItem(
+        id: id,
+        name: name,
+        email: email,
+        phone: phone,
+        city: city,
+        status: status,
+        registeredAt: registeredAt,
+        gender: gender,
+        dateOfBirth: dateOfBirth,
+        bloodGroup: bloodGroup,
+        medicalHistory: medicalHistory ?? this.medicalHistory,
+        emergencyContact: emergencyContact ?? this.emergencyContact,
       );
 }
 
@@ -421,6 +462,10 @@ class ActivityLogEntry {
   final String? targetEntityId;
   final String? description;
   final String? createdAt;
+  // COMPLETENESS FIX (mobile parity audit): admin.service.js's activity-log select/shape already
+  // returns this (see line `ipAddress: row.ipAddress`) — AdminPages.jsx's AuditLog table shows it
+  // as its own "IP address" column; the mobile model just never parsed it.
+  final String? ipAddress;
 
   ActivityLogEntry({
     required this.id,
@@ -431,6 +476,7 @@ class ActivityLogEntry {
     this.targetEntityId,
     this.description,
     this.createdAt,
+    this.ipAddress,
   });
 
   factory ActivityLogEntry.fromJson(Map<String, dynamic> json) => ActivityLogEntry(
@@ -441,6 +487,7 @@ class ActivityLogEntry {
         targetEntityType: json['targetEntityType'] as String?,
         targetEntityId: json['targetEntityId'] as String?,
         description: json['description'] as String?,
+        ipAddress: json['ipAddress'] as String?,
         createdAt: json['createdAt'] as String?,
       );
 }

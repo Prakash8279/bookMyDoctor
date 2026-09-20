@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -96,6 +97,59 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
     final start = DateTime(_from.year, _from.month, _from.day);
     final end = DateTime(_to.year, _to.month, _to.day, 23, 59, 59);
     return !date.isBefore(start) && !date.isAfter(end);
+  }
+
+  // COMPLETENESS FIX (mobile parity audit): web's "Download Excel" action
+  // (AdminPages.jsx#RevenueReports `downloadExcel`) had no mobile equivalent — mobile only ever
+  // built the on-screen stat tiles/tables from this same data, never let an admin export it.
+  // Same HTML-table-as-.xls trick as web (a real spreadsheet library is overkill for one export
+  // button), same three tables (summary, doctor-wise, payment details) and same escaping.
+  Future<void> _downloadExcel({
+    required String periodLabel,
+    required double total,
+    required int paymentsCount,
+    required double commission,
+    required double clinicPayout,
+    required List<_DoctorRevenue> doctorRows,
+    required List<PaymentItem> payments,
+  }) async {
+    String escape(Object? value) => (value?.toString() ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    String money(double value) => '₹${value.toStringAsFixed(0)}';
+
+    final doctorRowsHtml = doctorRows
+        .map((d) => '<tr><td>${escape(d.name)}</td><td>${d.payments}</td><td>${escape(money(d.revenue))}</td></tr>')
+        .join();
+    final paymentRowsHtml = payments
+        .map((p) => '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
+            '<td>${escape(p.doctor?.name ?? 'Unassigned')}</td>'
+            '<td>${escape(p.receiptNumber ?? '')}</td>'
+            '<td>${escape(p.mode)}</td>'
+            '<td>${escape(money(p.fees.amount ?? p.fees.consultationFee ?? 0))}</td>'
+            '<td>${escape(p.status)}</td></tr>')
+        .join();
+    final html = '<html><head><meta charset="UTF-8"></head><body>'
+        '<h2>BookMyDoctor24 Revenue Report</h2>'
+        '<p>Period: ${escape(periodLabel)} · Doctor: ${escape(_doctorFilter == 'all' ? 'All doctors' : _doctorFilter)}</p>'
+        '<table border="1"><tr><th>Metric</th><th>Value</th></tr>'
+        '<tr><td>Revenue</td><td>${escape(money(total))}</td></tr>'
+        '<tr><td>Payments</td><td>$paymentsCount</td></tr>'
+        '<tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr>'
+        '<tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr></table><br>'
+        '<h3>Doctor-wise revenue</h3>'
+        '<table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>'
+        '${doctorRowsHtml.isEmpty ? '<tr><td colspan="3">No payments</td></tr>' : doctorRowsHtml}</table><br>'
+        '<h3>Payment details</h3>'
+        '<table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>'
+        '${paymentRowsHtml.isEmpty ? '<tr><td colspan="6">No payments</td></tr>' : paymentRowsHtml}</table>'
+        '</body></html>';
+
+    final fromStr = DateFormat('yyyy-MM-dd').format(_from);
+    final toStr = DateFormat('yyyy-MM-dd').format(_to);
+    await shareText(filename: 'bookmydoctor24-revenue-$fromStr-to-$toStr.xls', content: html);
   }
 
   @override
@@ -201,6 +255,27 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         ...doctorEntries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))),
                       ],
                       onChanged: (v) => setState(() => _doctorFilter = v ?? 'all'),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    // COMPLETENESS FIX (mobile parity audit): web's "Download Excel" action — see
+                    // _downloadExcel's doc comment.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: filtered.isEmpty
+                            ? null
+                            : () => _downloadExcel(
+                                  periodLabel: '${dateFormat.format(_from)} to ${dateFormat.format(_to)}',
+                                  total: total,
+                                  paymentsCount: filtered.length,
+                                  commission: commission,
+                                  clinicPayout: clinicPayout,
+                                  doctorRows: doctorRows,
+                                  payments: filtered,
+                                ),
+                        icon: const Icon(Icons.file_download_outlined, size: 16),
+                        label: const Text('Download Excel'),
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Row(
