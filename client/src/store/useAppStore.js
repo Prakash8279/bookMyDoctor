@@ -265,9 +265,13 @@ export const useAppStore = create(
       },
 
       logout: async () => {
-        const tokens = getTokens()
+        // WEB REFRESH-COOKIE FIX (risky-item #2) — refreshToken is never in localStorage
+        // anymore (apiClient.js's TOKEN_STORAGE_KEY only ever holds {accessToken} now); the
+        // browser sends the httpOnly refresh cookie automatically via apiClient's
+        // withCredentials, so this always attempts the call rather than gating on a token this
+        // code can no longer see.
         try {
-          if (tokens?.refreshToken) await apiClient.post('/auth/logout', { refreshToken: tokens.refreshToken })
+          await apiClient.post('/auth/logout')
         } catch (err) {
           // Best-effort — logout is idempotent server-side and we're clearing
           // the local session regardless.

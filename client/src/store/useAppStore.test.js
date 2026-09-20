@@ -149,8 +149,12 @@ describe('forgotPassword / resetPassword', () => {
 })
 
 describe('logout', () => {
+  // WEB REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md) — the refresh
+  // token is no longer readable from JS at all (it lives only in an httpOnly cookie apiClient's
+  // withCredentials sends automatically), so logout() can no longer gate on "is there a stored
+  // refresh token" the way it used to — it always calls the endpoint and lets the cookie (or its
+  // absence) decide server-side.
   it('clears tokens and role-scoped data but keeps public directory data and dataLoaded', async () => {
-    getTokens.mockReturnValue({ accessToken: 'at', refreshToken: 'rt' })
     apiClient.post.mockResolvedValue({})
     useAppStore.setState({
       currentUser: { id: 'u1', role: 'patient' },
@@ -167,7 +171,7 @@ describe('logout', () => {
 
     await useAppStore.getState().logout()
 
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/logout', { refreshToken: 'rt' })
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/logout')
     expect(clearTokens).toHaveBeenCalled()
     const state = useAppStore.getState()
     expect(state.currentUser).toBeNull()
@@ -179,19 +183,19 @@ describe('logout', () => {
     expect(state.data.dashboardStats).toBeNull()
   })
 
-  it('does not call /auth/logout when there is no refresh token, but still clears local session', async () => {
+  it('always calls /auth/logout, even when getTokens() has nothing (the refresh token is cookie-only now, invisible to this code)', async () => {
     getTokens.mockReturnValue(null)
+    apiClient.post.mockResolvedValue({})
     useAppStore.setState({ currentUser: { id: 'u1' }, isAuthenticated: true })
 
     await useAppStore.getState().logout()
 
-    expect(apiClient.post).not.toHaveBeenCalled()
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/logout')
     expect(clearTokens).toHaveBeenCalled()
     expect(useAppStore.getState().isAuthenticated).toBe(false)
   })
 
   it('clears the local session even when the best-effort server logout call fails', async () => {
-    getTokens.mockReturnValue({ accessToken: 'at', refreshToken: 'rt' })
     apiClient.post.mockRejectedValue(new Error('network down'))
     useAppStore.setState({ currentUser: { id: 'u1' }, isAuthenticated: true })
 
