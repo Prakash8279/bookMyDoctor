@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -18,11 +20,25 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<List<AppNotification>>? _future;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _future = _fetch();
+    // BUG FIX (mobile parity audit): web's SimpleInbox polls GET /notifications every 30s while
+    // the page is open (FeaturePages.jsx) — mobile only ever fetched once on open or on manual
+    // pull-to-refresh, so a doctor/receptionist sitting on this tab never saw a new notification
+    // appear on its own.
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   Future<List<AppNotification>> _fetch() async {

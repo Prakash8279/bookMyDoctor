@@ -53,6 +53,11 @@ dependencies:
   # connection" banner (mounted in widgets/role_scaffold.dart). Run `flutter pub get` after
   # pulling this.
   connectivity_plus: ^6.0.5
+  # COMPLETENESS FIX (mobile parity audit): powers the "Export CSV" actions ported from the web
+  # app's client/src/lib/csv.js (buildCsv/downloadCsv) — see core/csv_export.dart. Uses the plain
+  # text-share path (Share.share) rather than a temp-file share, so no extra path_provider
+  # dependency is needed. Run `flutter pub get` after pulling this.
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
@@ -128,17 +129,40 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
     }
   }
 
+  // BUG FIX (mobile parity audit): ports web's `opdEntryCsv`/exportCsv (StaffPages.jsx#ClinicSchedule)
+  // — combines weekly-hours rows and closed-date rows into one CSV, same 7 columns and row shape.
+  Future<void> _exportCsv() async {
+    final data = await _hoursFuture;
+    if (data == null || _selectedClinic == null) return;
+    final clinicName = _selectedClinic!.name;
+    var displayId = 0;
+    final rows = <List<dynamic>>[
+      for (final h in data.hours)
+        [++displayId, 'weekly OPD', clinicName, _weekdayNames[h.weekday], '${h.startTime}-${h.endTime}', '${h.slotMinutes} min', h.status],
+      for (final c in data.closures) [++displayId, 'closing date', clinicName, c.closedDate, c.reason ?? '', '', 'closed'],
+    ];
+    await shareCsv(
+      filename: 'opd-schedule.csv',
+      headers: const ['Id', 'Type', 'Clinic', 'Day/Date', 'Hours/Reason', 'Patient time', 'Status'],
+      rows: rows,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'OPD schedule',
               subtitle: "Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates.",
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile equivalent.
+              action: _selectedClinic == null
+                  ? null
+                  : TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
             ),
           ),
           const Padding(

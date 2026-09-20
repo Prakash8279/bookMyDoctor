@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../models/core_models.dart';
@@ -335,6 +336,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  // BUG FIX (mobile parity audit): web's DoctorProfileEdit renders each verification document as
+  // an <a href={doc.url} target="_blank">View</a> link (StaffPages.jsx:583-593) — the mobile row
+  // showed only the name/upload-date with no way to open the file at all, even though `doc.url`
+  // was already parsed onto VerificationDocument and simply never read.
+  Future<void> _openDocument(VerificationDocument doc) async {
+    final uri = Uri.tryParse(doc.url);
+    if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) showErrorSnack(context, Exception('Could not open this document.'));
+    }
+  }
+
   Future<void> _openChangePassword() async {
     final done = await showModalBottomSheet<bool>(
       context: context,
@@ -372,6 +384,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ? 'Update qualifications, expertise, fees, photo, and biography.'
                   : 'Manage personal, contact, and account security information.',
             ),
+            // BUG FIX (mobile parity audit): web's DoctorProfileEdit shows this banner right on
+            // the profile page itself (StaffPages.jsx:547-553) — where a doctor would actually act
+            // on it by uploading a document below. Mobile only had the equivalent banner on the
+            // dashboard (doctor_dashboard_screen.dart), so a doctor who navigated straight to "My
+            // profile" never saw why/what to do.
+            if (role == 'doctor' && auth.profile?.doctorStatus != null && auth.profile?.doctorStatus != 'verified') ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFF59E0B)),
+                ),
+                child: Text(
+                  auth.profile?.doctorStatus == 'disabled'
+                      ? 'Your account has been disabled by an admin. Contact support if you believe this is a mistake.'
+                      : 'Your account is pending admin verification. Upload a verification document below (registration certificate, degree, or ID proof) to help the review team confirm your credentials.',
+                  style: const TextStyle(color: Color(0xFF92400E), fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
             if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
             // COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): see _pickAndUploadPhoto —
             // POST /media/photo had no mobile client at all before this.
@@ -576,6 +610,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   leading: const Icon(Icons.description_outlined, color: AppColors.textSecondary),
                                   title: Text(doc.name, style: const TextStyle(fontSize: 13)),
                                   subtitle: doc.uploadedAt != null ? Text(doc.uploadedAt!, style: const TextStyle(fontSize: 11)) : null,
+                                  // BUG FIX (mobile parity audit): open the actual uploaded file,
+                                  // matching web's "View" link — see _openDocument above.
+                                  trailing: TextButton(onPressed: () => _openDocument(doc), child: const Text('View')),
+                                  onTap: () => _openDocument(doc),
                                 ))
                             .toList(),
                       ),

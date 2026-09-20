@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
@@ -63,6 +64,34 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
     setState(() {
       _future = _fetch();
     });
+  }
+
+  // BUG FIX (mobile parity audit): ports web's `clinicRecordsCsv`/exportCsv
+  // (FeaturePages.jsx#DoctorClinics) — one row per clinic-doctor pairing.
+  Future<void> _exportCsv() async {
+    final clinics = await _future;
+    if (clinics == null) return;
+    final rows = <List<dynamic>>[];
+    for (var ci = 0; ci < clinics.length; ci++) {
+      final c = clinics[ci];
+      for (var di = 0; di < c.doctors.length; di++) {
+        final d = c.doctors[di];
+        rows.add([
+          '${ci + 1}-${di + 1}',
+          c.name,
+          d.name,
+          d.isOwner ? 'yes' : 'no',
+          d.isPrimary ? 'yes' : 'no',
+          d.onlineBooking ? 'enabled' : 'disabled',
+          '/clinics?clinic=${Uri.encodeComponent(c.name)}',
+        ]);
+      }
+    }
+    await shareCsv(
+      filename: 'clinic-settings.csv',
+      headers: const ['Id', 'Clinic', 'Doctor', 'Owner', 'Primary', 'Online booking', 'Public profile'],
+      rows: rows,
+    );
   }
 
   bool _isOwner(Clinic c) {
@@ -169,12 +198,14 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'Clinic settings',
               subtitle: 'Manage clinic details and see every doctor practising at the clinic.',
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile equivalent.
+              action: TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
             ),
           ),
           Expanded(
