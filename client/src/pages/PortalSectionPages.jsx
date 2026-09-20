@@ -100,14 +100,16 @@ export function PortalAppointments({ data, role = 'patient' }) {
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
   // ADMIN FILTER FIX (user request: "ye filter appli karne ka option do admin supar admin ko
-  // city wise doctor name se v aur date se v") — city/doctor/date filters for the admin/superadmin
-  // "Appointments registry" view only. `fetchAppointments` already forwards any filter key as a
-  // query param (see useAppStore.js), and the backend already supported doctorId/date filtering
-  // for admin roles — cityId was the only new backend param needed (appointments.service.js /
-  // appointments.validation.js / appointments.controller.js). Blank values are stripped by
-  // cleanParams() before the request, so an empty field simply means "no filter" — no separate
-  // "all cities"/"all doctors" sentinel option needed.
-  const [filters, setFilters] = useState({ cityId: '', doctorId: '', date: '' })
+  // city wise doctor name se v aur date se v", then "starting end date dono select karne ka
+  // option do") — city/doctor/date-range filters for the admin/superadmin "Appointments registry"
+  // view only. `fetchAppointments` already forwards any filter key as a query param (see
+  // useAppStore.js), and the backend already supported dateFrom/dateTo range filtering for EVERY
+  // role (appointments.service.js#listAppointments applies it before the role branch) — cityId was
+  // the only new backend param needed (appointments.service.js / appointments.validation.js /
+  // appointments.controller.js). Blank values are stripped by cleanParams() before the request, so
+  // an empty field simply means "no filter" — no separate "all cities"/"all doctors" sentinel
+  // option needed.
+  const [filters, setFilters] = useState({ cityId: '', doctorId: '', dateFrom: '', dateTo: '' })
 
   // Appointments aren't part of the admin/superadmin bulk load (plan §4.2
   // admin branch) — fetch them here for the platform-wide registry view.
@@ -134,11 +136,15 @@ export function PortalAppointments({ data, role = 'patient' }) {
     load(nextFilters)
   }
   const clearFilters = () => {
-    const cleared = { cityId: '', doctorId: '', date: '' }
+    const cleared = { cityId: '', doctorId: '', dateFrom: '', dateTo: '' }
     setFilters(cleared)
     load(cleared)
   }
-  const hasActiveFilters = Boolean(filters.cityId || filters.doctorId || filters.date)
+  const hasActiveFilters = Boolean(filters.cityId || filters.doctorId || filters.dateFrom || filters.dateTo)
+  // Same client-side sanity check as Revenue reports' own From/To range (AdminPages.jsx) — doesn't
+  // block the request (the backend's gte/lte simply returns an empty page for a backwards range),
+  // just tells the admin why their filtered list came back empty.
+  const invalidDateRange = Boolean(filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo)
 
   const rows = data.appointments || []
   const changeStatus = async (id, status) => {
@@ -173,12 +179,16 @@ export function PortalAppointments({ data, role = 'patient' }) {
         <label className="text-xs font-semibold text-muted">Doctor
           <Select aria-label="Filter by doctor" includeBlank className="mt-1 min-w-[11rem]" placeholder="All doctors" value={filters.doctorId} onChange={updateFilter('doctorId')} options={(data.doctors || []).map((doctor) => ({ value: doctor.id, label: doctor.name }))} />
         </label>
-        <label className="text-xs font-semibold text-muted">Date
-          <input aria-label="Filter by date" type="date" value={filters.date} onChange={updateFilter('date')} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" />
+        <label className="text-xs font-semibold text-muted">From
+          <input aria-label="Filter by start date" type="date" value={filters.dateFrom} onChange={updateFilter('dateFrom')} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" />
+        </label>
+        <label className="text-xs font-semibold text-muted">To
+          <input aria-label="Filter by end date" type="date" value={filters.dateTo} onChange={updateFilter('dateTo')} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" />
         </label>
         {hasActiveFilters && <button type="button" onClick={clearFilters} className="touch-target text-xs font-semibold text-primary-dark underline">Clear filters</button>}
       </div>}
     >
+      {invalidDateRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
       <ErrorNote>{actionError}</ErrorNote>
       <DataTable loading={loading} error={listError} onRetry={() => load()} rows={rows} columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
