@@ -12,6 +12,18 @@ import { usePolling } from '../hooks/usePolling'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
 
+// MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo compalasari
+// proper validation varification") — the Register form below used to only mark Full name/
+// Phone/Email/Password/Confirm as HTML `required` (Qualification/Registration number/Years of
+// experience on the doctor tab were plain optional inputs) and never checked the SHAPE of what
+// was typed beyond the browser's own bare type=email/minLength handling. Same 3 rules the backend
+// now enforces too (auth.validation.js#register / doctors.validation.js#registerDoctor) — kept in
+// sync here so a submission fails fast client-side with a clear message instead of round-tripping
+// to the server first.
+const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,149}$/
+const PHONE_RE = /^[6-9]\d{9}$/
+const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/
+
 const Button = ({ children, className = '', ...props }) => <button className={`btn-primary ${className}`} {...props}>{children}</button>
 
 // `data.queueTokens` (GET /queue) is doctor/receptionist-only and never populated for a patient —
@@ -430,22 +442,34 @@ export function Register() {
   const updateDoctor = (key) => (event) => setDoctorForm((current) => ({ ...current, [key]: event.target.value }))
   const handleSubmit = async (event) => {
     event.preventDefault()
+    const trimmedName = form.name.trim()
+    const trimmedPhone = form.phone.trim()
+    if (!NAME_RE.test(trimmedName)) { setError('Please enter your full name using letters only (at least 2 characters).'); return }
+    if (!PHONE_RE.test(trimmedPhone)) { setError('Please enter a valid 10-digit mobile number.'); return }
+    if (!PASSWORD_RE.test(form.password)) { setError('Password must be at least 8 characters and include both letters and numbers.'); return }
     if (form.password !== form.confirm) { setError('Passwords do not match.'); return }
+    if (accountType === 'doctor') {
+      if (!doctorForm.qualification.trim()) { setError('Please enter your qualification.'); return }
+      if (!doctorForm.registrationNumber.trim()) { setError('Please enter your medical council registration number.'); return }
+      if (doctorForm.experienceYears === '' || Number(doctorForm.experienceYears) < 0 || Number(doctorForm.experienceYears) > 80) { setError('Please enter your years of experience (0-80).'); return }
+    }
     setSubmitting(true)
     try {
       const account = accountType === 'doctor'
         ? await registerDoctor({
-            name: form.name,
-            phone: form.phone,
+            name: trimmedName,
+            phone: trimmedPhone,
             email: form.email,
             password: form.password,
             specializationId: doctorForm.specializationId,
-            qualification: doctorForm.qualification || undefined,
-            registrationNumber: doctorForm.registrationNumber || undefined,
-            experienceYears: doctorForm.experienceYears ? Number(doctorForm.experienceYears) : undefined,
+            // Mandatory now (validated above) rather than the old `|| undefined` fallback that
+            // let a self-registered doctor skip them entirely.
+            qualification: doctorForm.qualification.trim(),
+            registrationNumber: doctorForm.registrationNumber.trim(),
+            experienceYears: Number(doctorForm.experienceYears),
             consultationFee: Number(doctorForm.consultationFee) || 0,
           })
-        : await register({ name: form.name, phone: form.phone, email: form.email, password: form.password })
+        : await register({ name: trimmedName, phone: trimmedPhone, email: form.email, password: form.password })
       setError('')
       navigate(roleHome(account.role), { replace: true })
     } catch (registrationError) {
@@ -545,10 +569,10 @@ export function Register() {
           {message && <p role="status" className="mt-2 text-center text-xs text-success">{message}</p>}
 
           <form className="space-y-3" onSubmit={handleSubmit}>
-            <label className="form-field">Full name<input type="text" value={form.name} onChange={update('name')} placeholder="Enter your full name" required /></label>
-            <label className="form-field">Phone<input type="tel" value={form.phone} onChange={update('phone')} placeholder="Enter mobile number" required /></label>
+            <label className="form-field">Full name<input type="text" value={form.name} onChange={update('name')} placeholder="Enter your full name" pattern="[A-Za-z][A-Za-z .'-]{1,149}" title="Letters only, at least 2 characters." required /></label>
+            <label className="form-field">Phone<input type="tel" value={form.phone} onChange={update('phone')} placeholder="Enter mobile number" pattern="[6-9][0-9]{9}" maxLength="10" title="A valid 10-digit mobile number." required /></label>
             <label className="form-field">Email address<input type="email" value={form.email} onChange={update('email')} placeholder="you@example.com" required /></label>
-            <label className="form-field">Password<input type="password" value={form.password} onChange={update('password')} placeholder="Create password" minLength="8" required /></label>
+            <label className="form-field">Password<input type="password" value={form.password} onChange={update('password')} placeholder="Create password" minLength="8" pattern="(?=.*[A-Za-z])(?=.*\d).{8,72}" title="At least 8 characters, with letters and numbers." required /></label>
             <label className="form-field">Confirm password<input type="password" value={form.confirm} onChange={update('confirm')} placeholder="Confirm password" minLength="8" required /></label>
 
             {accountType === 'doctor' && (
@@ -559,9 +583,9 @@ export function Register() {
                     {specializations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                   </select>
                 </label>
-                <label className="form-field">Qualification<input type="text" value={doctorForm.qualification} onChange={updateDoctor('qualification')} placeholder="e.g. MBBS, MD" /></label>
-                <label className="form-field">Registration number<input type="text" value={doctorForm.registrationNumber} onChange={updateDoctor('registrationNumber')} placeholder="Medical council registration no." /></label>
-                <label className="form-field">Years of experience<input type="number" min="0" max="80" value={doctorForm.experienceYears} onChange={updateDoctor('experienceYears')} placeholder="e.g. 5" /></label>
+                <label className="form-field">Qualification<input type="text" value={doctorForm.qualification} onChange={updateDoctor('qualification')} placeholder="e.g. MBBS, MD" required /></label>
+                <label className="form-field">Registration number<input type="text" value={doctorForm.registrationNumber} onChange={updateDoctor('registrationNumber')} placeholder="Medical council registration no." required /></label>
+                <label className="form-field">Years of experience<input type="number" min="0" max="80" value={doctorForm.experienceYears} onChange={updateDoctor('experienceYears')} placeholder="e.g. 5" required /></label>
                 <label className="form-field">Consultation fee (₹)<input type="number" min="0" value={doctorForm.consultationFee} onChange={updateDoctor('consultationFee')} placeholder="e.g. 500" required /></label>
               </>
             )}

@@ -5,11 +5,34 @@
  */
 const { body } = require('express-validator');
 
+// MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo compalasari
+// proper validation varification") — the web/mobile "Create account" forms collect an Indian
+// mobile number and (for patients) always render the field as required, but this endpoint used to
+// accept it as a completely optional, unvalidated string. 10 digits, first digit 6-9, same rule
+// used on every other phone field this fix touches (doctors.validation.js#registerDoctor/#createDoctor).
+const PHONE_RE = /^[6-9]\d{9}$/;
+// A password of just digits or just letters is technically 8+ characters but not a "proper"
+// password by any real standard — require at least one letter AND one digit, same bound (8-72,
+// bcrypt's own byte limit) as before.
+const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/;
+// Letters, spaces, apostrophes, hyphens and dots only (covers names like "Mary-Jane O'Brien") —
+// rejects a name that's only digits/symbols, which the plain notEmpty() below let through.
+const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,149}$/;
+
 const register = [
-  body('name').trim().notEmpty().withMessage('Name is required.').isLength({ max: 150 }).withMessage('Name must be at most 150 characters.'),
+  body('name').trim().notEmpty().withMessage('Name is required.').matches(NAME_RE).withMessage('Name must contain letters only (at least 2 characters).'),
   body('email').trim().notEmpty().withMessage('Email is required.').isEmail().withMessage('A valid email is required.').isLength({ max: 255 }),
-  body('password').notEmpty().withMessage('Password is required.').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
-  body('phone').optional({ values: 'falsy' }).trim().isLength({ max: 20 }).withMessage('Phone must be at most 20 characters.'),
+  body('password')
+    .notEmpty()
+    .withMessage('Password is required.')
+    .isLength({ min: 8, max: 72 })
+    .withMessage('Password must be between 8 and 72 characters.')
+    .matches(PASSWORD_RE)
+    .withMessage('Password must include at least one letter and one number.'),
+  // COMPLETENESS FIX (this same request) — was `.optional({values:'falsy'})`; the "Create
+  // account" form always renders phone as a required field, so the backend now actually enforces
+  // that instead of silently accepting its absence.
+  body('phone').trim().notEmpty().withMessage('Phone number is required.').matches(PHONE_RE).withMessage('Enter a valid 10-digit mobile number.'),
   body('city').optional({ values: 'falsy' }).trim().isLength({ max: 100 }).withMessage('City must be at most 100 characters.'),
   // Self-registration may only ever produce a patient account. Any other value is rejected
   // here at the shape layer; the service layer also hard-codes role:'patient' regardless

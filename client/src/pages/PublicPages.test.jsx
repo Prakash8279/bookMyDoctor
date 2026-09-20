@@ -377,11 +377,24 @@ describe('Register', () => {
     fireEvent.change(screen.getByPlaceholderText('Create password'), { target: { value: 'password1' } })
     fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password1' } })
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'spec-1' } })
+    // MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo
+    // compalasari proper validation varification") — qualification/registration number/years of
+    // experience are no longer optional (see Register's handleSubmit); this test used to leave
+    // all three blank and still expected a successful submission.
+    fireEvent.change(screen.getByPlaceholderText('e.g. MBBS, MD'), { target: { value: 'MBBS' } })
+    fireEvent.change(screen.getByPlaceholderText('Medical council registration no.'), { target: { value: 'REG-12345' } })
+    fireEvent.change(screen.getByPlaceholderText('e.g. 5'), { target: { value: '6' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. 500'), { target: { value: '600' } })
     fireEvent.click(screen.getByRole('button', { name: 'Submit for verification' }))
 
     await waitFor(() => expect(screen.getByTestId('location-probe').dataset.pathname).toBe('/doctor/dashboard'))
-    expect(apiClient.post).toHaveBeenCalledWith('/doctors/register', expect.objectContaining({ email: 'doc@example.com', specializationId: 'spec-1' }))
+    expect(apiClient.post).toHaveBeenCalledWith('/doctors/register', expect.objectContaining({
+      email: 'doc@example.com',
+      specializationId: 'spec-1',
+      qualification: 'MBBS',
+      registrationNumber: 'REG-12345',
+      experienceYears: 6,
+    }))
   })
 
   it('links back to sign in', () => {

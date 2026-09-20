@@ -10,6 +10,15 @@ import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 
+// MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo compalasari
+// proper validation varification") — same 3 rules the web Register page and backend now enforce
+// (client/src/pages/PublicPages.jsx#Register, auth.validation.js#register,
+// doctors.validation.js#registerDoctor): a 10-digit Indian mobile number starting 6-9, a password
+// with at least one letter and one digit, and a name made of letters only.
+final RegExp _phonePattern = RegExp(r'^[6-9]\d{9}$');
+final RegExp _passwordPattern = RegExp(r'^(?=.*[A-Za-z])(?=.*\d).{8,72}$');
+final RegExp _namePattern = RegExp(r"^[A-Za-z][A-Za-z .'-]{1,149}$");
+
 /// Patient OR doctor self-registration, mirroring the website's Register page
 /// (client/src/pages/PublicPages.jsx#Register): an "I'm a patient" / "I'm a
 /// doctor" account-type toggle up top, common fields shared by both, and a
@@ -128,7 +137,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text,
-      phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
+      // Mandatory now (this screen's own validator gates _submit before this ever runs) — see
+      // the MANDATORY-FIELDS FIX note above.
+      phone: _phoneController.text.trim(),
       city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
     );
     if (!ok) _error = auth.lastError;
@@ -136,24 +147,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   // POST /doctors/register — see doctors.validation.js#registerDoctor for the exact shape:
-  // name/email/password required; phone/city/qualification/registrationNumber optional strings;
-  // specializationId required UUID; experienceYears optional int 0-80; consultationFee required
-  // non-negative number. verifyImmediately/verificationDocuments are admin-only fields the public
-  // endpoint never reads, so they're omitted entirely here.
+  // name/email/password/phone/qualification/registrationNumber/experienceYears/consultationFee
+  // are ALL required now (MANDATORY-FIELDS FIX above — city stays the one optional string, it
+  // isn't even collected on the website's form); specializationId required UUID. Every field
+  // below is guaranteed non-empty/valid by this screen's own TextFormField validators (the form's
+  // validate() call in _submit gates this method from ever running otherwise), so none of them
+  // need the old conditional `if (...isNotEmpty)` guards. verifyImmediately/verificationDocuments
+  // are admin-only fields the public endpoint never reads, so they're omitted entirely here.
   Future<bool> _submitDoctor() async {
     try {
       final res = await ApiClient.instance.post('/doctors/register', body: {
         'name': _nameController.text.trim(),
         'email': _emailController.text.trim(),
         'password': _passwordController.text,
-        if (_phoneController.text.trim().isNotEmpty) 'phone': _phoneController.text.trim(),
+        'phone': _phoneController.text.trim(),
         if (_cityController.text.trim().isNotEmpty) 'city': _cityController.text.trim(),
         'specializationId': _specializationId,
-        if (_qualificationController.text.trim().isNotEmpty) 'qualification': _qualificationController.text.trim(),
-        if (_registrationNumberController.text.trim().isNotEmpty)
-          'registrationNumber': _registrationNumberController.text.trim(),
-        if (_experienceYearsController.text.trim().isNotEmpty)
-          'experienceYears': int.tryParse(_experienceYearsController.text.trim()),
+        'qualification': _qualificationController.text.trim(),
+        'registrationNumber': _registrationNumberController.text.trim(),
+        'experienceYears': int.tryParse(_experienceYearsController.text.trim()),
         'consultationFee': double.tryParse(_consultationFeeController.text.trim()) ?? 0,
       });
       final data = res.map;
@@ -266,7 +278,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(labelText: 'Full name'),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+                      validator: (v) {
+                        final value = (v ?? '').trim();
+                        if (value.isEmpty) return 'Name is required';
+                        if (!_namePattern.hasMatch(value)) return 'Enter your name using letters only (at least 2 characters)';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -279,7 +296,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextFormField(
                       controller: _phoneController,
                       keyboardType: TextInputType.phone,
-                      decoration: const InputDecoration(labelText: 'Phone (optional)'),
+                      decoration: const InputDecoration(labelText: 'Phone'),
+                      validator: (v) {
+                        final value = (v ?? '').trim();
+                        if (value.isEmpty) return 'Phone number is required';
+                        if (!_phonePattern.hasMatch(value)) return 'Enter a valid 10-digit mobile number';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -297,15 +320,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
-                      validator: (v) =>
-                          (v == null || v.length < 8) ? 'Password must be at least 8 characters' : null,
+                      validator: (v) {
+                        final value = v ?? '';
+                        if (value.isEmpty) return 'Password is required';
+                        if (!_passwordPattern.hasMatch(value)) return 'Password must be at least 8 characters and include both letters and numbers';
+                        return null;
+                      },
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _confirmController,
                       obscureText: _obscure,
                       decoration: const InputDecoration(labelText: 'Confirm password'),
-                      validator: (v) => (v == null || v.length < 8) ? 'Confirm your password' : null,
+                      validator: (v) => (v == null || v.isEmpty) ? 'Confirm your password' : null,
                     ),
                     if (isDoctor) ...[
                       const SizedBox(height: AppSpacing.lg),
@@ -336,6 +363,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       TextFormField(
                         controller: _qualificationController,
                         decoration: const InputDecoration(labelText: 'Qualification', hintText: 'e.g. MBBS, MD'),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Qualification is required' : null,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
@@ -344,6 +372,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           labelText: 'Registration number',
                           hintText: 'Medical council registration no.',
                         ),
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Registration number is required' : null,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
@@ -351,8 +380,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(labelText: 'Years of experience', hintText: 'e.g. 5'),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return null;
-                          final n = int.tryParse(v.trim());
+                          final value = (v ?? '').trim();
+                          if (value.isEmpty) return 'Years of experience is required';
+                          final n = int.tryParse(value);
                           if (n == null || n < 0 || n > 80) return 'Enter a value between 0 and 80';
                           return null;
                         },

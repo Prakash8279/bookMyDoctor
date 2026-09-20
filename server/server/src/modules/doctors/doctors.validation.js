@@ -6,6 +6,15 @@
  */
 const { body, param, query } = require('express-validator');
 
+// MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo compalasari
+// proper validation varification") — see auth.validation.js's identical constants for the full
+// reasoning; used below only in `registerDoctor` (the public "Create account" -> doctor tab
+// endpoint), not in `createDoctor` (the admin-only "add a doctor" panel, a different form with its
+// own, deliberately looser, rules).
+const PHONE_RE = /^[6-9]\d{9}$/;
+const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/;
+const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,149}$/;
+
 const listDoctors = [
   query('specializationId').optional({ values: 'falsy' }).isUUID().withMessage('specializationId must be a valid id.'),
   query('cityId').optional({ values: 'falsy' }).isUUID().withMessage('cityId must be a valid id.'),
@@ -125,16 +134,27 @@ const createDoctor = [
 // Public self-registration — same shape rules as createDoctor minus the two admin-only fields
 // (verifyImmediately, verificationDocuments), which doctors.controller.js#registerDoctor never
 // reads from the request body regardless of what's validated here.
+//
+// MANDATORY-FIELDS FIX (user request: "create account jo hai ushme jo v data hai oo compalasari
+// proper validation varification") — every field the web/mobile "Create account" -> doctor tab
+// form actually shows (phone, qualification, registration number, years of experience) is now
+// required here too, not just visually required on the form; a client that bypassed the form
+// (or an older cached build) could previously still register with all four blank.
 const registerDoctor = [
-  body('name').trim().notEmpty().withMessage('name is required.').isLength({ max: 150 }),
+  body('name').trim().notEmpty().withMessage('name is required.').matches(NAME_RE).withMessage('name must contain letters only (at least 2 characters).'),
   body('email').trim().notEmpty().withMessage('email is required.').isEmail().withMessage('a valid email is required.').isLength({ max: 255 }),
-  body('password').notEmpty().withMessage('password is required.').isLength({ min: 8, max: 72 }),
-  body('phone').optional({ values: 'falsy' }).trim().isLength({ max: 20 }),
+  body('password')
+    .notEmpty()
+    .withMessage('password is required.')
+    .isLength({ min: 8, max: 72 })
+    .matches(PASSWORD_RE)
+    .withMessage('password must include at least one letter and one number.'),
+  body('phone').trim().notEmpty().withMessage('phone is required.').matches(PHONE_RE).withMessage('enter a valid 10-digit mobile number.'),
   body('city').optional({ values: 'falsy' }).trim().isLength({ max: 100 }),
   body('specializationId').notEmpty().withMessage('specializationId is required.').isUUID(),
-  body('qualification').optional({ values: 'falsy' }).trim().isLength({ max: 255 }),
-  body('registrationNumber').optional({ values: 'falsy' }).trim().isLength({ max: 100 }),
-  body('experienceYears').optional({ values: 'falsy' }).isInt({ min: 0, max: 80 }).toInt(),
+  body('qualification').trim().notEmpty().withMessage('qualification is required.').isLength({ max: 255 }),
+  body('registrationNumber').trim().notEmpty().withMessage('registrationNumber is required.').isLength({ max: 100 }),
+  body('experienceYears').notEmpty().withMessage('experienceYears is required.').isInt({ min: 0, max: 80 }).toInt(),
   body('consultationFee').notEmpty().withMessage('consultationFee is required.').isFloat({ min: 0 }).toFloat(),
   body('emergencyFee').optional({ values: 'falsy' }).isFloat({ min: 0 }).toFloat(),
   body('languages').optional({ values: 'falsy' }).isArray().withMessage('languages must be an array of strings.'),
