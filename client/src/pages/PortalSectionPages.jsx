@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
 import { FormField } from '../components/FormField'
+import { Select } from '../components/Select'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { StatusPill } from '../components/StatusPill'
 import { useAppStore } from '../store/useAppStore'
@@ -98,13 +99,22 @@ export function PortalAppointments({ data, role = 'patient' }) {
   const [listError, setListError] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
+  // ADMIN FILTER FIX (user request: "ye filter appli karne ka option do admin supar admin ko
+  // city wise doctor name se v aur date se v") — city/doctor/date filters for the admin/superadmin
+  // "Appointments registry" view only. `fetchAppointments` already forwards any filter key as a
+  // query param (see useAppStore.js), and the backend already supported doctorId/date filtering
+  // for admin roles — cityId was the only new backend param needed (appointments.service.js /
+  // appointments.validation.js / appointments.controller.js). Blank values are stripped by
+  // cleanParams() before the request, so an empty field simply means "no filter" — no separate
+  // "all cities"/"all doctors" sentinel option needed.
+  const [filters, setFilters] = useState({ cityId: '', doctorId: '', date: '' })
 
   // Appointments aren't part of the admin/superadmin bulk load (plan §4.2
   // admin branch) — fetch them here for the platform-wide registry view.
-  const load = () => {
+  const load = (activeFilters = filters) => {
     setLoading(true)
     setListError('')
-    return fetchAppointments({}).catch((err) => setListError(err.message || 'Could not load appointments.')).finally(() => setLoading(false))
+    return fetchAppointments(activeFilters).catch((err) => setListError(err.message || 'Could not load appointments.')).finally(() => setLoading(false))
   }
   useEffect(() => {
     if (role !== 'admin') return undefined
@@ -116,6 +126,19 @@ export function PortalAppointments({ data, role = 'patient' }) {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [fetchAppointments, role])
+  // Re-fetch immediately on every filter change (city/doctor/date), same "apply on change"
+  // pattern as Revenue reports' date-range/doctor filter above — no separate "Apply" button.
+  const updateFilter = (key) => (event) => {
+    const nextFilters = { ...filters, [key]: event.target.value }
+    setFilters(nextFilters)
+    load(nextFilters)
+  }
+  const clearFilters = () => {
+    const cleared = { cityId: '', doctorId: '', date: '' }
+    setFilters(cleared)
+    load(cleared)
+  }
+  const hasActiveFilters = Boolean(filters.cityId || filters.doctorId || filters.date)
 
   const rows = data.appointments || []
   const changeStatus = async (id, status) => {
@@ -140,9 +163,24 @@ export function PortalAppointments({ data, role = 'patient' }) {
     {item.status !== 'pending_payment' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark">Complete</button>}
   </div>
   if (role === 'admin') {
-    return <Page title="Appointments registry" subtitle="Manage every booking in the platform.">
+    return <Page
+      title="Appointments registry"
+      subtitle="Manage every booking in the platform."
+      action={<div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs font-semibold text-muted">City
+          <Select aria-label="Filter by city" includeBlank className="mt-1 min-w-[9rem]" placeholder="All cities" value={filters.cityId} onChange={updateFilter('cityId')} options={(data.cities || []).map((city) => ({ value: city.id, label: city.name }))} />
+        </label>
+        <label className="text-xs font-semibold text-muted">Doctor
+          <Select aria-label="Filter by doctor" includeBlank className="mt-1 min-w-[11rem]" placeholder="All doctors" value={filters.doctorId} onChange={updateFilter('doctorId')} options={(data.doctors || []).map((doctor) => ({ value: doctor.id, label: doctor.name }))} />
+        </label>
+        <label className="text-xs font-semibold text-muted">Date
+          <input aria-label="Filter by date" type="date" value={filters.date} onChange={updateFilter('date')} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" />
+        </label>
+        {hasActiveFilters && <button type="button" onClick={clearFilters} className="touch-target text-xs font-semibold text-primary-dark underline">Clear filters</button>}
+      </div>}
+    >
       <ErrorNote>{actionError}</ErrorNote>
-      <DataTable loading={loading} error={listError} onRetry={load} rows={rows} columns={[
+      <DataTable loading={loading} error={listError} onRetry={() => load()} rows={rows} columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar
         // admin ke") — 'ID' above is just this row's own display sequence number (DC01, DC02...),

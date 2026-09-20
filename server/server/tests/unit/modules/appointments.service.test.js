@@ -546,6 +546,26 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
     expect(where).toEqual({ doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, patientUserId: PATIENT_ID });
   });
 
+  // ADMIN FILTER FIX (user request: "ye filter appli karne ka option do admin supar admin ko
+  // city wise doctor name se v aur date se v") — an appointment has no cityId of its own, only
+  // through its clinic, so this is a Prisma relation filter (`where.clinic = { cityId }`) rather
+  // than a plain scalar match like doctorId/clinicId/patientId above.
+  test('admin/superadmin MAY filter by cityId query param (via the linked clinic)', async () => {
+    await appointmentsService.listAppointments({ cityId: 'city-1' }, { id: 'admin-1', role: 'admin' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ clinic: { cityId: 'city-1' } });
+  });
+
+  // A non-admin role must never be able to scope-widen via a client-supplied cityId either —
+  // same enumeration-avoidance posture as the doctorId/clinicId/patientId test above.
+  test('a patient is always scoped to their own patientUserId, even if cityId query param is supplied', async () => {
+    await appointmentsService.listAppointments({ cityId: 'city-1' }, { id: PATIENT_ID, role: 'patient' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ patientUserId: PATIENT_ID });
+  });
+
   // A patient must still see their OWN pending_payment booking — that's the whole point of the
   // "complete your payment" screen; only doctor/receptionist are gated from it.
   test('a patient still sees their own pending_payment booking (the gate never applies to patients)', async () => {

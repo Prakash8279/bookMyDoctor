@@ -62,6 +62,10 @@ const listAppointments = [
   query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid id.'),
   query('clinicId').optional({ values: 'falsy' }).isUUID().withMessage('clinicId must be a valid id.'),
   query('patientId').optional({ values: 'falsy' }).isUUID().withMessage('patientId must be a valid id.'),
+  // ADMIN FILTER FIX (user request: "city wise doctor name se v aur date se v") — admin/superadmin
+  // only (see appointments.service.js#listAppointments); every other role is forced-scoped and
+  // ignores this the same way it already ignores doctorId/clinicId/patientId.
+  query('cityId').optional({ values: 'falsy' }).isUUID().withMessage('cityId must be a valid id.'),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
