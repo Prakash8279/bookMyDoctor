@@ -329,4 +329,22 @@ describe('queueService.updateQueueStatus — sequential transition rules', () =>
     expect(activityLogService.log).toHaveBeenCalledTimes(1); // only the queue-token log, no cascade log
     expect(appointmentsService.invalidateAppointmentListCaches).not.toHaveBeenCalled();
   });
+
+  test('throws 400 APPOINTMENT_NOT_YET_DUE when trying to complete a token whose queueDate is still in the future', async () => {
+    // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj
+    // complete nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — this is the
+    // Queue Monitor's OWN Complete button (in_consultation -> completed), a separate code path
+    // from appointments.service.js#updateAppointmentStatus, so it needed its own copy of the
+    // same guard. baseRow's default queueDate ('2026-09-10') is in the past — this test
+    // overrides it to a future date to prove the new check actually fires.
+    prisma.queueToken.findUnique.mockResolvedValueOnce(
+      baseRow({ status: 'in_consultation', queueDate: '2099-01-01' })
+    );
+
+    await expect(
+      queueService.updateQueueStatus('q1', 'completed', { id: 'doc-A', role: 'doctor' })
+    ).rejects.toMatchObject({ statusCode: 400, code: 'APPOINTMENT_NOT_YET_DUE' });
+    expect(tx.queueToken.update).not.toHaveBeenCalled();
+    expect(tx.appointment.update).not.toHaveBeenCalled();
+  });
 });

@@ -385,6 +385,24 @@ async function updateQueueStatus(id, targetStatus, actor) {
     );
   }
 
+  // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj complete
+  // nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — a token for a future
+  // date has no OWN transition guard against being walked all the way to 'completed' today; this
+  // is a genuinely separate code path from appointments.service.js#updateAppointmentStatus (the
+  // Queue Monitor's own Complete button, called -> in_consultation -> completed), which got the
+  // matching fix there — so it needed its own copy of the same check. `queueDate` (not the linked
+  // appointment's date, though they're always equal) is what this table already carries.
+  if (targetStatus === 'completed') {
+    const queueDateUTC = new Date(`${formatDateOnly(row.queueDate)}T00:00:00.000Z`);
+    if (queueDateUTC.getTime() > todayUTCDateOnly().getTime()) {
+      throw new ApiError(
+        400,
+        'APPOINTMENT_NOT_YET_DUE',
+        `This token is for ${formatDateOnly(row.queueDate)} and cannot be marked completed before that date.`
+      );
+    }
+  }
+
   const appointmentStatus = row.appointment ? row.appointment.status : null;
   const shouldCascadeComplete =
     targetStatus === 'completed' &&

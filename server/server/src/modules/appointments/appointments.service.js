@@ -1383,6 +1383,27 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
     );
   }
 
+  // ── "Complete" cannot happen before the visit's own day ─────────────────
+  // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj complete
+  // nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — a booking for a future
+  // date had no guard anywhere against being marked 'completed' early: not here, not in
+  // appointments.validation.js, and every UI (web PortalAppointments, web StaffPages, mobile)
+  // rendered the Complete button off of status alone, never appointmentDate. A consultation that
+  // hasn't happened yet cannot be "complete" — enforced once, here, so it's closed for every
+  // caller (any role, any client) rather than needing a matching fix in each UI. A same-day or
+  // PAST appointment can still be completed (e.g. staff catching up on a booking they forgot to
+  // close out) — only a still-upcoming date is blocked.
+  if (targetStatus === 'completed') {
+    const apptDateUTC = new Date(`${formatDateOnly(row.appointmentDate)}T00:00:00.000Z`);
+    if (apptDateUTC.getTime() > todayUTCDateOnly().getTime()) {
+      throw new ApiError(
+        400,
+        'APPOINTMENT_NOT_YET_DUE',
+        `This appointment is scheduled for ${formatDateOnly(row.appointmentDate)} and cannot be marked completed before that date.`
+      );
+    }
+  }
+
   // ── Cancel/no-show-specific rules ─────────────────────────────────────
   if ((targetStatus === 'cancelled' || targetStatus === 'no_show') && row.queueToken) {
     if (['in_consultation', 'completed'].includes(row.queueToken.status)) {

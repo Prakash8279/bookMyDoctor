@@ -140,6 +140,7 @@ function addDaysISO(baseDate, days) {
 }
 
 const TODAY = todayUTCDateOnly();
+const TODAY_STR = TODAY.toISOString().slice(0, 10);
 const TOMORROW_STR = addDaysISO(TODAY, 1);
 
 function fullAppointmentRow(overrides = {}) {
@@ -1524,7 +1525,14 @@ describe('appointmentsService.updateAppointmentStatus', () => {
   });
 
   test('completing an appointment cascades its linked (non-already-completed) queueToken to completed', async () => {
-    const row = fullAppointmentRow({ status: 'confirmed', queueToken: { id: 'qt-1', status: 'in_consultation', tokenNumber: 3 } });
+    // appointmentDate: TODAY, not the fullAppointmentRow default of TOMORROW — see the
+    // APPOINTMENT_NOT_YET_DUE tests below; this test is about the queueToken cascade, not date
+    // logic, so it needs a date that's actually completable.
+    const row = fullAppointmentRow({
+      status: 'confirmed',
+      appointmentDate: new Date(`${TODAY_STR}T00:00:00.000Z`),
+      queueToken: { id: 'qt-1', status: 'in_consultation', tokenNumber: 3 },
+    });
     mockFindUniqueSequence(row, { ...row, status: 'completed' });
 
     await appointmentsService.updateAppointmentStatus('appt-1', 'completed', { id: 'admin-1', role: 'admin' });
@@ -1533,11 +1541,38 @@ describe('appointmentsService.updateAppointmentStatus', () => {
   });
 
   test('completing an appointment whose queueToken is ALREADY completed does not redundantly re-update it', async () => {
-    const row = fullAppointmentRow({ status: 'confirmed', queueToken: { id: 'qt-1', status: 'completed', tokenNumber: 3 } });
+    const row = fullAppointmentRow({
+      status: 'confirmed',
+      appointmentDate: new Date(`${TODAY_STR}T00:00:00.000Z`),
+      queueToken: { id: 'qt-1', status: 'completed', tokenNumber: 3 },
+    });
     mockFindUniqueSequence(row, { ...row, status: 'completed' });
 
     await appointmentsService.updateAppointmentStatus('appt-1', 'completed', { id: 'admin-1', role: 'admin' });
     expect(tx.queueToken.update).not.toHaveBeenCalled();
+  });
+
+  test('throws 400 APPOINTMENT_NOT_YET_DUE when trying to complete an appointment scheduled for a future date', async () => {
+    // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj
+    // complete nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — a booking
+    // for a future date must never be completable early, from any role (this uses 'admin', the
+    // least-restricted role, specifically to prove the check isn't just a role-scoped rule).
+    const row = fullAppointmentRow({ status: 'confirmed' }); // default appointmentDate is TOMORROW
+    prisma.appointment.findUnique.mockResolvedValueOnce(row);
+
+    await expect(
+      appointmentsService.updateAppointmentStatus('appt-1', 'completed', { id: 'admin-1', role: 'admin' })
+    ).rejects.toMatchObject({ statusCode: 400, code: 'APPOINTMENT_NOT_YET_DUE' });
+    expect(tx.appointment.update).not.toHaveBeenCalled();
+  });
+
+  test('DOES allow completing an appointment scheduled for today or a past date', async () => {
+    const past = addDaysISO(TODAY, -3);
+    const row = fullAppointmentRow({ status: 'confirmed', appointmentDate: new Date(`${past}T00:00:00.000Z`), queueToken: null });
+    mockFindUniqueSequence(row, { ...row, status: 'completed' });
+
+    const result = await appointmentsService.updateAppointmentStatus('appt-1', 'completed', { id: 'admin-1', role: 'admin' });
+    expect(result.status).toBe('completed');
   });
 
   test('a patient-initiated cancel notifies the DOCTOR; a staff/admin-initiated cancel notifies the PATIENT', async () => {
@@ -1558,7 +1593,7 @@ describe('appointmentsService.updateAppointmentStatus', () => {
   });
 
   test('logs the status change and busts the appointment list caches for patient/doctor/clinic scopes', async () => {
-    const row = fullAppointmentRow({ status: 'confirmed', queueToken: null });
+    const row = fullAppointmentRow({ status: 'confirmed', appointmentDate: new Date(`${TODAY_STR}T00:00:00.000Z`), queueToken: null });
     mockFindUniqueSequence(row, { ...row, status: 'completed' });
 
     await appointmentsService.updateAppointmentStatus('appt-1', 'completed', { id: 'admin-1', role: 'admin' });
