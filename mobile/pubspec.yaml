@@ -48,7 +48,7 @@ dependencies:
   # `_sentryDsn` (only initialized when a SENTRY_DSN is supplied via --dart-define; the app runs
   # exactly the same with none configured, which is every build made in this sandbox). See
   # README.md's "Crash reporting & connectivity" section. Run `flutter pub get` after pulling this.
-  sentry_flutter: ^8.10.1
+  sentry_flutter: ^9.0.0
   # CRASH REPORTING & CONNECTIVITY: powers widgets/connectivity_banner.dart's "No internet
   # connection" banner (mounted in widgets/role_scaffold.dart). Run `flutter pub get` after
   # pulling this.

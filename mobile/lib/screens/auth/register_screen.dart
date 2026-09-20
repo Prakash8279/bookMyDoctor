@@ -37,7 +37,8 @@ final RegExp _namePattern = RegExp(r"^[A-Za-z][A-Za-z .'-]{1,149}$");
 /// and calls [AuthProvider.bootstrap] to pick up the new session — the same
 /// tokens-then-/me sequence [AuthProvider.register] performs internally.
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final String? initialRole;
+  const RegisterScreen({super.key, this.initialRole});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -68,6 +69,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // GOOGLE SIGN-IN FEATURE — separate loading flag, same reasoning as login_screen.dart.
   bool _googleSubmitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialRole == 'doctor') {
+      _accountType = 'doctor';
+      _loadSpecializations();
+    }
+  }
 
   @override
   void dispose() {
@@ -212,6 +222,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (idToken == null) {
         throw Exception('Google did not return a usable sign-in token. Please try again.');
       }
+      if (!mounted) return;
       final auth = context.read<AuthProvider>();
       final ok = await auth.loginWithGoogle(idToken);
       if (!mounted) return;
@@ -339,7 +350,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const Text('Professional details', style: TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: AppSpacing.md),
                       DropdownButtonFormField<String>(
-                        value: _specializationId,
+                        initialValue: _specializationId,
                         decoration: InputDecoration(
                           labelText: 'Specialization',
                           suffixIcon: _loadingSpecializations
@@ -407,7 +418,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       loading: _submitting,
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    Row(children: const [
+                    const Row(children: [
                       Expanded(child: Divider()),
                       Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
                       Expanded(child: Divider()),

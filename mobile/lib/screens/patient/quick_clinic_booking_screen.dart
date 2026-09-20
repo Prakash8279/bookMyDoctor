@@ -121,12 +121,12 @@ class _QuickClinicBookingScreenState extends State<QuickClinicBookingScreen> {
                   borderRadius: BorderRadius.circular(AppRadius.button),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Column(
+                child: const Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.qr_code_2, size: 40, color: AppColors.textSecondary),
-                    const SizedBox(height: AppSpacing.sm),
-                    const Text(
+                    Icon(Icons.qr_code_2, size: 40, color: AppColors.textSecondary),
+                    SizedBox(height: AppSpacing.sm),
+                    Text(
                       'Camera scanning isn\'t available in this app version — use the clinic\'s registered phone number below instead.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.textSecondary, fontSize: 12),

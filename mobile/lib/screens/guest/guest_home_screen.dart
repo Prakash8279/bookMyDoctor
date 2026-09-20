@@ -211,16 +211,16 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
                 child: Row(
                   children: [
-                    const ClipRRect(
+                    ClipRRect(
                       borderRadius: BorderRadius.all(Radius.circular(11)),
                       child: Image(image: AssetImage('assets/branding/app_icon.png'), width: 36, height: 36),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    const Expanded(
+                    SizedBox(width: AppSpacing.sm),
+                    Expanded(
                       child: Text.rich(
                         TextSpan(
                           children: [
@@ -253,10 +253,6 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     _drawerItem(icon: Icons.mail_outline, label: 'Contact', onTap: () {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen()));
-                    }),
-                    _drawerItem(icon: Icons.medical_services_outlined, label: 'For doctors', onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen()));
                     }),
                     _drawerItem(icon: Icons.privacy_tip_outlined, label: 'Privacy Policy', onTap: () {
                       Navigator.of(context).pop();
@@ -479,9 +475,9 @@ class _HeroSection extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Eyebrow
-                Row(
+                const Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
+                  children: [
                     Icon(Icons.verified_user_outlined, size: 16, color: AppColors.primary),
                     SizedBox(width: 6),
                     Text(
@@ -626,10 +622,10 @@ class _HeroSection extends StatelessWidget {
                 const SizedBox(height: AppSpacing.md),
 
                 // Trust Row
-                Wrap(
+                const Wrap(
                   spacing: AppSpacing.md,
                   runSpacing: 6,
-                  children: const [
+                  children: [
                     _TrustItem(label: 'Verified clinicians'),
                     _TrustItem(label: 'Transparent fees'),
                     _TrustItem(label: 'Live queue updates'),
@@ -879,8 +875,8 @@ class _StatsStrip extends StatelessWidget {
                   decoration: const BoxDecoration(
                     border: Border(right: BorderSide(color: AppColors.border)),
                   ),
-                  child: Column(
-                    children: const [
+                  child: const Column(
+                    children: [
                       Text('0', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.7)),
                       SizedBox(height: 3),
                       Text('Appointments managed', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
@@ -1116,8 +1112,8 @@ class _HomeDoctorCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: const [
+                    const Row(
+                      children: [
                         Icon(Icons.verified_user_outlined, size: 13, color: AppColors.primary),
                         SizedBox(width: 4),
                         Text('VERIFIED DOCTOR', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 0.5)),
@@ -1453,20 +1449,20 @@ class _TestimonialSection extends StatelessWidget {
                 ),
               ],
             ),
-            child: Column(
+            child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('★★★★★', style: TextStyle(color: Color(0xFFF2AA17), fontSize: 16, letterSpacing: 2)),
-                const SizedBox(height: 8),
-                const Text('“Clear explanation and a smooth live-queue experience.”', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15, height: 1.6, color: AppColors.textPrimary)),
-                const SizedBox(height: AppSpacing.md),
+                Text('★★★★★', style: TextStyle(color: Color(0xFFF2AA17), fontSize: 16, letterSpacing: 2)),
+                SizedBox(height: 8),
+                Text('“Clear explanation and a smooth live-queue experience.”', style: TextStyle(fontStyle: FontStyle.italic, fontSize: 15, height: 1.6, color: AppColors.textPrimary)),
+                SizedBox(height: AppSpacing.md),
                 Row(
                   children: [
-                    const CircleAvatar(radius: 16, backgroundColor: AppColors.primaryLight, child: Text('RV', style: TextStyle(fontSize: 12, color: AppColors.primaryDark, fontWeight: FontWeight.w800))),
-                    const SizedBox(width: 10),
+                    CircleAvatar(radius: 16, backgroundColor: AppColors.primaryLight, child: Text('RV', style: TextStyle(fontSize: 12, color: AppColors.primaryDark, fontWeight: FontWeight.w800))),
+                    SizedBox(width: 10),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text('Rahul V.', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: AppColors.textPrimary)),
                         Text('Verified appointment', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                       ],

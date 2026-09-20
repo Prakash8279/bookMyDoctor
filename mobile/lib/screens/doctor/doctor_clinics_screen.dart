@@ -434,7 +434,7 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
             builder: (context, snapshot) {
               final cities = snapshot.data ?? [];
               return DropdownButtonFormField<City>(
-                value: _selectedCity != null && cities.any((c) => c.id == _selectedCity!.id)
+                initialValue: _selectedCity != null && cities.any((c) => c.id == _selectedCity!.id)
                     ? cities.firstWhere((c) => c.id == _selectedCity!.id)
                     : null,
                 isExpanded: true,
@@ -456,7 +456,7 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
             builder: (context, snapshot) {
               final areas = snapshot.data ?? [];
               return DropdownButtonFormField<Area>(
-                value: _selectedArea != null && areas.any((a) => a.id == _selectedArea!.id)
+                initialValue: _selectedArea != null && areas.any((a) => a.id == _selectedArea!.id)
                     ? areas.firstWhere((a) => a.id == _selectedArea!.id)
                     : null,
                 isExpanded: true,

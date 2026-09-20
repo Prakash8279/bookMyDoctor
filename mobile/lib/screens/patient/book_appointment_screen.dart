@@ -9,6 +9,7 @@ import '../../models/admin_models.dart';
 import '../../models/clinical_models.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 import 'payment_required_screen.dart';
 
@@ -628,10 +629,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                   child: Row(
                     children: [
-                      Expanded(
+                      const Expanded(
                         child: Text(
                           'Emergency booking',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                         ),
                       ),
                       if (_platformCharges?.applyEmergencyFee != false)
@@ -863,15 +864,33 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.xl),
-                ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryDark,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: const Text('View my appointments', style: TextStyle(fontWeight: FontWeight.w700)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => showBookingSlipSheet(context, booked),
+                        icon: const Icon(Icons.receipt_long, size: 18),
+                        label: const Text('View slip', style: TextStyle(fontWeight: FontWeight.w700)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primaryDark,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Appointments', style: TextStyle(fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

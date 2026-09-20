@@ -31,12 +31,41 @@ class RoleScaffold extends StatefulWidget {
     this.initialIndex = 0,
   });
 
+  static RoleScaffoldState? of(BuildContext context) {
+    return context.findAncestorStateOfType<RoleScaffoldState>();
+  }
+
   @override
-  State<RoleScaffold> createState() => _RoleScaffoldState();
+  State<RoleScaffold> createState() => RoleScaffoldState();
 }
 
-class _RoleScaffoldState extends State<RoleScaffold> {
+class RoleScaffoldState extends State<RoleScaffold> {
   late int _index = widget.initialIndex;
+
+  int get currentIndex => _index;
+
+  void setIndex(int index) {
+    if (index >= 0 && index < widget.items.length) {
+      setState(() => _index = index);
+    }
+  }
+
+  bool navigateToLabel(String label) {
+    final query = label.trim().toLowerCase();
+    final idx = widget.items.indexWhere((it) => it.label.trim().toLowerCase() == query);
+    if (idx != -1) {
+      setState(() => _index = idx);
+      return true;
+    }
+    final partialIdx = widget.items.indexWhere(
+      (it) => it.label.trim().toLowerCase().contains(query) || query.contains(it.label.trim().toLowerCase()),
+    );
+    if (partialIdx != -1) {
+      setState(() => _index = partialIdx);
+      return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,16 +101,16 @@ class _RoleScaffoldState extends State<RoleScaffold> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
                 child: Row(
                   children: [
-                    const ClipRRect(
+                    ClipRRect(
                       borderRadius: BorderRadius.all(Radius.circular(11)),
                       child: Image(image: AssetImage('assets/branding/app_icon.png'), width: 36, height: 36),
                     ),
-                    const SizedBox(width: AppSpacing.sm),
-                    const Expanded(
+                    SizedBox(width: AppSpacing.sm),
+                    Expanded(
                       child: Text(
                         'BookMyDoctor24',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
@@ -94,9 +123,9 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                 margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(AppRadius.button),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,7 +136,7 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                       displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
                     ),
                   ],
                 ),
@@ -125,11 +154,11 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                       child: ListTile(
                         dense: true,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                        leading: Icon(item.icon, size: 20, color: selected ? Colors.white : Colors.white.withOpacity(0.75)),
+                        leading: Icon(item.icon, size: 20, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75)),
                         title: Text(
                           item.label,
                           style: TextStyle(
-                            color: selected ? Colors.white : Colors.white.withOpacity(0.75),
+                            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75),
                             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                             fontSize: 14,
                           ),
@@ -150,8 +179,8 @@ class _RoleScaffoldState extends State<RoleScaffold> {
                 child: ListTile(
                   dense: true,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                  leading: Icon(Icons.logout, size: 20, color: Colors.white.withOpacity(0.75)),
-                  title: Text('Sign out', style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 14)),
+                  leading: Icon(Icons.logout, size: 20, color: Colors.white.withValues(alpha: 0.75)),
+                  title: Text('Sign out', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14)),
                   onTap: () async {
                     Navigator.of(context).pop();
                     await context.read<AuthProvider>().logout();

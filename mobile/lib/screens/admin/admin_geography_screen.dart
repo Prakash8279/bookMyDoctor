@@ -355,7 +355,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
                 builder: (context, snapshot) {
                   final cities = snapshot.data ?? [];
                   return DropdownButtonFormField<City>(
-                    value: _areaCity != null && cities.any((c) => c.id == _areaCity!.id) ? cities.firstWhere((c) => c.id == _areaCity!.id) : null,
+                    initialValue: _areaCity != null && cities.any((c) => c.id == _areaCity!.id) ? cities.firstWhere((c) => c.id == _areaCity!.id) : null,
                     isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Pick a city to view/add areas'),
                     items: cities.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),

@@ -160,13 +160,13 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
             );
           }
           _selectedClinic ??= clinics.first;
-          if (_hoursFuture == null) _hoursFuture = _loadHours(_selectedClinic!.id);
+          _hoursFuture ??= _loadHours(_selectedClinic!.id);
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               DropdownButtonFormField<Clinic>(
-                value: clinics.firstWhere((c) => c.id == _selectedClinic!.id, orElse: () => clinics.first),
+                initialValue: clinics.firstWhere((c) => c.id == _selectedClinic!.id, orElse: () => clinics.first),
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Clinic'),
                 items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),
@@ -366,7 +366,7 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
           ),
           const SizedBox(height: AppSpacing.sm),
           DropdownButtonFormField<String>(
-            value: _tokenMode,
+            initialValue: _tokenMode,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Token numbering for queue'),
             items: const [
@@ -492,14 +492,14 @@ class _HoursFormState extends State<_HoursForm> {
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<int>(
-            value: _slotMinutes,
+            initialValue: _slotMinutes,
             decoration: const InputDecoration(labelText: 'Slot length (minutes)'),
             items: const [10, 15, 20, 30, 45, 60].map((m) => DropdownMenuItem(value: m, child: Text('$m min'))).toList(),
             onChanged: (v) => setState(() => _slotMinutes = v ?? 15),
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
-            value: _status,
+            initialValue: _status,
             decoration: const InputDecoration(labelText: 'Status'),
             items: const [
               DropdownMenuItem(value: 'active', child: Text('Active')),

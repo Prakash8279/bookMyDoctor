@@ -73,6 +73,7 @@ void main() {
       final patientChip = find.widgetWithText(ActionChip, 'Patient');
       expect(patientChip, findsOneWidget);
 
+      await tester.ensureVisible(patientChip);
       await tester.tap(patientChip);
       await tester.pump();
 

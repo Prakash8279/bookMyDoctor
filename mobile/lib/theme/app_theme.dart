@@ -51,6 +51,7 @@ class AppRadius {
 
   static const button = 8.0; // 0.5rem
   static const card = 14.0; // 0.875rem
+  static const pill = 999.0;
 }
 
 class AppTheme {
@@ -205,7 +206,7 @@ StatusTone statusTone(String status) {
     case 'queued':
       return StatusTone(AppColors.gold.withValues(alpha: 0.18), AppColors.goldDark);
     default:
-      return StatusTone(AppColors.background, AppColors.textSecondary);
+      return const StatusTone(AppColors.background, AppColors.textSecondary);
   }
 }
 

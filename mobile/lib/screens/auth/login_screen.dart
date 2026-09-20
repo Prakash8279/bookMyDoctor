@@ -64,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (idToken == null) {
         throw Exception('Google did not return a usable sign-in token. Please try again.');
       }
+      if (!mounted) return;
       final auth = context.read<AuthProvider>();
       final ok = await auth.loginWithGoogle(idToken);
       if (!mounted) return;
@@ -163,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: AppSpacing.lg),
                     PrimaryButton(label: 'Sign in', onPressed: _submit, loading: _submitting),
                     const SizedBox(height: AppSpacing.sm),
-                    Row(children: const [
+                    const Row(children: [
                       Expanded(child: Divider()),
                       Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
                       Expanded(child: Divider()),

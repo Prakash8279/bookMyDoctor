@@ -112,7 +112,7 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
             children: [
               if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.sm)],
               DropdownButtonFormField<String>(
-                value: _audience,
+                initialValue: _audience,
                 decoration: const InputDecoration(labelText: 'Audience'),
                 items: const [
                   DropdownMenuItem(value: 'all', child: Text('Everyone')),

@@ -235,7 +235,7 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
               builder: (context, snapshot) {
                 final clinics = snapshot.data ?? [];
                 return DropdownButtonFormField<Clinic>(
-                  value: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
+                  initialValue: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
                   isExpanded: true,
                   decoration: InputDecoration(labelText: _isEdit ? 'Reassign clinic (optional)' : 'Clinic'),
                   items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),

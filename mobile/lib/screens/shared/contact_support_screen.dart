@@ -131,11 +131,11 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
             const SizedBox(height: AppSpacing.lg),
             // Website's contact page also shows this static info panel ("Support that listens")
             // alongside the form — client/src/pages/FeaturePages.jsx#PublicContent's CONTACT_ROWS.
-            SectionCard(
+            const SectionCard(
               title: 'Support that listens',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text('Send your query and our team will route it to the right specialist.', style: TextStyle(color: AppColors.textSecondary)),
                   SizedBox(height: AppSpacing.sm),
                   _ContactRow(label: 'Email', value: 'bookmydoctor24@gmail.com'),

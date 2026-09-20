@@ -12,18 +12,17 @@ import 'receptionist_queue_screen.dart';
 import 'receptionist_reports_screen.dart';
 import 'receptionist_walkin_booking_screen.dart';
 
-/// Receptionist portal shell — full feature set providing 100% parity
-/// with the web application and all receptionist capabilities:
-/// 1. Dashboard (/receptionist/dashboard)
-/// 2. Walk-in registration (/receptionist/walk-in)
-/// 3. Queue monitor (/receptionist/queue)
-/// 4. Appointments (/receptionist/appointments)
-/// 5. Payments (/receptionist/payments)
-/// 6. Patients (/receptionist/patients)
-/// 7. Doctors & OPD schedule (/receptionist/availability)
-/// 8. Notifications (/receptionist/notifications)
-/// 9. Reports (/receptionist/reports)
-/// 10. My profile (/receptionist/profile)
+/// Receptionist portal shell — 10 primary operational workflows:
+/// 1. Dashboard
+/// 2. Walk-in registration
+/// 3. Queue monitor
+/// 4. Appointments
+/// 5. Payments
+/// 6. Patients
+/// 7. Doctors & OPD schedule
+/// 8. Notifications
+/// 9. Reports
+/// 10. My profile
 class ReceptionistHomeScreen extends StatelessWidget {
   const ReceptionistHomeScreen({super.key});
 

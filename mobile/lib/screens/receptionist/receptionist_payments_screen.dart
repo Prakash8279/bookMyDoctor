@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 
 /// Payment list + record-new flow. POST /payments is receptionist/admin/
@@ -95,16 +96,39 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
                 final p = payments[i];
                 return Card(
                   child: ListTile(
-                    title: Text(p.patient?.name ?? 'Patient'),
-                    subtitle: Text(
-                      'Dr. ${p.doctor?.name ?? "—"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
+                    onTap: () => showPaymentReceiptSheet(context, p),
+                    title: Text(p.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 2),
+                        Text(
+                          'Dr. ${p.doctor?.name ?? "—"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(50, 24),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () => showPaymentReceiptSheet(context, p),
+                              icon: const Icon(Icons.receipt_long_outlined, size: 14),
+                              label: const Text('View receipt', style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     trailing: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (p.fees.consultationFee != null)
-                          Text('₹${p.fees.consultationFee!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        if (p.fees.consultationFee != null || p.fees.amount != null)
+                          Text('₹${(p.fees.amount ?? p.fees.consultationFee)!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        const SizedBox(height: 4),
                         StatusBadge(status: p.status),
                       ],
                     ),

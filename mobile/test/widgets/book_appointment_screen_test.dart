@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:connect_mobile/core/api_client.dart';
 import 'package:connect_mobile/screens/patient/book_appointment_screen.dart';
 import 'package:connect_mobile/widgets/common_widgets.dart';
 
@@ -22,6 +23,10 @@ import 'package:connect_mobile/widgets/common_widgets.dart';
 /// clock can fast-forward, so `tester.runAsync` is used to briefly step out to the real event
 /// loop and let that connection attempt actually resolve before pumping again.
 void main() {
+  setUp(() {
+    ApiClient.instance.setMockFailAdapter();
+  });
+
   group('BookAppointmentScreen', () {
     testWidgets('shows a loading indicator on the very first frame, before options have loaded', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
@@ -39,13 +44,14 @@ void main() {
       // the underlying Future is real rather than fake-clock-driven, that failure could then
       // surface while a LATER test is running instead of this one.
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('renders the booking form once loading settles, with the confirm button disabled', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
 
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byType(LoadingView), findsNothing);
       // No backend reachable in this environment -> _loadOptions's catch surfaces the failure via
@@ -54,11 +60,11 @@ void main() {
 
       // The form itself still renders (doctor list just ends up empty) so a patient always has
       // something on screen to retry from, rather than a dead end.
-      expect(find.text('Reason for visit (optional)'), findsOneWidget);
+      expect(find.text('Reason for visit'), findsOneWidget);
       expect(find.text('Emergency booking'), findsOneWidget);
       // Defaults to today (see `_selectedDate = DateTime.now()`) rather than an unset placeholder
       // — the date-picker button always shows a formatted date, never "Select date".
-      expect(find.byIcon(Icons.calendar_today), findsOneWidget);
+      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
 
       final confirmButton = tester.widget<ElevatedButton>(
         find.widgetWithText(ElevatedButton, 'Confirm booking'),
@@ -70,15 +76,17 @@ void main() {
     testWidgets('toggling the emergency switch updates its own state without requiring a doctor first', (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      final emergencySwitch = tester.widget<SwitchListTile>(find.byType(SwitchListTile));
-      expect(emergencySwitch.value, isFalse);
+      final emergencyCheckbox = tester.widget<Checkbox>(find.byType(Checkbox).last);
+      expect(emergencyCheckbox.value, isFalse);
 
-      await tester.tap(find.byType(SwitchListTile));
-      await tester.pump();
+      await tester.ensureVisible(find.byType(Checkbox).last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(Checkbox).last);
+      await tester.pumpAndSettle();
 
-      final toggled = tester.widget<SwitchListTile>(find.byType(SwitchListTile));
+      final toggled = tester.widget<Checkbox>(find.byType(Checkbox).last);
       expect(toggled.value, isTrue);
     });
   });

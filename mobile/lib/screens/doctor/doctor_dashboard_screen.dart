@@ -93,7 +93,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       await ApiClient.instance.patch('/doctors/profile', body: {'onlineBooking': next});
       if (mounted) {
         await context.read<AuthProvider>().refreshProfile();
-        showSuccessSnack(context, next ? 'You are now marked on duty' : 'You are now marked off duty');
+        if (mounted) {
+          showSuccessSnack(context, next ? 'You are now marked on duty' : 'You are now marked off duty');
+        }
       }
     } catch (err) {
       if (mounted) showErrorSnack(context, err);

@@ -194,7 +194,7 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     DropdownButtonFormField<String>(
-                      value: _doctorFilter,
+                      initialValue: _doctorFilter,
                       decoration: const InputDecoration(labelText: 'Doctor'),
                       items: [
                         const DropdownMenuItem(value: 'all', child: Text('All doctors')),

@@ -8,6 +8,7 @@ import '../../models/clinical_models.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 
 /// Walk-in booking on behalf of a patient. Same async POST-then-poll flow
@@ -190,15 +191,76 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
       if (!mounted) return;
       if (result.status == 'confirmed') {
         setState(() => _pollingStatus = null);
+        final bookedAppt = result.appointment ??
+            Appointment(
+              id: result.jobId,
+              status: 'confirmed',
+              appointmentDate: dateStr,
+              appointmentTime: timeStr,
+              tokenNumber: result.appointment?.tokenNumber,
+              isEmergency: _isEmergency,
+              source: 'walkin',
+              paymentStatus: 'pending',
+              doctor: _selectedDoctor != null
+                  ? DoctorRef(
+                      id: _selectedDoctor!.doctorUserId,
+                      name: _selectedDoctor!.name,
+                    )
+                  : null,
+              clinic: null,
+              patient: PatientRef(
+                id: _selectedPatient?.id ?? '',
+                name: _selectedPatient?.name ?? _newPatientNameCtrl.text.trim(),
+                phone: _selectedPatient?.phone ?? _newPatientPhoneCtrl.text.trim(),
+              ),
+              reason: _reasonController.text.trim(),
+              fees: Fees(),
+            );
+
         await showDialog(
           context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Appointment booked'),
-            content: Text(
-              'Token number: ${result.appointment?.tokenNumber ?? "—"}\n'
-              'Date: ${result.appointment?.appointmentDate ?? dateStr} at ${result.appointment?.appointmentTime ?? timeStr}',
+          builder: (dialogCtx) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.success, size: 24),
+                SizedBox(width: 8),
+                Text('Appointment Booked'),
+              ],
             ),
-            actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Token #${bookedAppt.tokenNumber ?? "—"}',
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
+                ),
+                const SizedBox(height: 6),
+                Text('Date: ${bookedAppt.appointmentDate} at ${bookedAppt.appointmentTime}'),
+                if (bookedAppt.doctor?.name != null)
+                  Text('Doctor: Dr. ${bookedAppt.doctor!.name}'),
+                if (bookedAppt.patient?.name != null)
+                  Text('Patient: ${bookedAppt.patient!.name}'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(),
+                child: const Text('Close'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  showBookingSlipSheet(context, bookedAppt);
+                },
+                icon: const Icon(Icons.receipt_long, size: 18),
+                label: const Text('View Slip'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryDark,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ),
         );
         if (mounted) {

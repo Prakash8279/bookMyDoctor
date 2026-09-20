@@ -11,17 +11,16 @@ import 'core_models.dart';
 class NamedRef {
   final String id;
   final String? name;
-  // Only ever populated when this NamedRef came from an appointment's `familyMember` field —
-  // appointments.service.js#shapeAppointment sends `{id, name, relation}` for that one field
-  // (see relation: e.g. "Spouse", "Child"), unlike every other NamedRef use (clinic, etc.) which
-  // sends just {id, name}. Kept here (rather than a separate FamilyMemberRef class) since NamedRef
-  // is already the generic shape every other reference uses and this is the only extra key.
   final String? relation;
-  NamedRef({required this.id, this.name, this.relation});
+  final String? address;
+  final String? phone;
+  NamedRef({required this.id, this.name, this.relation, this.address, this.phone});
   factory NamedRef.fromJson(Map<String, dynamic>? json) => NamedRef(
         id: json == null ? '' : asString(json['id']),
         name: json?['name'] as String?,
         relation: json?['relation'] as String?,
+        address: json?['address'] as String?,
+        phone: json?['phone'] as String?,
       );
 }
 

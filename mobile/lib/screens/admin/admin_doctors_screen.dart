@@ -386,7 +386,7 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
             builder: (context, snapshot) {
               final items = snapshot.data ?? [];
               return DropdownButtonFormField<Specialization>(
-                value: _selectedSpecialization,
+                initialValue: _selectedSpecialization,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Specialization'),
                 items: items.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),

@@ -202,7 +202,7 @@ class _ContactResponseFormState extends State<_ContactResponseForm> {
           const SizedBox(height: AppSpacing.md),
           if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
           DropdownButtonFormField<String>(
-            value: _status,
+            initialValue: _status,
             decoration: const InputDecoration(labelText: 'Status'),
             items: const [
               DropdownMenuItem(value: 'open', child: Text('Open')),

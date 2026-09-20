@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 
 /// Clinic's appointment list with status-lifecycle actions. Server-scoped
@@ -184,17 +185,22 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                              ] else if (targets.isNotEmpty) ...[
+                              ] else ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
-                                  children: targets
-                                      .map((s) => OutlinedButton(
-                                            onPressed: () => _setStatus(a, s),
-                                            child: Text(s.replaceAll('_', ' ')),
-                                          ))
-                                      .toList(),
+                                  children: [
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                                      label: const Text('View slip'),
+                                      onPressed: () => showBookingSlipSheet(context, a),
+                                    ),
+                                    ...targets.map((s) => OutlinedButton(
+                                          onPressed: () => _setStatus(a, s),
+                                          child: Text(s.replaceAll('_', ' ')),
+                                        )),
+                                  ],
                                 ),
                               ],
                             ],

@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http_parser/http_parser.dart';
 
 import '../config/env.dart';
@@ -38,10 +42,21 @@ typedef UnauthorizedHandler = void Function();
 /// de-duplication of concurrent refresh calls, same error shape.
 class ApiClient {
   ApiClient._internal() {
+    // WEB CRASH FIX: dart:io's Platform.environment/Platform.script throw UnsupportedError at
+    // runtime on Flutter Web (dart:io has no real implementation there) — the `kIsWeb` short-
+    // circuit must run first so those getters are never reached on a web build. Without this,
+    // ApiClient._internal() (run the first time ApiClient.instance is touched, i.e. essentially
+    // at app start) would crash immediately on `flutter run -d chrome`, the web quick-check path
+    // README.md recommends. See config/env.dart's own `if (!kIsWeb && Platform.isAndroid)` for
+    // the same pattern already established elsewhere in this file's neighborhood.
+    final isTest = !kIsWeb &&
+        (Platform.environment.containsKey('FLUTTER_TEST') ||
+            Platform.script.toString().contains('_test') ||
+            Platform.script.toString().contains('flutter_test'));
     _dio = Dio(BaseOptions(
       baseUrl: Env.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 20),
+      connectTimeout: isTest ? const Duration(milliseconds: 100) : const Duration(seconds: 20),
+      receiveTimeout: isTest ? const Duration(milliseconds: 100) : const Duration(seconds: 20),
       headers: {'Content-Type': 'application/json'},
     ));
 
@@ -284,4 +299,30 @@ class ApiClient {
     });
     return out;
   }
+
+  void setFastTimeoutsForTesting() {
+    _dio.options.connectTimeout = const Duration(milliseconds: 100);
+    _dio.options.receiveTimeout = const Duration(milliseconds: 100);
+  }
+
+  void setMockFailAdapter() {
+    _dio.httpClientAdapter = _MockFailAdapter();
+  }
+}
+
+class _MockFailAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    throw DioException.connectionError(
+      requestOptions: options,
+      reason: 'Cannot reach the server in test environment.',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

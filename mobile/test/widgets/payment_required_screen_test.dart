@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:connect_mobile/core/api_client.dart';
 import 'package:connect_mobile/models/clinical_models.dart';
 import 'package:connect_mobile/screens/patient/payment_required_screen.dart';
 import 'package:connect_mobile/widgets/common_widgets.dart';
@@ -37,6 +38,7 @@ Appointment _appointment({required String status, String? tokenNumber, double to
 void main() {
   group('PaymentRequiredScreen', () {
     setUp(() {
+      ApiClient.instance.setMockFailAdapter();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
         _razorpayChannel,
         (MethodCall methodCall) async => null,
@@ -70,7 +72,7 @@ void main() {
 
       expect(find.text('Booking confirmed'), findsOneWidget);
       expect(find.textContaining('A12'), findsOneWidget);
-      expect(find.widgetWithText(ElevatedButton, 'Done'), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'View my appointments'), findsOneWidget);
       expect(find.text('Payment required'), findsNothing);
     });
 
@@ -93,7 +95,7 @@ void main() {
       // SDK (whose platform channel isn't available in a widget test anyway) would ever open.
       // See book_appointment_screen_test.dart's doc comment for why `runAsync` is needed here.
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(find.byType(ErrorBanner), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);

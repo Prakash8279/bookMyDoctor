@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 import 'payment_required_screen.dart';
 import 'queue_tracker_screen.dart';
@@ -187,12 +188,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   }
 
   void _showBookingSlip(BuildContext context, Appointment appt) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _BookingSlipSheet(appointment: appt),
-    );
+    showBookingSlipSheet(context, appt);
   }
 }
 
@@ -414,167 +410,7 @@ class _AppointmentCard extends StatelessWidget {
   }
 }
 
-class _BookingSlipSheet extends StatelessWidget {
-  final Appointment appointment;
-  const _BookingSlipSheet({required this.appointment});
 
-  @override
-  Widget build(BuildContext context) {
-    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
-    final isPaid = appointment.paymentStatus == 'paid';
-    final isPartial = appointment.paymentStatus == 'partial';
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      maxChildSize: 0.95,
-      minChildSize: 0.5,
-      builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: ListView(
-          controller: scrollController,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('BookMyDoctor24', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                    Text('CLINIC BOOKING SLIP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppColors.textSecondary)),
-                  ],
-                ),
-                StatusBadge(status: appointment.status),
-              ],
-            ),
-            const Divider(height: 24),
-            // Token Box
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.primaryLight,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('APPOINTMENT TOKEN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-                      Text(
-                        '#${appointment.tokenNumber ?? "—"}',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.primaryDark),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(appointment.appointmentDate, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                      Text(appointment.appointmentTime, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            // Doctor & Clinic
-            _buildSection(
-              title: 'Practitioner & Clinic',
-              rows: [
-                MapEntry('Doctor', appointment.doctor?.name ?? '—'),
-                if (appointment.doctor?.specialization != null)
-                  MapEntry('Specialization', appointment.doctor!.specialization!.name),
-                MapEntry('Clinic', appointment.clinic?.name ?? '—'),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            // Patient details
-            _buildSection(
-              title: 'Patient Details',
-              rows: [
-                MapEntry(
-                  'Patient Name',
-                  appointment.familyMember?.name ?? appointment.patient?.name ?? 'Self',
-                ),
-                if (appointment.familyMember?.relation != null)
-                  MapEntry('Relation', appointment.familyMember!.relation!),
-                if (appointment.reason != null && appointment.reason!.isNotEmpty)
-                  MapEntry('Reason for Visit', appointment.reason!),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-            // Payment Summary
-            _buildSection(
-              title: 'Financial Summary',
-              rows: [
-                MapEntry('Consultation Fee', '₹${fee.toStringAsFixed(0)}'),
-                MapEntry(
-                  'Payment Status',
-                  isPaid ? 'Paid in Full' : isPartial ? 'Partially Paid (Online)' : 'Pending / Pay at Clinic',
-                ),
-                if (appointment.paymentMethod != null)
-                  MapEntry('Payment Mode', appointment.paymentMethod!.toUpperCase()),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            const Text(
-              'Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            PrimaryButton(
-              label: 'Done',
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSection({required String title, required List<MapEntry<String, String>> rows}) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-          const SizedBox(height: 8),
-          for (final row in rows)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(row.key, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  Text(row.value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ReviewDialog extends StatefulWidget {
   final String doctorName;

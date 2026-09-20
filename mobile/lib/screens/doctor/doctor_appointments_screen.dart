@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 import 'doctor_medical_records_screen.dart';
 
@@ -241,12 +242,17 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                              ] else if (targets.isNotEmpty || canAddEmr) ...[
+                              ] else ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                                      label: const Text('View slip'),
+                                      onPressed: () => showBookingSlipSheet(context, a),
+                                    ),
                                     ...targets.map((s) => OutlinedButton(
                                           onPressed: () => s == 'cancelled' ? _confirmCancel(a) : _setStatus(a, s),
                                           child: Text(s.replaceAll('_', ' ')),
