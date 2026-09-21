@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/token_store.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -193,24 +194,61 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
           child: Divider(height: 1, color: AppColors.border),
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        titleSpacing: 0,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(9),
-              child: Image.asset('assets/branding/app_icon.png', width: 30, height: 30),
+              child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             const Text.rich(
               TextSpan(
                 children: [
-                  TextSpan(text: 'BookMyDoctor', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 17)),
-                  TextSpan(text: '24', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 17)),
+                  TextSpan(text: 'BookMyDoctor', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                  TextSpan(text: '24', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
                 ],
               ),
             ),
           ],
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+                side: const BorderSide(color: Color(0xFFD4CDC8)),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                minimumSize: const Size(0, 36),
+              ),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              ),
+              child: const Text('Log in', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                elevation: 0,
+                minimumSize: const Size(0, 36),
+              ),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RegisterScreen()),
+              ),
+              child: const Text('Get started', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ),
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
 
       drawer: Drawer(
@@ -281,6 +319,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                               'Doctor Connect is a technology platform that enables patients to discover doctors and book appointments. Cancellation and refund matters related to an appointment are primarily handled by the respective doctor or clinic.',
                         ),
                       ));
+                    }),
+                    _drawerItem(icon: Icons.login_outlined, label: 'Log in', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
                     }),
                   ],
                 ),
@@ -1292,7 +1334,13 @@ class _HomeDoctorCard extends StatelessWidget {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       elevation: 1,
                     ),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor))),
+                    onPressed: () {
+                      if (TokenStore.instance.current == null) {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+                      } else {
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)));
+                      }
+                    },
                     child: const Text('Book now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                 ],
