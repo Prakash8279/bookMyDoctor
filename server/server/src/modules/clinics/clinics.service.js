@@ -730,16 +730,21 @@ async function upsertHours(clinicId, body, actor) {
   const doctorUserId = resolveTargetDoctorId(body, actor);
   await assertAssignedToClinic(doctorUserId, clinicId);
 
-  const { weekday, startTime, endTime, slotMinutes = 15, status = 'active' } = body;
+  const { weekday, startTime, endTime, slotMinutes = 15 } = body;
 
   if (startTime >= endTime) {
     throw new ApiError(400, 'INVALID_TIME_RANGE', 'startTime must be earlier than endTime.');
   }
 
+  // status removed from here (mobile parity audit round 2 — user request: "backend hai but
+  // website me nahi hai to hata do app se backend v oo hata do"): it was only ever settable from
+  // the app's weekly-hours form, never from the website. New rows use the schema default
+  // ('active'); an update no longer touches status at all, so it doesn't clobber whatever a row
+  // already has.
   const row = await prisma.doctorClinicHours.upsert({
     where: { doctorUserId_clinicId_weekday: { doctorUserId, clinicId, weekday } },
-    update: { startTime, endTime, slotMinutes, status },
-    create: { doctorUserId, clinicId, weekday, startTime, endTime, slotMinutes, status },
+    update: { startTime, endTime, slotMinutes },
+    create: { doctorUserId, clinicId, weekday, startTime, endTime, slotMinutes },
   });
 
   await activityLogService.log({

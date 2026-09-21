@@ -453,7 +453,6 @@ class _HoursFormState extends State<_HoursForm> {
   TimeOfDay _start = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _end = const TimeOfDay(hour: 17, minute: 0);
   int _slotMinutes = 15;
-  String _status = 'active';
   bool _submitting = false;
   String? _error;
 
@@ -465,7 +464,6 @@ class _HoursFormState extends State<_HoursForm> {
       _start = _parseTime(e.startTime);
       _end = _parseTime(e.endTime);
       _slotMinutes = e.slotMinutes;
-      _status = e.status;
     }
   }
 
@@ -482,12 +480,16 @@ class _HoursFormState extends State<_HoursForm> {
       _error = null;
     });
     try {
+      // status removed from this form (mobile parity audit round 2 — user request: "backend hai
+      // but website me nahi hai to hata do app se backend v oo hata do"): website's OPD table only
+      // ever displays status (StatusPill), it never has a control to set it — so the app's own
+      // Active/Inactive dropdown here was the only place that could set it. Server now always
+      // keeps existing rows' status untouched and defaults new ones to 'active'.
       await ApiClient.instance.put('/clinics/${widget.clinicId}/hours', body: {
         'weekday': widget.weekday,
         'startTime': _fmt(_start),
         'endTime': _fmt(_end),
         'slotMinutes': _slotMinutes,
-        'status': _status,
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -543,16 +545,6 @@ class _HoursFormState extends State<_HoursForm> {
             decoration: const InputDecoration(labelText: 'Slot length (minutes)'),
             items: const [10, 15, 20, 30, 45, 60].map((m) => DropdownMenuItem(value: m, child: Text('$m min'))).toList(),
             onChanged: (v) => setState(() => _slotMinutes = v ?? 15),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          DropdownButtonFormField<String>(
-            initialValue: _status,
-            decoration: const InputDecoration(labelText: 'Status'),
-            items: const [
-              DropdownMenuItem(value: 'active', child: Text('Active')),
-              DropdownMenuItem(value: 'inactive', child: Text('Inactive')),
-            ],
-            onChanged: (v) => setState(() => _status = v ?? 'active'),
           ),
           const SizedBox(height: AppSpacing.lg),
           PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),

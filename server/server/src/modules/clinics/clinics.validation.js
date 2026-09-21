@@ -132,7 +132,11 @@ const putHours = [
   body('startTime').matches(TIME_RE).withMessage('startTime must be in HH:MM 24-hour format.'),
   body('endTime').matches(TIME_RE).withMessage('endTime must be in HH:MM 24-hour format.'),
   body('slotMinutes').optional({ values: 'falsy' }).isInt({ min: 5, max: 120 }).toInt(),
-  body('status').optional({ values: 'falsy' }).isIn(['active', 'inactive']),
+  // status removed (mobile parity audit round 2 — user request: "backend hai but website me
+  // nahi hai to hata do app se backend v oo hata do"): web only ever DISPLAYS this field
+  // (StaffPages.jsx's read-only StatusPill), it never has a form control to set it, and the
+  // app's own weekly-hours form was the only place that could set it. Hours now always save as
+  // 'active' — see clinics.service.js#upsertHours.
 ];
 
 const listHours = [

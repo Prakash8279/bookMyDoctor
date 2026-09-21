@@ -19,16 +19,9 @@ const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
-const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { ADMIN_ROLES } = require('../../utils/roles');
 
 const LIST_CACHE_TTL_SECONDS = 60;
-
-// name is a NOT NULL column on users — an explicit `null` here must be rejected, not forwarded
-// into a Prisma update. The validation layer (receptionists.validation.js's `update` chain)
-// already rejects it too via rejectNull('name'); this is the second, defense-in-depth layer
-// (same pattern as CLINIC_UPDATE_NON_NULLABLE in clinics.service.js).
-const RECEPTIONIST_UPDATE_NON_NULLABLE = ['name'];
 
 const RECEPTIONIST_SELECT = {
   id: true,
@@ -255,116 +248,14 @@ async function getReceptionistById(id, actor) {
   return shape(row);
 }
 
-/**
- * Body whitelist {name?, phone?, clinicId?}. Reassigning clinicId re-runs the same
- * active-clinic + ownership-of-new-clinic checks as create — fixes the flagged gap that no
- * edit action existed on this screen at all, despite Status being displayed.
- * @param {string} id
- * @param {object} body - already shape-validated
- * @param {{id:string, role:string}} actor
- */
-async function updateReceptionist(id, body, actor) {
-  const existing = await prisma.user.findUnique({
-    where: { id },
-    select: { id: true, role: true, receptionistProfile: { select: { clinicId: true } } },
-  });
-  if (!existing || existing.role !== 'receptionist') {
-    throw new ApiError(404, 'RECEPTIONIST_NOT_FOUND', 'Receptionist not found.');
-  }
-
-  const currentClinicId = existing.receptionistProfile ? existing.receptionistProfile.clinicId : null;
-  if (currentClinicId) {
-    await assertOwnsClinic(currentClinicId, actor);
-  } else if (!isAdmin(actor)) {
-    throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to manage this receptionist.');
-  }
-
-  const userUpdates = pickPresentFields(body, ['name', 'phone'], RECEPTIONIST_UPDATE_NON_NULLABLE);
-  // Safe to coerce unconditionally here — pickPresentFields already threw a clean 422 above if
-  // name was explicitly null, so by this point a present `name` is guaranteed to be a real
-  // string (the validation layer's rejectNull('name') is the first line of defense; this is the
-  // second, matching the pattern used throughout clinics.service.js/doctors.service.js).
-  if ('name' in userUpdates) userUpdates.name = String(userUpdates.name).trim();
-  if ('phone' in userUpdates) userUpdates.phone = userUpdates.phone ? String(userUpdates.phone).trim() : null;
-
-  let newClinicId;
-  if ('clinicId' in body && body.clinicId && body.clinicId !== currentClinicId) {
-    await assertClinicUsableForReceptionist(body.clinicId, actor);
-    newClinicId = body.clinicId;
-  }
-
-  if (Object.keys(userUpdates).length === 0 && !newClinicId) {
-    return getReceptionistById(id, actor);
-  }
-
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(userUpdates).length > 0) {
-      await tx.user.update({ where: { id }, data: userUpdates });
-    }
-    if (newClinicId) {
-      await tx.receptionistProfile.update({ where: { userId: id }, data: { clinicId: newClinicId } });
-    }
-  });
-
-  await activityLogService.log({
-    actorUserId: actor.id,
-    actorRole: actor.role,
-    actionType: 'receptionist.update',
-    targetEntityType: 'receptionist',
-    targetEntityId: id,
-    description: `Updated receptionist fields: ${[...Object.keys(userUpdates), ...(newClinicId ? ['clinicId'] : [])].join(', ')}`,
-  });
-
-  await cacheService.invalidate('cache:receptionists:list:*');
-
-  return getReceptionistById(id, actor);
-}
-
-/**
- * Writes to users.status (AccountStatus), not a receptionist-profile field — unlike doctors,
- * which keep a dedicated doctor_profiles.status verification-lifecycle field,
- * receptionist_profiles has no status column at all: the "Status" the old UI displayed was
- * always the account status. Intentional asymmetry with the doctors module's status endpoint.
- * @param {string} id
- * @param {'active'|'disabled'} status
- * @param {{id:string, role:string}} actor
- */
-async function updateReceptionistStatus(id, status, actor) {
-  const existing = await prisma.user.findUnique({
-    where: { id },
-    select: { id: true, role: true, receptionistProfile: { select: { clinicId: true } } },
-  });
-  if (!existing || existing.role !== 'receptionist') {
-    throw new ApiError(404, 'RECEPTIONIST_NOT_FOUND', 'Receptionist not found.');
-  }
-
-  const currentClinicId = existing.receptionistProfile ? existing.receptionistProfile.clinicId : null;
-  if (currentClinicId) {
-    await assertOwnsClinic(currentClinicId, actor);
-  } else if (!isAdmin(actor)) {
-    throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to manage this receptionist.');
-  }
-
-  await prisma.user.update({ where: { id }, data: { status } });
-
-  await activityLogService.log({
-    actorUserId: actor.id,
-    actorRole: actor.role,
-    actionType: 'receptionist.status_update',
-    targetEntityType: 'receptionist',
-    targetEntityId: id,
-    description: `Set receptionist account status to "${status}"`,
-  });
-
-  await cacheService.invalidate('cache:receptionists:list:*');
-
-  return getReceptionistById(id, actor);
-}
+// updateReceptionist/updateReceptionistStatus removed (mobile parity audit round 2 — user
+// request: "backend hai but website me nahi hai to hata do app se backend v oo hata do"): neither
+// was ever reachable from any web page (DoctorStaff and admin's ManageReceptionists only ever
+// create + list), and their own client-side store actions were dead code. See
+// receptionists.routes.js's comment for the full rationale.
 
 module.exports = {
   createReceptionist,
   listReceptionists,
   getReceptionistById,
-  updateReceptionist,
-  updateReceptionistStatus,
 };

@@ -1,8 +1,6 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
@@ -191,10 +189,22 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Add clinic'),
+      // COMPLETENESS FIX (mobile parity audit round 2 — user request: "backend hai but website me
+      // nahi hai to hata do app se backend v oo hata do"): web only ever edits `clinics[0]`
+      // (FeaturePages.jsx#DoctorClinics — no UI path to add a second clinic once one exists), so
+      // the app's always-visible "Add clinic" FAB was a real extra capability. Now gated the same
+      // way: shown only when the doctor has zero clinics yet.
+      floatingActionButton: FutureBuilder<List<Clinic>>(
+        future: _future,
+        builder: (context, snapshot) {
+          final clinics = snapshot.data;
+          if (clinics == null || clinics.isNotEmpty) return const SizedBox.shrink();
+          return FloatingActionButton.extended(
+            onPressed: () => _openForm(),
+            icon: const Icon(Icons.add),
+            label: const Text('Add clinic'),
+          );
+        },
       ),
       body: Column(
         children: [
@@ -306,18 +316,18 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
   late final _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
   late final _phoneCtrl = TextEditingController(text: widget.existing?.phone ?? '');
   late final _addressCtrl = TextEditingController(text: widget.existing?.address ?? '');
-  late final _upiIdCtrl = TextEditingController(text: widget.existing?.paymentUpiId ?? '');
   City? _selectedCity;
   Area? _selectedArea;
   Future<List<City>>? _citiesFuture;
   Future<List<Area>>? _areasFuture;
-  late bool _emergencyAvailable = widget.existing?.emergencyAvailable ?? false;
-  late bool _cashEnabled = widget.existing?.paymentCashEnabled ?? true;
-  late bool _upiEnabled = widget.existing?.paymentUpiEnabled ?? false;
-  late String? _qrUrl = widget.existing?.paymentQrUrl;
   bool _submitting = false;
-  bool _uploadingQr = false;
   String? _error;
+  // emergencyAvailable/cash/UPI/QR fields removed from this form (mobile parity audit round 2 —
+  // user request: "backend hai but website me nahi hai to hata do app se backend v oo hata do"):
+  // web's own DoctorClinics form (FeaturePages.jsx) never had these fields either, and cash/UPI/QR
+  // duplicated the real, separate Payment Setup screen (doctor_payment_setup_screen.dart) that
+  // already owns this on both app and website. No backend change here — PATCH /clinics/:id still
+  // accepts these fields for admin's web ManageClinics, which does use emergencyAvailable.
 
   @override
   void initState() {
@@ -359,7 +369,6 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
-    _upiIdCtrl.dispose();
     super.dispose();
   }
 
@@ -382,10 +391,6 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
       if (_addressCtrl.text.trim().isNotEmpty) 'address': _addressCtrl.text.trim(),
       if (_selectedCity != null) 'cityId': _selectedCity!.id,
       if (_selectedArea != null) 'areaId': _selectedArea!.id,
-      'emergencyAvailable': _emergencyAvailable,
-      'paymentCashEnabled': _cashEnabled,
-      'paymentUpiEnabled': _upiEnabled,
-      if (_upiEnabled && _upiIdCtrl.text.trim().isNotEmpty) 'paymentUpiId': _upiIdCtrl.text.trim(),
     };
     try {
       if (widget.existing == null) {
@@ -402,49 +407,8 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
     }
   }
 
-  /// COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): POST /media/qr — doctor-or-
-  /// receptionist, ownership-checked against THIS clinicId server-side (uploads.service.js#
-  /// saveClinicQr — a doctor must be the OWNING doctor at this clinic, matching the same bar
-  /// PATCH /clinics/:id itself uses). Only offered when editing an EXISTING clinic (a brand-new
-  /// clinic has no id yet to attach the QR to) and only doctor-owner reaches this form at all
-  /// (the "Edit" button that opens it is itself gated on `_isOwner` in the list screen above).
-  Future<void> _pickAndUploadQr() async {
-    if (widget.existing == null) return;
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.of(context).pop(ImageSource.camera)),
-            ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.of(context).pop(ImageSource.gallery)),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return;
-    final picked = await ImagePicker().pickImage(source: source, maxWidth: 1200);
-    if (picked == null || !mounted) return;
-    setState(() => _uploadingQr = true);
-    try {
-      final ext = picked.path.toLowerCase().split('.').last;
-      final mimeType = ext == 'png' ? 'image/png' : (ext == 'webp' ? 'image/webp' : 'image/jpeg');
-      final res = await ApiClient.instance.uploadFile(
-        '/media/qr',
-        filePath: picked.path,
-        mimeType: mimeType,
-        extraFields: {'clinicId': widget.existing!.id},
-      );
-      if (mounted) {
-        setState(() => _qrUrl = res.map['url'] as String?);
-        showSuccessSnack(context, 'QR code uploaded');
-      }
-    } catch (err) {
-      if (mounted) showErrorSnack(context, err);
-    } finally {
-      if (mounted) setState(() => _uploadingQr = false);
-    }
-  }
+  // _pickAndUploadQr removed along with this form's cash/UPI/QR switches (see the field-removal
+  // comment above) — QR upload for a clinic now lives only in Payment Setup, matching website.
 
   @override
   Widget build(BuildContext context) {
@@ -497,61 +461,6 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
               );
             },
           ),
-          const SizedBox(height: AppSpacing.md),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Emergency available'),
-            value: _emergencyAvailable,
-            onChanged: (v) => setState(() => _emergencyAvailable = v),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Accepts cash'),
-            value: _cashEnabled,
-            onChanged: (v) => setState(() => _cashEnabled = v),
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Accepts UPI'),
-            value: _upiEnabled,
-            onChanged: (v) => setState(() => _upiEnabled = v),
-          ),
-          if (_upiEnabled) ...[
-            const SizedBox(height: AppSpacing.sm),
-            TextField(controller: _upiIdCtrl, decoration: const InputDecoration(labelText: 'UPI ID')),
-            // COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): see _pickAndUploadQr — only
-            // offered once the clinic exists (needs a real clinicId to attach the QR to).
-            if (widget.existing != null) ...[
-              const SizedBox(height: AppSpacing.md),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (_qrUrl != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(imageUrl: _qrUrl!, width: 64, height: 64, fit: BoxFit.cover),
-                    )
-                  else
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-                      child: const Icon(Icons.qr_code_2_outlined, color: AppColors.textSecondary),
-                    ),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _uploadingQr ? null : _pickAndUploadQr,
-                      icon: _uploadingQr
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.upload_file_outlined, size: 16),
-                      label: Text(_qrUrl != null ? 'Replace QR code' : 'Upload QR code'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
           const SizedBox(height: AppSpacing.lg),
           PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
           if (widget.existing == null) ...[

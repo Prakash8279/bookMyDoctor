@@ -23,14 +23,4 @@ const getOne = asyncHandler(async (req, res) => {
   return success(res, row);
 });
 
-const update = asyncHandler(async (req, res) => {
-  const row = await receptionistsService.updateReceptionist(req.params.id, req.body, req.user);
-  return success(res, row, { message: 'Receptionist updated' });
-});
-
-const updateStatus = asyncHandler(async (req, res) => {
-  const row = await receptionistsService.updateReceptionistStatus(req.params.id, req.body.status, req.user);
-  return success(res, row, { message: 'Receptionist status updated' });
-});
-
-module.exports = { create, list, getOne, update, updateStatus };
+module.exports = { create, list, getOne };

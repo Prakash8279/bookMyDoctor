@@ -6,21 +6,6 @@
  */
 const { body, param, query } = require('express-validator');
 
-const OPT_NULLABLE = { values: 'null' };
-
-// `.optional()` with no options only skips a chain when the field is `undefined` — so an
-// explicit JSON `null` still reaches `.custom()` below and fails it, producing a clean
-// per-field 422 message, and `.bail()` stops the chain there so the type-specific validator
-// after it never runs on a `null` value. Used only for fields backed by a NOT NULL column
-// (mirrors the identical helper in clinics.validation.js/doctors.validation.js).
-function rejectNull(fieldName) {
-  return body(fieldName)
-    .optional()
-    .custom((value) => value !== null)
-    .withMessage(`${fieldName} cannot be null.`)
-    .bail();
-}
-
 const create = [
   body('name').trim().notEmpty().withMessage('name is required.').isLength({ max: 150 }),
   body('email').trim().notEmpty().withMessage('email is required.').isEmail().withMessage('a valid email is required.').isLength({ max: 255 }),
@@ -39,23 +24,7 @@ const list = [
 
 const getOne = [param('id').isUUID().withMessage('id must be a valid id.')];
 
-const update = [
-  param('id').isUUID().withMessage('id must be a valid id.'),
-  // name is a NOT NULL column on users — rejectNull() turns an explicit `null` into a clean 422
-  // instead of it silently skipping the trim/isLength chain and reaching the service layer as a
-  // raw null (which would otherwise be coerced by `String(null)` into the literal string "null"
-  // and persisted).
-  rejectNull('name').trim().isLength({ min: 1, max: 150 }),
-  body('phone').optional(OPT_NULLABLE).trim().isLength({ max: 20 }),
-  // A receptionist is always tied to a specific clinic (module-wide design goal) — there is no
-  // "unassign" state, so an explicit `null` here must be rejected with a clean 422, not silently
-  // accepted and then dropped by the service layer's truthy check on body.clinicId.
-  rejectNull('clinicId').isUUID(),
-];
+// update/updateStatus validation chains removed alongside PATCH /:id and PATCH /:id/status — see
+// receptionists.routes.js's comment for why.
 
-const updateStatus = [
-  param('id').isUUID().withMessage('id must be a valid id.'),
-  body('status').notEmpty().withMessage('status is required.').isIn(['active', 'disabled']),
-];
-
-module.exports = { create, list, getOne, update, updateStatus };
+module.exports = { create, list, getOne };

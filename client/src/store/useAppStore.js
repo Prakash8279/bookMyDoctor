@@ -744,16 +744,11 @@ export const useAppStore = create(
         return receptionist
       },
       createReceptionistAccount: async (fields) => get().addReceptionist(fields),
-      updateReceptionist: async (id, fields) => {
-        const receptionist = await apiClient.patch(`/receptionists/${id}`, fields)
-        set((state) => ({ data: { ...state.data, receptionists: upsertById(state.data.receptionists, receptionist) } }))
-        return receptionist
-      },
-      updateReceptionistStatus: async (id, status) => {
-        const receptionist = await apiClient.patch(`/receptionists/${id}/status`, { status })
-        set((state) => ({ data: { ...state.data, receptionists: upsertById(state.data.receptionists, receptionist) } }))
-        return receptionist
-      },
+      // updateReceptionist/updateReceptionistStatus removed (mobile parity audit round 2 — user
+      // request: "backend hai but website me nahi hai to hata do app se backend v oo hata do"):
+      // neither store action was ever called from any page (DoctorStaff/ManageReceptionists only
+      // create + list), and the PATCH /receptionists/:id and /:id/status routes they hit are gone
+      // from the server now too — see server's receptionists.routes.js for the full rationale.
 
       // =====================================================================
       // Appointments — booking is fully asynchronous (plan §1.8)
