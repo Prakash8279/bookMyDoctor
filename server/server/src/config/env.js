@@ -204,7 +204,18 @@ module.exports = {
     // txTimeoutMs + a margin if either of those two are ever changed.
     lockTtlMs: parseIntWithDefault(process.env.BOOKING_LOCK_TTL_MS, 16000),
     lockWaitMs: parseIntWithDefault(process.env.BOOKING_LOCK_WAIT_MS, 3000),
-    workerConcurrency: parseIntWithDefault(process.env.BOOKING_WORKER_CONCURRENCY, 5),
+    // THROUGHPUT TUNING (raised 5 -> 8, user request: "jyada se jyada user same time pe booking
+    // kar sake"): jobs for DIFFERENT doctor+slot keys already run fully in parallel up to this
+    // number (see bookingWorker.js's header comment) — only jobs for the exact SAME slot ever
+    // serialize on the Redis lock, so this number is a real "how many different bookings can this
+    // one worker process at once" ceiling, not a false one. Raised modestly rather than
+    // aggressively: this worker process shares ONE Prisma pool sized by DB_POOL_SIZE (env.js's
+    // dbPoolSize, default 5) — pushing workerConcurrency far above dbPoolSize just means the
+    // extra jobs queue for a free DB connection instead of running truly concurrently, so getting
+    // the full benefit of this bump also means raising DB_POOL_SIZE to keep pace (see
+    // .env.example's DB_POOL_SIZE comment), staying under your real Postgres's max_connections
+    // divided by (replica count + worker count).
+    workerConcurrency: parseIntWithDefault(process.env.BOOKING_WORKER_CONCURRENCY, 8),
     // Interactive-transaction options for the runBookingJob $transaction (appointments.service.js).
     // Prisma's own default (maxWait=2000ms, timeout=5000ms) is untuned for this transaction: it
     // opens with `pg_advisory_xact_lock` scoped per doctor+day, so under a real burst of
