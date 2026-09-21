@@ -63,6 +63,34 @@ class VerificationDocument {
       );
 }
 
+/// COMPLETENESS FIX (mobile parity audit, doctor panel): ports web's doctor-only "Bank details"
+/// section (StaffPages.jsx#DoctorProfileEdit, ~line 604) — payout bank details, visible only to
+/// the doctor themself and admin/superadmin (doctors.service.js#shapeDoctor's includeContact
+/// gate), never to a patient. Saved via the same PATCH /me action as the rest of the profile, but
+/// as its own independent save unit (see profile_screen.dart's _BankDetailsSection) — web keeps
+/// this as a separate <form> so a doctor filling in bank details doesn't have to resubmit their
+/// whole professional profile at the same time.
+class BankDetails {
+  final String? accountHolderName;
+  final String? accountNumber;
+  final String? ifscCode;
+  final String? bankName;
+  final String? upiId;
+
+  BankDetails({this.accountHolderName, this.accountNumber, this.ifscCode, this.bankName, this.upiId});
+
+  factory BankDetails.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return BankDetails();
+    return BankDetails(
+      accountHolderName: json['accountHolderName'] as String?,
+      accountNumber: json['accountNumber'] as String?,
+      ifscCode: json['ifscCode'] as String?,
+      bankName: json['bankName'] as String?,
+      upiId: json['upiId'] as String?,
+    );
+  }
+}
+
 /// Nested `profile` object from GET /me — shape differs by role; every
 /// field is nullable/optional here because a receptionist/admin has most of
 /// them absent and a fresh doctor profile may be sparse.
@@ -104,6 +132,7 @@ class MeProfile {
   // it at consultationFee server-side.
   final double? minBookingAdvanceAmount;
   final List<VerificationDocument> verificationDocuments;
+  final BankDetails? bankDetails;
 
   final String? clinicId; // receptionist
   final String? since; // receptionist
@@ -137,6 +166,7 @@ class MeProfile {
     this.emergencyAvailable,
     this.minBookingAdvanceAmount,
     this.verificationDocuments = const [],
+    this.bankDetails,
     this.clinicId,
     this.since,
   });
@@ -176,6 +206,7 @@ class MeProfile {
               ?.map((e) => VerificationDocument.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
+      bankDetails: json['bankDetails'] == null ? null : BankDetails.fromJson(json['bankDetails'] as Map<String, dynamic>),
       clinicId: json['clinicId'] as String?,
       since: json['since'] as String?,
     );

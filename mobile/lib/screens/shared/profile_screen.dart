@@ -618,6 +618,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             .toList(),
                       ),
               ),
+              const SizedBox(height: AppSpacing.md),
+              // COMPLETENESS FIX (mobile parity audit, doctor panel): web's "Bank details" section
+              // (StaffPages.jsx#DoctorProfileEdit) — was entirely absent from mobile. Kept as its
+              // own independent save unit exactly like web's separate <form>, not folded into the
+              // big profile form above.
+              _BankDetailsSection(initial: auth.profile?.bankDetails, onSaved: auth.refreshProfile),
             ],
             const SizedBox(height: AppSpacing.lg),
             PrimaryButton(label: 'Save changes', onPressed: () => _save(auth), loading: _saving),
@@ -641,6 +647,119 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// COMPLETENESS FIX (mobile parity audit, doctor panel): ports web's "Bank details" form
+/// (StaffPages.jsx#DoctorProfileEdit, ~line 604) exactly — same 5 fields, same independent
+/// save action (PATCH /me with only the bank* keys), same success/error messaging. Server-side
+/// validation (me.validation.js) enforces the IFSC/UPI formats — this form relies on that same
+/// error surface (firstErrorMessage-equivalent) rather than duplicating the regexes client-side.
+class _BankDetailsSection extends StatefulWidget {
+  final BankDetails? initial;
+  final Future<void> Function() onSaved;
+  const _BankDetailsSection({required this.initial, required this.onSaved});
+
+  @override
+  State<_BankDetailsSection> createState() => _BankDetailsSectionState();
+}
+
+class _BankDetailsSectionState extends State<_BankDetailsSection> {
+  late final _holderController = TextEditingController(text: widget.initial?.accountHolderName ?? '');
+  late final _bankNameController = TextEditingController(text: widget.initial?.bankName ?? '');
+  late final _accountNumberController = TextEditingController(text: widget.initial?.accountNumber ?? '');
+  late final _ifscController = TextEditingController(text: widget.initial?.ifscCode ?? '');
+  late final _upiController = TextEditingController(text: widget.initial?.upiId ?? '');
+  bool _saving = false;
+  String? _error;
+  bool _saved = false;
+
+  @override
+  void dispose() {
+    _holderController.dispose();
+    _bankNameController.dispose();
+    _accountNumberController.dispose();
+    _ifscController.dispose();
+    _upiController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+      _saved = false;
+    });
+    try {
+      await ApiClient.instance.patch('/me', body: {
+        'bankAccountHolderName': _holderController.text.trim().isEmpty ? null : _holderController.text.trim(),
+        'bankAccountNumber': _accountNumberController.text.trim().isEmpty ? null : _accountNumberController.text.trim(),
+        'bankIfscCode': _ifscController.text.trim().isEmpty ? null : _ifscController.text.trim(),
+        'bankName': _bankNameController.text.trim().isEmpty ? null : _bankNameController.text.trim(),
+        'bankUpiId': _upiController.text.trim().isEmpty ? null : _upiController.text.trim(),
+      });
+      await widget.onSaved();
+      if (mounted) setState(() => _saved = true);
+    } catch (err) {
+      if (mounted) setState(() => _error = err.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Bank details',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Used for payouts. Visible only to you and the platform admin team — never shown to patients or on your public profile.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(controller: _holderController, decoration: const InputDecoration(labelText: 'Account holder name')),
+          const SizedBox(height: AppSpacing.md),
+          TextField(controller: _bankNameController, decoration: const InputDecoration(labelText: 'Bank name')),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _accountNumberController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Account number'),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _ifscController,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'IFSC code', hintText: 'e.g. HDFC0001234'),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _upiController,
+            decoration: const InputDecoration(labelText: 'UPI ID (optional)', hintText: 'e.g. name@okhdfcbank'),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'An alternative or addition to the bank account above — fill in either, both, or neither.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton(
+            onPressed: _saving ? null : _save,
+            child: Text(_saving ? 'Saving…' : 'Save bank details'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+          if (_saved) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const Text('Bank details saved.', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ],
       ),
     );
   }

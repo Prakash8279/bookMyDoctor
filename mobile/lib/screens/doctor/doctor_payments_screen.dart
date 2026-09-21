@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+
+/// Ports client/src/lib/format.js's shortId() exactly — see appointments_screen.dart's copy for
+/// the same rationale (a private per-file helper, matching this codebase's existing convention).
+String _shortId(String id) {
+  final tail = id.contains('_') ? id.split('_').last : id;
+  return '#${tail.length > 4 ? tail.substring(tail.length - 4) : tail}';
+}
 
 /// Read-only for the doctor — POST /payments is receptionist/admin/
 /// superadmin only (integration_plan.md §1.12). Fee masking applies here
@@ -54,8 +62,23 @@ class DoctorPaymentsScreen extends StatelessWidget {
                 return Card(
                   child: ListTile(
                     title: Text(p.patient?.name ?? 'Patient'),
-                    subtitle: Text(
-                      '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                    // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's payments
+                    // table (embedded in AdminPages.jsx#RevenueReports, doctorOnly branch) also
+                    // shows the Booking ID (shortId of the appointment) and an "At booking"/
+                    // "At clinic" PaymentSourceBadge next to the mode — both were missing here.
+                    subtitle: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
+                            '${p.appointment != null ? " · Booking ${_shortId(p.appointment!.id)}" : ""}'
+                            '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        PaymentSourceBadge(payment: p),
+                      ],
                     ),
                     trailing: Column(
                       mainAxisSize: MainAxisSize.min,

@@ -28,6 +28,13 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   Future<List<Clinic>>? _clinicsFuture;
   Clinic? _selectedClinic;
   Future<_HoursData>? _hoursFuture;
+  // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's header shows a
+  // "Live · {time}" indicator with a manual Refresh button (StaffPages.jsx:766-769) — this just
+  // updates the shown timestamp (there's no separate refetch on web either; pull-to-refresh
+  // below already keeps the actual data current).
+  String _refreshedAt = DateFormat('h:mm a').format(DateTime.now());
+
+  void _refresh() => setState(() => _refreshedAt = DateFormat('h:mm a').format(DateTime.now()));
 
   @override
   void initState() {
@@ -159,10 +166,26 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
               kicker: 'Production database',
               title: 'OPD schedule',
               subtitle: "Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates.",
-              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile equivalent.
-              action: _selectedClinic == null
-                  ? null
-                  : TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile
+              // equivalent; the "Live · {time}"/Refresh pair (round 2 audit) was also missing.
+              action: Wrap(
+                spacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
+                    child: Text('Live · $_refreshedAt', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.success)),
+                  ),
+                  OutlinedButton(
+                    onPressed: _refresh,
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), textStyle: const TextStyle(fontSize: 11)),
+                    child: const Text('Refresh'),
+                  ),
+                  if (_selectedClinic != null)
+                    TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
+                ],
+              ),
             ),
           ),
           const Padding(

@@ -385,7 +385,14 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                       children: [
                                         Text(item.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                                         Text(
-                                          timeStr.isNotEmpty ? timeStr : 'Today',
+                                          // COMPLETENESS FIX (mobile parity audit round 2, doctor
+                                          // panel): web's dashboard "Recent live records" table
+                                          // has a Details column showing the clinic name
+                                          // (StaffPages.jsx:246) — was dropped here.
+                                          [
+                                            if (timeStr.isNotEmpty) timeStr else 'Today',
+                                            if (item.clinic?.name != null) item.clinic!.name!,
+                                          ].join(' · '),
                                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                                         ),
                                       ],

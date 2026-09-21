@@ -7,6 +7,13 @@ import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 import 'doctor_medical_records_screen.dart';
 
+/// Ports client/src/lib/format.js's shortId() exactly — see appointments_screen.dart's copy for
+/// the same rationale (a private per-file helper, matching this codebase's existing convention).
+String _shortId(String id) {
+  final tail = id.contains('_') ? id.split('_').last : id;
+  return '#${tail.length > 4 ? tail.substring(tail.length - 4) : tail}';
+}
+
 /// Doctor's full appointment list with status-lifecycle actions.
 /// integration_plan.md §1.8: doctor may set any of the 4 terminal/interim
 /// targets (confirmed/completed/cancelled/no_show); the state machine only
@@ -179,6 +186,14 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                                   ),
                                   StatusBadge(status: a.status),
                                 ],
+                              ),
+                              const SizedBox(height: 2),
+                              // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's
+                              // shared AppointmentTable shows a "Booking ID" column (shortId of the
+                              // appointment, StaffPages.jsx:152) — was missing from this card.
+                              Text(
+                                'Booking ${_shortId(a.id)}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                               ),
                               const SizedBox(height: 4),
                               Text('${a.appointmentDate} · ${a.appointmentTime}', style: const TextStyle(color: AppColors.textSecondary)),

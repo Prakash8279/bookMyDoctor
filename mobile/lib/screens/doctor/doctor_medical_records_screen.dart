@@ -132,8 +132,14 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
   void initState() {
     super.initState();
     _selectedAppointment = widget.initialAppointment;
+    // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's DoctorEmr builds its
+    // patient picker from EVERY distinct patient across data.appointments, any status
+    // (FeaturePages.jsx#DoctorEmr — "no /patients endpoint exists; derive a best-effort distinct
+    // patient list from appointments already bulk-loaded"). This screen was filtering to
+    // status:'confirmed' only, so a doctor couldn't start a fresh EMR entry (outside the
+    // appointment-card shortcut) for a patient whose only visible appointment was e.g. completed.
     _appointmentsFuture = ApiClient.instance
-        .get('/appointments', query: {'status': 'confirmed', 'pageSize': 100})
+        .get('/appointments', query: {'pageSize': 100})
         .then((res) {
           final list = <Appointment>[];
           for (final item in res.list) {

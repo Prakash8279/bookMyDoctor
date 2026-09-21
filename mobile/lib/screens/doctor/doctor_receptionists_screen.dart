@@ -109,7 +109,13 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
                 return Card(
                   child: ListTile(
                     title: Text(r.name),
-                    subtitle: Text('${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'),
+                    // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's
+                    // receptionist table has a "Since" (joined-date) column (FeaturePages.jsx's
+                    // DoctorStaff DataTable) — was missing here.
+                    subtitle: Text(
+                      '${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'
+                      '${r.since != null ? " · Since ${r.since!.split("T").first}" : ""}',
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
