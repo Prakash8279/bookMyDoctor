@@ -90,7 +90,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
   Future<List<_PatientRow>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/appointments', query: {'pageSize': 200})
+          .get('/appointments', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final appointments = <Appointment>[];
       for (final item in res.list) {

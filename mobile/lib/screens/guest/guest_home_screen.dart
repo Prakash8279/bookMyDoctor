@@ -10,6 +10,7 @@ import '../auth/register_screen.dart';
 import '../patient/book_appointment_screen.dart';
 import '../patient/doctor_detail_screen.dart';
 import '../shared/contact_support_screen.dart';
+import '../shared/legal_policies_screen.dart';
 import '../shared/privacy_screen.dart';
 import '../shared/terms_screen.dart';
 import 'guest_doctor_search_screen.dart';
@@ -124,16 +125,23 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     );
   }
 
+  static final List<Specialization> defaultSpecializations = [
+    Specialization(id: '62549a9c-7986-4d2b-856e-ec41c53b5470', name: 'cardiologist', icon: null, description: null),
+    Specialization(id: '99999999-9999-4999-8999-999999999999', name: 'Dermatologist', icon: 'skin', description: 'Skin, hair, and nail conditions'),
+    Specialization(id: '77777777-7777-4777-8777-777777777777', name: 'General Physician', icon: 'stethoscope', description: 'General health checkups and common illnesses'),
+  ];
+
   Future<List<Specialization>> _fetchSpecializations() async {
     try {
-      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 200});
+      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
       final list = <Specialization>[];
       for (final item in res.list) {
         try { list.add(Specialization.fromJson(item)); } catch (_) {}
       }
-      return list;
+      if (list.isNotEmpty) return list;
+      return defaultSpecializations;
     } catch (_) {
-      return const [];
+      return defaultSpecializations;
     }
   }
 
@@ -152,7 +160,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
 
   Future<int> _fetchClinicsCount() async {
     try {
-      final res = await ApiClient.instance.get('/clinics', query: {'pageSize': 200});
+      final res = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
       return res.list.length;
     } catch (_) {
       return 0;
@@ -262,6 +270,18 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsScreen()));
                     }),
+                    _drawerItem(icon: Icons.receipt_long_outlined, label: 'Cancellation & Refund', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const LegalDocumentScreen(
+                          title: 'Cancellation & Refund Policy',
+                          lastUpdated: '21 September 2026',
+                          sections: kCancellationSections,
+                          intro:
+                              'Doctor Connect is a technology platform that enables patients to discover doctors and book appointments. Cancellation and refund matters related to an appointment are primarily handled by the respective doctor or clinic.',
+                        ),
+                      ));
+                    }),
                   ],
                 ),
               ),
@@ -322,9 +342,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                 : 0.0;
             final doctorCountBySpecialization = <String, int>{};
             for (final d in data?.doctors ?? <DoctorDirectoryItem>[]) {
-              final name = d.specialization?.name;
-              if (name == null) continue;
+              final name = d.specialization?.name.trim();
+              if (name == null || name.isEmpty) continue;
               doctorCountBySpecialization[name] = (doctorCountBySpecialization[name] ?? 0) + 1;
+              doctorCountBySpecialization[name.toLowerCase()] = (doctorCountBySpecialization[name.toLowerCase()] ?? 0) + 1;
             }
 
             return ListView(
@@ -400,7 +421,12 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   onJoin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 ),
 
-                const SizedBox(height: AppSpacing.xl),
+                // 9. Site Footer (100% parity with web's SiteFooter.jsx)
+                _SiteFooter(
+                  onSearchDoctors: () => _goSearch(),
+                  onOpenLogin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
+                  onOpenRegister: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                ),
               ],
             );
           },
@@ -928,9 +954,15 @@ class _SpecializationsSection extends StatelessWidget {
     required this.onSeeAll,
   });
 
+  static final List<Specialization> fallbackSpecializations = [
+    Specialization(id: '62549a9c-7986-4d2b-856e-ec41c53b5470', name: 'cardiologist', icon: null, description: null),
+    Specialization(id: '99999999-9999-4999-8999-999999999999', name: 'Dermatologist', icon: 'skin', description: 'Skin, hair, and nail conditions'),
+    Specialization(id: '77777777-7777-4777-8777-777777777777', name: 'General Physician', icon: 'stethoscope', description: 'General health checkups and common illnesses'),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    if (specializations.isEmpty) return const SizedBox.shrink();
+    final list = specializations.isNotEmpty ? specializations : fallbackSpecializations;
     return Padding(
       padding: const EdgeInsets.all(AppSpacing.md),
       child: Column(
@@ -940,37 +972,56 @@ class _SpecializationsSection extends StatelessWidget {
             kicker: 'Find the right care',
             title: 'Browse by specialization',
             subtitle: 'Experienced doctors across the most requested areas of care.',
-            action: TextButton(onPressed: onSeeAll, child: const Text('View all doctors →')),
+            action: TextButton(
+              onPressed: onSeeAll,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('View all doctors', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primary)),
+                  SizedBox(width: 4),
+                  Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.primary),
+                ],
+              ),
+            ),
           ),
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: specializations.length,
+            itemCount: list.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               mainAxisSpacing: AppSpacing.sm,
               crossAxisSpacing: AppSpacing.sm,
-              childAspectRatio: 1.22,
+              childAspectRatio: 1.15,
             ),
             itemBuilder: (context, i) {
-              final s = specializations[i];
-              final count = doctorCountBySpecialization[s.name] ?? 0;
+              final s = list[i];
+              final count = doctorCountBySpecialization[s.name] ??
+                  doctorCountBySpecialization[s.name.trim().toLowerCase()] ??
+                  0;
               return InkWell(
                 borderRadius: BorderRadius.circular(18),
                 onTap: () => onTap(s.id),
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: const Color(0xFFE9E5E0)),
                     borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.02),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: Stack(
                     children: [
                       const Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFFAAAAAA)),
+                        bottom: 2,
+                        right: 2,
+                        child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFFB5B0AA)),
                       ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -978,13 +1029,24 @@ class _SpecializationsSection extends StatelessWidget {
                           Container(
                             width: 44,
                             height: 44,
-                            decoration: BoxDecoration(color: AppColors.primaryLight, borderRadius: BorderRadius.circular(13)),
-                            child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primary, size: 22),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFBF1EC),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primaryDark, size: 22),
                           ),
                           const Spacer(),
-                          Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.textPrimary)),
-                          const SizedBox(height: 2),
-                          Text('$count ${count == 1 ? 'doctor' : 'doctors'}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                          Text(
+                            s.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '$count ${count == 1 ? 'doctor' : 'doctors'}',
+                            style: const TextStyle(color: Color(0xFF6F6A64), fontSize: 12, fontWeight: FontWeight.w500),
+                          ),
                         ],
                       ),
                     ],
@@ -1530,6 +1592,166 @@ class _DoctorCtaSection extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 9. Comprehensive Site Footer — 100% parity with web's SiteFooter.jsx
+class _SiteFooter extends StatelessWidget {
+  final VoidCallback onSearchDoctors;
+  final VoidCallback onOpenLogin;
+  final VoidCallback onOpenRegister;
+
+  const _SiteFooter({
+    required this.onSearchDoctors,
+    required this.onOpenLogin,
+    required this.onOpenRegister,
+  });
+
+  Widget _footerLink(String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: InkWell(
+        onTap: onTap,
+        child: Text(
+          label,
+          style: const TextStyle(color: Color(0xFFB5B5B5), fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
+
+  Widget _footerHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 16),
+      child: Text(
+        title,
+        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFF090909),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 48, AppSpacing.lg, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Brand Lockup
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: Image.asset('assets/branding/app_icon.png', width: 34, height: 34),
+              ),
+              const SizedBox(width: 10),
+              const Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: 'BookMyDoctor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                    TextSpan(text: '24', style: TextStyle(color: AppColors.primaryLight, fontWeight: FontWeight.w800, fontSize: 18)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Healthcare that respects your time. Discover verified doctors, book instantly, and follow your clinic queue live.',
+            style: TextStyle(color: Color(0xFFA3A3A3), fontSize: 13, height: 1.6),
+          ),
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Icon(Icons.mail_outline, size: 16, color: Color(0xFFB5B5B5)),
+              SizedBox(width: 8),
+              Text('bookmydoctor24@gmail.com', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
+            ],
+          ),
+          const Divider(color: Color(0xFF222222), height: 40),
+
+          // Patients section
+          _footerHeader('Patients'),
+          _footerLink('Find a doctor', onSearchDoctors),
+          _footerLink('My appointments', onOpenLogin),
+          _footerLink('Live queue', onOpenLogin),
+          _footerLink('Health records', onOpenLogin),
+
+          // Professionals section
+          _footerHeader('Professionals'),
+          _footerLink('Join as a doctor', onOpenRegister),
+          _footerLink('Doctor portal', onOpenLogin),
+          _footerLink('Reception portal', onOpenLogin),
+          _footerLink('Admin portal', onOpenLogin),
+
+          // Contact section
+          _footerHeader('Contact'),
+          const Row(
+            children: [
+              Icon(Icons.location_on_outlined, size: 16, color: Color(0xFFB5B5B5)),
+              SizedBox(width: 8),
+              Text('India', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Row(
+            children: [
+              Icon(Icons.phone_outlined, size: 16, color: Color(0xFFB5B5B5)),
+              SizedBox(width: 8),
+              Text('Support available 9 AM–8 PM', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen())),
+            child: const Text('Contact support', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
+          ),
+
+          const Divider(color: Color(0xFF222222), height: 40),
+
+          // Footer Bottom
+          const Text(
+            '© 2026 BookMyDoctor24. All rights reserved.',
+            style: TextStyle(color: Color(0xFF858585), fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              InkWell(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyScreen())),
+                child: const Text('Privacy', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 12, decoration: TextDecoration.underline)),
+              ),
+              const Text('·', style: TextStyle(color: Color(0xFF858585))),
+              InkWell(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TermsScreen())),
+                child: const Text('Terms', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 12, decoration: TextDecoration.underline)),
+              ),
+              const Text('·', style: TextStyle(color: Color(0xFF858585))),
+              InkWell(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const LegalDocumentScreen(
+                    title: 'Cancellation & Refund Policy',
+                    lastUpdated: '21 September 2026',
+                    sections: kCancellationSections,
+                    intro:
+                        'Doctor Connect is a technology platform that enables patients to discover doctors and book appointments. Cancellation and refund matters related to an appointment are primarily handled by the respective doctor or clinic.',
+                  ),
+                )),
+                child: const Text('Cancellation & Refund', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 12, decoration: TextDecoration.underline)),
+              ),
+              const Text('·', style: TextStyle(color: Color(0xFF858585))),
+              const Text('Accessibility', style: TextStyle(color: Color(0xFF858585), fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }

@@ -30,8 +30,8 @@ class _ReceptionistEmergencyScreenState extends State<ReceptionistEmergencyScree
   Future<List<QueueTokenItem>> _fetch() async {
     try {
       final results = await Future.wait([
-        ApiClient.instance.get('/appointments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
-        ApiClient.instance.get('/queue', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+        ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
+        ApiClient.instance.get('/queue', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
       ]);
       final emergencyAppointmentIds = <String>{};
       for (final item in results[0].list) {
