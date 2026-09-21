@@ -19,7 +19,7 @@
 /// Until then, this whole feature can compile but cannot actually complete a sign-in on a device
 /// or emulator.
 class GoogleAuthConfig {
-  static const String webClientId = 'REPLACE_WITH_YOUR_WEB_CLIENT_ID.apps.googleusercontent.com';
+  static const String webClientId = '855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com';
 
   static bool get isConfigured => !webClientId.startsWith('REPLACE_WITH_');
 }
