@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/admin_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -81,6 +82,27 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
     }
   }
 
+  // COMPLETENESS FIX (mobile parity audit, patient panel): web's "Export CSV" action
+  // (PatientPages.jsx Family#exportCsv) had no mobile equivalent. Same header/column order/values.
+  Future<void> _exportCsv(List<FamilyMember> members) async {
+    await shareCsv(
+      filename: 'family-members.csv',
+      headers: const ['ID', 'Full name', 'Relationship', 'Date of birth', 'Gender', 'Blood group', 'Age'],
+      rows: [
+        for (var i = 0; i < members.length; i++)
+          [
+            'DC${(i + 1).toString().padLeft(2, '0')}',
+            members[i].name,
+            members[i].relation,
+            members[i].dateOfBirth ?? '',
+            members[i].gender ?? '',
+            members[i].bloodGroup ?? '',
+            members[i].age ?? '',
+          ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,11 +112,23 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       ),
       body: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Family members',
               subtitle: 'Manage dependents for appointment booking.',
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action — see _exportCsv.
+              action: FutureBuilder<List<FamilyMember>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  final members = snapshot.data ?? const <FamilyMember>[];
+                  return TextButton.icon(
+                    onPressed: members.isEmpty ? null : () => _exportCsv(members),
+                    icon: const Icon(Icons.file_download_outlined, size: 16),
+                    label: const Text('Export CSV'),
+                  );
+                },
+              ),
             ),
           ),
           Expanded(

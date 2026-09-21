@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../models/admin_models.dart';
@@ -11,10 +12,8 @@ import '../shared/notifications_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'appointments_screen.dart';
 import 'book_appointment_screen.dart';
-import 'complaints_screen.dart';
 import 'emergency_booking_screen.dart';
 import 'family_members_screen.dart';
-import 'medical_records_screen.dart';
 import 'patient_search_screen.dart';
 import 'payments_screen.dart';
 import 'payment_required_screen.dart';
@@ -134,6 +133,15 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BookAppointmentScreen()));
   }
 
+  // COMPLETENESS FIX (mobile parity audit): web's "📞 Call clinic" quick action
+  // (PatientPages.jsx `href="tel:+912240001111"`) — same hardcoded clinic number as web.
+  Future<void> _callClinic(BuildContext context) async {
+    final uri = Uri.parse('tel:+912240001111');
+    if (!await launchUrl(uri) && context.mounted) {
+      showErrorSnack(context, Exception('Could not start a call.'));
+    }
+  }
+
   void _goToAppointments(BuildContext context, {bool isHistory = false}) {
     if (widget.onNavigateToAppointments != null) {
       widget.onNavigateToAppointments!();
@@ -164,12 +172,6 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientSearchScreen()));
   }
 
-  void _goToRecords(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Medical records')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientMedicalRecordsScreen()));
-  }
-
   void _goToEmergency(BuildContext context) {
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Emergency care')) return;
@@ -186,12 +188,6 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Family members')) return;
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FamilyMembersScreen()));
-  }
-
-  void _goToComplaints(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Help & complaints')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ComplaintsScreen()));
   }
 
   @override
@@ -265,6 +261,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
               const SizedBox(height: AppSpacing.md),
 
               // Healthcare services quick actions
+              // COMPLETENESS FIX (mobile parity audit, patient panel): "Medical records" and
+              // "Complaints" tiles removed on the user's explicit instruction — see
+              // patient_home_screen.dart's doc comment for why (no web patient UI backs either).
               SectionCard(
                 title: 'Healthcare services',
                 child: GridView.count(
@@ -281,11 +280,6 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                       onTap: () => _goToSearch(context),
                     ),
                     _QuickServiceTile(
-                      icon: Icons.description_outlined,
-                      label: 'Medical records',
-                      onTap: () => _goToRecords(context),
-                    ),
-                    _QuickServiceTile(
                       icon: Icons.emergency_outlined,
                       label: 'Emergency care',
                       onTap: () => _goToEmergency(context),
@@ -299,11 +293,6 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                       icon: Icons.people_outline,
                       label: 'Family members',
                       onTap: () => _goToFamily(context),
-                    ),
-                    _QuickServiceTile(
-                      icon: Icons.support_agent_outlined,
-                      label: 'Complaints',
-                      onTap: () => _goToComplaints(context),
                     ),
                   ],
                 ),
@@ -445,6 +434,39 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           '${nextUpcoming.clinic?.name ?? "Clinic"} · ${nextUpcoming.appointmentDate}, ${nextUpcoming.appointmentTime}',
                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                         ),
+                        const SizedBox(height: AppSpacing.sm),
+                        // COMPLETENESS FIX (mobile parity audit): web's "View appointment details
+                        // & QR" link, "Call clinic" and "Arrive at clinic" quick actions
+                        // (PatientPages.jsx) — both non-call links go to the same appointments
+                        // list on web (there's no separate "arrival" flow), matched here.
+                        Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          runSpacing: AppSpacing.xs,
+                          children: [
+                            TextButton(
+                              onPressed: () => _goToAppointments(context),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                              child: const Text('View appointment details & QR →', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () => _callClinic(context),
+                                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+                                  child: const Text('📞 Call clinic', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                ),
+                                const SizedBox(width: 6),
+                                ElevatedButton(
+                                  onPressed: () => _goToAppointments(context),
+                                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
+                                  child: const Text('Arrive at clinic', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: AppSpacing.md),
                         Row(
                           children: [
@@ -580,7 +602,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   trailing: TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                        MaterialPageRoute(builder: (_) => const NotificationsScreen(showExportCsv: true)),
                       );
                     },
                     child: const Text(

@@ -1,12 +1,75 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/csv_export.dart';
 import '../../models/clinical_models.dart';
+import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 import 'payment_required_screen.dart';
 import 'queue_tracker_screen.dart';
+import 'package:provider/provider.dart';
+
+// COMPLETENESS FIX (mobile parity audit, patient panel): ports web's per-row Paid/Due/displayFee
+// computation (PatientPages.jsx#PatientAppointments, extensively commented there as the
+// "PAID/DUE FIX"/"MIN-BOOKING-REMAINDER FIX"/"ONE-FEE-COLUMN FIX" rounds) — an appointment can be
+// settled two ways: one online payment for the full fee, or the doctor's minimum booking amount
+// online plus the remainder collected later at the clinic ("partial"). Mobile's card previously
+// showed only a single flat "Fee: ₹X" with no Paid/Due split at all.
+class _AppointmentMoney {
+  final double fee;
+  final double displayFee;
+  final double paid;
+  final double due;
+  final String status; // pending|partial|paid
+  final String mode;
+  final String? transactionRef;
+  _AppointmentMoney({
+    required this.fee,
+    required this.displayFee,
+    required this.paid,
+    required this.due,
+    required this.status,
+    required this.mode,
+    this.transactionRef,
+  });
+}
+
+_AppointmentMoney _computeMoney(Appointment appointment, List<PaymentItem> payments) {
+  final appointmentPayments = payments.where((p) => p.appointment?.id == appointment.id).toList();
+  final payment = appointmentPayments.isNotEmpty ? appointmentPayments.first : null;
+  final fee = appointment.fees.totalAmount ?? payment?.fees.amount ?? appointment.fees.consultationFee ?? 0;
+  final status = appointment.paymentStatus ?? payment?.status ?? 'pending';
+  final paidFromRecords = appointmentPayments.fold<double>(0, (sum, p) => sum + (p.fees.amount ?? 0));
+  final paid = appointmentPayments.isNotEmpty ? paidFromRecords : (status == 'paid' ? fee : paidFromRecords);
+  final minRemainder = appointment.fees.minBookingRemainder;
+  final due = status == 'paid'
+      ? 0.0
+      : status == 'partial' && minRemainder != null
+          ? minRemainder
+          : (fee - paid < 0 ? 0.0 : fee - paid);
+  final minBookingAmount = appointment.fees.minBookingAmount;
+  final feeMinimumPath = (minBookingAmount != null && minRemainder != null) ? minBookingAmount + minRemainder : null;
+  final displayFee = status == 'partial' && feeMinimumPath != null ? feeMinimumPath : (status == 'paid' ? paid : fee);
+  return _AppointmentMoney(
+    fee: fee,
+    displayFee: displayFee,
+    paid: paid,
+    due: due,
+    status: status,
+    mode: payment?.mode ?? appointment.paymentMethod ?? 'pay_at_clinic',
+    transactionRef: payment?.transactionRef,
+  );
+}
+
+// Ports client/src/lib/format.js's shortId() exactly — last 4 chars after an underscore split,
+// prefixed with '#'. Used for the "Booking ID" a patient reads off the slip or quotes at the
+// clinic counter (distinct from the on-screen row-position "ID", which is just #1, #2…).
+String _shortId(String id) {
+  final tail = id.contains('_') ? id.split('_').last : id;
+  return '#${tail.length > 4 ? tail.substring(tail.length - 4) : tail}';
+}
 
 /// GET /appointments (server-scoped to the caller — a patient only ever
 /// sees their own, no query param can widen that) + PATCH /appointments/:id/status
@@ -27,9 +90,15 @@ class PatientAppointmentsScreen extends StatefulWidget {
   State<PatientAppointmentsScreen> createState() => _PatientAppointmentsScreenState();
 }
 
+class _PatientAppointmentsData {
+  final List<Appointment> appointments;
+  final List<PaymentItem> payments;
+  _PatientAppointmentsData({required this.appointments, required this.payments});
+}
+
 class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   String? _statusFilter;
-  Future<List<Appointment>>? _future;
+  Future<_PatientAppointmentsData>? _future;
 
   @override
   void initState() {
@@ -43,7 +112,24 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
     });
   }
 
-  Future<List<Appointment>> _fetch() async {
+  Future<_PatientAppointmentsData> _fetch() async {
+    final appointments = await _fetchAppointments();
+    // COMPLETENESS FIX (mobile parity audit): needed to compute the real Paid/Due split per
+    // appointment (see _computeMoney) — matches every payment row back to its appointment, same
+    // as web's `data.payments` join.
+    final payments = <PaymentItem>[];
+    try {
+      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: []));
+      for (final item in res.list) {
+        try {
+          payments.add(PaymentItem.fromJson(item));
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return _PatientAppointmentsData(appointments: appointments, payments: payments);
+  }
+
+  Future<List<Appointment>> _fetchAppointments() async {
     try {
       final res = await ApiClient.instance.get('/appointments', query: {
         'pageSize': 50,
@@ -85,6 +171,46 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
     }
   }
 
+  // COMPLETENESS FIX (mobile parity audit, patient panel): web's exact Export CSV header/row
+  // shape for PatientAppointments (PatientPages.jsx's exportCsv call, ~line 553) — Booking ID via
+  // _shortId(), Patient column falls back to the logged-in patient's own name when the booking is
+  // for the patient themself (no familyMember set).
+  Future<void> _exportCsv(List<Appointment> appointments, List<PaymentItem> payments) async {
+    final me = context.read<AuthProvider>().user;
+    await shareCsv(
+      filename: widget.isHistory ? 'booking-history.csv' : 'appointments.csv',
+      headers: const [
+        'ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status',
+        'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes',
+      ],
+      rows: [
+        for (var i = 0; i < appointments.length; i++)
+          () {
+            final appt = appointments[i];
+            final money = _computeMoney(appt, payments);
+            return [
+              'DC${(i + 1).toString().padLeft(2, '0')}',
+              _shortId(appt.id),
+              appt.tokenNumber ?? '',
+              appt.appointmentDate,
+              appt.appointmentTime,
+              appt.doctor?.name ?? '',
+              appt.familyMember?.name ?? appt.patient?.name ?? me?.name ?? '',
+              appt.clinic?.name ?? '',
+              appt.status,
+              money.status,
+              money.mode,
+              money.transactionRef ?? '',
+              money.displayFee.toStringAsFixed(0),
+              money.paid.toStringAsFixed(0),
+              money.due.toStringAsFixed(0),
+              appt.notes ?? appt.reason ?? '',
+            ];
+          }(),
+      ],
+    );
+  }
+
   Future<void> _leaveReview(Appointment appt) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -114,6 +240,19 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
             subtitle: widget.isHistory
                 ? 'Review every clinic visit and view/download booking slips.'
                 : 'View upcoming bookings, download slips, and review completed consultations.',
+            // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action — see _exportCsv.
+            action: FutureBuilder<_PatientAppointmentsData>(
+              future: _future,
+              builder: (context, snapshot) {
+                final appointments = snapshot.data?.appointments ?? const <Appointment>[];
+                final payments = snapshot.data?.payments ?? const <PaymentItem>[];
+                return TextButton.icon(
+                  onPressed: appointments.isEmpty ? null : () => _exportCsv(appointments, payments),
+                  icon: const Icon(Icons.file_download_outlined, size: 16),
+                  label: const Text('Export CSV'),
+                );
+              },
+            ),
           ),
         ),
         Padding(
@@ -134,7 +273,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
           ),
         ),
         Expanded(
-          child: FutureBuilder<List<Appointment>>(
+          child: FutureBuilder<_PatientAppointmentsData>(
             future: _future,
             builder: (context, snapshot) {
               if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
@@ -144,7 +283,8 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
                   child: ErrorBanner(error: snapshot.error!, onRetry: _load),
                 );
               }
-              final appointments = snapshot.data ?? [];
+              final appointments = snapshot.data?.appointments ?? const <Appointment>[];
+              final payments = snapshot.data?.payments ?? const <PaymentItem>[];
               if (appointments.isEmpty) {
                 return const EmptyStateView(icon: Icons.event_busy, title: 'No appointments here');
               }
@@ -158,6 +298,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
                     final appt = appointments[i];
                     return _AppointmentCard(
                       appointment: appt,
+                      money: _computeMoney(appt, payments),
                       onCancel: (appt.status == 'upcoming' || appt.status == 'confirmed' || appt.status == 'pending_payment')
                           ? () => _cancel(appt)
                           : null,
@@ -209,6 +350,7 @@ class _StatusChip extends StatelessWidget {
 
 class _AppointmentCard extends StatelessWidget {
   final Appointment appointment;
+  final _AppointmentMoney money;
   final VoidCallback? onCancel;
   final VoidCallback? onReview;
   final VoidCallback? onTrackQueue;
@@ -217,6 +359,7 @@ class _AppointmentCard extends StatelessWidget {
 
   const _AppointmentCard({
     required this.appointment,
+    required this.money,
     this.onCancel,
     this.onReview,
     this.onTrackQueue,
@@ -226,8 +369,8 @@ class _AppointmentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
-    final paymentStatus = appointment.paymentStatus ?? (appointment.status == 'pending_payment' ? 'pending' : 'pending');
+    final fee = money.displayFee;
+    final paymentStatus = money.status;
 
     return Card(
       elevation: 0,
@@ -335,18 +478,56 @@ class _AppointmentCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  appointment.familyMember != null
-                      ? 'For: ${appointment.familyMember!.name} (${appointment.familyMember!.relation})'
-                      : 'For: Myself',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                Expanded(
+                  child: Text(
+                    appointment.familyMember != null
+                        ? 'For: ${appointment.familyMember!.name} (${appointment.familyMember!.relation})'
+                        : 'For: Myself',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
                 ),
+                // COMPLETENESS FIX (mobile parity audit): booking ID a patient reads off the slip
+                // or quotes at the clinic counter — ports web's shortId() (client/src/lib/format.js).
                 Text(
-                  'Fee: ₹${fee.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  'Booking ${_shortId(appointment.id)}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            // COMPLETENESS FIX (mobile parity audit): Paid/Due split replacing the old flat
+            // "Fee: ₹X" line — see _computeMoney's doc comment for the partial-payment logic.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Fee: ₹${fee.toStringAsFixed(0)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                Text('Paid: ₹${money.paid.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12, color: AppColors.success)),
+                Text(
+                  'Due: ₹${money.due.toStringAsFixed(0)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: money.due > 0 ? AppColors.danger : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            if (money.mode.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                money.transactionRef != null && money.transactionRef!.isNotEmpty
+                    ? 'Payment: ${money.mode} · Txn ${money.transactionRef}'
+                    : 'Payment: ${money.mode == 'pay_at_clinic' ? 'Pay at clinic' : money.mode}',
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ],
+            if ((appointment.notes ?? appointment.reason) != null && (appointment.notes ?? appointment.reason)!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Note: ${appointment.notes ?? appointment.reason}',
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+              ),
+            ],
             const Divider(height: 18),
             Wrap(
               spacing: 8,

@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
 import '../../models/admin_models.dart';
+import '../../models/clinical_models.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import 'book_appointment_screen.dart';
+import 'queue_tracker_screen.dart';
 
 class DoctorDetailScreen extends StatefulWidget {
   final String doctorId;
@@ -37,9 +41,26 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         reviews.add(ReviewItem.fromJson(item));
       } catch (_) {}
     }
+    // COMPLETENESS FIX (mobile parity audit): web's DoctorProfile finds any of the patient's own
+    // appointments with this doctor (`data.appointments.find(item => item.doctor?.id ===
+    // doctor.id)`, PublicPages.jsx) and shows a live-queue preview for it — mobile never checked
+    // for this at all, so a patient re-visiting a doctor they already booked with never saw their
+    // live token status here (they'd have to go find it under Queue tracker separately).
+    String? myAppointmentId;
+    try {
+      final apptRes = await ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
+      for (final item in apptRes.list) {
+        final a = Appointment.fromJson(item);
+        if (a.doctor?.id == widget.doctorId) {
+          myAppointmentId = a.id;
+          break;
+        }
+      }
+    } catch (_) {}
     return _DoctorDetailData(
       doctor: DoctorDirectoryItem.fromJson(doctorRes.map),
       reviews: reviews,
+      myAppointmentId: myAppointmentId,
     );
   }
 
@@ -273,6 +294,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
 
+                    // COMPLETENESS FIX (mobile parity audit): web's PatientLiveQueuePreview.
+                    if (data.myAppointmentId != null) ...[
+                      _DoctorLiveQueuePreview(appointmentId: data.myAppointmentId!),
+                      const SizedBox(height: AppSpacing.md),
+                    ],
+
                     // About Doctor card
                     SectionCard(
                       title: 'About ${doctor.name}',
@@ -473,5 +500,98 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 class _DoctorDetailData {
   final DoctorDirectoryItem doctor;
   final List<ReviewItem> reviews;
-  _DoctorDetailData({required this.doctor, required this.reviews});
+  final String? myAppointmentId;
+  _DoctorDetailData({required this.doctor, required this.reviews, this.myAppointmentId});
+}
+
+/// Compact "your live queue status with this doctor" card — mirrors web's
+/// PatientLiveQueuePreview (PublicPages.jsx), polling GET /queue/mine/:appointmentId every 15s
+/// same as the dedicated QueueTrackerScreen, but shown inline here since a patient landing back on
+/// a doctor's profile page is a natural place to check their token without navigating away.
+class _DoctorLiveQueuePreview extends StatefulWidget {
+  final String appointmentId;
+  const _DoctorLiveQueuePreview({required this.appointmentId});
+
+  @override
+  State<_DoctorLiveQueuePreview> createState() => _DoctorLiveQueuePreviewState();
+}
+
+class _DoctorLiveQueuePreviewState extends State<_DoctorLiveQueuePreview> {
+  MyQueueStatus? _status;
+  Object? _error;
+  bool _loading = true;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final res = await ApiClient.instance.get('/queue/mine/${widget.appointmentId}');
+      if (!mounted) return;
+      setState(() {
+        _status = MyQueueStatus.fromJson(res.map);
+        _loading = false;
+        _error = null;
+      });
+    } catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _error = err;
+        _loading = false;
+      });
+    }
+    _pollTimer?.cancel();
+    _pollTimer = Timer(const Duration(seconds: 15), () {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('YOUR LIVE QUEUE', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 1.1)),
+            const SizedBox(height: AppSpacing.sm),
+            if (_loading && status == null)
+              const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2)))
+            else if (_error != null && status == null)
+              ErrorBanner(error: _error!, onRetry: _load)
+            else if (status == null || !status.hasActiveQueue)
+              const Text('No active queue right now.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Token #${status.token}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: AppColors.primaryDark)),
+                        if (status.patientsAhead != null)
+                          Text('${status.patientsAhead} ahead · ~${status.estimatedWaitMinutes ?? "—"} min', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  if (status.status != null) StatusBadge(status: status.status!),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }

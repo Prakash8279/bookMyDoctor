@@ -538,6 +538,59 @@ class _DoctorCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text('₹${doctor.consultationFee.toStringAsFixed(0)} consultation',
                         style: const TextStyle(fontWeight: FontWeight.w600)),
+                    // COMPLETENESS FIX (mobile parity audit): web's DoctorCard (PublicPages.jsx)
+                    // shows the clinic location and today's booking availability inline — mobile
+                    // dropped both, so a patient had to open the profile just to see them.
+                    if (_location != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_outlined, size: 13, color: AppColors.textSecondary),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(_location!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Icon(Icons.schedule_outlined, size: 13, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary),
+                        const SizedBox(width: 3),
+                        Text(
+                          doctor.onlineBooking ? 'Today queue open' : 'Not accepting bookings today',
+                          style: TextStyle(fontSize: 12, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    // Both buttons open the same doctor profile — web's own "Book now" button
+                    // (PublicPages.jsx) links to the profile page too (booking itself happens
+                    // there), not a separate direct-booking shortcut.
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+                            ),
+                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6)),
+                            child: const Text('View profile', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+                            ),
+                            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6)),
+                            child: const Text('Book now', style: TextStyle(fontSize: 12)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -551,5 +604,12 @@ class _DoctorCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? get _location {
+    if (doctor.clinics.isEmpty) return null;
+    final clinic = doctor.clinics.first;
+    final areaCity = [clinic.area, clinic.city].where((s) => s != null && s.isNotEmpty).join(', ');
+    return areaCity.isEmpty ? clinic.name : '${clinic.name}, $areaCity';
   }
 }

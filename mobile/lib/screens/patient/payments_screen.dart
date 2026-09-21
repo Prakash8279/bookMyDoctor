@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -163,9 +164,18 @@ class PatientPaymentsScreen extends StatelessWidget {
                                         style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                       ),
                                       const SizedBox(height: 2),
-                                      Text(
-                                        'Mode: ${p.mode.toUpperCase()}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            'Mode: ${p.mode.toUpperCase()}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                          ),
+                                          // COMPLETENESS FIX (mobile parity audit): web's
+                                          // PaymentSourceBadge — see payment_visibility.dart.
+                                          const SizedBox(width: 6),
+                                          PaymentSourceBadge(payment: p),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -310,7 +320,14 @@ class _PaymentReceiptSheet extends StatelessWidget {
                   MapEntry('Reference ID', payment.transactionRef!),
                 if (payment.createdAt != null)
                   MapEntry('Date', payment.createdAt!.split('T').first),
-                MapEntry('Payment Mode', payment.mode.toUpperCase()),
+                // COMPLETENESS FIX (mobile parity audit): web's receipt PDF writes this same
+                // "at booking"/"at clinic" wording as plain text (lib/receiptPdf.js) next to the
+                // payment mode — mirrored here rather than a colored badge since this is a
+                // text-only receipt section.
+                MapEntry(
+                  'Payment Mode',
+                  '${payment.mode.toUpperCase()} (${isOnlineBookingPayment(payment) ? "At booking" : "At clinic"})',
+                ),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
