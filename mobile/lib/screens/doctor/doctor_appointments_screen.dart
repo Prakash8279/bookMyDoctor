@@ -5,7 +5,6 @@ import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
-import 'doctor_medical_records_screen.dart';
 
 /// Ports client/src/lib/format.js's shortId() exactly — see appointments_screen.dart's copy for
 /// the same rationale (a private per-file helper, matching this codebase's existing convention).
@@ -172,7 +171,6 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                       final a = appts[i];
                       final targets = _legalTargets(a.status);
                       final busy = _busyId == a.id;
-                      final canAddEmr = a.status == 'in_consultation' || a.status == 'completed' || a.status == 'confirmed';
                       return Card(
                         child: Padding(
                           padding: const EdgeInsets.all(AppSpacing.md),
@@ -268,23 +266,17 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                                       label: const Text('View slip'),
                                       onPressed: () => showBookingSlipSheet(context, a),
                                     ),
+                                    // PARITY FIX (user request: "doctor panel ko app me complete same
+                                    // to same website jaisa"): dropped the "EMR / Notes" action —
+                                    // web's shared AppointmentTable (StaffPages.jsx) has no such
+                                    // button; /doctor/emr (DoctorEmr, FeaturePages.jsx) exists in
+                                    // App.jsx's route table but is absent from Sidebar.jsx's doctor
+                                    // menu and linked from nowhere else in the web app, so a real
+                                    // user can never reach it — it was mobile-only extra surface.
                                     ...targets.map((s) => OutlinedButton(
                                           onPressed: () => s == 'cancelled' ? _confirmCancel(a) : _setStatus(a, s),
                                           child: Text(s.replaceAll('_', ' ')),
                                         )),
-                                    if (canAddEmr)
-                                      OutlinedButton.icon(
-                                        onPressed: () async {
-                                          await Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => DoctorNewMedicalRecordScreen(initialAppointment: a),
-                                            ),
-                                          );
-                                          _load();
-                                        },
-                                        icon: const Icon(Icons.note_add_outlined, size: 16),
-                                        label: const Text('EMR / Notes'),
-                                      ),
                                   ],
                                 ),
                               ],

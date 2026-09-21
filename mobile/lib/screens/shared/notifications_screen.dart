@@ -135,6 +135,29 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               action: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // COMPLETENESS FIX (mobile parity audit — Patient panel): web's patient
+                  // Notifications header shows a "● Live" pill (PatientPages.jsx) confirming this
+                  // list polls for fresh data — mobile already polls every 30s (see initState's
+                  // Timer) but never showed the indicator that tells the patient it's live.
+                  if (widget.showExportCsv) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircleAvatar(radius: 3, backgroundColor: AppColors.success),
+                          SizedBox(width: 6),
+                          Text('Live', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ],
                   TextButton(onPressed: _markAllRead, child: const Text('Mark all read')),
                   if (widget.showExportCsv)
                     FutureBuilder<List<AppNotification>>(
@@ -161,8 +184,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
                 }
                 final items = snapshot.data ?? [];
+                // COMPLETENESS FIX (mobile parity audit — Patient panel): the empty state wasn't
+                // wrapped in RefreshIndicator — every other patient list screen (appointments,
+                // payments, family members) lets a pull-to-refresh work even with zero rows.
                 if (items.isEmpty) {
-                  return const EmptyStateView(icon: Icons.notifications_none, title: 'No notifications');
+                  return RefreshIndicator(
+                    onRefresh: () async => _load(),
+                    child: ListView(
+                      children: const [
+                        SizedBox(height: 80),
+                        EmptyStateView(icon: Icons.notifications_none, title: 'No notifications'),
+                      ],
+                    ),
+                  );
                 }
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
@@ -178,7 +212,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           color: n.isRead ? AppColors.textSecondary : AppColors.primary,
                         ),
                         title: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.w400 : FontWeight.w700)),
-                        subtitle: Text(n.body),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(n.body),
+                            const SizedBox(height: 4),
+                            // COMPLETENESS FIX (mobile parity audit — Patient panel): web shows a
+                            // "Type" column for every row (PatientPages.jsx/FeaturePages.jsx) —
+                            // mobile parsed `type` onto the model (for CSV export) but never
+                            // displayed it anywhere in the UI.
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Text(
+                                n.type ?? 'system',
+                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        isThreeLine: true,
                         trailing: n.createdAt != null ? Text(n.createdAt!.split('T').first, style: const TextStyle(fontSize: 11)) : null,
                       );
                     },

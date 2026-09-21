@@ -362,6 +362,8 @@ class PaymentItem {
   final Fees fees;
   final String? createdAt;
 
+  String? get bookingId => (appointment != null && appointment!.id.isNotEmpty) ? appointment!.id : null;
+
   PaymentItem({
     required this.id,
     this.receiptNumber,
@@ -379,8 +381,11 @@ class PaymentItem {
   factory PaymentItem.fromJson(Map<String, dynamic> json) => PaymentItem(
         id: asString(json['id']),
         receiptNumber: json['receiptNumber'] as String?,
-        appointment:
-            json['appointment'] == null ? null : NamedRef.fromJson(json['appointment'] as Map<String, dynamic>),
+        appointment: json['appointment'] is Map<String, dynamic>
+            ? NamedRef.fromJson(json['appointment'] as Map<String, dynamic>)
+            : (json['appointmentId'] != null || json['bookingId'] != null || json['appointment_id'] != null)
+                ? NamedRef(id: asString(json['appointmentId'] ?? json['bookingId'] ?? json['appointment_id']))
+                : null,
         patient: json['patient'] == null ? null : NamedRef.fromJson(json['patient'] as Map<String, dynamic>),
         doctor: json['doctor'] == null ? null : NamedRef.fromJson(json['doctor'] as Map<String, dynamic>),
         clinic: json['clinic'] == null ? null : NamedRef.fromJson(json['clinic'] as Map<String, dynamic>),

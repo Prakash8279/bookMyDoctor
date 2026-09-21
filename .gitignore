@@ -12,12 +12,20 @@ build/
 *.log
 .DS_Store
 server/server/uploads/
+server/server/server-log.txt
 
 # Flutter (mobile/) — see mobile/.gitignore for the full Flutter-specific set; these are the
 # generic patterns worth having apply at the repo root too.
 mobile/.dart_tool/
 mobile/build/
 mobile/android/**/build
+
+# Android release-signing secrets (production-readiness pass, Sept 2026) — NEVER commit a real
+# signing keystore or its passwords. mobile/android/key.properties + upload-keystore.jks are
+# generated once per app and must be backed up securely OUTSIDE git, not pushed to GitHub.
+mobile/android/key.properties
+mobile/android/*.jks
+mobile/android/*.keystore
 
 coverage/
 

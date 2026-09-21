@@ -70,11 +70,29 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
     });
   }
 
+  // DIAGNOSTIC FIX (user report: "recieptinest ka report me data nahi aa raha hai"): each of
+  // these three calls used to have its own `.catchError((_) => ApiResponse(data: []))`, so ANY
+  // failure on ANY of the three (a timeout, a non-2xx response, a dropped connection) silently
+  // became "this clinic has zero appointments/payments/queue entries" with no way to tell that
+  // apart from a real empty clinic. Since the Payments tab (same /payments endpoint, same
+  // account) shows real payment records, this screen's silent-empty behavior was hiding whatever
+  // the actual fetch error is. Now a genuine failure propagates out of Future.wait to the
+  // FutureBuilder's existing `snapshot.hasError` branch (ErrorBanner) instead.
+  // ROOT CAUSE FOUND (user confirmed the ErrorBanner from the fix above actually reads
+  // "Validation failed"): the server's list-query validator caps `pageSize` at 100 (same rule as
+  // admin.validation.js's `query('pageSize').optional().isInt({ min: 1, max: 100 })` — the
+  // appointments/payments/queue list routes enforce the identical 1-100 range). This screen was
+  // sending `pageSize: 200`, which the validator rejects outright with a 422 before the request
+  // ever reaches listAppointments/listPayments/listQueue — unlike pagination.js's OWN internal
+  // parsePagination(), which merely clamps an out-of-range value instead of erroring; that lenient
+  // clamp only ever runs for values that got past this earlier, stricter route-level check.
+  // Appointments (pageSize 100) and Payments (pageSize 50) tabs stayed within range and always
+  // worked — only this screen's 200 was ever out of bounds. Capped to 100, the actual max.
   Future<_ReportData> _fetch() async {
     final results = await Future.wait([
-      ApiClient.instance.get('/appointments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/payments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/queue', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/appointments', query: {'pageSize': 100}),
+      ApiClient.instance.get('/payments', query: {'pageSize': 100}),
+      ApiClient.instance.get('/queue', query: {'pageSize': 100}),
     ]);
     final appointments = <Appointment>[];
     for (final item in results[0].list) {

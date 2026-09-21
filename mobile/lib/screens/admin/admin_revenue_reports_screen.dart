@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/csv_export.dart';
+import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+
+/// Ports client/src/lib/format.js's shortId() exactly for Booking ID display
+String _shortId(String id) {
+  if (id.isEmpty || id == '—') return '—';
+  final tail = id.contains('_') ? id.split('_').last : id;
+  return '#${tail.length > 4 ? tail.substring(tail.length - 4) : tail}';
+}
 
 /// COMPLETENESS FIX (mobile parity — client/src/pages/AdminPages.jsx#RevenueReports's
 /// doctorOnly=false variant (mounted at web's /admin/revenue) had no mobile equivalent; mobile
@@ -50,7 +59,7 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
   Future<List<PaymentItem>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/payments', query: {'pageSize': 200})
+          .get('/payments', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <PaymentItem>[];
       for (final item in res.list) {
@@ -127,6 +136,7 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
         .map((p) => '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
             '<td>${escape(p.doctor?.name ?? 'Unassigned')}</td>'
             '<td>${escape(p.receiptNumber ?? '')}</td>'
+            '<td>${escape(p.bookingId != null ? _shortId(p.bookingId!) : '—')}</td>'
             '<td>${escape(p.mode)}</td>'
             '<td>${escape(money(p.fees.amount ?? p.fees.consultationFee ?? 0))}</td>'
             '<td>${escape(p.status)}</td></tr>')
@@ -143,8 +153,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
         '<table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>'
         '${doctorRowsHtml.isEmpty ? '<tr><td colspan="3">No payments</td></tr>' : doctorRowsHtml}</table><br>'
         '<h3>Payment details</h3>'
-        '<table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>'
-        '${paymentRowsHtml.isEmpty ? '<tr><td colspan="6">No payments</td></tr>' : paymentRowsHtml}</table>'
+        '<table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Booking ID</th><th>Mode</th><th>Amount</th><th>Status</th></tr>'
+        '${paymentRowsHtml.isEmpty ? '<tr><td colspan="7">No payments</td></tr>' : paymentRowsHtml}</table>'
         '</body></html>';
 
     final fromStr = DateFormat('yyyy-MM-dd').format(_from);
@@ -215,18 +225,51 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
               }
               final doctorRows = byDoctor.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
 
-              // Payment-mode breakdown, mirrors the web page's "Payment modes" panel.
+              // Payment-mode breakdown, mirrors web's RevenueReports "Payment modes" panel:
+              // 3-way rollup (Paid at booking / Cash at clinic / Online at clinic) + per-mode amounts & counts.
+              final modeAmounts = <String, double>{};
               final modeCounts = <String, int>{};
+              double bookingTotal = 0, cashTotal = 0, onlineTotal = 0;
               for (final p in filtered) {
-                final mode = p.mode.isEmpty ? 'other' : p.mode;
+                final amount = (p.fees.amount ?? p.fees.consultationFee ?? 0);
+                final mode = p.mode.isEmpty ? 'Other' : p.mode;
                 modeCounts[mode] = (modeCounts[mode] ?? 0) + 1;
+                modeAmounts[mode] = (modeAmounts[mode] ?? 0) + amount;
+                final atBooking = isOnlineBookingPayment(p);
+                final isCash = p.mode.toLowerCase() == 'cash';
+                if (atBooking) {
+                  bookingTotal += amount;
+                } else if (isCash) {
+                  cashTotal += amount;
+                } else {
+                  onlineTotal += amount;
+                }
               }
+              final periodLabel = '${dateFormat.format(_from)} to ${dateFormat.format(_to)}';
+              final selectedDoctorName = _doctorFilter == 'all'
+                  ? 'All doctors'
+                  : (doctorsById[_doctorFilter] ?? 'Selected doctor');
+              final invalidRange = _from.isAfter(_to);
 
               return RefreshIndicator(
                 onRefresh: () async => _load(),
                 child: ListView(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   children: [
+                    if (invalidRange)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.danger.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                        ),
+                        child: const Text(
+                          'From date must be before To date.',
+                          style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
                     Row(
                       children: [
                         Expanded(
@@ -265,7 +308,7 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         onPressed: filtered.isEmpty
                             ? null
                             : () => _downloadExcel(
-                                  periodLabel: '${dateFormat.format(_from)} to ${dateFormat.format(_to)}',
+                                  periodLabel: periodLabel,
                                   total: total,
                                   paymentsCount: filtered.length,
                                   commission: commission,
@@ -277,70 +320,120 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         label: const Text('Download Excel'),
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.md),
+                    const SizedBox(height: AppSpacing.sm),
                     Row(
                       children: [
-                        Expanded(child: _StatTile(label: 'Selected range revenue', value: '₹${total.toStringAsFixed(0)}')),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Selected range revenue',
+                            value: '₹${total.toStringAsFixed(0)}',
+                            icon: Icons.currency_rupee,
+                            detail: '${filtered.length} payment${filtered.length == 1 ? '' : 's'}',
+                          ),
+                        ),
                         const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: _StatTile(label: 'Average payment', value: '₹${average.toStringAsFixed(0)}')),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Average payment',
+                            value: '₹${average.toStringAsFixed(0)}',
+                            icon: Icons.calculate_outlined,
+                            detail: periodLabel,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Row(
                       children: [
-                        Expanded(child: _StatTile(label: 'Platform commission', value: '₹${commission.toStringAsFixed(0)}')),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Platform commission',
+                            value: '₹${commission.toStringAsFixed(0)}',
+                            icon: Icons.percent_outlined,
+                            detail: 'Convenience/emergency/GST charges',
+                          ),
+                        ),
                         const SizedBox(width: AppSpacing.sm),
-                        Expanded(child: _StatTile(label: 'Clinic payout', value: '₹${clinicPayout.toStringAsFixed(0)}')),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Clinic payout',
+                            value: '₹${clinicPayout.toStringAsFixed(0)}',
+                            icon: Icons.check_circle_outline,
+                            detail: "Full consultation fee (doctor's share)",
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     SectionCard(
                       title: 'Doctor-wise revenue',
-                      child: doctorRows.isEmpty
-                          ? const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
-                          : Column(
-                              children: doctorRows
-                                  .map((d) => Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(d.name, overflow: TextOverflow.ellipsis),
-                                            ),
-                                            Text(
-                                              '${d.payments} pmt${d.payments == 1 ? '' : 's'}',
-                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                                            ),
-                                            const SizedBox(width: AppSpacing.sm),
-                                            Text(
-                                              '₹${d.revenue.toStringAsFixed(0)}',
-                                              style: const TextStyle(fontWeight: FontWeight.w700),
-                                            ),
-                                          ],
-                                        ),
-                                      ))
-                                  .toList(),
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$periodLabel · $selectedDoctorName',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          if (doctorRows.isEmpty)
+                            const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
+                          else
+                            ...doctorRows.map((d) => Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                      ),
+                                      Text(
+                                        '${d.payments} pmt${d.payments == 1 ? '' : 's'}',
+                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                      ),
+                                      const SizedBox(width: AppSpacing.sm),
+                                      Text(
+                                        '₹${d.revenue.toStringAsFixed(0)}',
+                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     SectionCard(
                       title: 'Payment modes',
-                      child: modeCounts.isEmpty
-                          ? const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
-                          : Column(
-                              children: modeCounts.entries
-                                  .map((e) => Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 4),
-                                        child: Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(e.key.toUpperCase()),
-                                            Text('${e.value}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                                          ],
-                                        ),
-                                      ))
-                                  .toList(),
-                            ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: _ModeTotalTile(label: 'PAID AT BOOKING', value: bookingTotal)),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(child: _ModeTotalTile(label: 'CASH (CLINIC)', value: cashTotal)),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(child: _ModeTotalTile(label: 'ONLINE (CLINIC)', value: onlineTotal)),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          if (modeCounts.isEmpty)
+                            const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
+                          else
+                            ...modeCounts.entries.map((e) => Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(e.key.toUpperCase(), style: const TextStyle(fontSize: 13)),
+                                      Text(
+                                        '₹${(modeAmounts[e.key] ?? 0).toStringAsFixed(0)} · ${e.value}',
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                )),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text('Payments in selected period', style: Theme.of(context).textTheme.titleMedium),
@@ -354,28 +447,147 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         ),
                       )
                     else
-                      ...filtered.map((p) => Card(
-                            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                            child: ListTile(
-                              title: Text(p.doctor?.name ?? 'Unassigned doctor'),
-                              subtitle: Text(
-                                '${p.patient?.name ?? 'Patient'} · ${p.mode.toUpperCase()}'
-                                '${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
-                                '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                              ),
-                              trailing: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
+                      ...filtered.map((p) {
+                        final bId = p.bookingId;
+                        final totalAmount = (p.fees.amount ?? p.fees.consultationFee ?? 0);
+                        final doctorName = p.doctor?.name ?? 'Unassigned doctor';
+                        final patientName = p.patient?.name ?? 'Patient';
+                        final clinicName = p.clinic?.name;
+                        final commission = p.fees.commission ?? 0;
+                        final clinicPayout = p.fees.clinicPayout ?? (totalAmount - commission);
+                        final dateStr = p.createdAt != null ? p.createdAt!.split("T").first : "";
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        doctorName,
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    InkWell(
+                                      onTap: bId != null
+                                          ? () {
+                                              Clipboard.setData(ClipboardData(text: bId));
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Booking ID copied: $bId'),
+                                                  duration: const Duration(seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          : null,
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: bId != null ? AppColors.primaryLight : AppColors.surface,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: bId != null ? AppColors.primaryLight : AppColors.border,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              bId != null ? 'Booking ID: ${_shortId(bId)}' : 'Booking ID: —',
+                                              style: TextStyle(
+                                                color: bId != null ? AppColors.primaryDark : AppColors.textSecondary,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            if (bId != null) ...[
+                                              const SizedBox(width: 3),
+                                              const Icon(Icons.copy, size: 10, color: AppColors.primaryDark),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Wrap(
+                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        spacing: 6,
+                                        runSpacing: 4,
+                                        children: [
+                                          Text(
+                                            patientName,
+                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                          ),
+                                          const Text('·', style: TextStyle(color: AppColors.textSecondary)),
+                                          Text(
+                                            p.mode.toUpperCase(),
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                          PaymentSourceBadge(payment: p),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '₹${totalAmount.toStringAsFixed(0)}',
+                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        StatusBadge(status: p.status),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                const Divider(height: 1),
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Receipt: #${p.receiptNumber ?? '—'} · Date: $dateStr'
+                                        '${clinicName != null ? " · Clinic: $clinicName" : ""}',
+                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (commission > 0 || clinicPayout > 0) ...[
+                                  const SizedBox(height: 3),
                                   Text(
-                                    '₹${(p.fees.amount ?? p.fees.consultationFee ?? 0).toStringAsFixed(0)}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                    'Doctor share: ₹${clinicPayout.toStringAsFixed(0)} · Commission: ₹${commission.toStringAsFixed(0)}',
+                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w500),
                                   ),
-                                  StatusBadge(status: p.status),
                                 ],
-                              ),
+                              ],
                             ),
-                          )),
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: AppSpacing.lg),
+                    const SectionCard(
+                      title: 'Platform analytics',
+                      child: EmptyStateView(
+                        icon: Icons.analytics_outlined,
+                        title: 'Analytics not available',
+                        subtitle: 'The current API has no time-series analytics endpoint yet.',
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -394,24 +606,28 @@ class _DoctorRevenue {
   _DoctorRevenue({required this.name});
 }
 
-class _StatTile extends StatelessWidget {
+class _ModeTotalTile extends StatelessWidget {
   final String label;
-  final String value;
-  const _StatTile({required this.label, required this.value});
+  final double value;
+  const _ModeTotalTile({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md, horizontal: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: 8),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
       child: Column(
         children: [
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary), textAlign: TextAlign.center),
+          Text(
+            '₹${value.toStringAsFixed(0)}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
         ],
       ),
     );

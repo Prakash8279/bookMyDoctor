@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:provider/provider.dart';
 
 import '../state/auth_provider.dart';
@@ -41,8 +42,35 @@ class RoleScaffold extends StatefulWidget {
 
 class RoleScaffoldState extends State<RoleScaffold> {
   late int _index = widget.initialIndex;
+  DateTime? _lastBackPressAt;
 
   int get currentIndex => _index;
+
+  // BUG FIX (user report: "aap ko back karne pe close ho ja raha hai" — pressing the phone's
+  // back button closes the whole app instead of navigating within it). Root cause: switching
+  // drawer sections here only calls `setState(() => _index = i)` — it never pushes a new route
+  // onto the Navigator, so there is no back-stack entry for the system back button to pop. This
+  // RoleScaffold sits at the root of its role's Navigator, so ANY back press — from ANY section,
+  // not just the first one — immediately popped the only route there was and closed the app.
+  // Now: back from a non-home section returns to the home section first (matches how most
+  // multi-tab apps behave — e.g. WhatsApp/Instagram); back from the home section requires a
+  // second press within 2 seconds ("Press back again to exit"), and only then does the app
+  // actually close.
+  bool _handleBackPress() {
+    if (_index != widget.initialIndex) {
+      setState(() => _index = widget.initialIndex);
+      return false;
+    }
+    final now = DateTime.now();
+    if (_lastBackPressAt != null && now.difference(_lastBackPressAt!) < const Duration(seconds: 2)) {
+      return true;
+    }
+    _lastBackPressAt = now;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(const SnackBar(content: Text('Press back again to exit'), duration: Duration(seconds: 2)));
+    return false;
+  }
 
   void setIndex(int index) {
     if (index >= 0 && index < widget.items.length) {
@@ -74,7 +102,16 @@ class RoleScaffoldState extends State<RoleScaffold> {
     final displayName = auth.user?.name.isNotEmpty == true ? auth.user!.name : 'Account';
     final initials = displayName.trim().isNotEmpty ? displayName.trim()[0].toUpperCase() : '?';
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        // `canPop` is hard-wired to false above, so a real exit can't be done by re-triggering
+        // the Navigator's own pop (that would just hit this same PopScope again). Exit the app
+        // directly instead, same as Android's own default back behavior at the true home screen.
+        if (_handleBackPress()) SystemNavigator.pop();
+      },
+      child: Scaffold(
       // COMPLETENESS FIX (brand consistency — "same to same as the website"): background/avatar
       // colors below match the web app's own PortalHeader (src/components/Sidebar.jsx) exactly —
       // bg-surface top bar, a primary-light/primary-dark initials avatar — rather than Material's
@@ -199,6 +236,7 @@ class RoleScaffoldState extends State<RoleScaffold> {
           const ConnectivityBanner(),
           Expanded(child: current.builder(context)),
         ],
+      ),
       ),
     );
   }

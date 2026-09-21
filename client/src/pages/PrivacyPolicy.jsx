@@ -2,24 +2,24 @@ import { Link } from 'react-router-dom'
 import { SiteHeader } from './PublicPages'
 
 // Rewritten for Play Store submission readiness (product request: "privacy
-// policy launch-ready level pe lao"). Content below is grounded in the
-// platform's actual, verified data practices (auth/session model, Prisma
-// schema, Razorpay integration, notification flows, upload handling) rather
-// than generic boilerplate. Two things are intentionally left as `[FILL: ...]`
-// placeholders because they depend on business/legal facts only the operator
-// can supply (registered company name & address, grievance officer contact) —
-// per an explicit product decision to keep placeholders there rather than
-// invent them. Everything else describes what the app actually does today.
+// policy launch-ready level pe lao"; finalized for production launch,
+// September 2026). Content below is grounded in the platform's actual,
+// verified data practices (auth/session model, Prisma schema, Razorpay
+// integration, notification flows, upload handling) rather than generic
+// boilerplate. The operator (product decision, Sept 2026) confirmed: no
+// separate registered company exists, so the platform's own brand name is
+// used as the operating entity, and the grievance-officer contact point is
+// the platform's own support email rather than a separate named officer.
 //
 // Still recommended before public launch: a pass by qualified legal counsel,
 // particularly for the DPDP Act / IT Rules references below, since this was
 // written by an engineering pass, not by a lawyer.
-const EFFECTIVE_DATE_NOTE = 'Set this to the real date you publish this policy before submitting to the Play Store.'
+const LAST_UPDATED = '21 September 2026'
 
 const SECTIONS = [
   [
     '1. Scope',
-    'This Privacy Policy applies to the BookMyDoctor24 website and mobile app ("the platform"), operated by [FILL: legal company/proprietor name]. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
+    'This Privacy Policy applies to the BookMyDoctor24 website and mobile app ("the platform"), operated by BookMyDoctor24. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
   ],
   [
     '2. Information we collect',
@@ -61,7 +61,7 @@ const SECTIONS = [
   ],
   [
     '10. Applicable law',
-    'We aim to handle personal data in a manner consistent with India\'s Digital Personal Data Protection Act, 2023 (DPDP Act) and the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011 and IT Rules, 2021, as applicable to a platform of this kind. This section is a general statement of intent rather than a certified legal compliance claim; [FILL: confirm applicable-law statement with counsel before publishing].',
+    'We aim to handle personal data in a manner consistent with India\'s Digital Personal Data Protection Act, 2023 (DPDP Act) and the Information Technology (Reasonable Security Practices and Procedures and Sensitive Personal Data or Information) Rules, 2011 and IT Rules, 2021, as applicable to a platform of this kind. This section is a general statement of intent rather than a certified legal compliance claim, and we recommend a review by qualified legal counsel for your specific circumstances.',
   ],
   [
     '11. Changes to this policy',
@@ -69,7 +69,7 @@ const SECTIONS = [
   ],
   [
     '12. Contact & grievance officer',
-    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctor24@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer — [FILL: name], [FILL: designation], [FILL: email/phone], [FILL: registered address]. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
+    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctor24@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctor24@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
   ],
 ]
 
@@ -81,7 +81,7 @@ export function PrivacyPolicy() {
         <article className="mt-2 rounded-card border border-border bg-white p-6 shadow-card">
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">Legal</p>
           <h1 className="mt-1 text-3xl">Privacy Policy</h1>
-          <p className="mt-2 text-sm text-muted">Last updated: [FILL: publish date] — {EFFECTIVE_DATE_NOTE}</p>
+          <p className="mt-2 text-sm text-muted">Last updated: {LAST_UPDATED}</p>
 
           <div className="mt-6 space-y-6">
             {SECTIONS.map(([heading, body]) => (
@@ -93,10 +93,8 @@ export function PrivacyPolicy() {
           </div>
 
           <p className="mt-8 border-t border-border pt-4 text-xs text-muted">
-            This policy reflects the platform's actual data practices as implemented. A few fields marked{' '}
-            <code className="rounded bg-surface px-1 py-0.5">[FILL: ...]</code> depend on your registered business
-            details and should be completed, and this page should be reviewed by qualified legal counsel, before you
-            rely on it as your final published policy.
+            This policy reflects the platform's actual data practices as implemented. We recommend a periodic
+            review by qualified legal counsel as the platform and applicable regulations evolve.
           </p>
         </article>
       </main>

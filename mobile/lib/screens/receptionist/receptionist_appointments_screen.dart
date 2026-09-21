@@ -3,13 +3,22 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
 
 /// Clinic's appointment list with status-lifecycle actions. Server-scoped
 /// to the receptionist's own clinic (integration_plan.md §1.8); a
 /// receptionist has the same status-setting rights as a doctor (any of the
 /// 4 legal targets, state-machine gated).
+///
+/// PARITY FIX (mobile parity audit — Receptionist panel, user request:
+/// "receptionist me jitna v extra feature add hai website se oo sab hata
+/// do"): the status-filter chip row and the "View slip" button were removed
+/// — web's shared AppointmentTable (StaffPages.jsx, used by both doctor and
+/// receptionist) has neither: it always lists every row, and its only
+/// per-row actions are Confirm/Complete/No-show/Cancel. Booking ID is now
+/// shown on each card (web's table has a dedicated "Booking ID" column) and
+/// Cancel now asks for confirmation first, matching web's
+/// `useDeleteWithConfirm` prompt exactly.
 class ReceptionistAppointmentsScreen extends StatefulWidget {
   const ReceptionistAppointmentsScreen({super.key});
 
@@ -18,19 +27,8 @@ class ReceptionistAppointmentsScreen extends StatefulWidget {
 }
 
 class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointmentsScreen> {
-  String? _statusFilter;
   Future<List<Appointment>>? _future;
   String? _busyId;
-
-  static const _filters = <(String?, String)>[
-    (null, 'All'),
-    ('upcoming', 'Upcoming'),
-    ('pending_payment', 'Pending payment'),
-    ('confirmed', 'Confirmed'),
-    ('completed', 'Completed'),
-    ('cancelled', 'Cancelled'),
-    ('no_show', 'No-show'),
-  ];
 
   @override
   void initState() {
@@ -38,10 +36,12 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
     _future = _fetch();
   }
 
+  String _shortId(String id) => id.length > 8 ? id.substring(0, 8) : id;
+
   Future<List<Appointment>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
+          .get('/appointments', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <Appointment>[];
       for (final item in res.list) {
@@ -73,6 +73,25 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
   }
 
   Future<void> _setStatus(Appointment appt, String status) async {
+    if (status == 'cancelled') {
+      final patientName = appt.patient?.name ?? appt.familyMember?.name ?? 'this patient';
+      final tokenPart = appt.tokenNumber != null ? ' (token #${appt.tokenNumber})' : '';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) => AlertDialog(
+          title: const Text('Cancel appointment?'),
+          content: Text('Cancel the appointment for $patientName$tokenPart? This cannot be undone.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('Back')),
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              child: const Text('Cancel appointment', style: TextStyle(color: AppColors.danger)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     setState(() => _busyId = appt.id);
     try {
       await ApiClient.instance.patch('/appointments/${appt.id}/status', body: {'status': status});
@@ -99,27 +118,6 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
             child: PageHeader(
               title: 'Appointments',
               subtitle: 'Manage scheduled and walk-in visits.',
-            ),
-          ),
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
-              itemCount: _filters.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, i) {
-                final (value, label) = _filters[i];
-                final selected = _statusFilter == value;
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: selected,
-                  onSelected: (_) {
-                    setState(() => _statusFilter = value);
-                    _load();
-                  },
-                );
-              },
             ),
           ),
           Expanded(
@@ -161,6 +159,12 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                                   StatusBadge(status: a.status),
                                 ],
                               ),
+                              const SizedBox(height: 2),
+                              // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's
+                              // shared AppointmentTable has a dedicated "Booking ID" column
+                              // (StaffPages.jsx's "BOOKING-ID VISIBILITY FIX") — this card never
+                              // showed it anywhere.
+                              Text('Booking ID: #${_shortId(a.id)}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                               const SizedBox(height: 4),
                               Text('${a.appointmentDate} · ${a.appointmentTime}', style: const TextStyle(color: AppColors.textSecondary)),
                               if (a.doctor?.name != null)
@@ -204,11 +208,6 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.receipt_long_outlined, size: 16),
-                                      label: const Text('View slip'),
-                                      onPressed: () => showBookingSlipSheet(context, a),
-                                    ),
                                     ...targets.map((s) => OutlinedButton(
                                           onPressed: () => _setStatus(a, s),
                                           child: Text(s.replaceAll('_', ' ')),

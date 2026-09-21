@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../models/admin_models.dart';
@@ -57,10 +58,34 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
         }
       }
     } catch (_) {}
+
+    final doctor = DoctorDirectoryItem.fromJson(doctorRes.map);
+
+    // PARITY FIX (mobile parity audit — Patient panel): GET /doctors/:id's embedded clinic
+    // summary (DoctorDirectoryItem.clinics, a ClinicSummary) only ever carries id/name/city/
+    // area — it never included phone/address. Web's DoctorProfile (PublicPages.jsx) works around
+    // the exact same backend gap by separately looking up the FULL clinic record from the public
+    // clinics directory it already has loaded (`data.clinics.find(...)`) instead of the doctor's
+    // embedded summary. Mobile has no such directory preloaded, so this fetches the one clinic
+    // detail it actually needs (GET /clinics/:id, same endpoint the web app's clinics list is
+    // built from) to get the real phone/address — a patient couldn't see either at all before.
+    Clinic? primaryClinicDetail;
+    final primaryClinicId = doctor.clinics.isNotEmpty ? doctor.clinics.first.id : null;
+    if (primaryClinicId != null) {
+      try {
+        final clinicRes = await ApiClient.instance.get('/clinics/$primaryClinicId');
+        primaryClinicDetail = Clinic.fromJson(clinicRes.map);
+      } catch (_) {
+        // Non-fatal — the screen still shows the name/city/area it already had from the
+        // embedded summary; phone/address simply won't be available for this load.
+      }
+    }
+
     return _DoctorDetailData(
-      doctor: DoctorDirectoryItem.fromJson(doctorRes.map),
+      doctor: doctor,
       reviews: reviews,
       myAppointmentId: myAppointmentId,
+      primaryClinicDetail: primaryClinicDetail,
     );
   }
 
@@ -338,6 +363,24 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                   ],
                                 ),
                               ),
+                              // PARITY FIX (mobile parity audit — Patient panel): web's DoctorProfile
+                              // (PublicPages.jsx) shows a third "Availability" stat here alongside
+                              // Experience/Languages, falling back through scheduleSummary then an
+                              // onlineBooking-aware message — mobile only ever showed two stats.
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Availability', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      doctor.scheduleSummary ??
+                                          (!doctor.onlineBooking ? 'Not accepting online bookings' : 'Schedule not added'),
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -360,6 +403,44 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                             '${primaryClinic?.area != null ? "${primaryClinic!.area}, " : ""}${primaryClinic?.city ?? ""}',
                             style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
                           ),
+                          // PARITY FIX (mobile parity audit — Patient panel): web's DoctorProfile
+                          // shows the clinic's phone/address (cross-referenced from the full clinic
+                          // directory) here — mobile showed only name/area/city from the embedded
+                          // summary. data.primaryClinicDetail is the separately-fetched full Clinic
+                          // record (see _load()); it's null if that lookup failed, in which case we
+                          // simply omit these lines rather than show empty fields.
+                          if (data.primaryClinicDetail?.address != null && data.primaryClinicDetail!.address!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(Icons.location_on_outlined, size: 15, color: AppColors.textSecondary),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    data.primaryClinicDetail!.address!,
+                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (data.primaryClinicDetail?.phone != null && data.primaryClinicDetail!.phone!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            InkWell(
+                              onTap: () => _callClinic(data.primaryClinicDetail!.phone!),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.call_outlined, size: 15, color: AppColors.primaryDark),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    data.primaryClinicDetail!.phone!,
+                                    style: const TextStyle(color: AppColors.primaryDark, fontSize: 13, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: AppSpacing.md),
                           const Text(
                             'Weekly OPD Schedule',
@@ -464,6 +545,13 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     );
   }
 
+  // PARITY FIX (mobile parity audit — Patient panel): tap-to-call for the clinic phone number
+  // shown above, matching the "_call" pattern already used on the guest clinic directory screen.
+  Future<void> _callClinic(String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone.replaceAll(RegExp(r'\s'), ''));
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
   // COMPLETENESS FIX (mobile parity): this screen is now reachable while signed out (guest
   // browsing — see screens/guest/guest_home_screen.dart), same as the web app's public
   // /doctors/:id page. Booking itself still requires an account (POST /appointments is
@@ -501,7 +589,16 @@ class _DoctorDetailData {
   final DoctorDirectoryItem doctor;
   final List<ReviewItem> reviews;
   final String? myAppointmentId;
-  _DoctorDetailData({required this.doctor, required this.reviews, this.myAppointmentId});
+  // PARITY FIX (mobile parity audit — Patient panel): see the comment in _load() above — the
+  // doctor's embedded ClinicSummary never carries phone/address, so this holds the separately
+  // fetched full Clinic record (may be null if that lookup failed or there's no primary clinic).
+  final Clinic? primaryClinicDetail;
+  _DoctorDetailData({
+    required this.doctor,
+    required this.reviews,
+    this.myAppointmentId,
+    this.primaryClinicDetail,
+  });
 }
 
 /// Compact "your live queue status with this doctor" card — mirrors web's

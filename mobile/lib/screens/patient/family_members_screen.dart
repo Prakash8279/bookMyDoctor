@@ -140,33 +140,47 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                   return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
                 }
                 final members = snapshot.data ?? [];
+                // COMPLETENESS FIX (mobile parity audit — Patient panel): no pull-to-refresh
+                // existed on this screen at all — every other patient list screen (appointments,
+                // payments, notifications) already wraps its list in a RefreshIndicator.
                 if (members.isEmpty) {
-                  return const EmptyStateView(
-                    icon: Icons.family_restroom,
-                    title: 'No family members added',
-                    subtitle: 'Add a family member to book appointments on their behalf',
+                  return RefreshIndicator(
+                    onRefresh: () async => _load(),
+                    child: ListView(
+                      children: const [
+                        SizedBox(height: 80),
+                        EmptyStateView(
+                          icon: Icons.family_restroom,
+                          title: 'No family members added',
+                          subtitle: 'Add a family member to book appointments on their behalf',
+                        ),
+                      ],
+                    ),
                   );
                 }
-                return ListView.separated(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  itemCount: members.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-                  itemBuilder: (context, i) {
-                    final m = members[i];
-                    return Card(
-                      child: ListTile(
-                        title: Text(m.name),
-                        subtitle: Text('${m.relation}${m.age != null ? " · ${m.age} yrs" : ""}${m.bloodGroup != null ? " · ${m.bloodGroup}" : ""}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _openForm(existing: m)),
-                            IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.danger), onPressed: () => _delete(m)),
-                          ],
+                return RefreshIndicator(
+                  onRefresh: () async => _load(),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    itemCount: members.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, i) {
+                      final m = members[i];
+                      return Card(
+                        child: ListTile(
+                          title: Text(m.name),
+                          subtitle: Text('${m.relation}${m.age != null ? " · ${m.age} yrs" : ""}${m.bloodGroup != null ? " · ${m.bloodGroup}" : ""}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _openForm(existing: m)),
+                              IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.danger), onPressed: () => _delete(m)),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 );
               },
             ),
@@ -194,10 +208,24 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
   bool _submitting = false;
   String? _error;
 
+  static const _genderOptions = ['Female', 'Male', 'Other', 'Prefer not to say'];
+
   @override
   void initState() {
     super.initState();
-    _gender = widget.existing?.gender;
+    // Defensive normalization: a record saved before this fix may still carry the old lowercase
+    // values ('male'/'female'/'other') — match case-insensitively so editing it doesn't crash on
+    // DropdownButtonFormField's "exactly one matching item" assertion, and fall back to no
+    // selection (rather than an unmatched value) if it still doesn't match any current option.
+    final existingGender = widget.existing?.gender;
+    if (existingGender != null) {
+      for (final option in _genderOptions) {
+        if (option.toLowerCase() == existingGender.toLowerCase()) {
+          _gender = option;
+          break;
+        }
+      }
+    }
     _bloodGroup = widget.existing?.bloodGroup;
     if (widget.existing?.dateOfBirth != null) {
       _dateOfBirth = DateTime.tryParse(widget.existing!.dateOfBirth!);
@@ -280,13 +308,15 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
             label: Text(_dateOfBirth == null ? 'Date of birth (optional)' : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
           ),
           const SizedBox(height: AppSpacing.md),
+          // PARITY FIX (mobile parity audit — Patient panel): web's Family form
+          // (PatientPages.jsx) offers exactly ['Female', 'Male', 'Other', 'Prefer not to say'],
+          // title-cased and sent verbatim as the `gender` value — mobile previously only offered
+          // three lowercase options with no "Prefer not to say" choice.
           DropdownButtonFormField<String>(
             initialValue: _gender,
             decoration: const InputDecoration(labelText: 'Gender (optional)'),
-            items: const [
-              DropdownMenuItem(value: 'male', child: Text('Male')),
-              DropdownMenuItem(value: 'female', child: Text('Female')),
-              DropdownMenuItem(value: 'other', child: Text('Other')),
+            items: [
+              for (final option in _genderOptions) DropdownMenuItem(value: option, child: Text(option)),
             ],
             onChanged: (v) => setState(() => _gender = v),
           ),

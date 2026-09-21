@@ -323,8 +323,8 @@ export function QueueManagement({ data, receptionist = false }) {
   // legal next step rather than every button every time.
   const nextStep = (status) => status === 'waiting' ? { label: 'Call', status: 'called' }
     : status === 'called' ? { label: 'Start', status: 'in_consultation' }
-    : status === 'in_consultation' ? { label: 'Complete', status: 'completed' }
-    : null
+      : status === 'in_consultation' ? { label: 'Complete', status: 'completed' }
+        : null
 
   const actionColumn = {
     key: 'actions',
@@ -582,14 +582,14 @@ export function DoctorProfileEdit({ data }) {
       <p className="mt-1 text-sm text-muted">Upload your registration certificate, medical degree, or a government ID so admins can verify your account. Accepted: JPEG, PNG, WebP, or PDF, up to 10MB.</p>
       {documents.length
         ? <ul className="mt-4 divide-y divide-border rounded-button border border-border">
-            {documents.map((doc, index) => <li key={`${doc.url}-${index}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm">
-              <span className="font-medium text-ink">{doc.name || `Document ${index + 1}`}</span>
-              <span className="flex items-center gap-3 text-xs text-muted">
-                {doc.uploadedAt && new Date(doc.uploadedAt).toLocaleDateString()}
-                <a href={doc.url} target="_blank" rel="noreferrer" className="font-semibold text-primary-dark hover:underline">View</a>
-              </span>
-            </li>)}
-          </ul>
+          {documents.map((doc, index) => <li key={`${doc.url}-${index}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm">
+            <span className="font-medium text-ink">{doc.name || `Document ${index + 1}`}</span>
+            <span className="flex items-center gap-3 text-xs text-muted">
+              {doc.uploadedAt && new Date(doc.uploadedAt).toLocaleDateString()}
+              <a href={doc.url} target="_blank" rel="noreferrer" className="font-semibold text-primary-dark hover:underline">View</a>
+            </span>
+          </li>)}
+        </ul>
         : <EmptyState title="No documents uploaded yet" message="Add at least one document so the review team has something to verify your account against." />}
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="block text-sm font-medium text-ink">
@@ -667,8 +667,8 @@ export function ClinicSchedule({ data }) {
     // them for every clinic in the bulk-loaded directory this doctor could be
     // scheduled at.
     (data.clinics || []).forEach((clinic) => {
-      fetchClinicHours(clinic.id).catch(() => {})
-      fetchClinicClosures(clinic.id).catch(() => {})
+      fetchClinicHours(clinic.id).catch(() => { })
+      fetchClinicClosures(clinic.id).catch(() => { })
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -901,7 +901,7 @@ export function ReceptionDashboard({ data }) {
   useEffect(() => {
     let cancelled = false
     if (!clinicId) return undefined
-    getClinic(clinicId).then((clinic) => { if (!cancelled) setClinicDoctors(clinic.doctors || []) }).catch(() => {})
+    getClinic(clinicId).then((clinic) => { if (!cancelled) setClinicDoctors(clinic.doctors || []) }).catch(() => { })
     return () => { cancelled = true }
   }, [clinicId, getClinic])
   const today = new Date().toISOString().slice(0, 10)
@@ -1141,7 +1141,7 @@ export function CashPayment({ data }) {
       form.reset()
       setAppointmentId('')
       // Refresh so the appointment we just paid disappears from "Unpaid appointment" right away.
-      fetchAppointments({}).catch(() => {})
+      fetchAppointments({}).catch(() => { })
     } catch (err) {
       setError(firstErrorMessage(err, 'Could not record the payment.'))
     } finally {
@@ -1150,18 +1150,18 @@ export function CashPayment({ data }) {
   }
 
   return <>
-  <Page title="Payments" subtitle="Record clinic collections and review receipts.">
-    <div className="mb-6 grid gap-3 sm:grid-cols-3">
-      <StatCard label="PAID ONLINE AT BOOKING" value={`₹${bookingTotal}`} detail={`${bookingPayments.length} payment${bookingPayments.length === 1 ? '' : 's'} · paid before arrival`} icon="🌐" />
-      <StatCard label="CASH COLLECTED AT CLINIC" value={`₹${cashTotal}`} detail={`${cashPayments.length} payment${cashPayments.length === 1 ? '' : 's'}`} icon="₹" />
-      <StatCard label="ONLINE COLLECTED AT CLINIC" value={`₹${clinicOnlineTotal}`} detail={`${clinicOnlinePayments.length} payment${clinicOnlinePayments.length === 1 ? '' : 's'} · UPI/Card/Online`} icon="📶" />
-    </div>
-    <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map(appointmentLabel)} value={selectedAppointment ? appointmentLabel(selectedAppointment) : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setAppointmentId(unpaidAppointments[index]?.id || '') }} required />
-        <input type="hidden" name="appointment" value={appointmentId} />
-        <FormField label="Payment method" name="method" type="select" options={['Cash', 'Upi', 'Card', 'Online']} required />
-        {/* DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist
+    <Page title="Payments" subtitle="Record clinic collections and review receipts.">
+      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <StatCard label="PAID ONLINE AT BOOKING" value={`₹${bookingTotal}`} detail={`${bookingPayments.length} payment${bookingPayments.length === 1 ? '' : 's'} · paid before arrival`} icon="🌐" />
+        <StatCard label="CASH COLLECTED AT CLINIC" value={`₹${cashTotal}`} detail={`${cashPayments.length} payment${cashPayments.length === 1 ? '' : 's'}`} icon="₹" />
+        <StatCard label="ONLINE COLLECTED AT CLINIC" value={`₹${clinicOnlineTotal}`} detail={`${clinicOnlinePayments.length} payment${clinicOnlinePayments.length === 1 ? '' : 's'} · UPI/Card/Online`} icon="📶" />
+      </div>
+      <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map(appointmentLabel)} value={selectedAppointment ? appointmentLabel(selectedAppointment) : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setAppointmentId(unpaidAppointments[index]?.id || '') }} required />
+          <input type="hidden" name="appointment" value={appointmentId} />
+          <FormField label="Payment method" name="method" type="select" options={['Cash', 'Upi', 'Card', 'Online']} required />
+          {/* DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist
             ko v to baki ka due show hoga aur doctor ko") — this used to show only a vague
             "advance already paid online, collecting the remaining balance now" sentence for a
             'partial' appointment, with NO number at all, because the receptionist only ever saw
@@ -1171,50 +1171,50 @@ export function CashPayment({ data }) {
             doctor's own outstanding share once a minimum-only payment was made online, without
             leaking any of the masked platform-business fields — so the exact amount to collect
             can finally be shown as a number. */}
-        {selectedAppointment && <div className="sm:col-span-2 rounded-button border border-border bg-surface px-4 py-3 text-sm">
-          <p className="font-semibold text-ink">Consultation fee: ₹{selectedAppointment.fees?.consultationFee ?? 0}</p>
-          {selectedAppointment.paymentStatus === 'partial'
-            ? <p className="mt-1 text-muted">An advance has already been paid online for this appointment — <strong>Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</strong> collected at the clinic.</p>
-            : <p className="mt-1 text-muted">Paid so far: ₹0 · Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</p>}
-        </div>}
-        <FormField label="UTR / Transaction number" name="transaction" placeholder="Bank/UPI reference number" />
-        <FormField label="UPI ID" name="payerUpiId" placeholder="e.g. name@okhdfcbank" />
-        <div className="sm:col-span-2"><ErrorNote>{error}</ErrorNote></div>
-        <Button type="submit" disabled={submitting} className="sm:col-span-2">{submitting ? 'Recording…' : 'Record payment'}</Button>
-        {saved && <p role="status" className="text-sm font-semibold text-success sm:col-span-2">Payment recorded.</p>}
-      </div>
-    </form>
-    <div className="mt-6"><DataTable loading={loading} error={loadError} onRetry={load} rows={clinicPayments} columns={[
-      { key: 'id', label: 'Receipt', render: (item) => item.receiptNumber || shortId(item.id) },
-      // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
-      // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — 'Receipt' above is the
-      // payment's own id/receipt number, not the appointment/booking it belongs to. Same
-      // shortId() format already used on the Appointments table above and the patient's own
-      // Payments table.
-      { key: 'bookingId', label: 'Booking ID', render: (item) => item.bookingId ? shortId(item.bookingId) : '—' },
-      { key: 'date', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' },
-      { key: 'description', label: 'Appointment', render: (item) => item.doctor?.name || item.patient?.name || '—' },
-      { key: 'clinicAmount', label: 'Doctor charge', render: (item) => `₹${item.clinicAmount}` },
-      // COMPLETENESS ADD (request: "online booking ke time pe kitna payment hua hai and second
-      // clinic pe aake cash ya online ye v to confirm hona chahiye", then "eshme v add kro ye sab
-      // ye sab patient setion me v add kro ... admin section me v") — this used to say just
-      // "online" for both a patient's own booking-time Razorpay payment and a UPI/card payment
-      // the receptionist took in person, with no way to tell which happened here on this row.
-      // Shared PaymentSourceBadge (components/PaymentSourceBadge.jsx) so the same "At booking" /
-      // "At clinic" tag reads identically here, on the patient's own Payments page, and in the
-      // admin Revenue report.
-      { key: 'mode', label: 'Method', render: (item) => <span className="inline-flex items-center gap-1.5">{item.mode}<PaymentSourceBadge payment={item} /></span> },
-      { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
-      { key: 'transaction', label: 'UTR / Transaction', render: (item) => item.transactionRef || '—' },
-      { key: 'payerUpiId', label: 'UPI ID', render: (item) => item.payerUpiId || '—' },
-      // COMPLETENESS FIX ("recipt jaha v janerate ho raha hai proper pdf generat ho... fix all
-      // slip generates point") — there was previously NO receipt/download action anywhere on this
-      // page at all. Consultation-fee-only PDF, per the same staff fee-masking rule as the table
-      // above (never a fee breakdown the API never sent to this role).
-      { key: 'actions', label: 'Actions', render: (item) => <button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewReceipt(item)} disabled={receipt.loading}>{receipt.loading ? 'Opening…' : '👁 View receipt'}</button> },
-    ]} /></div>
-  </Page>
-  <PdfPreviewModal preview={receipt.preview} onClose={receipt.close} title="Payment receipt preview" />
+          {selectedAppointment && <div className="sm:col-span-2 rounded-button border border-border bg-surface px-4 py-3 text-sm">
+            <p className="font-semibold text-ink">Consultation fee: ₹{selectedAppointment.fees?.consultationFee ?? 0}</p>
+            {selectedAppointment.paymentStatus === 'partial'
+              ? <p className="mt-1 text-muted">An advance has already been paid online for this appointment — <strong>Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</strong> collected at the clinic.</p>
+              : <p className="mt-1 text-muted">Paid so far: ₹0 · Due now: ₹{selectedAppointment.fees?.due ?? selectedAppointment.fees?.consultationFee ?? 0}</p>}
+          </div>}
+          <FormField label="UTR / Transaction number" name="transaction" placeholder="Bank/UPI reference number" />
+          <FormField label="UPI ID" name="payerUpiId" placeholder="e.g. name@okhdfcbank" />
+          <div className="sm:col-span-2"><ErrorNote>{error}</ErrorNote></div>
+          <Button type="submit" disabled={submitting} className="sm:col-span-2">{submitting ? 'Recording…' : 'Record payment'}</Button>
+          {saved && <p role="status" className="text-sm font-semibold text-success sm:col-span-2">Payment recorded.</p>}
+        </div>
+      </form>
+      <div className="mt-6"><DataTable loading={loading} error={loadError} onRetry={load} rows={clinicPayments} columns={[
+        { key: 'id', label: 'Receipt', render: (item) => item.receiptNumber || shortId(item.id) },
+        // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
+        // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — 'Receipt' above is the
+        // payment's own id/receipt number, not the appointment/booking it belongs to. Same
+        // shortId() format already used on the Appointments table above and the patient's own
+        // Payments table.
+        { key: 'bookingId', label: 'Booking ID', render: (item) => item.bookingId ? shortId(item.bookingId) : '—' },
+        { key: 'date', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' },
+        { key: 'description', label: 'Appointment', render: (item) => item.doctor?.name || item.patient?.name || '—' },
+        { key: 'clinicAmount', label: 'Doctor charge', render: (item) => `₹${item.clinicAmount}` },
+        // COMPLETENESS ADD (request: "online booking ke time pe kitna payment hua hai and second
+        // clinic pe aake cash ya online ye v to confirm hona chahiye", then "eshme v add kro ye sab
+        // ye sab patient setion me v add kro ... admin section me v") — this used to say just
+        // "online" for both a patient's own booking-time Razorpay payment and a UPI/card payment
+        // the receptionist took in person, with no way to tell which happened here on this row.
+        // Shared PaymentSourceBadge (components/PaymentSourceBadge.jsx) so the same "At booking" /
+        // "At clinic" tag reads identically here, on the patient's own Payments page, and in the
+        // admin Revenue report.
+        { key: 'mode', label: 'Method', render: (item) => <span className="inline-flex items-center gap-1.5">{item.mode}<PaymentSourceBadge payment={item} /></span> },
+        { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
+        { key: 'transaction', label: 'UTR / Transaction', render: (item) => item.transactionRef || '—' },
+        { key: 'payerUpiId', label: 'UPI ID', render: (item) => item.payerUpiId || '—' },
+        // COMPLETENESS FIX ("recipt jaha v janerate ho raha hai proper pdf generat ho... fix all
+        // slip generates point") — there was previously NO receipt/download action anywhere on this
+        // page at all. Consultation-fee-only PDF, per the same staff fee-masking rule as the table
+        // above (never a fee breakdown the API never sent to this role).
+        { key: 'actions', label: 'Actions', render: (item) => <button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewReceipt(item)} disabled={receipt.loading}>{receipt.loading ? 'Opening…' : '👁 View receipt'}</button> },
+      ]} /></div>
+    </Page>
+    <PdfPreviewModal preview={receipt.preview} onClose={receipt.close} title="Payment receipt preview" />
   </>
 }
 

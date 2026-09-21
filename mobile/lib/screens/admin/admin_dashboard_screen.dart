@@ -15,6 +15,12 @@ import 'admin_geography_screen.dart';
 import 'admin_patients_screen.dart';
 import 'admin_revenue_reports_screen.dart';
 
+String _shortId(String id) {
+  if (id.isEmpty || id == '—') return '—';
+  final tail = id.contains('_') ? id.split('_').last : id;
+  return '#${tail.length > 4 ? tail.substring(tail.length - 4) : tail}';
+}
+
 /// Admin dashboard — 100% parity with web's AdminDashboard (AdminPages.jsx):
 /// Header with "Review doctors" action, 4 StatCards (Verified doctors, Registered patients,
 /// Today's bookings, Monthly revenue), "Recent live records" with Connected badge and DC sequence IDs,
@@ -240,6 +246,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                     ),
                                     child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
                                   ),
+                                  if (item.id.isNotEmpty) ...[
+                                    const SizedBox(width: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryLight,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Booking ${_shortId(item.id)}',
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark),
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: Column(

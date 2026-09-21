@@ -357,7 +357,14 @@ class DoctorDirectoryItem {
         rating: asDouble(json['rating']),
         reviewCount: asInt(json['reviewCount']),
         emergencyAvailable: asBool(json['emergencyAvailable']),
-        onlineBooking: asBool(json['onlineBooking']),
+        // PARITY FIX (mobile parity audit — Patient panel): web's DoctorProfile treats a
+        // missing/null onlineBooking as bookable (`doctor.onlineBooking !== false`,
+        // PublicPages.jsx) — only an explicit `false` blocks booking. This used to default a
+        // missing value to `false` (asBool's own default), which would silently disable the
+        // "Continue to booking" button for a perfectly bookable doctor if the field were ever
+        // omitted from a response, unlike the web app. The column is NOT NULL server-side today
+        // so this mostly guards against future drift, but it's the correct default to match web.
+        onlineBooking: asBool(json['onlineBooking'], true),
         clinics: (json['clinics'] as List? ?? [])
             .map((e) => ClinicSummary.fromJson(e as Map<String, dynamic>))
             .toList(),

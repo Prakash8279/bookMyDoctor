@@ -36,7 +36,10 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
 
   Future<void> _loadCities() async {
     try {
-      final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 200});
+      // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
+      // receptionist_reports_screen.dart's comment): pageSize over 100 gets rejected outright by
+      // the backend's list-query validator (422 "Validation failed"), not clamped.
+      final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 100});
       final list = <City>[];
       for (final item in res.list) {
         try { list.add(City.fromJson(item)); } catch (_) {}
@@ -49,7 +52,7 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
 
   Future<void> _loadAreas(String cityId) async {
     try {
-      final res = await ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200});
+      final res = await ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100});
       final list = <Area>[];
       for (final item in res.list) {
         try { list.add(Area.fromJson(item)); } catch (_) {}

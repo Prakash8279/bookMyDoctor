@@ -58,7 +58,7 @@ export function SiteFooter() {
           text with no pages behind it. Accessibility stays plain text: no
           accessibility statement page exists yet, and stubbing one is out
           of scope here. */}
-      <span><Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · Accessibility</span>
+      <span><Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · <Link to="/cancellation-refund-policy">Cancellation &amp; Refund</Link> · Accessibility</span>
     </div>
   </footer>
 }

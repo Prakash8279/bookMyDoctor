@@ -10,14 +10,24 @@ import '../../widgets/common_widgets.dart';
 /// admin/superadmin (integration_plan.md §1.5). Tabs switch between the
 /// pending queue and the full clinic list.
 class AdminClinicsScreen extends StatefulWidget {
-  const AdminClinicsScreen({super.key});
+  final int initialTabIndex;
+  final bool verificationOnly;
+  const AdminClinicsScreen({
+    super.key,
+    this.initialTabIndex = 0,
+    this.verificationOnly = false,
+  });
 
   @override
   State<AdminClinicsScreen> createState() => _AdminClinicsScreenState();
 }
 
 class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabController = TabController(length: 2, vsync: this);
+  late final TabController _tabController = TabController(
+    length: 2,
+    vsync: this,
+    initialIndex: widget.initialTabIndex.clamp(0, 1),
+  );
   Future<List<Clinic>>? _pendingFuture;
   Future<List<Clinic>>? _allFuture;
   String? _busyId;
@@ -266,6 +276,25 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
 
   @override
   Widget build(BuildContext context) {
+    if (widget.verificationOnly) {
+      return Scaffold(
+        body: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+              child: PageHeader(
+                title: 'Clinic verification',
+                subtitle: 'Review clinic submissions before making them available.',
+              ),
+            ),
+            Expanded(
+              child: _list(_pendingFuture, showActions: true),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       body: Column(
         children: [

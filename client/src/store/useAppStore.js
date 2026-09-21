@@ -399,7 +399,21 @@ export const useAppStore = create(
             get().fetchNotifications(),
             get().fetchPlatformCharges(),
             get().fetchSystemSettings(),
-            get().fetchBookingRules()
+            get().fetchBookingRules(),
+            // BUG FIX ("admin app me clinic doctor patient show nahi ho raha hai"): this branch
+            // never refetched doctors/clinics/patients after login, so an admin's data.doctors and
+            // data.clinics stayed whatever loadPublicDirectory() had cached from the app's earlier
+            // ANONYMOUS boot-time call (searchDoctors/fetchClinics with no requester) — active/
+            // verified rows only, none of the admin-only fields (email/phone/accountStatus/
+            // bankDetails/pending or disabled rows). data.patients started empty and was never
+            // populated here at all unless a page happened to call fetchPatients itself. Re-running
+            // all three now, authenticated as the admin, gets the real admin-scoped lists
+            // (isAdminCaller=true server-side — every status, full contact/detail fields) into the
+            // store right after login/restore, instead of depending on whichever admin page
+            // happens to mount first.
+            get().searchDoctors({ pageSize: 100 }),
+            get().fetchClinics({}),
+            get().fetchPatients({})
           )
         }
         const results = await Promise.allSettled(tasks)

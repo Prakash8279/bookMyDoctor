@@ -9,10 +9,6 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import '../../widgets/role_scaffold.dart';
 import 'doctor_appointments_screen.dart';
-import 'doctor_clinic_hours_screen.dart';
-import 'doctor_medical_records_screen.dart';
-import 'doctor_patients_screen.dart';
-import 'doctor_payment_setup_screen.dart';
 import 'doctor_queue_screen.dart';
 import 'doctor_revenue_reports_screen.dart';
 import 'doctor_reviews_screen.dart';
@@ -44,17 +40,18 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     });
   }
 
+  // DIAGNOSTIC FIX (user request: "baki sab feature v check kar lo" — general sweep after the
+  // Reports pageSize bug was found): each of these three calls had its own
+  // `.catchError((_) => ApiResponse(data: []))`, silently turning any real fetch failure into
+  // "zero appointments/queue/payments" instead of surfacing it. pageSize here (50) is already
+  // within the backend's 100 max, so this wasn't the same validation bug as Reports — but a
+  // genuine failure would still have been invisible. Now it propagates to the FutureBuilder's
+  // existing `snapshot.hasError` branch (ErrorBanner) instead.
   Future<_DashboardData> _fetch() async {
     final futures = await Future.wait([
-      ApiClient.instance
-          .get('/appointments', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance
-          .get('/queue', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance
-          .get('/payments', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/appointments', query: {'pageSize': 50}),
+      ApiClient.instance.get('/queue', query: {'pageSize': 50}),
+      ApiClient.instance.get('/payments', query: {'pageSize': 50}),
     ]);
 
     final appointments = <Appointment>[];
@@ -134,22 +131,6 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     ));
   }
 
-  void _goToEmr(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && (role.navigateToLabel('EMR') || role.navigateToLabel('Consultation'))) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Consultation & EMR')), body: const DoctorMedicalRecordsScreen()),
-    ));
-  }
-
-  void _goToPatients(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Patients')) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Patients')), body: const DoctorPatientsScreen()),
-    ));
-  }
-
   void _goToRevenue(BuildContext context) {
     final role = RoleScaffold.of(context);
     if (role != null && (role.navigateToLabel('Analytics') || role.navigateToLabel('Reports') || role.navigateToLabel('Revenue'))) return;
@@ -163,22 +144,6 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     if (role != null && role.navigateToLabel('Reviews')) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => Scaffold(appBar: AppBar(title: const Text('Reviews')), body: const DoctorReviewsScreen()),
-    ));
-  }
-
-  void _goToPaymentSetup(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Payment setup')) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Payment setup')), body: const DoctorPaymentSetupScreen()),
-    ));
-  }
-
-  void _goToHours(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && (role.navigateToLabel('OPD schedule') || role.navigateToLabel('Schedule'))) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('OPD schedule')), body: const DoctorClinicHoursScreen()),
     ));
   }
 
@@ -418,6 +383,13 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                       children: [
                         const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                         const SizedBox(height: AppSpacing.sm),
+                        // PARITY FIX (mobile parity audit — Doctor panel, user request: "doctor
+                        // panel ko app me complete same to same website jaisa"): web's Quick
+                        // actions panel (StaffPages.jsx's DoctorDashboard, line ~276) is exactly
+                        // this 3-item array — Queue management / Appointments / Analytics — no
+                        // 4th/5th/6th/7th shortcut exists there. This used to also offer
+                        // Consultation & EMR, Patient history, OPD schedule & hours, and Clinic
+                        // payment setup shortcuts, none of which web's dashboard links to.
                         _buildActionRow(
                           context,
                           icon: Icons.people_alt_outlined,
@@ -429,30 +401,6 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                           icon: Icons.event_note_outlined,
                           label: 'Appointments',
                           onTap: () => _goToAppointments(context),
-                        ),
-                        _buildActionRow(
-                          context,
-                          icon: Icons.assignment_outlined,
-                          label: 'Consultation & EMR',
-                          onTap: () => _goToEmr(context),
-                        ),
-                        _buildActionRow(
-                          context,
-                          icon: Icons.folder_shared_outlined,
-                          label: 'Patient history',
-                          onTap: () => _goToPatients(context),
-                        ),
-                        _buildActionRow(
-                          context,
-                          icon: Icons.schedule_outlined,
-                          label: 'OPD schedule & hours',
-                          onTap: () => _goToHours(context),
-                        ),
-                        _buildActionRow(
-                          context,
-                          icon: Icons.qr_code_2_outlined,
-                          label: 'Clinic payment setup',
-                          onTap: () => _goToPaymentSetup(context),
                         ),
                         _buildActionRow(
                           context,

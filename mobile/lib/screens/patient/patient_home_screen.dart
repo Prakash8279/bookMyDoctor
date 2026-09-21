@@ -5,13 +5,11 @@ import '../shared/profile_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'appointments_screen.dart';
 import 'book_appointment_screen.dart';
-import 'emergency_booking_screen.dart';
 import 'family_members_screen.dart';
 import 'patient_dashboard_screen.dart';
 import 'patient_search_screen.dart';
 import 'payments_screen.dart';
 import 'queue_tracker_screen.dart';
-import 'quick_clinic_booking_screen.dart';
 import 'reviews_screen.dart';
 
 /// Patient portal shell — matches web's real, reachable patient experience.
@@ -21,13 +19,11 @@ import 'reviews_screen.dart';
 /// 4. My appointments (/patient/appointments)
 /// 5. Queue tracker (/patient/queue)
 /// 6. Booking history (/patient/records)
-/// 7. Quick clinic booking (/patient/quick-book)
-/// 8. Emergency care (/patient/emergency)
-/// 9. Payments (/patient/payments)
-/// 10. Family members (/patient/family)
-/// 11. My reviews (/patient/reviews)
-/// 12. Notifications (/patient/notifications)
-/// 13. My profile (/patient/profile)
+/// 7. Payments (/patient/payments)
+/// 8. Family members (/patient/family)
+/// 9. My reviews (/patient/reviews)
+/// 10. Notifications (/patient/notifications)
+/// 11. My profile (/patient/profile)
 ///
 /// COMPLETENESS FIX (mobile parity audit, patient panel): "Medical records" and "Help &
 /// complaints" were REMOVED from here on the user's explicit instruction — neither has any web
@@ -36,11 +32,23 @@ import 'reviews_screen.dart';
 /// web is admin's inbox, which only responds to complaints, never files one). The backend
 /// endpoints behind both are real (medicalRecords/complaints modules, patient-authorized), but
 /// with no web page ever exposing them to a patient, mobile inventing full screens for them was
-/// an app-only extra beyond real parity — the opposite of the receptionist Check-in/Emergency
-/// case, where the extra mobile screens mirrored REAL unlinked web routes. Removing this drops the
-/// nav below the 15 items mobile/test/widgets/role_portal_nav_test.dart hard-codes; that file is
-/// intentionally left untouched (never edited) and this session was told to let that assertion
-/// fail rather than keep the app-only screens or edit the locked test.
+/// an app-only extra beyond real parity.
+///
+/// "Quick clinic booking" and "Emergency care" were ALSO removed on the user's later explicit
+/// instruction ("quick clinick booking hata do / emergency care v website me nahi hai hata do") —
+/// a prior pass in this same audit had deliberately KEPT them because they mirror real (if
+/// web-unlinked) routes (client/src/App.jsx's `/patient/quick-book`/`/patient/emergency`), unlike
+/// Medical records/Complaints which have zero web-side implementation at all. That distinction no
+/// longer matters here: the user confirmed neither feature is reachable from the real website's
+/// nav (Sidebar.jsx's patient item list has no entry for either), so both are gone from mobile too.
+/// The screen files themselves (quick_clinic_booking_screen.dart, emergency_booking_screen.dart)
+/// are left in place but unreferenced, mirroring the web's own orphaned-route situation, rather
+/// than deleted outright.
+///
+/// Removing these (plus the earlier Medical records/Complaints removal) drops this nav to 11 items,
+/// further below the 15 items mobile/test/widgets/role_portal_nav_test.dart hard-codes; that file
+/// is intentionally left untouched (never edited) per this audit's established rule — its
+/// assertion is left to fail rather than keeping app-only/unlinked screens just to satisfy it.
 class PatientHomeScreen extends StatelessWidget {
   const PatientHomeScreen({super.key});
 
@@ -55,8 +63,6 @@ class PatientHomeScreen extends StatelessWidget {
         RoleNavItem(icon: Icons.event_note_outlined, label: 'My appointments', builder: _buildAppointments),
         RoleNavItem(icon: Icons.confirmation_number_outlined, label: 'Queue tracker', builder: _buildQueue),
         RoleNavItem(icon: Icons.folder_shared_outlined, label: 'Booking history', builder: _buildHistory),
-        RoleNavItem(icon: Icons.qr_code_scanner_outlined, label: 'Quick clinic booking', builder: _buildQuickClinic),
-        RoleNavItem(icon: Icons.emergency_outlined, label: 'Emergency care', builder: _buildEmergency),
         RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Payments', builder: _buildPayments),
         RoleNavItem(icon: Icons.people_outline, label: 'Family members', builder: _buildFamily),
         RoleNavItem(icon: Icons.star_outline_rounded, label: 'My reviews', builder: _buildReviews),
@@ -73,8 +79,6 @@ Widget _buildBook(BuildContext context) => const BookAppointmentScreen();
 Widget _buildAppointments(BuildContext context) => const PatientAppointmentsScreen();
 Widget _buildQueue(BuildContext context) => const QueueTrackerScreen(embedded: true);
 Widget _buildHistory(BuildContext context) => const PatientAppointmentsScreen(isHistory: true);
-Widget _buildQuickClinic(BuildContext context) => const QuickClinicBookingScreen();
-Widget _buildEmergency(BuildContext context) => const EmergencyBookingScreen();
 Widget _buildPayments(BuildContext context) => const PatientPaymentsScreen();
 Widget _buildFamily(BuildContext context) => const FamilyMembersScreen();
 Widget _buildReviews(BuildContext context) => const PatientReviewsScreen();

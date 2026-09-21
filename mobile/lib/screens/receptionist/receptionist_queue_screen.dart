@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/csv_export.dart';
@@ -34,21 +33,24 @@ class ReceptionistQueueScreen extends StatefulWidget {
 }
 
 class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
-  DateTime _date = DateTime.now();
   Future<List<QueueTokenItem>>? _future;
   String? _busyId;
 
   @override
   void initState() {
     super.initState();
-    final dateStr = DateFormat('yyyy-MM-dd').format(_date);
-    _future = _fetch(dateStr);
+    _future = _fetch();
   }
 
-  Future<List<QueueTokenItem>> _fetch(String dateStr) async {
+  // PARITY FIX (mobile parity audit — Receptionist panel, user request: "receptionist me jitna v
+  // extra feature add hai website se oo sab hata do"): this used to take a `date` query param
+  // driven by a date picker — web's QueueManagement (StaffPages.jsx, `receptionist` branch) has no
+  // date filter at all, it just calls `fetchQueue({})` for the always-live queue. Date picker
+  // removed so this always shows the live queue exactly like the website.
+  Future<List<QueueTokenItem>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/queue', query: {'date': dateStr, 'pageSize': 100})
+          .get('/queue', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <QueueTokenItem>[];
       for (final item in res.list) {
@@ -63,23 +65,9 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
   }
 
   void _load() {
-    final dateStr = DateFormat('yyyy-MM-dd').format(_date);
     setState(() {
-      _future = _fetch(dateStr);
+      _future = _fetch();
     });
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime.now().subtract(const Duration(days: 90)),
-      lastDate: DateTime.now().add(const Duration(days: 90)),
-    );
-    if (picked != null) {
-      setState(() => _date = picked);
-      _load();
-    }
   }
 
   String? _nextStatus(String current) {
@@ -231,10 +219,13 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
             padding: const EdgeInsets.all(AppSpacing.md),
             child: Row(
               children: [
+                // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's action row
+                // (StaffPages.jsx's QueueManagement) has a "Refresh" button next to Export CSV —
+                // mobile only ever had pull-to-refresh, with no visible equivalent action.
                 OutlinedButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                  label: Text(DateFormat('dd MMM yyyy').format(_date)),
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Refresh'),
                 ),
                 const Spacer(),
                 // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action

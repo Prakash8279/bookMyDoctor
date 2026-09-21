@@ -12,6 +12,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import 'contact_support_screen.dart';
 import 'delete_account_screen.dart';
+import 'legal_policies_screen.dart';
 
 /// COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): maps a picked image's extension to
 /// one of the exact mimetypes services/fileUploadService.js's IMAGE_MIME_EXTENSIONS allowlist
@@ -51,10 +52,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // this form offers; a profile whose value doesn't appear here (set via another
   // client, or historical data) must still be shown, so it's appended dynamically
   // in _dropdownItems below rather than silently dropped or crashing the dropdown.
+  // PARITY FIX (mobile parity audit — Patient panel): web's PortalProfile offers exactly
+  // ['Male', 'Female', 'Other'] (PortalSectionPages.jsx), title-cased and sent verbatim as the
+  // `gender` value — mobile previously stored/sent lowercase keys ('male'/'female'/'other').
   static const _genderOptions = <String, String>{
-    'male': 'Male',
-    'female': 'Female',
-    'other': 'Other',
+    'Male': 'Male',
+    'Female': 'Female',
+    'Other': 'Other',
   };
   static const _bloodGroupOptions = <String, String>{
     'A+': 'A+',
@@ -104,6 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _initialized = false;
   bool _saving = false;
   String? _error;
+  String? _genderError;
   bool _uploadingPhoto = false;
   bool _uploadingDocument = false;
 
@@ -120,7 +125,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _medicalHistoryController.text = profile?.medicalHistory ?? '';
     _aboutController.text = profile?.about ?? '';
     _dateOfBirth = profile?.dateOfBirth != null ? DateTime.tryParse(profile!.dateOfBirth!) : null;
-    _gender = profile?.gender;
+    // Defensive normalization (see family_members_screen.dart's identical fix): a profile saved
+    // before this parity fix may still carry the old lowercase 'male'/'female'/'other' — match
+    // case-insensitively against the current title-cased options rather than showing it as a
+    // dangling extra dropdown entry forever.
+    final storedGender = profile?.gender;
+    if (storedGender != null) {
+      _gender = _genderOptions.keys.firstWhere(
+        (option) => option.toLowerCase() == storedGender.toLowerCase(),
+        orElse: () => storedGender,
+      );
+    } else {
+      _gender = null;
+    }
     _bloodGroup = profile?.bloodGroup;
     _qualificationController.text = profile?.qualification ?? '';
     _bioController.text = profile?.bio ?? '';
@@ -219,7 +236,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'emergencyContact': _emergencyContactController.text.trim(),
         'address': _addressController.text.trim(),
         'medicalHistory': _medicalHistoryController.text.trim(),
-        'about': _aboutController.text.trim(),
       });
     } else if (role == 'doctor') {
       body.addAll({
@@ -239,6 +255,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _minBookingAmountController.text.trim().isEmpty ? null : num.tryParse(_minBookingAmountController.text.trim()),
         'emergencyAvailable': _emergencyAvailable,
       });
+    } else {
+      // PARITY FIX (mobile parity audit — Patient panel): "About" is web's `role !== 'patient'`
+      // field (see the SectionCard above) — reaches here for receptionist/admin/superadmin, since
+      // doctor is handled by its own branch above.
+      body.addAll({'about': _aboutController.text.trim()});
     }
     try {
       await ApiClient.instance.patch('/me', body: body);
@@ -248,6 +269,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) setState(() => _error = err.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  // PARITY FIX (mobile parity audit — Patient panel): ports web's `changeGender` — see the
+  // onChanged doc comment above for why this saves independently of the main form.
+  Future<void> _changeGender(String? value) async {
+    setState(() {
+      _gender = value;
+      _genderError = null;
+    });
+    if (value == null) return;
+    try {
+      await ApiClient.instance.patch('/me', body: {'gender': value});
+      if (mounted) await context.read<AuthProvider>().refreshProfile();
+    } catch (err) {
+      if (mounted) setState(() => _genderError = 'Could not update gender.');
     }
   }
 
@@ -456,7 +493,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               title: role == 'patient' ? 'Account information' : 'Profile details',
               child: Column(
                 children: [
-                  TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name')),
+                  // PARITY FIX (mobile parity audit — Patient panel): web's "Full name" field is
+                  // `required` (PortalSectionPages.jsx) — mobile's plain TextField had no
+                  // validation at all, so it silently accepted (and saved) an empty name.
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(labelText: 'Full name'),
+                    validator: (value) => (value == null || value.trim().isEmpty) ? 'Full name is required' : null,
+                  ),
                   const SizedBox(height: AppSpacing.md),
                   Text(auth.user?.email ?? '', style: const TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: AppSpacing.md),
@@ -483,9 +527,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
                       initialValue: _gender,
-                      decoration: const InputDecoration(labelText: 'Gender'),
+                      decoration: InputDecoration(labelText: 'Gender', errorText: _genderError),
                       items: _dropdownItems(_genderOptions, _gender),
-                      onChanged: (v) => setState(() => _gender = v),
+                      // PARITY FIX (mobile parity audit — Patient panel): web's PortalProfile
+                      // saves gender IMMEDIATELY on change (`onChange={changeGender}` ->
+                      // `updateProfile({ gender: value })`, PortalSectionPages.jsx), independent
+                      // of the page's main "Save changes" button — mobile only ever included it
+                      // in the big form save, so a patient who changed just their gender and
+                      // navigated away without tapping "Save" silently lost the change.
+                      onChanged: (v) => _changeGender(v),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
@@ -504,9 +554,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       decoration: const InputDecoration(labelText: 'Medical history'),
                       maxLines: 3,
                     ),
-                    const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _aboutController, decoration: const InputDecoration(labelText: 'About'), maxLines: 2),
                   ],
+                ),
+              ),
+            ],
+            // PARITY FIX (mobile parity audit — Patient panel): web's PortalProfile only shows
+            // "About" for `role !== 'patient'` (PortalSectionPages.jsx) — doctor lands on its own
+            // separate DoctorProfileEdit page instead (see this file's top doc comment), so in
+            // practice this only ever applies to receptionist/admin/superadmin. Mobile previously
+            // showed (and submitted) it inside the patient-only Health profile card instead, which
+            // is exactly backwards — a patient's own "about me" text was never part of web's
+            // patient profile at all.
+            if (role != 'patient' && role != 'doctor') ...[
+              const SizedBox(height: AppSpacing.md),
+              SectionCard(
+                title: 'About',
+                child: TextField(
+                  controller: _aboutController,
+                  decoration: const InputDecoration(labelText: 'About', hintText: 'Add a short profile description'),
+                  maxLines: 3,
                 ),
               ),
             ],
@@ -637,6 +703,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen())),
               icon: const Icon(Icons.support_agent_outlined, size: 18),
               label: const Text('Contact support'),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            // COMPLETENESS FIX (production-readiness pass, Sept 2026 — "app + website dono me
+            // screen ki tarah" product decision): reachable Privacy Policy / Terms of Service /
+            // Cancellation & Refund Policy screens for every role, mirroring the website's
+            // /privacy, /terms, /cancellation-refund-policy pages — see legal_policies_screen.dart.
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegalPoliciesScreen())),
+              icon: const Icon(Icons.gavel_outlined, size: 18),
+              label: const Text('Legal & policies'),
             ),
             const SizedBox(height: AppSpacing.md),
             OutlinedButton.icon(

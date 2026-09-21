@@ -41,13 +41,29 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
     });
   }
 
+  // BUG FIX (user report: "dashbord ka data jo database se aana hai ooo nahi aa raha hai"): this
+  // used to send `date: today` on the `/appointments` fetch, which — since GET /appointments has
+  // no default date scoping server-side (unlike /queue, which always defaults to today) — silently
+  // narrowed the ENTIRE clinic appointments list down to just today's rows, before any of
+  // Consultations done / Pending payments / Recent live records were computed from it. Web's own
+  // ReceptionDashboard (StaffPages.jsx) fetches the full, undated `data.appointments` and only
+  // filters locally for the "Today's patients" stat card — every other stat and the records list
+  // uses the complete set. Mirrored here now: the fetch is undated, and only `todaysPatients`
+  // (computed in build() below) filters by date.
+  // DIAGNOSTIC FIX (user report: "dashbord ka data jo database se aana hai ooo nahi aa raha
+  // hai"): each of these three calls used to have its own `.catchError((_) => ApiResponse(data:
+  // []))`, silently turning any real fetch failure into "zero appointments/queue/payments" with
+  // no way to distinguish that from a genuinely empty clinic. Since the Appointments/Payments
+  // tabs (same endpoints, same account) show real data, this was hiding the actual error. Now a
+  // genuine failure propagates out of Future.wait to the FutureBuilder's existing
+  // `snapshot.hasError` branch (ErrorBanner) instead of rendering all-zero stat cards.
   Future<_DashboardData> _fetch() async {
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final clinicId = context.read<AuthProvider>().profile?.clinicId;
     final futures = <Future<ApiResponse>>[
-      ApiClient.instance.get('/appointments', query: {'date': today, 'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/queue', query: {'date': today, 'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/payments', query: {'pageSize': 50}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.get('/appointments', query: {'pageSize': 100}),
+      ApiClient.instance.get('/queue', query: {'date': today, 'pageSize': 100}),
+      ApiClient.instance.get('/payments', query: {'pageSize': 50}),
     ];
     final results = await Future.wait(futures);
     Clinic? clinic;
@@ -143,7 +159,11 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
           final queue = data?.queue ?? [];
           final clinic = data?.clinic;
 
-          final todaysPatients = appointments.length;
+          // BUG FIX: only this stat is date-filtered (matches web's own local
+          // `item.appointmentDate === today` filter) — every other stat/list below uses the full,
+          // undated appointments list fetched in _fetch() above.
+          final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+          final todaysPatients = appointments.where((a) => a.appointmentDate == today).length;
           final consultationsDone = appointments.where((a) => a.status == 'completed').length;
           final waitingInQueue = queue.where((q) => q.status == 'waiting').length;
           final pendingPayments = appointments.where((a) => a.paymentStatus == 'pending').length;
@@ -248,7 +268,9 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
                             child: Text('No live records yet. Walk-ins and bookings will appear here as they happen.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                           )
                         else
-                          ...recentRecords.map((item) {
+                          ...recentRecords.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final item = entry.value;
                             final timeStr = '${item.appointmentDate} ${item.appointmentTime}'.trim();
                             return Container(
                               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -265,6 +287,14 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
                                         Text(
                                           timeStr.isNotEmpty ? timeStr : 'Today',
                                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                        ),
+                                        // COMPLETENESS FIX (mobile parity audit — Receptionist
+                                        // panel): web's "Recent live records" table has a
+                                        // "Details" column (StaffPages.jsx's ReceptionDashboard,
+                                        // `Appointment #${index + 1}`) — this card never showed it.
+                                        Text(
+                                          'Appointment #${index + 1}',
+                                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
                                         ),
                                       ],
                                     ),
@@ -341,8 +371,13 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
                               child: Text('No doctors assigned to clinic yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                             )
                           else
+                            // PARITY FIX (mobile parity audit — Receptionist panel, user request:
+                            // "receptionist me jitna v extra feature add hai website se oo sab
+                            // hata do"): this used to show an isOwner/isPrimary-derived "Clinic
+                            // Owner"/"Primary Doctor"/"Doctor" role label — web's own
+                            // ReceptionDashboard (StaffPages.jsx) shows the doctor's
+                            // specialization here instead, never an ownership role.
                             ...clinic.doctors.map((doc) {
-                              final roleLabel = doc.isOwner ? 'Clinic Owner' : (doc.isPrimary ? 'Primary Doctor' : 'Doctor');
                               return Container(
                                 padding: const EdgeInsets.symmetric(vertical: 8),
                                 decoration: const BoxDecoration(
@@ -356,7 +391,7 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
                                         children: [
                                           Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                                           Text(
-                                            roleLabel,
+                                            doc.specialization?.name ?? 'Specialization not added',
                                             style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                                           ),
                                         ],

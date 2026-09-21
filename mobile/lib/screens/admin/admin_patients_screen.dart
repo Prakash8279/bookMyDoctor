@@ -63,7 +63,7 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
         // /appointments's already-loaded `patient` sub-object, NOT the plain directory endpoint
         // above (which never carries medicalHistory/emergencyContact) — an admin caller to
         // GET /appointments gets the full clinical view (appointments.service.js#shapePatientRef).
-        ApiClient.instance.get('/appointments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: [])),
+        ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
       ]);
       final list = <PatientDirectoryItem>[];
       for (final item in results[0].list) {
@@ -205,10 +205,27 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
                         // this field already but never displayed it.
                         'Registered: ${_formatDate(p.registeredAt)}',
                       ].join(' · ');
+                      final seqId = 'DCP${(i + 1).toString().padLeft(2, '0')}';
                       final busy = _busyId == p.id;
                       return Card(
                         child: ListTile(
-                          title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          title: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.surface,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                            ],
+                          ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [

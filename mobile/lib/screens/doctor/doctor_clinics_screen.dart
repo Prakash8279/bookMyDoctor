@@ -332,8 +332,11 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
   @override
   void initState() {
     super.initState();
+    // BUG FIX (same root cause as the doctor Reports / receptionist Reports-Patients bug): the
+    // backend's list-query validator rejects pageSize over 100 outright (422 "Validation
+    // failed"), not clamped.
     _citiesFuture = ApiClient.instance
-        .get('/geography/cities', query: {'pageSize': 200})
+        .get('/geography/cities', query: {'pageSize': 100})
         .then((res) {
           final list = <City>[];
           for (final item in res.list) {
@@ -352,7 +355,7 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
   void _loadAreas(String cityId) {
     setState(() {
       _areasFuture = ApiClient.instance
-          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200})
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100})
           .then((res) {
             final list = <Area>[];
             for (final item in res.list) {

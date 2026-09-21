@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../core/api_client.dart';
+import '../core/csv_export.dart';
+import '../models/admin_models.dart';
 import '../models/clinical_models.dart';
+import '../state/auth_provider.dart';
 import '../theme/app_theme.dart';
 import 'common_widgets.dart';
 
@@ -27,40 +32,116 @@ void showPaymentReceiptSheet(BuildContext context, PaymentItem payment) {
 
 /// Full parity Booking Slip matching the website's booking-slip PDF format
 /// (lib/receiptPdf.js#buildBookingSlipSections) and in-page preview.
-class BookingSlipSheet extends StatelessWidget {
+class BookingSlipSheet extends StatefulWidget {
   final Appointment appointment;
 
   const BookingSlipSheet({super.key, required this.appointment});
+
+  @override
+  State<BookingSlipSheet> createState() => _BookingSlipSheetState();
+}
+
+class _BookingSlipSheetState extends State<BookingSlipSheet> {
+  Appointment get appointment => widget.appointment;
+
+  // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "patient detail me
+  // bload group,age,gender add kar dena"): neither GET /appointments' embedded `familyMember`
+  // (id/name/relation only — appointments.service.js's APPOINTMENT_SELECT) nor its own-booking
+  // `patient` shape (identity only — shapePatientRef's "patient (own booking)" branch) ever
+  // include clinical fields for a patient's OWN view of their booking, so this fetches them
+  // separately: the family member's own record (GET /family-members — the patient's own
+  // sub-resource, which DOES carry bloodGroup/gender/age, no masking involved) when the booking
+  // is for a dependant, or the patient's own cached profile (AuthProvider, from GET /me) when the
+  // booking is for themself.
+  String? _patientGender;
+  String? _patientBloodGroup;
+  int? _patientAge;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPatientDetails();
+  }
+
+  Future<void> _loadPatientDetails() async {
+    try {
+      final familyMemberId = appointment.familyMember?.id;
+      if (familyMemberId != null) {
+        final res = await ApiClient.instance.get('/family-members', query: {'pageSize': 50});
+        for (final item in res.list) {
+          try {
+            final fm = FamilyMember.fromJson(item);
+            if (fm.id == familyMemberId) {
+              if (!mounted) return;
+              setState(() {
+                _patientGender = fm.gender;
+                _patientBloodGroup = fm.bloodGroup;
+                _patientAge = fm.age;
+              });
+              return;
+            }
+          } catch (_) {}
+        }
+      } else {
+        final profile = context.read<AuthProvider>().profile;
+        int? age;
+        final dob = profile?.dateOfBirth != null ? DateTime.tryParse(profile!.dateOfBirth!) : null;
+        if (dob != null) {
+          final now = DateTime.now();
+          age = now.year - dob.year;
+          if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) age--;
+        }
+        if (!mounted) return;
+        setState(() {
+          _patientGender = profile?.gender;
+          _patientBloodGroup = profile?.bloodGroup;
+          _patientAge = age;
+        });
+      }
+    } catch (_) {
+      // Non-fatal — the slip still renders everything else; these three rows are simply omitted.
+    }
+  }
 
   String get _shortId {
     final id = appointment.id;
     return id.length > 8 ? id.substring(0, 8) : id;
   }
 
+  // PARITY FIX (mobile parity audit — Patient panel): these three getters used to read
+  // `appointment.fees.due`, which appointments.service.js#shapeFees only ever sends to a
+  // doctor/receptionist caller (mandatory rule 8 — see clinical_models.dart's Fees doc comment);
+  // for the patient's own booking slip it's always absent, so `_dueAmount` fell through to
+  // `(_displayFee - _paidAmount)`, the same flat re-derivation that was previously a bug on the
+  // web app. Rewritten to use `minBookingAmount`/`minBookingRemainder` — the patient-safe fields
+  // shapeFees actually sends for a partial online payment — matching
+  // screens/patient/appointments_screen.dart's already-correct `_computeMoney`.
   double get _displayFee {
-    return appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
+    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
+    final minBookingAmount = appointment.fees.minBookingAmount;
+    final minRemainder = appointment.fees.minBookingRemainder;
+    if (appointment.paymentStatus == 'partial' && minBookingAmount != null && minRemainder != null) {
+      return minBookingAmount + minRemainder;
+    }
+    return fee;
   }
 
   double get _paidAmount {
-    if (appointment.paymentStatus == 'paid') {
-      return _displayFee;
-    } else if (appointment.paymentStatus == 'partial') {
-      final minAmt = appointment.fees.minBookingAmount;
-      if (minAmt != null) return minAmt;
-      final due = appointment.fees.due ?? 0;
-      return (_displayFee - due).clamp(0, _displayFee);
-    }
+    if (appointment.paymentStatus == 'paid') return _displayFee;
+    if (appointment.paymentStatus == 'partial') return appointment.fees.minBookingAmount ?? 0;
     return 0;
   }
 
   double get _dueAmount {
     if (appointment.paymentStatus == 'paid') return 0;
-    if (appointment.fees.due != null) return appointment.fees.due!;
+    if (appointment.paymentStatus == 'partial' && appointment.fees.minBookingRemainder != null) {
+      return appointment.fees.minBookingRemainder!;
+    }
     return (_displayFee - _paidAmount).clamp(0, _displayFee);
   }
 
-  void _copySlip(BuildContext context) {
-    final text = '''
+  String _buildSlipText() {
+    return '''
 ========================================
        BOOKMYDOCTOR24 - BOOKING SLIP
 ========================================
@@ -76,7 +157,7 @@ Clinic: ${appointment.clinic?.name ?? "—"}
 ${appointment.clinic?.address != null && appointment.clinic!.address!.isNotEmpty ? "Address: ${appointment.clinic!.address}\n" : ""}${appointment.clinic?.phone != null && appointment.clinic!.phone!.isNotEmpty ? "Phone: ${appointment.clinic!.phone}\n" : ""}
 PATIENT:
 Name: ${appointment.familyMember?.name ?? appointment.patient?.name ?? "Self"}
-${appointment.familyMember?.relation != null ? "Relation: ${appointment.familyMember!.relation}\n" : ""}${appointment.patient?.phone != null ? "Phone: ${appointment.patient!.phone}\n" : ""}${appointment.reason != null && appointment.reason!.isNotEmpty ? "Reason: ${appointment.reason}\n" : ""}
+${appointment.familyMember?.relation != null ? "Relation: ${appointment.familyMember!.relation}\n" : ""}${_patientGender != null ? "Gender: $_patientGender\n" : ""}${_patientAge != null ? "Age: $_patientAge\n" : ""}${_patientBloodGroup != null ? "Blood Group: $_patientBloodGroup\n" : ""}${appointment.patient?.phone != null ? "Phone: ${appointment.patient!.phone}\n" : ""}${appointment.reason != null && appointment.reason!.isNotEmpty ? "Reason: ${appointment.reason}\n" : ""}
 FINANCIAL SUMMARY:
 Total Amount: ₹${_displayFee.toStringAsFixed(0)}
 Paid: ₹${_paidAmount.toStringAsFixed(0)}
@@ -88,8 +169,24 @@ This is a computer-generated booking slip.
 Please present this slip at the clinic reception upon arrival.
 ========================================
 ''';
-    Clipboard.setData(ClipboardData(text: text));
+  }
+
+  void _copySlip(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: _buildSlipText()));
     showSuccessSnack(context, 'Booking slip details copied to clipboard');
+  }
+
+  // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "slip view kr bad
+  // download ka option website me hai app me nahi hai kahi v"): web's booking slip is a real
+  // downloadable PDF (lib/receiptPdf.js#buildBookingSlipPdfBlob, opened via usePdfPreview's
+  // view-then-download flow) — mobile had "Copy Slip" (clipboard only) and nothing that actually
+  // leaves the device. Flutter has no browser-style "save to Downloads" primitive without adding
+  // a new native plugin, so this reuses the same OS-share-sheet approach already established for
+  // every other "web downloads a file" gap in this app (see core/csv_export.dart's own doc
+  // comment) — the patient can save it to Files, print it, or send it via WhatsApp/email from
+  // the share sheet, covering the same real-world need as a browser download.
+  Future<void> _shareSlip(BuildContext context) async {
+    await shareText(filename: 'booking-slip-$_shortId.txt', content: _buildSlipText());
   }
 
   @override
@@ -220,6 +317,12 @@ Please present this slip at the clinic reception upon arrival.
               title: 'Practitioner & Clinic',
               icon: Icons.local_hospital_outlined,
               rows: [
+                // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "booking
+                // slip pe booking id nahi aa raha hai"): the booking id only ever appeared as a
+                // small caption in the header ("CLINIC BOOKING SLIP · #...") — web hit the exact
+                // same complaint and added it as its own row too (receiptPdf.js's
+                // "BOOKING-ID VISIBILITY FIX": "bookinh id ko slip pe dikhai").
+                MapEntry('Booking ID', '#$_shortId'),
                 MapEntry('Doctor', appointment.doctor?.name != null ? 'Dr. ${appointment.doctor!.name}' : '—'),
                 if (appointment.doctor?.specialization != null)
                   MapEntry('Specialization', appointment.doctor!.specialization!.name),
@@ -243,6 +346,13 @@ Please present this slip at the clinic reception upon arrival.
                 ),
                 if (appointment.familyMember?.relation != null)
                   MapEntry('Relation', appointment.familyMember!.relation!),
+                // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "patient
+                // detail me bload group,age,gender add kar dena") — see _loadPatientDetails'
+                // doc comment for where these come from; simply omitted while still loading or
+                // if genuinely unset, rather than showing a blank/placeholder row.
+                if (_patientGender != null) MapEntry('Gender', _patientGender!),
+                if (_patientAge != null) MapEntry('Age', '$_patientAge yrs'),
+                if (_patientBloodGroup != null) MapEntry('Blood Group', _patientBloodGroup!),
                 if (appointment.patient?.phone != null)
                   MapEntry('Contact Phone', appointment.patient!.phone!),
                 if (appointment.reason != null && appointment.reason!.isNotEmpty)
@@ -291,7 +401,23 @@ Please present this slip at the clinic reception upon arrival.
                   child: OutlinedButton.icon(
                     onPressed: () => _copySlip(context),
                     icon: const Icon(Icons.copy_outlined, size: 18),
-                    label: const Text('Copy Slip'),
+                    label: const Text('Copy'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "slip
+                // view kr bad download ka option website me hai app me nahi hai") — see
+                // _shareSlip's doc comment for why this is a share sheet rather than a true
+                // browser-style download.
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _shareSlip(context),
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('Download'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -382,9 +508,9 @@ class PaymentReceiptSheet extends StatelessWidget {
     return id.length > 8 ? id.substring(0, 8) : id;
   }
 
-  void _copyReceipt(BuildContext context) {
+  String _buildReceiptText() {
     final amount = payment.fees.amount ?? payment.fees.consultationFee ?? 0;
-    final text = '''
+    return '''
 ========================================
        BOOKMYDOCTOR24 - PAYMENT RECEIPT
 ========================================
@@ -402,8 +528,19 @@ ${payment.appointment?.id != null ? "Booking ID: #${payment.appointment!.id.leng
 Official computer-generated receipt.
 ========================================
 ''';
-    Clipboard.setData(ClipboardData(text: text));
+  }
+
+  void _copyReceipt(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: _buildReceiptText()));
     showSuccessSnack(context, 'Payment receipt details copied to clipboard');
+  }
+
+  // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "download ka option
+  // ... kahi v" / nowhere at all) — same share-sheet approach as BookingSlipSheet._shareSlip,
+  // extended here so the payment receipt sheet also has a "leave the device" option, not just
+  // the booking slip.
+  Future<void> _shareReceipt(BuildContext context) async {
+    await shareText(filename: 'payment-receipt-$_shortId.txt', content: _buildReceiptText());
   }
 
   @override
@@ -525,7 +662,19 @@ Official computer-generated receipt.
                   child: OutlinedButton.icon(
                     onPressed: () => _copyReceipt(context),
                     icon: const Icon(Icons.copy_outlined, size: 18),
-                    label: const Text('Copy Receipt'),
+                    label: const Text('Copy'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _shareReceipt(context),
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('Download'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

@@ -199,16 +199,16 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
                       if (pendingDoctors.isNotEmpty) ...[
                         _SectionHeading(title: 'Pending verification', count: pendingDoctors.length),
                         const SizedBox(height: AppSpacing.sm),
-                        for (final d in pendingDoctors) ...[
-                          _buildDoctorCard(d),
+                        for (int i = 0; i < pendingDoctors.length; i++) ...[
+                          _buildDoctorCard(pendingDoctors[i], i),
                           const SizedBox(height: AppSpacing.sm),
                         ],
                         const SizedBox(height: AppSpacing.md),
                       ],
                       _SectionHeading(title: 'All doctors', count: doctors.length),
                       const SizedBox(height: AppSpacing.sm),
-                      for (final d in doctors) ...[
-                        _buildDoctorCard(d),
+                      for (int i = 0; i < doctors.length; i++) ...[
+                        _buildDoctorCard(doctors[i], i),
                         const SizedBox(height: AppSpacing.sm),
                       ],
                     ],
@@ -222,22 +222,52 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     );
   }
 
-  Widget _buildDoctorCard(DoctorDirectoryItem d) {
+  Widget _buildDoctorCard(DoctorDirectoryItem d, [int? index]) {
     final busy = _busyId == d.id;
     final accountStatus = d.accountStatus ?? 'active';
     final doctorStatus = d.doctorStatus ?? 'verified';
     final isPending = doctorStatus == 'pending';
+    final seqId = index != null ? 'DCD${(index + 1).toString().padLeft(2, '0')}' : null;
+
     return Card(
       child: ListTile(
         title: Row(
           children: [
-            Expanded(child: Text(d.name)),
+            if (seqId != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w700))),
             StatusBadge(status: doctorStatus),
           ],
         ),
-        subtitle: Text(
-          '${d.specialization?.name ?? "—"} · ₹${d.consultationFee.toStringAsFixed(0)} · ${d.city ?? "—"}'
-          '${accountStatus == 'disabled' ? " · Login disabled" : ""}',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Text(
+              '${d.specialization?.name ?? "—"} · ₹${d.consultationFee.toStringAsFixed(0)} · ${d.city ?? "—"}',
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              [
+                if (d.registrationNumber != null && d.registrationNumber!.isNotEmpty) 'Reg: ${d.registrationNumber}',
+                if (d.experienceYears != null) '${d.experienceYears} yrs exp',
+                if (d.rating > 0) '★ ${d.rating.toStringAsFixed(1)}',
+                if (accountStatus == 'disabled') 'Login disabled',
+              ].join(' · '),
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ],
         ),
         trailing: busy
             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -321,7 +351,7 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
   void initState() {
     super.initState();
     _specializationsFuture = ApiClient.instance
-        .get('/geography/specializations', query: {'pageSize': 200})
+        .get('/geography/specializations', query: {'pageSize': 100})
         .then((res) {
           final list = <Specialization>[];
           for (final item in res.list) {

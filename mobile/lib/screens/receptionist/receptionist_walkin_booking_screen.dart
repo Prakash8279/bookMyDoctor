@@ -17,22 +17,17 @@ import '../../widgets/common_widgets.dart';
 /// doctor list sourced from this clinic's linked doctors rather than the
 /// public directory.
 ///
-/// **Known gap (integration_plan.md §6.7):** there is no `/patients` search
-/// endpoint anywhere in the API — a receptionist cannot look up an arbitrary
-/// patient by name/phone. The best available substitute is a distinct-
-/// patient list derived client-side from this clinic's own
-/// `GET /appointments` history, so only patients who have visited this
-/// clinic before appear in the "Existing patient" tab below.
-///
-/// COMPLETENESS FIX: a genuinely first-time walk-in patient (no prior visit
-/// to this clinic, no Connect account) previously had no path onto this
-/// screen at all. `POST /appointments` already accepts `patientName` +
-/// `patientPhone` (+ optional `patientEmail`) as an alternative to
-/// `patientUserId` — appointments.service.js#enqueueBooking /
-/// #findOrCreateWalkInPatient looks the phone up and creates the account
-/// server-side — and the website's own WalkIn form (StaffPages.jsx) is just
-/// three plain text fields with no lookup. The "New patient" tab mirrors
-/// that exact UX here.
+/// PARITY FIX (mobile parity audit — Receptionist panel, user request:
+/// "receptionist me jitna v extra feature add hai website se oo sab hata
+/// do"): this used to offer an "Existing patient" search tab (a
+/// client-derived patient list with no real backend search endpoint behind
+/// it), an "Emergency booking" toggle, and a "Payment method" dropdown —
+/// none of which exist on the website's own WalkIn form (StaffPages.jsx),
+/// which is just Patient name / Phone / Patient email / Doctor / Visit date
+/// / Slot time / Reason, always creating the appointment via
+/// `patientName`+`patientPhone` (never `patientUserId`, never `isEmergency`,
+/// never `paymentMethod`). All three mobile-only additions removed so this
+/// screen now submits the exact same fields as the website.
 class ReceptionistWalkInBookingScreen extends StatefulWidget {
   const ReceptionistWalkInBookingScreen({super.key});
 
@@ -45,28 +40,20 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
   Object? _loadError;
 
   List<ClinicDoctorLink> _clinicDoctors = [];
-  List<PatientRef> _knownPatients = [];
   // BUG FIX (mobile parity audit): web's WalkIn form shows a trailing "recent bookings" table
   // built from the same already-fetched appointments list (StaffPages.jsx) — mobile fetched this
-  // list only to derive _knownPatients and then discarded it.
+  // list and now only uses it for that trailing table (see class doc comment for why the
+  // client-derived "known patients" search tab that used to also come from this list was removed).
   List<Appointment> _recentAppointments = [];
-  final _patientSearchCtrl = TextEditingController();
 
-  // "Existing patient" (pick from _knownPatients) vs "New patient" (plain
-  // name/phone/email fields, matching the website's WalkIn form) — see the
-  // class doc comment above.
-  bool _isNewPatient = false;
   final _newPatientNameCtrl = TextEditingController();
   final _newPatientPhoneCtrl = TextEditingController();
   final _newPatientEmailCtrl = TextEditingController();
 
   ClinicDoctorLink? _selectedDoctor;
-  PatientRef? _selectedPatient;
   DateTime? _selectedDate;
   TimeOfDay? _selectedTime;
   final _reasonController = TextEditingController();
-  bool _isEmergency = false;
-  String _paymentMethod = 'cash';
 
   bool _submitting = false;
   String? _pollingStatus;
@@ -82,7 +69,6 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
 
   @override
   void dispose() {
-    _patientSearchCtrl.dispose();
     _newPatientNameCtrl.dispose();
     _newPatientPhoneCtrl.dispose();
     _newPatientEmailCtrl.dispose();
@@ -111,17 +97,8 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           appointments.add(Appointment.fromJson(item));
         } catch (_) {}
       }
-      final seen = <String>{};
-      final patients = <PatientRef>[];
-      for (final a in appointments) {
-        final p = a.patient;
-        if (p != null && p.id.isNotEmpty && seen.add(p.id)) {
-          patients.add(p);
-        }
-      }
       setState(() {
         _clinicDoctors = clinic.doctors;
-        _knownPatients = patients;
         _recentAppointments = appointments;
         _loadingOptions = false;
       });
@@ -131,12 +108,6 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
         _loadingOptions = false;
       });
     }
-  }
-
-  List<PatientRef> get _filteredPatients {
-    final q = _patientSearchCtrl.text.trim().toLowerCase();
-    if (q.isEmpty) return _knownPatients;
-    return _knownPatients.where((p) => '${p.name ?? ''} ${p.phone ?? ''}'.toLowerCase().contains(q)).toList();
   }
 
   Future<void> _pickDate() async {
@@ -155,9 +126,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  bool get _hasPatient => _isNewPatient
-      ? _newPatientNameCtrl.text.trim().isNotEmpty && _newPatientPhoneCtrl.text.trim().isNotEmpty
-      : _selectedPatient != null;
+  bool get _hasPatient => _newPatientNameCtrl.text.trim().isNotEmpty && _newPatientPhoneCtrl.text.trim().isNotEmpty;
 
   // BUG FIX (mobile parity audit): web's WalkIn form treats the time slot as optional
   // ("Slot time (optional)", StaffPages.jsx) — appointments.validation.js#createAppointment only
@@ -184,18 +153,13 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
 
       final postRes = await ApiClient.instance.post('/appointments', body: {
         'doctorUserId': _selectedDoctor!.doctorUserId,
-        if (_isNewPatient) ...{
-          'patientName': _newPatientNameCtrl.text.trim(),
-          'patientPhone': _newPatientPhoneCtrl.text.trim(),
-          if (_newPatientEmailCtrl.text.trim().isNotEmpty) 'patientEmail': _newPatientEmailCtrl.text.trim(),
-        } else
-          'patientUserId': _selectedPatient!.id,
+        'patientName': _newPatientNameCtrl.text.trim(),
+        'patientPhone': _newPatientPhoneCtrl.text.trim(),
+        if (_newPatientEmailCtrl.text.trim().isNotEmpty) 'patientEmail': _newPatientEmailCtrl.text.trim(),
         'clinicId': _clinicId,
         'appointmentDate': dateStr,
         if (timeStr != null) 'appointmentTime': timeStr,
         if (_reasonController.text.trim().isNotEmpty) 'reason': _reasonController.text.trim(),
-        'isEmergency': _isEmergency,
-        'paymentMethod': _paymentMethod,
       });
 
       final jobId = postRes.map['jobId'] as String;
@@ -212,7 +176,7 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
               appointmentDate: dateStr,
               appointmentTime: timeStr ?? '',
               tokenNumber: result.appointment?.tokenNumber,
-              isEmergency: _isEmergency,
+              isEmergency: false,
               source: 'walkin',
               paymentStatus: 'pending',
               doctor: _selectedDoctor != null
@@ -223,9 +187,9 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
                   : null,
               clinic: null,
               patient: PatientRef(
-                id: _selectedPatient?.id ?? '',
-                name: _selectedPatient?.name ?? _newPatientNameCtrl.text.trim(),
-                phone: _selectedPatient?.phone ?? _newPatientPhoneCtrl.text.trim(),
+                id: '',
+                name: _newPatientNameCtrl.text.trim(),
+                phone: _newPatientPhoneCtrl.text.trim(),
               ),
               reason: _reasonController.text.trim(),
               fees: Fees(),
@@ -280,15 +244,12 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
         if (mounted) {
           setState(() {
             _selectedDoctor = null;
-            _selectedPatient = null;
-            _patientSearchCtrl.clear();
             _newPatientNameCtrl.clear();
             _newPatientPhoneCtrl.clear();
             _newPatientEmailCtrl.clear();
             _selectedDate = null;
             _selectedTime = null;
             _reasonController.clear();
-            _isEmergency = false;
           });
         }
       } else if (result.status == 'failed') {
@@ -340,91 +301,33 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
             subtitle: 'Create or find a patient, book the visit, and issue a queue token.',
           ),
           if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Existing patient'), icon: Icon(Icons.person_search)),
-              ButtonSegment(value: true, label: Text('New patient'), icon: Icon(Icons.person_add_alt_1)),
-            ],
-            selected: {_isNewPatient},
-            onSelectionChanged: (selection) => setState(() => _isNewPatient = selection.first),
+          // PARITY FIX (mobile parity audit — Receptionist panel): matches web's WalkIn form
+          // exactly — just Patient name / Phone / Patient email, no existing-patient lookup (see
+          // class doc comment for why that tab was removed).
+          TextField(
+            controller: _newPatientNameCtrl,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.badge_outlined)),
+            onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: AppSpacing.md),
-          if (_isNewPatient) ...[
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                'First-time visitor with no Connect account yet? Enter their details below and a patient account will be created automatically when the visit is booked.',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
+          const SizedBox(height: AppSpacing.sm),
+          TextField(
+            controller: _newPatientPhoneCtrl,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone',
+              hintText: 'Used to find a returning patient next time',
+              prefixIcon: Icon(Icons.call_outlined),
             ),
-            const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _newPatientNameCtrl,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.badge_outlined)),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            TextField(
-              controller: _newPatientPhoneCtrl,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone',
-                hintText: 'Used to find a returning patient next time',
-                prefixIcon: Icon(Icons.call_outlined),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            TextField(
-              controller: _newPatientEmailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Patient email (optional)', prefixIcon: Icon(Icons.email_outlined)),
-              onChanged: (_) => setState(() {}),
-            ),
-          ] else ...[
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                'Only patients who have visited this clinic before appear in the search below — there is no platform-wide patient search. Can\'t find them? Switch to "New patient" above.',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _patientSearchCtrl,
-              decoration: const InputDecoration(labelText: 'Search known patients by name or phone', prefixIcon: Icon(Icons.search)),
-              // Clearing a now-filtered-out selection avoids DropdownButtonFormField's
-              // "exactly one item with this value" assertion when the search text
-              // narrows the list past the currently selected patient.
-              onChanged: (_) => setState(() {
-                if (_selectedPatient != null && !_filteredPatients.any((p) => p.id == _selectedPatient!.id)) {
-                  _selectedPatient = null;
-                }
-              }),
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            DropdownButtonFormField<PatientRef>(
-              initialValue: _selectedPatient,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Patient'),
-              items: _filteredPatients
-                  .map((p) => DropdownMenuItem(
-                        value: p,
-                        child: Text(p.phone != null ? '${p.name ?? "Patient"} · ${p.phone}' : (p.name ?? 'Patient')),
-                      ))
-                  .toList(),
-              onChanged: (p) => setState(() => _selectedPatient = p),
-            ),
-          ],
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          TextField(
+            controller: _newPatientEmailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(labelText: 'Patient email (optional)', prefixIcon: Icon(Icons.email_outlined)),
+            onChanged: (_) => setState(() {}),
+          ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<ClinicDoctorLink>(
             initialValue: _selectedDoctor,
@@ -463,25 +366,6 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           ],
           const SizedBox(height: AppSpacing.md),
           TextField(controller: _reasonController, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason for visit (optional)')),
-          const SizedBox(height: AppSpacing.md),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Emergency booking'),
-            value: _isEmergency,
-            onChanged: (v) => setState(() => _isEmergency = v),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          DropdownButtonFormField<String>(
-            initialValue: _paymentMethod,
-            decoration: const InputDecoration(labelText: 'Payment method'),
-            items: const [
-              DropdownMenuItem(value: 'cash', child: Text('Cash')),
-              DropdownMenuItem(value: 'upi', child: Text('UPI')),
-              DropdownMenuItem(value: 'card', child: Text('Card')),
-              DropdownMenuItem(value: 'online', child: Text('Online')),
-            ],
-            onChanged: (v) => setState(() => _paymentMethod = v ?? 'cash'),
-          ),
           const SizedBox(height: AppSpacing.lg),
           if (_pollingStatus != null) ...[
             Row(
@@ -497,8 +381,8 @@ class _ReceptionistWalkInBookingScreenState extends State<ReceptionistWalkInBook
           PrimaryButton(label: 'Book walk-in appointment', onPressed: _canSubmit ? _submit : null, loading: _submitting),
           const SizedBox(height: AppSpacing.lg),
           // BUG FIX (mobile parity audit): web's WalkIn form has a trailing read-only table of
-          // this clinic's bookings (StaffPages.jsx) — mobile fetched the same list (for
-          // _knownPatients) but never displayed it.
+          // this clinic's bookings (StaffPages.jsx) — mobile fetches the same list and shows it
+          // here.
           SectionCard(
             title: 'Recent bookings',
             child: _recentAppointments.isEmpty

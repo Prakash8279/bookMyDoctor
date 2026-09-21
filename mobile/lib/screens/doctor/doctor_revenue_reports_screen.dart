@@ -53,21 +53,24 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
     _future = _fetch();
   }
 
+  // BUG FIX (user report: "doctor panel me v report sahi nahi hai") — same root cause found and
+  // fixed in the receptionist Reports/Patients screens: the backend's list-query validator
+  // rejects any `pageSize` over 100 outright with a 422 "Validation failed" (it does NOT clamp
+  // out-of-range values the way pagination.js's own internal parsePagination() does — that
+  // lenient clamp only runs for requests that already passed this earlier, stricter check).
+  // `.catchError((_) => ApiResponse(data: []))` plus the outer `catch (_) { return []; }` were
+  // silently converting that rejection into "zero payments", which is why this screen showed no
+  // data with no visible error. Capped to 100 (the actual max) and errors now propagate to the
+  // FutureBuilder's `snapshot.hasError` branch instead of being masked.
   Future<List<PaymentItem>> _fetch() async {
-    try {
-      final res = await ApiClient.instance
-          .get('/payments', query: {'pageSize': 200})
-          .catchError((_) => ApiResponse(data: []));
-      final list = <PaymentItem>[];
-      for (final item in res.list) {
-        try {
-          list.add(PaymentItem.fromJson(item));
-        } catch (_) {}
-      }
-      return list;
-    } catch (_) {
-      return [];
+    final res = await ApiClient.instance.get('/payments', query: {'pageSize': 100});
+    final list = <PaymentItem>[];
+    for (final item in res.list) {
+      try {
+        list.add(PaymentItem.fromJson(item));
+      } catch (_) {}
     }
+    return list;
   }
 
   void _load() {

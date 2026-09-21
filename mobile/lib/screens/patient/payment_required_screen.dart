@@ -93,6 +93,27 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
         _payingNow = false;
       });
     } catch (err) {
+      // PARITY FIX (mobile parity audit — Patient panel): ports the RESUME/RECONCILE fix from
+      // useRazorpayPayment.js — Razorpay's success callback only ever fires after the payment has
+      // already been captured, so a failure here (timeout, dropped connection, a transient error
+      // after the backend's own transaction actually committed) does NOT mean the money wasn't
+      // taken. Re-check the appointment's real status before reporting a failure — if it's no
+      // longer `pending_payment`, the verify actually succeeded server-side and this was just a
+      // lost response; only show the error if the appointment genuinely still needs payment.
+      try {
+        final fresh = await ApiClient.instance.get('/appointments/${_appointment.id}');
+        final freshAppointment = Appointment.fromJson(fresh.map);
+        if (freshAppointment.status != 'pending_payment') {
+          if (!mounted) return;
+          setState(() {
+            _appointment = freshAppointment;
+            _payingNow = false;
+          });
+          return;
+        }
+      } catch (_) {
+        // Couldn't even re-check — fall through to showing the original error below.
+      }
       if (!mounted) return;
       setState(() {
         _payingNow = false;

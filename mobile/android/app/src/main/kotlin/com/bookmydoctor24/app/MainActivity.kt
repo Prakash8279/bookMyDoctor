@@ -1,4 +1,4 @@
-package com.example.connect_mobile
+package com.bookmydoctor24.app
 
 import io.flutter.embedding.android.FlutterActivity
 

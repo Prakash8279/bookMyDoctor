@@ -128,7 +128,6 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
                   );
                 }
                 final p = payments[i - 1];
-                final p = payments[i];
                 return Card(
                   child: ListTile(
                     onTap: () => showPaymentReceiptSheet(context, p),
@@ -140,6 +139,17 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
                         Text(
                           'Dr. ${p.doctor?.name ?? "—"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
                         ),
+                        // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's
+                        // payments table has a dedicated "Booking ID" column (StaffPages.jsx's
+                        // "BOOKING-ID VISIBILITY FIX", follow-up: "payment me v booking id do") —
+                        // this row never showed it.
+                        if (p.appointment?.id != null && p.appointment!.id.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Booking ID: #${p.appointment!.id.length > 8 ? p.appointment!.id.substring(0, 8) : p.appointment!.id}',
+                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                          ),
+                        ],
                         const SizedBox(height: 4),
                         Row(
                           children: [

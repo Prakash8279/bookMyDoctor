@@ -119,7 +119,10 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
     // as web's `data.payments` join.
     final payments = <PaymentItem>[];
     try {
-      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 200}).catchError((_) => ApiResponse(data: []));
+      // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
+      // receptionist_reports_screen.dart's comment): pageSize over 100 gets rejected outright by
+      // the backend's list-query validator (422 "Validation failed"), not clamped.
+      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
       for (final item in res.list) {
         try {
           payments.add(PaymentItem.fromJson(item));
@@ -221,7 +224,7 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
       await ApiClient.instance.post('/reviews', body: {
         'appointmentId': appt.id,
         'rating': result['rating'],
-        if ((result['text'] as String).isNotEmpty) 'text': result['text'],
+        'text': result['text'],
       });
       if (mounted) showSuccessSnack(context, 'Thanks for your review!');
     } catch (err) {
@@ -302,7 +305,11 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
                       onCancel: (appt.status == 'upcoming' || appt.status == 'confirmed' || appt.status == 'pending_payment')
                           ? () => _cancel(appt)
                           : null,
-                      onReview: appt.status == 'completed' ? () => _leaveReview(appt) : null,
+                      // PARITY FIX (mobile parity audit — Patient panel): web's review form is
+                      // entirely absent from Booking History (`{!history && completed.length > 0
+                      // && <form>...}`, PatientPages.jsx) — reviewing only ever happens from My
+                      // Appointments. Mobile previously offered "Leave review" on both lists.
+                      onReview: (!widget.isHistory && appt.status == 'completed') ? () => _leaveReview(appt) : null,
                       onTrackQueue: (appt.status == 'upcoming' || appt.status == 'confirmed')
                           ? () => Navigator.of(context).push(
                                 MaterialPageRoute(builder: (_) => QueueTrackerScreen(appointmentId: appt.id)),
@@ -601,9 +608,17 @@ class _ReviewDialog extends StatefulWidget {
   State<_ReviewDialog> createState() => _ReviewDialogState();
 }
 
+// PARITY FIX (mobile parity audit — Patient panel): web's review form
+// (PatientPages.jsx, `!history && completed.length > 0` block) marks BOTH the rating select and
+// the review textarea `required` — a patient must explicitly pick a rating and write something,
+// there's no submitting with a default/blank rating or empty text. Mobile previously defaulted
+// `_rating` to 5 (so a patient could submit a 5-star review without ever tapping a star) and made
+// the text field explicitly "(optional)". Now the rating starts unset and Submit stays disabled
+// until both a rating is chosen and the text is non-empty, with inline validation messages.
 class _ReviewDialogState extends State<_ReviewDialog> {
-  int _rating = 5;
+  int? _rating;
   final _textController = TextEditingController();
+  bool _touchedText = false;
 
   @override
   void dispose() {
@@ -611,34 +626,51 @@ class _ReviewDialogState extends State<_ReviewDialog> {
     super.dispose();
   }
 
+  bool get _isValid => _rating != null && _textController.text.trim().isNotEmpty;
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text('Review ${widget.doctorName}'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text('Rating', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
               5,
               (i) => IconButton(
-                icon: Icon(i < _rating ? Icons.star : Icons.star_border, color: AppColors.warning),
+                icon: Icon(_rating != null && i < _rating! ? Icons.star : Icons.star_border, color: AppColors.warning),
                 onPressed: () => setState(() => _rating = i + 1),
               ),
             ),
           ),
+          if (_rating == null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('Please select a rating', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+            ),
           TextField(
             controller: _textController,
             maxLines: 3,
-            decoration: const InputDecoration(hintText: 'Share your experience (optional)'),
+            decoration: const InputDecoration(hintText: 'Share your experience'),
+            onChanged: (_) => setState(() => _touchedText = true),
           ),
+          if (_touchedText && _textController.text.trim().isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text('Please share a few words about your visit', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+            ),
         ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
         TextButton(
-          onPressed: () => Navigator.of(context).pop({'rating': _rating, 'text': _textController.text.trim()}),
+          onPressed: _isValid
+              ? () => Navigator.of(context).pop({'rating': _rating, 'text': _textController.text.trim()})
+              : null,
           child: const Text('Submit'),
         ),
       ],

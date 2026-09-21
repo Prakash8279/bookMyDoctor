@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import React from 'react'
+import { render, renderHook, waitFor } from '@testing-library/react'
 import { useListLoad, resetAllListLoadCachesForTests } from './useListLoad'
 
 describe('useListLoad', () => {
@@ -80,5 +81,38 @@ describe('useListLoad', () => {
 
     await result.current.refresh({ search: 'asha' })
     expect(fetchFn).toHaveBeenLastCalledWith({ search: 'asha' })
+  })
+
+  // REGRESSION TEST for the "admin app me clinic doctor patient show nahi ho raha hai" bug:
+  // ManageDoctors/ManageClinics/ManagePatients (AdminPages.jsx, cacheKeys 'admin:doctors'/
+  // 'admin:clinics'/'admin:patients') all got stuck showing the loading skeleton and a
+  // permanently-disabled "Refreshing…" button, even though the data had actually already
+  // arrived in the store. Root cause: React 18 StrictMode (main.jsx wraps <App/> in it) mounts
+  // every component twice in dev — mount, run the []-effect's cleanup as if unmounting, mount
+  // again — specifically to catch bugs where a ref set on "unmount" never gets reset.
+  // cancelledRef.current got set true by that phantom cleanup, and nothing reset it afterwards,
+  // so by the time the genuinely-mounted second run()'s fetch resolved, its .finally() found
+  // cancelledRef.current already true and silently skipped setLoading(false) forever.
+  //
+  // A same-tick-resolved mock (mockResolvedValue) doesn't reproduce this: its .then() callback
+  // fires as a microtask that can interleave with StrictMode's synchronous double-invoke and
+  // populate the TTL cache before the second effect run, so the second run short-circuits via
+  // isFresh() before ever reaching the buggy cancelledRef path — masking the bug entirely. A
+  // real network call never resolves that fast, so this uses a setTimeout-delayed fetch (like
+  // usePolling.js's real-timer tests) to force the same ordering a real browser hits.
+  it('clears loading after a StrictMode phantom mount/unmount/remount cycle, with a realistically-delayed fetch', async () => {
+    resetAllListLoadCachesForTests()
+    const fetchFn = vi.fn(() => new Promise((resolve) => setTimeout(resolve, 20)))
+    let latest = null
+    function Probe() {
+      const state = useListLoad('strict-key', fetchFn)
+      latest = state
+      return null
+    }
+
+    render(React.createElement(React.StrictMode, null, React.createElement(Probe)))
+
+    await waitFor(() => expect(latest.loading).toBe(false), { timeout: 2000 })
+    expect(latest.error).toBe('')
   })
 })

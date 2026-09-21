@@ -52,6 +52,21 @@ export function useListLoad(cacheKey, fetchFn, { ttlMs = 30000 } = {}) {
   }, [])
 
   const run = (...args) => {
+    // BUG FIX ("admin app me clinic doctor patient show nahi ho raha hai" — Doctors/Clinics/
+    // Patients admin pages all got stuck on "Refreshing…" forever, showing the loading skeleton
+    // even after the data had actually arrived): in dev, React 18 StrictMode intentionally
+    // mounts every component twice (mount -> run the [] cleanup below as if unmounting -> mount
+    // again) to catch exactly this kind of bug. That phantom "unmount" set cancelledRef.current
+    // to true, and NOTHING ever reset it back to false afterwards — so the second (genuinely
+    // mounted) run() below always found cancelledRef.current already true by the time its fetch
+    // resolved, and permanently skipped setLoading(false)/setError(...) in the .finally()/.catch()
+    // below. Every admin list page using this hook (ManageDoctors/ManageClinics/ManagePatients,
+    // cacheKeys 'admin:doctors'/'admin:clinics'/'admin:patients') hit this on first load. A fresh
+    // run() only ever starts while this hook instance is genuinely mounted (from the mount effect
+    // below, or from the `refresh` a live button click calls), so it's always correct to clear any
+    // stale cancellation here — a REAL unmount that happens while this run is still in flight will
+    // still set cancelledRef.current back to true via the effect's own cleanup further down.
+    cancelledRef.current = false
     setLoading(true)
     setError('')
     return Promise.resolve(fetchFnRef.current(...args))

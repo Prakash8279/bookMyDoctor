@@ -12,13 +12,11 @@ import '../shared/notifications_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'appointments_screen.dart';
 import 'book_appointment_screen.dart';
-import 'emergency_booking_screen.dart';
 import 'family_members_screen.dart';
 import 'patient_search_screen.dart';
 import 'payments_screen.dart';
 import 'payment_required_screen.dart';
 import 'queue_tracker_screen.dart';
-import 'quick_clinic_booking_screen.dart';
 
 /// Patient Dashboard — mirrors the web app's PatientDashboard (src/pages/PatientPages.jsx) exactly:
 /// - Kicker: "Production database"
@@ -99,20 +97,31 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
       } catch (_) {}
     }
     
-    final upcomingList = appointments
-        .where((a) => a.status == 'upcoming' || a.status == 'confirmed' || a.status == 'pending_payment')
-        .toList();
+    // PARITY FIX (mobile parity audit — Patient panel): web's PatientDashboard only counts
+    // `['upcoming', 'confirmed'].includes(item.status)` as "upcoming" (PatientPages.jsx) — a
+    // `pending_payment` booking isn't a confirmed visit yet (no token, nothing to queue for) and
+    // web's dashboard simply doesn't surface it as the "Live Next Visit" card at all. Mobile's
+    // "Pay to confirm" CTA for a pending-payment booking is a deliberate, useful mobile addition
+    // (surfacing it here saves a trip to My Appointments) worth keeping — kept via
+    // `pendingPaymentAppt` as a fallback below — but it must not inflate the UPCOMING stat count
+    // or silently take over the queue widget the way lumping it into one list did before.
+    final upcomingConfirmed = appointments.where((a) => a.status == 'upcoming' || a.status == 'confirmed').toList();
+    Appointment? pendingPaymentAppt;
+    for (final a in appointments) {
+      if (a.status == 'pending_payment') {
+        pendingPaymentAppt = a;
+        break;
+      }
+    }
+    final nextAppt = upcomingConfirmed.isNotEmpty ? upcomingConfirmed.first : pendingPaymentAppt;
     Map<String, dynamic>? queueStatus;
 
-    if (upcomingList.isNotEmpty) {
-      final nextAppt = upcomingList.first;
-      if (nextAppt.status != 'pending_payment') {
-        try {
-          final qRes = await ApiClient.instance.get('/queue/mine/${nextAppt.id}');
-          queueStatus = qRes.map;
-        } catch (_) {
-          queueStatus = null;
-        }
+    if (nextAppt != null && nextAppt.status != 'pending_payment') {
+      try {
+        final qRes = await ApiClient.instance.get('/queue/mine/${nextAppt.id}');
+        queueStatus = qRes.map;
+      } catch (_) {
+        queueStatus = null;
       }
     }
 
@@ -172,18 +181,6 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientSearchScreen()));
   }
 
-  void _goToEmergency(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Emergency care')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmergencyBookingScreen()));
-  }
-
-  void _goToQuickClinic(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Quick clinic booking')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const QuickClinicBookingScreen()));
-  }
-
   void _goToFamily(BuildContext context) {
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Family members')) return;
@@ -204,10 +201,19 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
           final loading = snapshot.connectionState != ConnectionState.done;
           final data = snapshot.data;
           final appointments = data?.appointments ?? [];
-          final upcomingList = appointments
-              .where((a) => a.status == 'upcoming' || a.status == 'confirmed' || a.status == 'pending_payment')
-              .toList();
-          final nextUpcoming = upcomingList.isNotEmpty ? upcomingList.first : null;
+          // PARITY FIX (mobile parity audit — Patient panel): see the matching comment in
+          // _fetch() above — `upcomingConfirmed` (used for the UPCOMING stat card) now matches
+          // web's `['upcoming', 'confirmed']` filter exactly, while `nextUpcoming` still falls
+          // back to a pending-payment booking so the "Pay to confirm" CTA keeps working.
+          final upcomingConfirmed = appointments.where((a) => a.status == 'upcoming' || a.status == 'confirmed').toList();
+          Appointment? pendingPaymentAppt;
+          for (final a in appointments) {
+            if (a.status == 'pending_payment') {
+              pendingPaymentAppt = a;
+              break;
+            }
+          }
+          final nextUpcoming = upcomingConfirmed.isNotEmpty ? upcomingConfirmed.first : pendingPaymentAppt;
           final pendingPayments = appointments.where((a) => a.paymentStatus == 'pending').length;
           final queueData = data?.queueStatus;
           final notifications = data?.notifications ?? [];
@@ -242,7 +248,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   Expanded(
                     child: StatCard(
                       label: 'UPCOMING',
-                      value: upcomingList.length.toString(),
+                      value: upcomingConfirmed.length.toString(),
                       icon: Icons.schedule_outlined,
                       onTap: () => _goToAppointments(context),
                     ),
@@ -264,30 +270,23 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
               // COMPLETENESS FIX (mobile parity audit, patient panel): "Medical records" and
               // "Complaints" tiles removed on the user's explicit instruction — see
               // patient_home_screen.dart's doc comment for why (no web patient UI backs either).
+              // "Emergency care" and "Quick clinic" tiles ALSO removed on the user's later
+              // explicit instruction (same doc comment) — grid narrowed from 3 to 2 columns since
+              // only 2 tiles remain, so they fill the row evenly instead of leaving a gap.
               SectionCard(
                 title: 'Healthcare services',
                 child: GridView.count(
-                  crossAxisCount: 3,
+                  crossAxisCount: 2,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
-                  childAspectRatio: 0.95,
+                  childAspectRatio: 1.6,
                   children: [
                     _QuickServiceTile(
                       icon: Icons.search_rounded,
                       label: 'Find doctors',
                       onTap: () => _goToSearch(context),
-                    ),
-                    _QuickServiceTile(
-                      icon: Icons.emergency_outlined,
-                      label: 'Emergency care',
-                      onTap: () => _goToEmergency(context),
-                    ),
-                    _QuickServiceTile(
-                      icon: Icons.qr_code_scanner_outlined,
-                      label: 'Quick clinic',
-                      onTap: () => _goToQuickClinic(context),
                     ),
                     _QuickServiceTile(
                       icon: Icons.people_outline,
@@ -468,49 +467,42 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           ],
                         ),
                         const SizedBox(height: AppSpacing.md),
+                        // PARITY FIX (mobile parity audit — Patient panel): web's LiveQueueWidget
+                        // (components/LiveQueueWidget.jsx) shows FOUR fields — Your token, Now
+                        // serving, Patients ahead, Estimated wait — mobile only ever showed the
+                        // first two. Added "Now serving" and "Estimated wait" as a second row.
                         Row(
                           children: [
                             Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.all(AppSpacing.sm),
-                                decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(AppRadius.button),
-                                  border: Border.all(color: AppColors.border),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Token number', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      nextUpcoming.tokenNumber != null ? '#${nextUpcoming.tokenNumber}' : '—',
-                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primaryDark),
-                                    ),
-                                  ],
-                                ),
+                              child: _DashboardQueueStat(
+                                label: 'Token number',
+                                value: nextUpcoming.tokenNumber != null ? '#${nextUpcoming.tokenNumber}' : '—',
+                                emphasize: true,
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),
                             Expanded(
-                              child: Container(
-                                padding: const EdgeInsets.all(AppSpacing.sm),
-                                decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(AppRadius.button),
-                                  border: Border.all(color: AppColors.border),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Patients ahead', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      queueData?['patientsAhead'] != null ? '${queueData!["patientsAhead"]} ahead' : '—',
-                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                                    ),
-                                  ],
-                                ),
+                              child: _DashboardQueueStat(
+                                label: 'Now serving',
+                                value: queueData?['nowServing'] != null ? '#${queueData!["nowServing"]}' : '—',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _DashboardQueueStat(
+                                label: 'Patients ahead',
+                                value: queueData?['patientsAhead'] != null ? '${queueData!["patientsAhead"]} ahead' : '—',
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: _DashboardQueueStat(
+                                label: 'Estimated wait',
+                                value: queueData?['estimatedWaitMinutes'] != null ? '${queueData!["estimatedWaitMinutes"]} min' : '—',
                               ),
                             ),
                           ],
@@ -664,6 +656,40 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _DashboardQueueStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool emphasize;
+  const _DashboardQueueStat({required this.label, required this.value, this.emphasize = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(AppRadius.button),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: emphasize ? AppColors.primaryDark : AppColors.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

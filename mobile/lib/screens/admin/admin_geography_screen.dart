@@ -38,7 +38,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<City>> _fetchCities() async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/cities', query: {'pageSize': 200})
+          .get('/geography/cities', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <City>[];
       for (final item in res.list) {
@@ -55,7 +55,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<Specialization>> _fetchSpecializations() async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/specializations', query: {'pageSize': 200})
+          .get('/geography/specializations', query: {'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <Specialization>[];
       for (final item in res.list) {
@@ -72,7 +72,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<Area>> _fetchAreas(String cityId) async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 200})
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100})
           .catchError((_) => ApiResponse(data: []));
       final list = <Area>[];
       for (final item in res.list) {

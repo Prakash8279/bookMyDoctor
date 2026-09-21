@@ -49,9 +49,19 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
     });
   }
 
-  Future<void> _openForm() async {
-    final result = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => const _ReceptionistForm());
+  Future<void> _openForm({ReceptionistRow? existing}) async {
+    final result = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => _ReceptionistForm(existing: existing));
     if (result == true) _load();
+  }
+
+  Future<void> _toggleStatus(ReceptionistRow r) async {
+    final next = r.status == 'active' ? 'disabled' : 'active';
+    try {
+      await ApiClient.instance.patch('/receptionists/${r.id}/status', body: {'status': next});
+      _load();
+    } catch (err) {
+      if (mounted) showErrorSnack(context, err);
+    }
   }
 
   @override
@@ -88,7 +98,14 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
                         child: ListTile(
                           title: Text(r.name),
                           subtitle: Text('${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'),
-                          trailing: StatusBadge(status: r.status),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              StatusBadge(status: r.status),
+                              IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _openForm(existing: r)),
+                              IconButton(icon: Icon(r.status == 'active' ? Icons.block : Icons.check_circle_outline, size: 20), onPressed: () => _toggleStatus(r)),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -104,27 +121,34 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
 }
 
 class _ReceptionistForm extends StatefulWidget {
-  const _ReceptionistForm();
+  final ReceptionistRow? existing;
+  const _ReceptionistForm({this.existing});
 
   @override
   State<_ReceptionistForm> createState() => _ReceptionistFormState();
 }
 
 class _ReceptionistFormState extends State<_ReceptionistForm> {
-  final _nameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  late final _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
+  late final _emailCtrl = TextEditingController(text: widget.existing?.email ?? '');
+  late final _phoneCtrl = TextEditingController(text: widget.existing?.phone ?? '');
   final _passwordCtrl = TextEditingController();
   Clinic? _selectedClinic;
   Future<List<Clinic>>? _clinicsFuture;
   bool _submitting = false;
   String? _error;
 
+  bool get _isEdit => widget.existing != null;
+
   @override
   void initState() {
     super.initState();
+    // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
+    // receptionist_reports_screen.dart's comment): the backend's list-query validator rejects
+    // any pageSize over 100 with a 422 "Validation failed" instead of clamping it, so 200 here
+    // silently emptied this dropdown's clinic list.
     _clinicsFuture = ApiClient.instance
-        .get('/clinics', query: {'pageSize': 200})
+        .get('/clinics', query: {'pageSize': 100})
         .then((res) {
           final list = <Clinic>[];
           for (final item in res.list) {
@@ -151,11 +175,11 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
       setState(() => _error = 'Name is required');
       return;
     }
-    if (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8) {
+    if (!_isEdit && (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8)) {
       setState(() => _error = 'Email and an 8+ character password are required');
       return;
     }
-    if (_selectedClinic == null) {
+    if (!_isEdit && _selectedClinic == null) {
       setState(() => _error = 'Select a clinic');
       return;
     }
@@ -164,13 +188,21 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
       _error = null;
     });
     try {
-      await ApiClient.instance.post('/receptionists', body: {
-        'name': _nameCtrl.text.trim(),
-        'email': _emailCtrl.text.trim(),
-        'password': _passwordCtrl.text,
-        if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
-        'clinicId': _selectedClinic!.id,
-      });
+      if (_isEdit) {
+        await ApiClient.instance.patch('/receptionists/${widget.existing!.id}', body: {
+          'name': _nameCtrl.text.trim(),
+          if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
+          if (_selectedClinic != null) 'clinicId': _selectedClinic!.id,
+        });
+      } else {
+        await ApiClient.instance.post('/receptionists', body: {
+          'name': _nameCtrl.text.trim(),
+          'email': _emailCtrl.text.trim(),
+          'password': _passwordCtrl.text,
+          if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
+          'clinicId': _selectedClinic!.id,
+        });
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
       setState(() {
@@ -189,15 +221,17 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Add receptionist', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(_isEdit ? 'Edit receptionist' : 'Add receptionist', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: AppSpacing.md),
             if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
             TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
-            const SizedBox(height: AppSpacing.md),
-            TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
-            const SizedBox(height: AppSpacing.md),
+            if (!_isEdit) ...[
+              TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+              const SizedBox(height: AppSpacing.md),
+              TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
+              const SizedBox(height: AppSpacing.md),
+            ],
             TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
             const SizedBox(height: AppSpacing.md),
             FutureBuilder<List<Clinic>>(
@@ -207,7 +241,7 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
                 return DropdownButtonFormField<Clinic>(
                   initialValue: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
                   isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Clinic'),
+                  decoration: InputDecoration(labelText: _isEdit ? 'Reassign clinic (optional)' : 'Clinic'),
                   items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),
                   onChanged: (c) => setState(() => _selectedClinic = c),
                 );

@@ -40,6 +40,7 @@ const SearchResults = lazyNamed(() => import('./pages/PublicPages'), 'SearchResu
 // through `lazyNamed` rather than plain `lazy()`.
 const TermsOfService = lazyNamed(() => import('./pages/TermsOfService'), 'TermsOfService')
 const PrivacyPolicy = lazyNamed(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
+const CancellationRefundPolicy = lazyNamed(() => import('./pages/CancellationRefundPolicy'), 'CancellationRefundPolicy')
 const AccountDeletion = lazyNamed(() => import('./pages/AccountDeletion'), 'AccountDeletion')
 
 const PatientLanding = lazyNamed(() => import('./pages/PublicLanding'), 'PatientLanding')
@@ -177,6 +178,7 @@ export default function App() {
     <Route path="/contact" element={publicPage(<PublicContent kind="contact" />)} />
     <Route path="/terms" element={publicPage(<TermsOfService />)} />
     <Route path="/privacy" element={publicPage(<PrivacyPolicy />)} />
+    <Route path="/cancellation-refund-policy" element={publicPage(<CancellationRefundPolicy />)} />
     <Route path="/delete-account" element={publicPage(<AccountDeletion />)} />
     <Route path="/doctors/:doctorId" element={publicPage(<DoctorProfile data={data} />)} />
     <Route path="/doctor/:doctorId" element={publicPage(<DoctorProfile data={data} />)} />
