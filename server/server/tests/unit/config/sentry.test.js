@@ -29,11 +29,15 @@ afterEach(() => {
   // the first place — every earlier test in this file runs before that describe block does.
 });
 
-function loadFresh() {
+function loadFresh(setupMock) {
   jest.resetModules();
+  let mockResult;
+  if (setupMock) {
+    mockResult = setupMock();
+  }
   const logger = require('../../../src/config/logger');
   const sentry = require('../../../src/config/sentry');
-  return { sentry, logger };
+  return { sentry, logger, ...mockResult };
 }
 
 describe('config/sentry — SENTRY_DSN unset (the default)', () => {
@@ -54,9 +58,17 @@ describe('config/sentry — SENTRY_DSN unset (the default)', () => {
 });
 
 describe('config/sentry — SENTRY_DSN set but @sentry/node is not installed', () => {
+  function mockMissingModule() {
+    jest.doMock('@sentry/node', () => {
+      const err = new Error("Cannot find module '@sentry/node'");
+      err.code = 'MODULE_NOT_FOUND';
+      throw err;
+    });
+  }
+
   test('init() warns once and stays inert, never crashes app startup', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    const { sentry, logger } = loadFresh();
+    const { sentry, logger } = loadFresh(mockMissingModule);
 
     expect(() => sentry.init()).not.toThrow();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('@sentry/node package is not installed'));
@@ -64,7 +76,7 @@ describe('config/sentry — SENTRY_DSN set but @sentry/node is not installed', (
 
   test('captureException() after a failed init() is still a safe no-op', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    const { sentry } = loadFresh();
+    const { sentry } = loadFresh(mockMissingModule);
     sentry.init();
 
     expect(() => sentry.captureException(new Error('boom'))).not.toThrow();
@@ -75,14 +87,13 @@ describe('config/sentry — SENTRY_DSN set and @sentry/node available', () => {
   function mockSentryModule() {
     const mockInit = jest.fn();
     const mockCaptureException = jest.fn();
-    jest.doMock('@sentry/node', () => ({ init: mockInit, captureException: mockCaptureException }), { virtual: true });
+    jest.doMock('@sentry/node', () => ({ init: mockInit, captureException: mockCaptureException }));
     return { mockInit, mockCaptureException };
   }
 
   test('init() calls through to Sentry.init with the configured DSN', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    const { mockInit } = mockSentryModule();
-    const { sentry } = loadFresh();
+    const { sentry, mockInit } = loadFresh(mockSentryModule);
 
     sentry.init();
 
@@ -93,8 +104,7 @@ describe('config/sentry — SENTRY_DSN set and @sentry/node available', () => {
 
   test('captureException() after a successful init() forwards the error to Sentry', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    const { mockCaptureException } = mockSentryModule();
-    const { sentry } = loadFresh();
+    const { sentry, mockCaptureException } = loadFresh(mockSentryModule);
     sentry.init();
 
     const err = new Error('something broke');
@@ -105,8 +115,7 @@ describe('config/sentry — SENTRY_DSN set and @sentry/node available', () => {
 
   test('captureException() with no extra context omits the options argument entirely', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    const { mockCaptureException } = mockSentryModule();
-    const { sentry } = loadFresh();
+    const { sentry, mockCaptureException } = loadFresh(mockSentryModule);
     sentry.init();
 
     sentry.captureException(new Error('boom'));
@@ -116,17 +125,14 @@ describe('config/sentry — SENTRY_DSN set and @sentry/node available', () => {
 
   test('a failure INSIDE Sentry.captureException itself is caught and logged, never rethrown', () => {
     process.env.SENTRY_DSN = 'https://examplePublicKey@o0.ingest.sentry.io/0';
-    jest.doMock(
-      '@sentry/node',
-      () => ({
+    const { sentry, logger } = loadFresh(() => {
+      jest.doMock('@sentry/node', () => ({
         init: jest.fn(),
         captureException: jest.fn(() => {
           throw new Error('sentry sdk network failure');
         }),
-      }),
-      { virtual: true }
-    );
-    const { sentry, logger } = loadFresh();
+      }));
+    });
     sentry.init();
 
     expect(() => sentry.captureException(new Error('original error'))).not.toThrow();
