@@ -48,7 +48,12 @@ void main() {
     expect(find.text('Amit Kumar'), findsOneWidget);
     expect(find.text('₹600'), findsWidgets);
     expect(find.text('Paid in Full'), findsOneWidget);
-    expect(find.text('Copy Slip'), findsOneWidget);
+    // TEST FIX (production-readiness pass, Sept 2026 — CI caught this): the "Copy Slip"
+    // button was renamed to just "Copy" (and a new "Download" share-sheet button added
+    // alongside it) when the download/share feature was built; this assertion was never
+    // updated to match.
+    expect(find.text('Copy'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);
   });
 
@@ -89,7 +94,10 @@ void main() {
     expect(find.text('Sunita Devi'), findsOneWidget);
     expect(find.text('Dr. Verma'), findsOneWidget);
     expect(find.text('Metro Clinic'), findsOneWidget);
-    expect(find.text('Copy Receipt'), findsOneWidget);
+    // TEST FIX (same rename as BookingSlipSheet above): "Copy Receipt" -> "Copy", plus a
+    // new "Download" share-sheet button.
+    expect(find.text('Copy'), findsOneWidget);
+    expect(find.text('Download'), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);
   });
 }

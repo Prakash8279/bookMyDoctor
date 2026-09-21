@@ -195,7 +195,12 @@ void main() {
       expect(doctor.rating, 0);
       expect(doctor.reviewCount, 0);
       expect(doctor.emergencyAvailable, isFalse);
-      expect(doctor.onlineBooking, isFalse);
+      // TEST FIX (production-readiness pass, Sept 2026 — CI caught this): onlineBooking now
+      // defaults to true for a missing/null field (core_models.dart's own PARITY FIX comment
+      // above DoctorDirectoryItem.fromJson explains why — web treats a missing value as
+      // bookable, only an explicit false blocks booking). This assertion was never updated
+      // after that intentional behavior change.
+      expect(doctor.onlineBooking, isTrue);
       expect(doctor.clinics, isEmpty);
       expect(doctor.bio, isNull);
       expect(doctor.allowRebooking, isNull);

@@ -10,7 +10,14 @@ class RoleNavItem {
   final IconData icon;
   final String label;
   final Widget Function(BuildContext context) builder;
-  const RoleNavItem({required this.icon, required this.label, required this.builder});
+  // BUG FIX (production-readiness pass, Sept 2026 — CI caught this): admin_home_screen.dart's
+  // superadmin nav list already passed `headerAbove: 'Admin workspace'` on its 11th item to mark
+  // where the "Super Admin workspace" section ends and the "Admin workspace" section begins (see
+  // role_portal_nav_test.dart's `items[10].headerAbove` assertion) — but this field never
+  // actually existed on RoleNavItem, so the whole file failed to compile. Added here, plus the
+  // divider rendering in the drawer's itemBuilder below.
+  final String? headerAbove;
+  const RoleNavItem({required this.icon, required this.label, required this.builder, this.headerAbove});
 }
 
 /// Shared shell for every role portal — a drawer listing that role's
@@ -186,7 +193,7 @@ class RoleScaffoldState extends State<RoleScaffold> {
                   itemBuilder: (context, i) {
                     final item = widget.items[i];
                     final selected = i == _index;
-                    return Padding(
+                    final tile = Padding(
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 1),
                       child: ListTile(
                         dense: true,
@@ -207,6 +214,35 @@ class RoleScaffoldState extends State<RoleScaffold> {
                           Navigator.of(context).pop();
                         },
                       ),
+                    );
+                    // BUG FIX (see RoleNavItem.headerAbove's doc comment): renders the section
+                    // divider a superadmin's nav list expects between "Super Admin workspace" and
+                    // "Admin workspace" — a plain label + hairline, not a full second drawer header.
+                    if (item.headerAbove == null) return tile;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xs),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
+                              const SizedBox(height: AppSpacing.sm),
+                              Text(
+                                item.headerAbove!.toUpperCase(),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        tile,
+                      ],
                     );
                   },
                 ),
