@@ -964,7 +964,7 @@ class _SpecializationsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final list = specializations.isNotEmpty ? specializations : fallbackSpecializations;
     return Padding(
-      padding: const EdgeInsets.all(AppSpacing.md),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -984,74 +984,88 @@ class _SpecializationsSection extends StatelessWidget {
               ),
             ),
           ),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: list.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.sm,
-              crossAxisSpacing: AppSpacing.sm,
-              childAspectRatio: 1.15,
-            ),
-            itemBuilder: (context, i) {
-              final s = list[i];
-              final count = doctorCountBySpecialization[s.name] ??
-                  doctorCountBySpecialization[s.name.trim().toLowerCase()] ??
-                  0;
-              return InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => onTap(s.id),
-                child: Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: const Color(0xFFE9E5E0)),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.02),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      const Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Icon(Icons.arrow_forward_rounded, size: 18, color: Color(0xFFB5B0AA)),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFBF1EC),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primaryDark, size: 22),
-                          ),
-                          const Spacer(),
-                          Text(
-                            s.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textPrimary),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '$count ${count == 1 ? 'doctor' : 'doctors'}',
-                            style: const TextStyle(color: Color(0xFF6F6A64), fontSize: 12, fontWeight: FontWeight.w500),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final crossAxisCount = width >= 720
+                  ? 4
+                  : (width >= 460 ? 3 : 2);
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: list.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  mainAxisSpacing: AppSpacing.sm,
+                  crossAxisSpacing: AppSpacing.sm,
+                  mainAxisExtent: 122,
+                ),
+                itemBuilder: (context, i) {
+                  final s = list[i];
+                  final count = doctorCountBySpecialization[s.name] ??
+                      doctorCountBySpecialization[s.name.trim().toLowerCase()] ??
+                      0;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => onTap(s.id),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE9E5E0)),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.02),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
+                      child: Stack(
+                        children: [
+                          const Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Icon(Icons.arrow_forward_rounded, size: 16, color: Color(0xFFB5B0AA)),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFBF1EC),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primaryDark, size: 20),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    s.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppColors.textPrimary),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '$count ${count == 1 ? 'doctor' : 'doctors'}',
+                                    style: const TextStyle(color: Color(0xFF6F6A64), fontSize: 11.5, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
