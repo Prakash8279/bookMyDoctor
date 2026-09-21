@@ -363,41 +363,26 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
 
 /**
  * Doctor directory search. Public/patient callers (and any non-admin authenticated caller) are
- * always restricted to verified doctors on active accounts, regardless of what `status` they
- * pass in — that param only has any effect for an admin/superadmin `requester`. An admin caller
- * with no `status` sees every doctorProfile status (pending/verified/disabled) so the admin
- * doctor-management page can show its full "registered vs verified" picture in one call; passing
- * a specific `status` narrows to just that lifecycle stage (e.g. the "Pending verification" list).
+ * always restricted to verified doctors on active accounts.
+ *
+ * specializationId/cityId/areaId/minRating/status filters removed (backend-cleanup audit — user
+ * request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
+ * web/mobile doctor list UI, admin included, ever wired up a specialization/city/area/rating/
+ * verification-status filter against this endpoint. An admin caller now always sees every
+ * doctorProfile status (pending/verified/disabled) unconditionally, same as before when no
+ * `status` was passed.
  * @param {object} params
  * @param {{id:string, role:string}} [params.requester] - undefined/null for public callers
- * @param {'pending'|'verified'|'disabled'} [params.status] - admin-only filter; ignored for
- *   non-admin callers (they're hard-restricted to 'verified' either way)
  */
-async function listDoctors({
-  specializationId,
-  cityId,
-  areaId,
-  minRating,
-  search,
-  emergencyAvailable,
-  sortBy,
-  sortOrder,
-  page,
-  pageSize,
-  requester,
-  status,
-}) {
+async function listDoctors({ search, emergencyAvailable, sortBy, sortOrder, page, pageSize, requester }) {
   const isAdminCaller = !!requester && ADMIN_ROLES.includes(requester.role);
-  // Cache key MUST be scoped by isAdminCaller/effectiveStatus (not the raw `status` query param)
-  // — otherwise a public/anonymous call and an admin call that both happen to pass no `status`
-  // would collide on the same cache bucket, leaking pending-doctor data to the public (or vice
-  // versa, serving an admin the public-only cached page).
-  const effectiveStatus = isAdminCaller ? status || 'all' : 'verified';
-  const cacheKey = `cache:doctors:list:${isAdminCaller ? 'admin' : 'public'}:${effectiveStatus}:${
-    specializationId || ''
-  }:${cityId || ''}:${areaId || ''}:${minRating ?? ''}:${search || ''}:${emergencyAvailable ?? ''}:${
-    sortBy || ''
-  }:${sortOrder || ''}:${page || ''}:${pageSize || ''}`;
+  // Cache key MUST be scoped by isAdminCaller (not just the raw filters) — otherwise a
+  // public/anonymous call and an admin call would collide on the same cache bucket, leaking
+  // pending-doctor data to the public (or vice versa, serving an admin the public-only cached
+  // page).
+  const cacheKey = `cache:doctors:list:${isAdminCaller ? 'admin' : 'public'}:${search || ''}:${
+    emergencyAvailable ?? ''
+  }:${sortBy || ''}:${sortOrder || ''}:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
@@ -406,27 +391,10 @@ async function listDoctors({
       role: 'doctor',
       ...(isAdminCaller ? {} : { status: 'active' }),
       doctorProfile: {
-        ...(isAdminCaller ? (status ? { status } : {}) : { status: 'verified' }),
-        ...(specializationId ? { specializationId } : {}),
-        ...(typeof minRating === 'number' ? { rating: { gte: minRating } } : {}),
+        ...(isAdminCaller ? {} : { status: 'verified' }),
         ...(typeof emergencyAvailable === 'boolean' ? { emergencyAvailable } : {}),
       },
       ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
-      // DoctorProfile has no direct city/area FK — "findable by city/area" means "linked to an
-      // approved clinic there". User.city stays a display-only field, never a filter join.
-      ...(cityId || areaId
-        ? {
-            doctorClinics: {
-              some: {
-                clinic: {
-                  approvalStatus: 'active',
-                  ...(cityId ? { cityId } : {}),
-                  ...(areaId ? { areaId } : {}),
-                },
-              },
-            },
-          }
-        : {}),
     };
 
     const sortField = SORT_FIELD_MAP[sortBy] || 'rating';
@@ -553,9 +521,7 @@ async function createDoctor(input, actor = null) {
     experienceYears,
     consultationFee,
     emergencyFee,
-    languages,
     bio,
-    verificationDocuments,
     verifyImmediately,
   } = input;
 
@@ -578,10 +544,6 @@ async function createDoctor(input, actor = null) {
   }
 
   const initialStatus = verifyImmediately === true ? 'verified' : 'pending';
-
-  const dedupedLanguages = Array.isArray(languages)
-    ? [...new Set(languages.map((l) => String(l).trim()).filter((l) => l.length > 0))]
-    : [];
 
   let created;
   try {
@@ -613,9 +575,13 @@ async function createDoctor(input, actor = null) {
           experienceYears: experienceYears ?? null,
           consultationFee,
           emergencyFee: emergencyFee ?? 0,
-          languages: dedupedLanguages,
+          // languages/verificationDocuments removed (backend-cleanup audit — user request:
+          // "website frontend me nahi hai but backend bna hua hai to backend se hata do"): the
+          // admin "add a doctor" web form never collected either one. Hardcoded to their column
+          // defaults rather than dropped from the schema (no live DB migration in this pass).
+          languages: [],
+          verificationDocuments: null,
           bio: bio ? bio.trim() : null,
-          verificationDocuments: verificationDocuments ?? null,
           status: initialStatus,
           doctorNumber,
         },

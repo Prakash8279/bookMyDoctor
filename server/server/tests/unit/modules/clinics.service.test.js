@@ -11,11 +11,14 @@
  *     plain GET /clinics/:id would give them — never a 403 that would leak "this clinic exists"
  *     to someone who can't even see it. Getting that order backwards turns clinic existence into
  *     an oracle.
- *   - The "a clinic must always have at least one owner" invariant: both
- *     updateDoctorAssignment (flipping isOwner false->... on the last owner) and
- *     removeDoctorAssignment (deleting the last owner's row) must block with
- *     CLINIC_MUST_HAVE_OWNER unless an admin is doing it — an admin can always force it through
- *     (e.g. to fix a clinic stuck ownerless after an account was disabled elsewhere).
+ *   - The "a clinic must always have at least one owner" invariant: removeDoctorAssignment
+ *     (deleting the last owner's row) must block with CLINIC_MUST_HAVE_OWNER unless an admin is
+ *     doing it — an admin can always force it through (e.g. to fix a clinic stuck ownerless after
+ *     an account was disabled elsewhere). updateDoctorAssignment used to enforce this same
+ *     invariant when isOwner was flipped false->true via PATCH, but isOwner/isPrimary are no
+ *     longer settable through that endpoint at all (backend-cleanup audit — see
+ *     clinics.validation.js#updateDoctorAssignment's comment), so that guard and its tests were
+ *     removed together with the code.
  *   - Defense-in-depth null rejection: pickPresentFields' nonNullableFields guard is exercised
  *     directly through updateClinic/assignDoctorToClinic/updateDoctorAssignment, since an
  *     explicit JSON `null` on a NOT NULL column must 422 here, not crash Prisma with an unhandled
@@ -270,22 +273,23 @@ describe('clinicsService.listClinics — scope/status branching', () => {
     );
   });
 
-  test('city/area/search/emergencyAvailable filters are all applied together', async () => {
-    await clinicsService.listClinics(
-      { city: 'city-1', area: 'area-1', search: 'City', emergencyAvailable: true },
-      undefined
-    );
+  // search filter removed (backend-cleanup audit — user request: "website frontend me nahi hai
+  // but backend bna hua hai to backend se hata do"): neither web nor mobile ever sent it.
+  test('city/area/emergencyAvailable filters are all applied together', async () => {
+    await clinicsService.listClinics({ city: 'city-1', area: 'area-1', emergencyAvailable: true }, undefined);
 
     expect(prisma.clinic.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           cityId: 'city-1',
           areaId: 'area-1',
-          name: { contains: 'City', mode: 'insensitive' },
           emergencyAvailable: true,
         }),
       })
     );
+    // a `search` param supplied anyway has no effect — no `name` filter is built.
+    const where = prisma.clinic.findMany.mock.calls[0][0].where;
+    expect(where.name).toBeUndefined();
   });
 });
 
@@ -356,8 +360,10 @@ describe('clinicsService.getClinicById — public-cacheable vs visibility-gated 
 
     const result = await clinicsService.getClinicById('clinic-1', undefined);
 
+    // specialization is null here because the mock doctor row above has no doctorProfile —
+    // see clinics.service.js#shapeClinicDetail's own comment for why this field exists.
     expect(result.doctors).toEqual([
-      { doctorUserId: 'doc-1', name: 'Dr A', photoUrl: 'p.jpg', isOwner: true, isPrimary: true, onlineBooking: true },
+      { doctorUserId: 'doc-1', name: 'Dr A', photoUrl: 'p.jpg', isOwner: true, isPrimary: true, onlineBooking: true, specialization: null },
     ]);
   });
 });
@@ -621,43 +627,18 @@ describe('clinicsService.updateDoctorAssignment', () => {
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
   });
 
-  test('409s CLINIC_MUST_HAVE_OWNER when a non-admin tries to demote the last remaining owner', async () => {
-    prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
-    prisma.doctorClinic.findUnique
-      .mockResolvedValueOnce({ doctorUserId: 'doc-2', clinicId: 'clinic-1', isOwner: true }) // existing (target is owner)
-      .mockResolvedValueOnce({ isOwner: true }); // actor's own ownership row (actor IS an owner too)
-    prisma.doctorClinic.count.mockResolvedValue(0); // no OTHER owners
-
-    await expect(
-      clinicsService.updateDoctorAssignment('clinic-1', 'doc-2', { isOwner: false }, DOCTOR)
-    ).rejects.toMatchObject({ statusCode: 409, code: 'CLINIC_MUST_HAVE_OWNER' });
-    expect(prisma.doctorClinic.update).not.toHaveBeenCalled();
-  });
-
-  test('an admin CAN demote the last owner (override)', async () => {
-    prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
-    prisma.doctorClinic.findUnique.mockResolvedValueOnce({ doctorUserId: 'doc-2', clinicId: 'clinic-1', isOwner: true });
-    prisma.doctorClinic.count.mockResolvedValue(0);
-    prisma.doctorClinic.update.mockResolvedValue({ doctorUserId: 'doc-2', clinicId: 'clinic-1', isOwner: false, isPrimary: false, onlineBooking: true });
-
-    const result = await clinicsService.updateDoctorAssignment('clinic-1', 'doc-2', { isOwner: false }, ADMIN);
-
-    expect(prisma.doctorClinic.update).toHaveBeenCalled();
-    expect(result.isOwner).toBe(false);
-  });
-
-  test('setting isPrimary:true demotes every OTHER primary at the clinic (excluding this doctor)', async () => {
-    prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
-    prisma.doctorClinic.findUnique.mockResolvedValueOnce({ doctorUserId: 'doc-2', clinicId: 'clinic-1', isOwner: false, isPrimary: false });
-    prisma.doctorClinic.update.mockResolvedValue({});
-
-    await clinicsService.updateDoctorAssignment('clinic-1', 'doc-2', { isPrimary: true }, ADMIN);
-
-    expect(prisma.doctorClinic.updateMany).toHaveBeenCalledWith({
-      where: { clinicId: 'clinic-1', isPrimary: true, doctorUserId: { not: 'doc-2' } },
-      data: { isPrimary: false },
-    });
-  });
+  // isOwner/isPrimary settability via PATCH removed (backend-cleanup audit — user request:
+  // "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no web/mobile
+  // screen ever PATCHes either flag after assignment — only the create-time POST (assignDoctor)
+  // sets them, and every PATCH caller only ever toggles onlineBooking. So both the
+  // CLINIC_MUST_HAVE_OWNER demote-guard and the isPrimary-demotes-others transaction that used to
+  // live in updateDoctorAssignment for those flags are gone from clinics.service.js — the
+  // corresponding tests ('409s CLINIC_MUST_HAVE_OWNER when a non-admin tries to demote the last
+  // remaining owner', 'an admin CAN demote the last owner (override)', 'setting isPrimary:true
+  // demotes every OTHER primary at the clinic') were removed along with that code. The
+  // CLINIC_MUST_HAVE_OWNER guard still exists and is still tested, but only on
+  // removeDoctorAssignment (see that describe block below) — deleting the last owner's row is
+  // still blocked.
 
   test('422s when onlineBooking is explicitly sent as null', async () => {
     prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
@@ -779,7 +760,11 @@ describe('clinicsService.upsertHours', () => {
     expect(prisma.doctorClinicHours.upsert).not.toHaveBeenCalled();
   });
 
-  test('applies slotMinutes=15/status=active defaults when omitted', async () => {
+  // status is no longer set here at all (mobile parity audit round 2 — see
+  // clinics.service.js#upsertHours's own comment): new rows fall back to the schema default
+  // ('active'), and an update never touches status, so it can't clobber whatever a row already
+  // has.
+  test('applies a slotMinutes=15 default when omitted, and never touches status', async () => {
     prisma.doctorClinic.findUnique.mockResolvedValue({ doctorUserId: DOCTOR.id });
     prisma.doctorClinicHours.upsert.mockResolvedValue({});
 
@@ -787,8 +772,8 @@ describe('clinicsService.upsertHours', () => {
 
     expect(prisma.doctorClinicHours.upsert).toHaveBeenCalledWith({
       where: { doctorUserId_clinicId_weekday: { doctorUserId: DOCTOR.id, clinicId: 'clinic-1', weekday: 2 } },
-      update: { startTime: '09:00', endTime: '17:00', slotMinutes: 15, status: 'active' },
-      create: { doctorUserId: DOCTOR.id, clinicId: 'clinic-1', weekday: 2, startTime: '09:00', endTime: '17:00', slotMinutes: 15, status: 'active' },
+      update: { startTime: '09:00', endTime: '17:00', slotMinutes: 15 },
+      create: { doctorUserId: DOCTOR.id, clinicId: 'clinic-1', weekday: 2, startTime: '09:00', endTime: '17:00', slotMinutes: 15 },
     });
   });
 
@@ -930,7 +915,10 @@ describe('clinicsService.listClosures', () => {
     });
   });
 
-  test('applies a from/to closedDate range filter alongside doctorId', async () => {
+  // from/to date-range filter removed (backend-cleanup audit — user request: "website frontend
+  // me nahi hai but backend bna hua hai to backend se hata do"): no web/mobile closures list
+  // screen ever sends a date range — every one just lists all of a doctor's/clinic's closures.
+  test('applies a doctorId filter, and ignores from/to even if a caller still sends them', async () => {
     prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
     prisma.doctorClinicClosure.findMany.mockResolvedValue([]);
     prisma.doctorClinicClosure.count.mockResolvedValue(0);
@@ -941,7 +929,7 @@ describe('clinicsService.listClosures', () => {
 
     expect(prisma.doctorClinicClosure.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { clinicId: 'clinic-1', doctorUserId: 'doc-1', closedDate: { gte: from, lte: to } },
+        where: { clinicId: 'clinic-1', doctorUserId: 'doc-1' },
       })
     );
   });

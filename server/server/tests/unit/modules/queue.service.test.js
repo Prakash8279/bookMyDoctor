@@ -9,10 +9,8 @@
  *     them (including sometimes themselves).
  *   - listQueue: patientsAhead/estimatedWaitMinutes must be computed per-doctor (a receptionist's
  *     clinic can have several doctors' queues running the same day, so the running "waiting"
- *     count must reset at each doctor boundary) and must stay correct even when the caller
- *     requests a `status`-filtered page — the ETA is computed BEFORE filtering, against the true
- *     unfiltered queue, specifically so filtering the view never silently changes what the ETA
- *     means (see the function's own header comment).
+ *     count must reset at each doctor boundary). The `status` query filter this used to also
+ *     guard against was removed (backend-cleanup audit — neither web nor mobile ever sent it).
  *   - updateQueueStatus: QUEUE_ORDER only allows moving exactly one step forward
  *     (waiting -> called -> in_consultation -> completed) — no skips, no going backward — and the
  *     'completed' cascade into the linked appointment must fire only when that appointment isn't
@@ -177,22 +175,10 @@ describe('queueService.listQueue', () => {
     expect(result.truncated).toBe(false); // well under MAX_QUEUE_FETCH
   });
 
-  test('a `status` filter narrows the returned rows but never changes their patientsAhead/ETA, which stay computed against the true unfiltered queue', async () => {
-    prisma.queueToken.findMany.mockResolvedValue([
-      { id: 'q1', appointmentId: 'a1', doctorUserId: 'doc-A', clinicId: 'clinic-1', tokenNumber: 1, status: 'waiting', queueDate: '2026-09-10', appointment: null },
-      { id: 'q2', appointmentId: 'a2', doctorUserId: 'doc-A', clinicId: 'clinic-1', tokenNumber: 2, status: 'called', queueDate: '2026-09-10', appointment: null },
-      { id: 'q3', appointmentId: 'a3', doctorUserId: 'doc-A', clinicId: 'clinic-1', tokenNumber: 3, status: 'waiting', queueDate: '2026-09-10', appointment: null },
-    ]);
-
-    const result = await queueService.listQueue({ status: 'waiting' }, { id: 'doc-A', role: 'doctor' });
-
-    expect(result.rows.map((r) => r.id)).toEqual(['q1', 'q3']);
-    // q3's 2 "ahead" (q1 waiting + q2 called-but-once-waiting... no: only q1 was waiting when q3's
-    // slot was reached) reflects its position in the FULL sequence, unaffected by q2 being
-    // filtered out of the response.
-    expect(result.rows.find((r) => r.id === 'q3').patientsAhead).toBe(1);
-    expect(result.pagination.total).toBe(2); // total counts the filtered set, not the full queue
-  });
+  // The `status` filter test that used to live here was removed along with the filter itself
+  // (backend-cleanup audit — user request: "website frontend me nahi hai but backend bna hua hai
+  // to backend se hata do"): neither web nor mobile ever sent a `status` query param — both
+  // always fetch the day's full queue — so queue.service.js#listQueue no longer accepts one.
 
   test('logs a warning and sets truncated:true when the defensive MAX_QUEUE_FETCH cap is hit, since patientsAhead becomes understated beyond it', async () => {
     const rows = Array.from({ length: queueService.MAX_QUEUE_FETCH }, (_, i) => ({

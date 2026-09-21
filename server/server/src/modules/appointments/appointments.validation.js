@@ -60,8 +60,9 @@ const listAppointments = [
   query('dateFrom').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('dateFrom must be in YYYY-MM-DD format.'),
   query('dateTo').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('dateTo must be in YYYY-MM-DD format.'),
   query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid id.'),
-  query('clinicId').optional({ values: 'falsy' }).isUUID().withMessage('clinicId must be a valid id.'),
-  query('patientId').optional({ values: 'falsy' }).isUUID().withMessage('patientId must be a valid id.'),
+  // patientId and the admin-list-filter use of clinicId removed (backend-cleanup audit — user
+  // request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"):
+  // admin's own web/mobile filter UI never wired either one up.
   // ADMIN FILTER FIX (user request: "city wise doctor name se v aur date se v") — admin/superadmin
   // only (see appointments.service.js#listAppointments); every other role is forced-scoped and
   // ignores this the same way it already ignores doctorId/clinicId/patientId.

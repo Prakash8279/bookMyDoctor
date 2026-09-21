@@ -18,8 +18,11 @@ const patchMe = [
   body('name').optional(OPT_NULLABLE).trim().isLength({ min: 1, max: 150 }).withMessage('Name must be between 1 and 150 characters.'),
   body('phone').optional(OPT_NULLABLE).trim().isLength({ max: 20 }).withMessage('Phone must be at most 20 characters.'),
   body('city').optional(OPT_NULLABLE).trim().isLength({ max: 100 }).withMessage('City must be at most 100 characters.'),
-  body('photoUrl').optional(OPT_NULLABLE).isString().isLength({ max: 2048 }).withMessage('photoUrl must be at most 2048 characters.')
-    .isURL({ protocols: ['http', 'https'], require_protocol: true }).withMessage('photoUrl must be a valid http(s) URL.'),
+  // photoUrl removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+  // backend bna hua hai to backend se hata do"): superseded by POST /media/photo, a real
+  // multipart upload endpoint that persists users.photoUrl directly server-side. Neither web nor
+  // mobile ever sends photoUrl in a PATCH /me body — web's own StaffPages.jsx has a comment
+  // confirming this ("photoUrl is deliberately NOT part of this submit").
 
   // Patient profile fields.
   body('dateOfBirth').optional(OPT_NULLABLE).isISO8601().withMessage('dateOfBirth must be a valid date (YYYY-MM-DD).').toDate(),

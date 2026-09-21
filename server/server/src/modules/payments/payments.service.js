@@ -42,9 +42,12 @@ const STANDALONE_PAYMENT_IDEMPOTENCY_TTL_MS = 10000;
  * Builds the listPayments cache key. Output is role-masked (fees) AND ownership-scoped (rows),
  * so the key MUST encode role + owning scope — receptionist is keyed by clinicId (like
  * appointments.service.js's listAppointments) so a write on that clinic can be busted precisely.
+ *
+ * status/mode/dateFrom/dateTo/appointmentId/patientId/doctorId/clinicId admin list-filters
+ * removed (backend-cleanup audit) — see listPayments's own comment.
  */
 function buildListCacheKey(filters, requester, receptionistClinicId) {
-  const { page, pageSize, status, mode, dateFrom, dateTo, appointmentId, patientId, doctorId, clinicId } = filters;
+  const { page, pageSize } = filters;
   const scope =
     requester.role === 'patient'
       ? `patient:${requester.id}`
@@ -53,9 +56,7 @@ function buildListCacheKey(filters, requester, receptionistClinicId) {
       : requester.role === 'receptionist'
       ? `receptionist:${receptionistClinicId || 'none'}`
       : 'admin';
-  return `cache:payments:list:${scope}:${status || ''}:${mode || ''}:${dateFrom || ''}:${dateTo || ''}:${
-    appointmentId || ''
-  }:${patientId || ''}:${doctorId || ''}:${clinicId || ''}:${page || ''}:${pageSize || ''}`;
+  return `cache:payments:list:${scope}:${page || ''}:${pageSize || ''}`;
 }
 
 /**
@@ -745,13 +746,16 @@ async function createPayment(body, requester) {
 }
 
 /**
+ * status/mode/dateFrom/dateTo/appointmentId/patientId/doctorId/clinicId admin list-filters
+ * removed (backend-cleanup audit — user request: "website frontend me nahi hai but backend bna
+ * hua hai to backend se hata do"): the admin/receptionist payments pages never wired up filter
+ * inputs for any of these. Every non-admin role's FORCED scoping (patientUserId/doctorUserId/
+ * clinicId, never client-controlled) is untouched — admin/superadmin now simply always get the
+ * full unfiltered set, same as before when no filter query params were passed.
  * @param {object} query
  * @param {{id:string, role:string}} requester
  */
-async function listPayments(
-  { page, pageSize, status, mode, dateFrom, dateTo, appointmentId, patientId, doctorId, clinicId },
-  requester
-) {
+async function listPayments({ page, pageSize }, requester) {
   let receptionistClinicId = null;
   if (requester.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
@@ -761,27 +765,14 @@ async function listPayments(
     receptionistClinicId = rp ? rp.clinicId : null;
   }
 
-  const cacheKey = buildListCacheKey(
-    { page, pageSize, status, mode, dateFrom, dateTo, appointmentId, patientId, doctorId, clinicId },
-    requester,
-    receptionistClinicId
-  );
+  const cacheKey = buildListCacheKey({ page, pageSize }, requester, receptionistClinicId);
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
     const where = {};
-    if (status) where.status = status;
-    if (mode) where.mode = mode;
-    if (dateFrom || dateTo) {
-      where.createdAt = {
-        ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00.000Z`) } : {}),
-        ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
-      };
-    }
 
-    // Forced role scoping (never client-controlled, rule 3) overrides/ignores any
-    // appointmentId/patientId/doctorId/clinicId query params for every role except admin/superadmin.
+    // Forced role scoping (never client-controlled, rule 3) for every role except admin/superadmin.
     if (requester.role === 'patient') {
       where.patientUserId = requester.id;
     } else if (requester.role === 'doctor') {
@@ -791,11 +782,6 @@ async function listPayments(
         return { rows: [], pagination: buildPaginationMeta({ page: p, pageSize: ps, total: 0 }) };
       }
       where.clinicId = receptionistClinicId;
-    } else if (ADMIN_ROLES.includes(requester.role)) {
-      if (appointmentId) where.appointmentId = appointmentId;
-      if (patientId) where.patientUserId = patientId;
-      if (doctorId) where.doctorUserId = doctorId;
-      if (clinicId) where.clinicId = clinicId;
     }
 
     // The commission lookup doesn't depend on the payment query below (or vice versa) — run all
@@ -821,6 +807,11 @@ async function listPayments(
 }
 
 /**
+ * The HTTP route this originally backed, GET /payments/:id, had zero web/mobile callers and was
+ * removed (backend-cleanup audit — user request: "website frontend me nahi hai but backend bna
+ * hua hai to backend se hata do"). This function itself stays — razorpay.service.js's
+ * verifyAndRecordPayment calls getPaymentById below internally, as part of the actively-used
+ * patient "Pay now" verification flow.
  * @param {string} id
  * @param {{id:string, role:string}} requester
  */

@@ -10,9 +10,10 @@
  */
 const { query, body, param } = require('express-validator');
 
+// actorUserId/actionType filters removed (backend-cleanup audit — user request: "website
+// frontend me nahi hai but backend bna hua hai to backend se hata do"): the admin activity-log
+// web page never wired up filter inputs for either one.
 const listActivityLog = [
-  query('actorUserId').optional({ values: 'falsy' }).isUUID().withMessage('actorUserId must be a valid id.'),
-  query('actionType').optional({ values: 'falsy' }).isString().trim().isLength({ max: 100 }).withMessage('actionType must be at most 100 characters.'),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
@@ -90,10 +91,6 @@ const updateBookingRules = [
   }),
 ];
 
-const getRevenueTrend = [
-  query('months').optional().isInt({ min: 1, max: 24 }).withMessage('months must be an integer between 1 and 24.').toInt(),
-];
-
 const listPatients = [
   query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 150 }),
   query('page').optional().isInt({ min: 1 }).toInt(),
@@ -107,4 +104,4 @@ const updatePatientStatus = [
   body('status').notEmpty().withMessage('status is required.').isIn(['active', 'disabled']),
 ];
 
-module.exports = { listActivityLog, updateSystemSettings, updateBookingRules, getRevenueTrend, listPatients, updatePatientStatus };
+module.exports = { listActivityLog, updateSystemSettings, updateBookingRules, listPatients, updatePatientStatus };

@@ -49,19 +49,9 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
     });
   }
 
-  Future<void> _openForm({ReceptionistRow? existing}) async {
-    final result = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => _ReceptionistForm(existing: existing));
+  Future<void> _openForm() async {
+    final result = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => const _ReceptionistForm());
     if (result == true) _load();
-  }
-
-  Future<void> _toggleStatus(ReceptionistRow r) async {
-    final next = r.status == 'active' ? 'disabled' : 'active';
-    try {
-      await ApiClient.instance.patch('/receptionists/${r.id}/status', body: {'status': next});
-      _load();
-    } catch (err) {
-      if (mounted) showErrorSnack(context, err);
-    }
   }
 
   @override
@@ -98,14 +88,7 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
                         child: ListTile(
                           title: Text(r.name),
                           subtitle: Text('${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              StatusBadge(status: r.status),
-                              IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _openForm(existing: r)),
-                              IconButton(icon: Icon(r.status == 'active' ? Icons.block : Icons.check_circle_outline, size: 20), onPressed: () => _toggleStatus(r)),
-                            ],
-                          ),
+                          trailing: StatusBadge(status: r.status),
                         ),
                       );
                     },
@@ -121,24 +104,21 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
 }
 
 class _ReceptionistForm extends StatefulWidget {
-  final ReceptionistRow? existing;
-  const _ReceptionistForm({this.existing});
+  const _ReceptionistForm();
 
   @override
   State<_ReceptionistForm> createState() => _ReceptionistFormState();
 }
 
 class _ReceptionistFormState extends State<_ReceptionistForm> {
-  late final _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
-  late final _emailCtrl = TextEditingController(text: widget.existing?.email ?? '');
-  late final _phoneCtrl = TextEditingController(text: widget.existing?.phone ?? '');
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   Clinic? _selectedClinic;
   Future<List<Clinic>>? _clinicsFuture;
   bool _submitting = false;
   String? _error;
-
-  bool get _isEdit => widget.existing != null;
 
   @override
   void initState() {
@@ -171,11 +151,11 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
       setState(() => _error = 'Name is required');
       return;
     }
-    if (!_isEdit && (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8)) {
+    if (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8) {
       setState(() => _error = 'Email and an 8+ character password are required');
       return;
     }
-    if (!_isEdit && _selectedClinic == null) {
+    if (_selectedClinic == null) {
       setState(() => _error = 'Select a clinic');
       return;
     }
@@ -184,21 +164,13 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
       _error = null;
     });
     try {
-      if (_isEdit) {
-        await ApiClient.instance.patch('/receptionists/${widget.existing!.id}', body: {
-          'name': _nameCtrl.text.trim(),
-          if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
-          if (_selectedClinic != null) 'clinicId': _selectedClinic!.id,
-        });
-      } else {
-        await ApiClient.instance.post('/receptionists', body: {
-          'name': _nameCtrl.text.trim(),
-          'email': _emailCtrl.text.trim(),
-          'password': _passwordCtrl.text,
-          if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
-          'clinicId': _selectedClinic!.id,
-        });
-      }
+      await ApiClient.instance.post('/receptionists', body: {
+        'name': _nameCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'password': _passwordCtrl.text,
+        if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
+        'clinicId': _selectedClinic!.id,
+      });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
       setState(() {
@@ -217,17 +189,15 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(_isEdit ? 'Edit receptionist' : 'Add receptionist', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text('Add receptionist', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: AppSpacing.md),
             if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
             TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
             const SizedBox(height: AppSpacing.md),
-            if (!_isEdit) ...[
-              TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
-              const SizedBox(height: AppSpacing.md),
-              TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
-              const SizedBox(height: AppSpacing.md),
-            ],
+            TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+            const SizedBox(height: AppSpacing.md),
+            TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
+            const SizedBox(height: AppSpacing.md),
             TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
             const SizedBox(height: AppSpacing.md),
             FutureBuilder<List<Clinic>>(
@@ -237,7 +207,7 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
                 return DropdownButtonFormField<Clinic>(
                   initialValue: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
                   isExpanded: true,
-                  decoration: InputDecoration(labelText: _isEdit ? 'Reassign clinic (optional)' : 'Clinic'),
+                  decoration: const InputDecoration(labelText: 'Clinic'),
                   items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),
                   onChanged: (c) => setState(() => _selectedClinic = c),
                 );

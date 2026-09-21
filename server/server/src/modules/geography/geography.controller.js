@@ -7,21 +7,22 @@ const geographyService = require('./geography.service');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
+// search filter removed (backend-cleanup audit) — see geography.validation.js's comment.
 const listCities = asyncHandler(async (req, res) => {
-  const { search, page, pageSize } = req.query;
-  const { rows, pagination } = await geographyService.listCities({ search, page, pageSize });
+  const { page, pageSize } = req.query;
+  const { rows, pagination } = await geographyService.listCities({ page, pageSize });
   return success(res, rows, { pagination });
 });
 
 const listAreas = asyncHandler(async (req, res) => {
-  const { cityId, search, page, pageSize } = req.query;
-  const { rows, pagination } = await geographyService.listAreas({ cityId, search, page, pageSize });
+  const { cityId, page, pageSize } = req.query;
+  const { rows, pagination } = await geographyService.listAreas({ cityId, page, pageSize });
   return success(res, rows, { pagination });
 });
 
 const listSpecializations = asyncHandler(async (req, res) => {
-  const { search, page, pageSize } = req.query;
-  const { rows, pagination } = await geographyService.listSpecializations({ search, page, pageSize });
+  const { page, pageSize } = req.query;
+  const { rows, pagination } = await geographyService.listSpecializations({ page, pageSize });
   return success(res, rows, { pagination });
 });
 

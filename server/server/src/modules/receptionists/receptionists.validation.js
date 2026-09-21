@@ -4,7 +4,7 @@
  * numeric ranges). Business-rule validation (e.g. "you don't own this clinic") belongs in
  * the service layer.
  */
-const { body, param, query } = require('express-validator');
+const { body, query } = require('express-validator');
 
 const create = [
   body('name').trim().notEmpty().withMessage('name is required.').isLength({ max: 150 }),
@@ -22,9 +22,9 @@ const list = [
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
-const getOne = [param('id').isUUID().withMessage('id must be a valid id.')];
+// getOne validation removed (backend-cleanup audit) — see receptionists.routes.js's comment.
 
 // update/updateStatus validation chains removed alongside PATCH /:id and PATCH /:id/status — see
 // receptionists.routes.js's comment for why.
 
-module.exports = { create, list, getOne };
+module.exports = { create, list };

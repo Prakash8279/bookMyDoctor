@@ -35,13 +35,8 @@ router.get(
   controller.listMedicalRecords
 );
 
-router.get(
-  '/:id',
-  authenticate,
-  authorize(...READ_ROLES),
-  validation.getMedicalRecord,
-  validateRequest,
-  controller.getMedicalRecord
-);
+// GET /:id removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): neither web nor mobile ever fetches a single
+// medical record by id — every screen works off the GET / list.
 
 module.exports = router;

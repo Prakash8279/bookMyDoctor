@@ -29,9 +29,11 @@ const { parsePagination, buildPaginationMeta } = require('../../utils/pagination
 // just a UX nit.
 const LIST_CACHE_TTL_SECONDS = 10;
 
-function buildListCacheKey({ date, status, page, pageSize }, actor, scopeId) {
+// status filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): neither web nor mobile ever sent it.
+function buildListCacheKey({ date, page, pageSize }, actor, scopeId) {
   const scope = actor.role === 'doctor' ? `doctor:${actor.id}` : `receptionist:${scopeId || 'none'}`;
-  return `cache:queue:list:${scope}:${date || ''}:${status || ''}:${page || ''}:${pageSize || ''}`;
+  return `cache:queue:list:${scope}:${date || ''}:${page || ''}:${pageSize || ''}`;
 }
 
 /**
@@ -258,14 +260,16 @@ async function getVisibleQueueTokenOrThrow(id, actor) {
  * need to see who's waiting before they can call/complete a token. Same scoping rules as the
  * PATCH endpoint.
  *
- * `patientsAhead`/`estimatedWaitMinutes` are computed-on-read, never stored, and are always
- * computed against the TRUE waiting queue for each token's own (doctor, date) group — regardless
- * of any `status` filter applied to the returned page — so an ETA never silently changes meaning
- * just because the caller happened to filter the list down to one status.
- * @param {{date?:string, status?:string, page?:number, pageSize?:number}} query
+ * `patientsAhead`/`estimatedWaitMinutes` are computed-on-read, never stored, always against the
+ * TRUE waiting queue for each token's own (doctor, date) group.
+ *
+ * The `status` filter was removed (backend-cleanup audit — user request: "website frontend me
+ * nahi hai but backend bna hua hai to backend se hata do"): neither web nor mobile ever sent it —
+ * both always fetch the day's full queue.
+ * @param {{date?:string, page?:number, pageSize?:number}} query
  * @param {{id:string, role:string}} actor
  */
-async function listQueue({ date, status, page, pageSize }, actor) {
+async function listQueue({ date, page, pageSize }, actor) {
   let receptionistClinicId = null;
   if (actor.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
@@ -279,7 +283,7 @@ async function listQueue({ date, status, page, pageSize }, actor) {
     throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to view the queue.');
   }
 
-  const cacheKey = buildListCacheKey({ date, status, page, pageSize }, actor, receptionistClinicId);
+  const cacheKey = buildListCacheKey({ date, page, pageSize }, actor, receptionistClinicId);
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
@@ -340,9 +344,8 @@ async function listQueue({ date, status, page, pageSize }, actor) {
       return { row, patientsAhead, estimatedWaitMinutes: patientsAhead * MINUTES_PER_WAITING_PATIENT };
     });
 
-    const filtered = status ? computed.filter((c) => c.row.status === status) : computed;
-    const total = filtered.length;
-    const pageSlice = filtered.slice(skip, skip + take);
+    const total = computed.length;
+    const pageSlice = computed.slice(skip, skip + take);
 
     return {
       rows: pageSlice.map(({ row, patientsAhead, estimatedWaitMinutes }) =>

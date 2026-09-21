@@ -50,36 +50,6 @@ function shapeComplaint(row) {
 }
 
 /**
- * @param {{subject:string, description?:string}} body - already shape-validated.
- * @param {{id:string, role:string}} requester - always role 'patient' (route-enforced).
- */
-async function createComplaint(body, requester) {
-  const created = await prisma.complaint.create({
-    data: {
-      raisedByUserId: requester.id, // never from body — rule 3
-      subject: String(body.subject).trim(),
-      description: body.description ? String(body.description).trim() : null,
-      status: 'open',
-    },
-    select: { id: true },
-  });
-
-  await activityLogService.log({
-    actorUserId: requester.id,
-    actorRole: requester.role,
-    actionType: 'complaint.create',
-    targetEntityType: 'complaint',
-    targetEntityId: created.id,
-    description: `Raised complaint (id=${created.id})`,
-  });
-
-  await invalidateComplaintListCaches(requester.id);
-
-  const row = await prisma.complaint.findUnique({ where: { id: created.id }, select: COMPLAINT_SELECT });
-  return shapeComplaint(row);
-}
-
-/**
  * @param {string} id
  * @param {{status?:string, adminResponse?:string}} body - already shape-validated.
  * @param {{id:string, role:string}} actor - always admin/superadmin (route-enforced).
@@ -153,22 +123,9 @@ async function listComplaints({ status, page, pageSize }, requester) {
   });
 }
 
-/**
- * 404 (not 403) for a non-owner patient — same enumeration-avoidance posture used throughout the
- * codebase (see appointments.service.js#getVisibleAppointmentOrThrow).
- * @param {string} id
- * @param {{id:string, role:string}} requester
- */
-async function getComplaintById(id, requester) {
-  const row = await prisma.complaint.findUnique({ where: { id }, select: COMPLAINT_SELECT });
-  if (!row) {
-    throw new ApiError(404, 'COMPLAINT_NOT_FOUND', 'Complaint not found.');
-  }
+// createComplaint (POST /) and getComplaintById (GET /:id) removed (backend-cleanup audit — user
+// request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
+// web/mobile screen, for any role, ever files a complaint or fetches a single one by id — see
+// complaints.routes.js's header comment.
 
-  if (ADMIN_ROLES.includes(requester.role)) return shapeComplaint(row);
-  if (requester.role === 'patient' && row.raisedByUserId === requester.id) return shapeComplaint(row);
-
-  throw new ApiError(404, 'COMPLAINT_NOT_FOUND', 'Complaint not found.');
-}
-
-module.exports = { createComplaint, updateComplaint, listComplaints, getComplaintById };
+module.exports = { updateComplaint, listComplaints };

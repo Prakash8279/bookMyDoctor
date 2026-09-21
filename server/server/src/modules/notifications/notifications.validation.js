@@ -17,12 +17,10 @@ const broadcast = [
     .withMessage('audience must be one of: all, patients, doctors, receptionists, single_user.'),
   body('title').notEmpty().withMessage('title is required.').isString().trim().isLength({ max: 200 }).withMessage('title must be at most 200 characters.'),
   body('body').notEmpty().withMessage('body is required.').isString().trim().isLength({ max: 2000 }).withMessage('body must be at most 2000 characters.'),
-  body('type')
-    .optional({ values: 'falsy' })
-    .isString()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage('type must be at most 50 characters.'),
+  // type field removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+  // backend bna hua hai to backend se hata do"): neither web's AdminPages.jsx nor mobile's
+  // admin_broadcast_screen.dart ever sends a `type` in the broadcast form body — every broadcast
+  // now always saves as type='broadcast' (see notifications.service.js#broadcastNotification).
   // Conditional-shape check only (still validator-layer, not a DB lookup): targetUserId is
   // required and must be a UUID whenever audience === 'single_user'. Whether that id refers to a
   // real user is a business-rule check that belongs in notifications.service.js.
@@ -34,8 +32,10 @@ const broadcast = [
     .withMessage('targetUserId must be a valid id.'),
 ];
 
+// unreadOnly filter removed (backend-cleanup audit — user request: "website frontend me nahi hai
+// but backend bna hua hai to backend se hata do"): no web or mobile inbox screen ever sends it —
+// every one just lists the full paginated inbox and shows read-state inline per row.
 const listMyNotifications = [
-  query('unreadOnly').optional({ values: 'falsy' }).isBoolean().withMessage('unreadOnly must be a boolean.').toBoolean(),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

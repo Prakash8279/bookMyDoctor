@@ -19,8 +19,11 @@ const controller = require('./familyMembers.controller');
 // dropdown showing every other patient's family) described in FRONTEND_DATA_MODEL_REPORT.md.
 router.use(authenticate, authorize('patient'));
 
+// GET /:id (getOne) removed (backend-cleanup audit — user request: "website frontend me nahi hai
+// but backend bna hua hai to backend se hata do"): neither web nor mobile ever fetches a single
+// family member by id — every screen works off the GET / list (PATCH/DELETE only need the id in
+// the URL, they never GET it back first).
 router.get('/', validation.list, validateRequest, controller.list);
-router.get('/:id', validation.getOne, validateRequest, controller.getOne);
 router.post('/', validation.create, validateRequest, controller.create);
 router.patch('/:id', validation.update, validateRequest, controller.update);
 router.delete('/:id', validation.remove, validateRequest, controller.remove);

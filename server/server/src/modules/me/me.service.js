@@ -39,7 +39,9 @@ const FULL_SELECT = {
 };
 
 // Fields any role may edit on the base `users` row via PATCH /me.
-const BASE_EDITABLE_FIELDS = ['name', 'phone', 'city', 'photoUrl'];
+// photoUrl removed (backend-cleanup audit) — see me.validation.js's comment: it's superseded by
+// POST /media/photo, and no web/mobile caller ever sends it here.
+const BASE_EDITABLE_FIELDS = ['name', 'phone', 'city'];
 
 // Role-specific profile fields editable via PATCH /me. Deliberately excludes admin/system-owned
 // columns (doctor_profiles.status/verificationDocuments/rating/reviewCount) and OPD-schedule

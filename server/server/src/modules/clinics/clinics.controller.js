@@ -12,10 +12,11 @@ const createClinic = asyncHandler(async (req, res) => {
   return success(res, clinic, { statusCode: 201, message: 'Clinic created' });
 });
 
+// search filter removed (backend-cleanup audit) — see clinics.validation.js#listClinics's comment.
 const listClinics = asyncHandler(async (req, res) => {
-  const { city, area, search, emergencyAvailable, approvalStatus, mine, page, pageSize } = req.query;
+  const { city, area, emergencyAvailable, approvalStatus, mine, page, pageSize } = req.query;
   const { rows, pagination } = await clinicsService.listClinics(
-    { city, area, search, emergencyAvailable, approvalStatus, mine, page, pageSize },
+    { city, area, emergencyAvailable, approvalStatus, mine, page, pageSize },
     req.user
   );
   return success(res, rows, { pagination });
@@ -82,13 +83,10 @@ const createClosure = asyncHandler(async (req, res) => {
   return success(res, closure, { statusCode: 201, message: 'Closure saved' });
 });
 
+// from/to date-range filter removed (backend-cleanup audit) — see clinics.validation.js#listClosures's comment.
 const listClosures = asyncHandler(async (req, res) => {
-  const { doctorId, from, to, page, pageSize } = req.query;
-  const { rows, pagination } = await clinicsService.listClosures(
-    req.params.clinicId,
-    { doctorId, from, to, page, pageSize },
-    req.user
-  );
+  const { doctorId, page, pageSize } = req.query;
+  const { rows, pagination } = await clinicsService.listClosures(req.params.clinicId, { doctorId, page, pageSize }, req.user);
   return success(res, rows, { pagination });
 });
 

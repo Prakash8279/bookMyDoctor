@@ -40,8 +40,11 @@ const LIST_CACHE_TTL_SECONDS = 30;
  * requester.id) so a write on that clinic can invalidate it precisely without knowing which
  * specific receptionist accounts are assigned to it.
  */
+// patientId and the admin-list-filter use of clinicId removed (backend-cleanup audit — user
+// request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): admin's
+// own web/mobile filter UI never wired either one up.
 function buildListCacheKey(filters, requester, receptionistClinicId) {
-  const { page, pageSize, status, date, dateFrom, dateTo, doctorId, clinicId, patientId, cityId } = filters;
+  const { page, pageSize, status, date, dateFrom, dateTo, doctorId, cityId } = filters;
   const scope =
     requester.role === 'patient'
       ? `patient:${requester.id}`
@@ -50,7 +53,7 @@ function buildListCacheKey(filters, requester, receptionistClinicId) {
       : requester.role === 'receptionist'
       ? `receptionist:${receptionistClinicId || 'none'}`
       : `admin`;
-  return `cache:appointments:list:${scope}:${status || ''}:${date || ''}:${dateFrom || ''}:${dateTo || ''}:${doctorId || ''}:${clinicId || ''}:${patientId || ''}:${cityId || ''}:${page || ''}:${pageSize || ''}`;
+  return `cache:appointments:list:${scope}:${status || ''}:${date || ''}:${dateFrom || ''}:${dateTo || ''}:${doctorId || ''}:${cityId || ''}:${page || ''}:${pageSize || ''}`;
 }
 
 /**
@@ -1232,13 +1235,16 @@ async function runBookingJob(payload) {
 // ── C. Read + status endpoints ──────────────────────────────────────────
 
 /**
+ * patientId and the admin-list-filter use of clinicId removed (backend-cleanup audit — user
+ * request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): admin's
+ * own web/mobile filter UI never wired either one up. The real, actively-used receptionist FORCED
+ * `where.clinicId = receptionistClinicId` scoping below, and the separate `POST /appointments`
+ * body `clinicId` field (createAppointment/enqueueBooking), are both untouched — only the admin's
+ * optional list-filter use of clinicId is removed here.
  * @param {object} query
  * @param {{id:string, role:string}} requester
  */
-async function listAppointments(
-  { page, pageSize, status, date, dateFrom, dateTo, doctorId, clinicId, patientId, cityId },
-  requester
-) {
+async function listAppointments({ page, pageSize, status, date, dateFrom, dateTo, doctorId, cityId }, requester) {
   let receptionistClinicId = null;
   if (requester.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
@@ -1248,11 +1254,7 @@ async function listAppointments(
     receptionistClinicId = rp ? rp.clinicId : null;
   }
 
-  const cacheKey = buildListCacheKey(
-    { page, pageSize, status, date, dateFrom, dateTo, doctorId, clinicId, patientId, cityId },
-    requester,
-    receptionistClinicId
-  );
+  const cacheKey = buildListCacheKey({ page, pageSize, status, date, dateFrom, dateTo, doctorId, cityId }, requester, receptionistClinicId);
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
@@ -1268,8 +1270,8 @@ async function listAppointments(
       };
     }
 
-    // Forced role scoping (never the client's choice — rule 3) overrides/ignores any
-    // doctorId/clinicId/patientId query params for every role except admin/superadmin.
+    // Forced role scoping (never the client's choice — rule 3) overrides/ignores any doctorId
+    // query param for every role except admin/superadmin.
     if (requester.role === 'patient') {
       where.patientUserId = requester.id;
     } else if (requester.role === 'doctor') {
@@ -1281,13 +1283,9 @@ async function listAppointments(
       where.clinicId = receptionistClinicId;
     } else if (ADMIN_ROLES.includes(requester.role)) {
       if (doctorId) where.doctorUserId = doctorId;
-      if (clinicId) where.clinicId = clinicId;
-      if (patientId) where.patientUserId = patientId;
       // ADMIN FILTER FIX (user request: "city wise doctor name se v aur date se v") — an
       // appointment has no cityId of its own, only through its clinic, so this is a relation
-      // filter rather than a plain scalar match like the three above. Combines fine with an
-      // explicit clinicId in the same query (Prisma ANDs distinct where keys) — redundant if both
-      // are given, but never contradictory, since clinicId already implies a city.
+      // filter rather than a plain scalar match like doctorId above.
       if (cityId) where.clinic = { cityId };
     }
 

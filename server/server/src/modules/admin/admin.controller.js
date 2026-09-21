@@ -38,12 +38,6 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   return success(res, stats);
 });
 
-const getRevenueTrend = asyncHandler(async (req, res) => {
-  const { months } = req.query;
-  const trend = await adminService.getRevenueTrend(months);
-  return success(res, trend);
-});
-
 const listPatients = asyncHandler(async (req, res) => {
   const { search, page, pageSize } = req.query;
   const { rows, pagination } = await adminService.listPatients({ search, page, pageSize });
@@ -57,15 +51,6 @@ const updatePatientStatus = asyncHandler(async (req, res) => {
   return success(res, patient, { message: 'Patient account login status updated' });
 });
 
-// Operational visibility into the BullMQ booking queue — see admin.service.js#getFailedBookingJobs.
-// `truncated` follows the same convention as queue.controller.js#listQueue — see that function
-// and admin.service.js#getFailedBookingJobs's own comment on it.
-const getFailedBookingJobs = asyncHandler(async (req, res) => {
-  const { limit } = req.query;
-  const { jobs, truncated } = await adminService.getFailedBookingJobs({ limit });
-  return success(res, jobs, { truncated });
-});
-
 module.exports = {
   getActivityLog,
   getSystemSettings,
@@ -73,8 +58,6 @@ module.exports = {
   getBookingRules,
   updateBookingRules,
   getDashboardStats,
-  getRevenueTrend,
   listPatients,
   updatePatientStatus,
-  getFailedBookingJobs,
 };

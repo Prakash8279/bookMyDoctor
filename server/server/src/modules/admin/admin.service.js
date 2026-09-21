@@ -20,15 +20,9 @@ const cacheService = require('../../services/cacheService');
 const notificationsService = require('../notifications/notifications.service');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { todayUTCDateOnly } = require('../../utils/dateOnly');
-const { bookingQueue } = require('../../jobs/bookingQueue');
 
 const ACTIVITY_LOG_CACHE_TTL_SECONDS = 30;
 const DASHBOARD_STATS_CACHE_TTL_SECONDS = 30;
-const REVENUE_TREND_CACHE_TTL_SECONDS = 30;
-const DEFAULT_REVENUE_TREND_MONTHS = 6;
-const MAX_REVENUE_TREND_MONTHS = 24;
-const DEFAULT_FAILED_BOOKING_JOBS_LIMIT = 20;
-const MAX_FAILED_BOOKING_JOBS_LIMIT = 100;
 
 // ── Activity log ─────────────────────────────────────────────────────────
 
@@ -37,26 +31,25 @@ const MAX_FAILED_BOOKING_JOBS_LIMIT = 100;
  * (FRONTEND_SCREENS_REPORT.md flags "Entity" mislabeling actor role and "Entity id" duplicating
  * the row id) — response rows expose targetEntityType/targetEntityId distinctly from id, plus
  * the real actor.
- * @param {{actorUserId?:string, actionType?:string, page?:number, pageSize?:number}} query
+ * actorUserId/actionType filters removed (backend-cleanup audit — user request: "website
+ * frontend me nahi hai but backend bna hua hai to backend se hata do"): the admin activity-log
+ * web page never wired up filter inputs for either one.
+ * @param {{page?:number, pageSize?:number}} query
  */
-async function getActivityLog({ actorUserId, actionType, page, pageSize }) {
+async function getActivityLog({ page, pageSize }) {
   // Admin/superadmin-only endpoint, output identical for every admin viewing the same filters
   // (role-invariant) -> key by query params only. No invalidation wiring: this is fed by
   // activityLogService.log() calls scattered across nearly every mutating action in the app —
   // wiring precise invalidation for all of them isn't worth it for a log viewer; TTL-only,
   // documented here and in the README "Caching" section (same reasoning as getDashboardStats).
-  const cacheKey = `cache:admin:activity-log:${actorUserId || ''}:${actionType || ''}:${page || ''}:${pageSize || ''}`;
+  const cacheKey = `cache:admin:activity-log:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, ACTIVITY_LOG_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
-    const where = {};
-    if (actorUserId) where.actorUserId = actorUserId;
-    if (actionType) where.actionType = actionType;
-
     const [rows, total] = await Promise.all([
       prisma.activityLog.findMany({
-        where,
+        where: {},
         select: {
           id: true,
           actorUserId: true,
@@ -73,7 +66,7 @@ async function getActivityLog({ actorUserId, actionType, page, pageSize }) {
         skip,
         take,
       }),
-      prisma.activityLog.count({ where }),
+      prisma.activityLog.count({ where: {} }),
     ]);
 
     return {
@@ -234,98 +227,6 @@ async function getDashboardStats() {
   });
 }
 
-// ── revenue-trend ────────────────────────────────────────────────────────
-
-/**
- * Monthly revenue + paid-appointment-count series for the admin dashboard's revenue chart,
- * covering the last `months` calendar months (oldest first, current in-progress month last).
- * Read-only aggregate — no activityLogService call, same as getDashboardStats.
- * @param {number|undefined} months - already range-validated by admin.validation.js#getRevenueTrend
- *   (isInt({min:1,max:24})) when present; undefined when the caller omitted the query param.
- */
-async function getRevenueTrend(months) {
-  // Defensive re-clamp: `months` becomes part of a raw-SQL date-range calculation below, not
-  // just a Prisma query-builder arg, so this function re-derives a safe integer itself rather
-  // than fully trusting the validator ran (same belt-and-suspenders spirit as elsewhere in this
-  // module, e.g. updateBookingRules's own bounds mirroring the validation.js bounds).
-  const requestedMonths = Number.isInteger(months) && months >= 1 ? Math.min(months, MAX_REVENUE_TREND_MONTHS) : DEFAULT_REVENUE_TREND_MONTHS;
-
-  // Role-invariant like getDashboardStats, but the output shape depends on `months` -> the cache
-  // key must include it (cacheService.js rule #3: cache-key scoping must match response scoping).
-  const cacheKey = `cache:admin:revenue-trend:${requestedMonths}`;
-
-  return cacheService.getOrSet(cacheKey, REVENUE_TREND_CACHE_TTL_SECONDS, async () => {
-    const todayUTC = todayUTCDateOnly();
-    // Window: the 1st of the month (requestedMonths - 1) months back, through the 1st of NEXT
-    // month (exclusive), so the series always includes the current, still-in-progress month.
-    const startUTC = new Date(Date.UTC(todayUTC.getUTCFullYear(), todayUTC.getUTCMonth() - (requestedMonths - 1), 1));
-    const endUTC = new Date(Date.UTC(todayUTC.getUTCFullYear(), todayUTC.getUTCMonth() + 1, 1));
-
-    // Prisma's groupBy can only group by literal column values, not a truncated/derived
-    // expression, so there's no way to ask it for "group payments by calendar month" directly.
-    // Two ways around that: (a) fetch every matching payment row and bucket them by hand in JS,
-    // or (b) push the bucketing into Postgres with date_trunc. Chose (b): a 24-month admin
-    // revenue window can plausibly span thousands of payment rows on a platform this size, and
-    // date_trunc + GROUP BY is a single indexed range scan on payments.created_at that returns
-    // at most 24 rows — cheaper, and no less safe, than dragging all of them into Node first.
-    // Parameterized the same way as the other raw queries in this codebase (tagged-template
-    // $queryRaw — see appointments.service.js's token-numbering MAX() query and
-    // payments.service.js's `FOR UPDATE` row lock): every interpolated value below becomes a
-    // bound query parameter, never string-concatenated into the SQL text, so this stays safe
-    // even though `months` ultimately traces back to caller-controlled query-string input.
-    const rows = await prisma.$queryRaw`
-      SELECT
-        date_trunc('month', created_at) AS month,
-        COALESCE(SUM(amount), 0) AS revenue,
-        COUNT(DISTINCT appointment_id) AS appointment_count
-      FROM payments
-      WHERE status = ${'paid'}::"PaymentStatus"
-        AND created_at >= ${startUTC}
-        AND created_at < ${endUTC}
-      GROUP BY date_trunc('month', created_at)
-      ORDER BY date_trunc('month', created_at)
-    `;
-    // COUNT(DISTINCT appointment_id), NOT COUNT(*) — since the payment-before-token feature, one
-    // appointment can legitimately have TWO 'paid' payment rows (the patient's online minimum
-    // advance, then the remaining balance collected at the clinic — see
-    // payments.service.js#createPaymentForAppointment's partial-payment handling), so "one paid
-    // payment row <-> one paid appointment" no longer holds. COUNT(DISTINCT appointment_id) stays
-    // correct regardless of how many payment rows an appointment has, and Postgres's DISTINCT
-    // COUNT already ignores NULLs, so standalone (non-appointment) payments are correctly
-    // excluded from this appointment-count metric just like before.
-
-    // Postgres returns COUNT(*) as bigint and SUM(numeric) as numeric; Prisma's raw-query
-    // deserialization surfaces those as a BigInt and a Decimal-like value respectively — neither
-    // is valid input to JSON.stringify (BigInt throws; Decimal would round-trip as a string, not
-    // the `revenue: number` shape this endpoint promises). Unlike getDashboardStats, this value
-    // is JSON.stringify'd directly by cacheService.getOrSet (see cacheService.js's own doc
-    // comment on why that's normally safe) before it ever reaches res.json()'s Decimal->string
-    // conversion, so both fields MUST already be plain JS numbers by the time they're returned
-    // here, not left for the response layer to coerce.
-    const byMonthKey = new Map();
-    for (const row of rows) {
-      const monthKey = row.month.toISOString().slice(0, 7); // "YYYY-MM"
-      byMonthKey.set(monthKey, { revenue: Number(row.revenue), appointmentCount: Number(row.appointment_count) });
-    }
-
-    // date_trunc/GROUP BY only produces a row for months that actually had a paid payment —
-    // fill every month in the requested window (including zero-revenue ones) so the chart
-    // always gets a complete, gap-free series instead of silently skipping quiet months.
-    const trend = [];
-    for (let i = 0; i < requestedMonths; i += 1) {
-      const monthDate = new Date(Date.UTC(startUTC.getUTCFullYear(), startUTC.getUTCMonth() + i, 1));
-      const monthKey = monthDate.toISOString().slice(0, 7);
-      const bucket = byMonthKey.get(monthKey);
-      trend.push({
-        month: monthKey,
-        revenue: bucket ? bucket.revenue : 0,
-        appointmentCount: bucket ? bucket.appointmentCount : 0,
-      });
-    }
-
-    return trend;
-  });
-}
 
 // ── patients directory ──────────────────────────────────────────────────
 
@@ -450,63 +351,6 @@ async function updatePatientStatus(id, status, actor) {
   return { id, status };
 }
 
-// ── booking-queue operational visibility ────────────────────────────────
-
-/**
- * Recent FAILED jobs from the BullMQ booking queue (src/jobs/bookingQueue.js /
- * src/jobs/bookingWorker.js) — read-only operational visibility for admin/superadmin into
- * bookings that permanently failed: either a deterministic business failure
- * (bookingWorker.js's `UnrecoverableError`, e.g. SLOT_ALREADY_BOOKED) or a job that exhausted
- * all of enqueueBookingJob's `attempts`/exponential `backoff` retries (e.g. a sustained Redis/DB
- * blip). This never retries, removes, or otherwise mutates a job — it only reports on the
- * `failed` set via BullMQ's own `Queue#getFailed`.
- *
- * No caching (unlike the aggregates above): this is a live incident-diagnosis view over a queue
- * that already TTLs its own failed jobs (`removeOnFail: { age: 86400 }`, see bookingQueue.js), not
- * a dashboard number that every booking write path would need to invalidate.
- *
- * LOAD-REVIEW FIX: follows the same "list silently left rows out" convention as
- * queue.service.js#listQueue (see that function's own `truncated` comment and utils/
- * apiResponse.js's doc comment on the `truncated` option) instead of clamping `limit` with no
- * signal — an admin asking for e.g. limit=500 during an incident needs to know whether the 100
- * jobs they got back are everything or just the cap.
- * @param {{limit?: number}} params
- * @returns {Promise<{jobs: Array<{id:string, name:string, failedReason:string|null,
- *   timestamp:number}>, truncated: boolean}>}
- */
-async function getFailedBookingJobs({ limit } = {}) {
-  // Defensive clamp, same spirit as getRevenueTrend's re-clamp of `months` above: admin.routes.js
-  // deliberately wires no express-validator chain for this route (admin.validation.js is out of
-  // scope for this change), so this function must not trust a caller-controlled `limit` blindly.
-  const parsedLimit = Number(limit);
-  const resolvedLimit =
-    Number.isInteger(parsedLimit) && parsedLimit >= 1
-      ? Math.min(parsedLimit, MAX_FAILED_BOOKING_JOBS_LIMIT)
-      : DEFAULT_FAILED_BOOKING_JOBS_LIMIT;
-
-  // getFailed(start, end) is an inclusive range over BullMQ's failed set, most-recent-first —
-  // exactly what an admin scanning for a recent spike wants, without pulling the whole set.
-  // getFailedCount() is a cheap separate Redis call (a set cardinality, not a data fetch) that
-  // tells us the TRUE size of the failed set regardless of resolvedLimit, so `truncated` reflects
-  // reality (whether the caller's own limit or MAX_FAILED_BOOKING_JOBS_LIMIT is what capped it)
-  // instead of only detecting the one case where the caller-supplied limit exceeded the max.
-  const [rawJobs, failedCount] = await Promise.all([
-    bookingQueue.getFailed(0, resolvedLimit - 1),
-    bookingQueue.getFailedCount(),
-  ]);
-
-  const jobs = rawJobs.map((job) => ({
-    id: job.id,
-    name: job.name,
-    failedReason: job.failedReason || null,
-    // finishedOn is when BullMQ actually moved the job to 'failed'; timestamp (enqueue time) is
-    // the fallback for the unlikely case finishedOn isn't populated yet.
-    timestamp: job.finishedOn || job.timestamp,
-  }));
-
-  return { jobs, truncated: failedCount > jobs.length };
-}
-
 module.exports = {
   getActivityLog,
   getSystemSettings,
@@ -514,8 +358,6 @@ module.exports = {
   getBookingRules,
   updateBookingRules,
   getDashboardStats,
-  getRevenueTrend,
   listPatients,
   updatePatientStatus,
-  getFailedBookingJobs,
 };

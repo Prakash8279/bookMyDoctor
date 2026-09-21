@@ -8,21 +8,22 @@ const { body, param, query } = require('express-validator');
 
 const PINCODE_RE = /^\d{6}$/;
 
+// search filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): neither web nor mobile ever sends a `search` param
+// to any of the three geography list endpoints — every caller just fetches the full
+// city/area/specialization list (paginated) for a dropdown.
 const listCities = [
-  query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 150 }),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
 const listAreas = [
   query('cityId').optional({ values: 'falsy' }).isUUID().withMessage('cityId must be a valid id.'),
-  query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 150 }),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
 const listSpecializations = [
-  query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 150 }),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

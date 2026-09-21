@@ -536,14 +536,27 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
     expect(where).toEqual({});
   });
 
-  test('admin/superadmin MAY filter by doctorId/clinicId/patientId query params', async () => {
+  // clinicId/patientId admin list-filters removed (backend-cleanup audit — user request: "website
+  // frontend me nahi hai but backend bna hua hai to backend se hata do"): admin's own web/mobile
+  // filter UI never wired either one up. doctorId stays — the web Appointments registry page does
+  // filter by doctor name.
+  test('admin/superadmin MAY filter by doctorId query param', async () => {
+    await appointmentsService.listAppointments({ doctorId: DOCTOR_ID }, { id: 'admin-1', role: 'admin' });
+
+    const where = prisma.appointment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ doctorUserId: DOCTOR_ID });
+  });
+
+  // A now-removed admin filter (clinicId/patientId) supplied anyway is simply ignored — no error,
+  // no leak, since appointments.service.js#listAppointments no longer destructures them.
+  test('admin/superadmin supplying the removed clinicId/patientId params has no effect (silently ignored)', async () => {
     await appointmentsService.listAppointments(
-      { doctorId: DOCTOR_ID, clinicId: CLINIC_ID, patientId: PATIENT_ID },
+      { clinicId: CLINIC_ID, patientId: PATIENT_ID },
       { id: 'admin-1', role: 'admin' }
     );
 
     const where = prisma.appointment.findMany.mock.calls[0][0].where;
-    expect(where).toEqual({ doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, patientUserId: PATIENT_ID });
+    expect(where).toEqual({});
   });
 
   // ADMIN FILTER FIX (user request: "ye filter appli karne ka option do admin supar admin ko

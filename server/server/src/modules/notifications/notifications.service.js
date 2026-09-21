@@ -131,7 +131,10 @@ async function broadcastNotification(body, actor) {
   const audience = body.audience;
   const title = String(body.title).trim();
   const messageBody = String(body.body).trim();
-  const type = body.type ? String(body.type).trim() : 'broadcast';
+  // type field removed from the request body (backend-cleanup audit — see
+  // notifications.validation.js#broadcast's comment): an admin-initiated broadcast always saves
+  // as this fixed type now, distinguishing it from a system-generated notifySystemEvent alert.
+  const type = 'broadcast';
   const targetUserId = audience === 'single_user' ? body.targetUserId : null;
 
   if (audience === 'single_user') {
@@ -255,21 +258,22 @@ async function listBroadcasts({ page, pageSize }) {
  * literal fix for "every role's inbox reads one shared global array"). Rows are keyed by the
  * NotificationRecipient row's own id — that's the addressable "my notification" id the mark-read
  * endpoints operate on, not the underlying Notification's id.
- * @param {{unreadOnly?:boolean, page?:number, pageSize?:number}} query
+ *
+ * unreadOnly filter removed (backend-cleanup audit — user request: "website frontend me nahi hai
+ * but backend bna hua hai to backend se hata do"): no web/mobile inbox screen ever sends it —
+ * every one lists the full paginated inbox, showing read-state inline per row via `readAt`.
+ * @param {{page?:number, pageSize?:number}} query
  * @param {{id:string, role:string}} requester
  */
-async function listMyNotifications({ unreadOnly, page, pageSize }, requester) {
+async function listMyNotifications({ page, pageSize }, requester) {
   // Strictly per-user — key MUST include requester.id (rule: cache-key scoping must match
   // response scoping).
-  const cacheKey = `cache:notifications:mylist:${requester.id}:${unreadOnly ? '1' : '0'}:${page || ''}:${
-    pageSize || ''
-  }`;
+  const cacheKey = `cache:notifications:mylist:${requester.id}:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, MY_LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
     const where = { userId: requester.id };
-    if (unreadOnly) where.readAt = null;
 
     const [rows, total] = await Promise.all([
       prisma.notificationRecipient.findMany({

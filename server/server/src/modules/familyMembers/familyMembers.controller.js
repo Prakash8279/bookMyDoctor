@@ -13,10 +13,9 @@ const list = asyncHandler(async (req, res) => {
   return success(res, rows, { pagination });
 });
 
-const getOne = asyncHandler(async (req, res) => {
-  const row = await familyMembersService.getFamilyMemberById(req.params.id, req.user.id);
-  return success(res, row);
-});
+// getOne handler removed (backend-cleanup audit) — see familyMembers.routes.js's comment.
+// familyMembersService.getFamilyMemberById itself stays: updateFamilyMember below still calls it
+// internally (a no-op update re-reads and returns the current row).
 
 const create = asyncHandler(async (req, res) => {
   const row = await familyMembersService.createFamilyMember(req.user.id, req.body);
@@ -33,4 +32,4 @@ const remove = asyncHandler(async (req, res) => {
   return success(res, null, { message: 'Family member removed' });
 });
 
-module.exports = { list, getOne, create, update, remove };
+module.exports = { list, create, update, remove };

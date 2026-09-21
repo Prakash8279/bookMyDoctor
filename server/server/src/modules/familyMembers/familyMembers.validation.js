@@ -26,7 +26,7 @@ const list = [
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
-const getOne = [param('id').isUUID().withMessage('id must be a valid id.')];
+// getOne validation removed (backend-cleanup audit) — see familyMembers.routes.js's comment.
 
 const create = [
   body('name').trim().notEmpty().withMessage('name is required.').isLength({ max: 150 }),
@@ -63,4 +63,4 @@ const update = [
 
 const remove = [param('id').isUUID().withMessage('id must be a valid id.')];
 
-module.exports = { list, getOne, create, update, remove };
+module.exports = { list, create, update, remove };

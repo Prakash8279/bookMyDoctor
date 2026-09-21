@@ -1095,15 +1095,16 @@ describe('payments.service.listPayments — forced role scoping and pagination',
     expect(prisma.payment.findMany.mock.calls[0][0].where.clinicId).toBe('clinic-1');
   });
 
-  test('admin may filter by any of appointmentId/patientId/doctorId/clinicId', async () => {
+  // appointmentId/patientId/doctorId/clinicId admin list-filters removed (backend-cleanup audit —
+  // user request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"):
+  // admin gets an unfiltered where clause regardless of what is passed in.
+  test('admin gets an unfiltered where clause regardless of what is passed in', async () => {
     await paymentsService.listPayments(
       { appointmentId: 'a1', patientId: 'p1', doctorId: 'd1', clinicId: 'c1' },
       ADMIN
     );
 
-    expect(prisma.payment.findMany.mock.calls[0][0].where).toEqual(
-      expect.objectContaining({ appointmentId: 'a1', patientUserId: 'p1', doctorUserId: 'd1', clinicId: 'c1' })
-    );
+    expect(prisma.payment.findMany.mock.calls[0][0].where).toEqual({});
   });
 
   test('rows are shaped per requester role (a doctor sees only consultationFee in the list too)', async () => {

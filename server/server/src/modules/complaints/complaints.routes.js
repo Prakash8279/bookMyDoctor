@@ -1,7 +1,7 @@
 /**
  * Route definitions for the complaints module.
- * Scope: Patient complaint filing + admin response/status.
- * Allowed roles: patient (create, list-own, view-own), admin/superadmin (manage, list-all, view-any)
+ * Scope: admin response/status on complaints raised via other channels; patient list-own.
+ * Allowed roles: patient (list-own), admin/superadmin (manage, list-all)
  * Responsibility: wire path+method -> [authenticate, authorize(...), validation chain, validateRequest, controller fn].
  * No business logic here — that belongs in complaints.service.js.
  */
@@ -15,18 +15,12 @@ const controller = require('./complaints.controller');
 
 const READ_ROLES = ['patient', 'admin', 'superadmin'];
 
-router.post(
-  '/',
-  authenticate,
-  authorize('patient'),
-  validation.createComplaint,
-  validateRequest,
-  controller.createComplaint
-);
-
+// POST / (file a new complaint) and GET /:id (single complaint) removed (backend-cleanup audit —
+// user request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
+// web or mobile screen, for any role, ever files a complaint (the web store's addComplaint action
+// had zero call sites) or fetches a single complaint by id — admin's inbox only lists (GET /) and
+// responds (PATCH /:id).
 router.get('/', authenticate, authorize(...READ_ROLES), validation.listComplaints, validateRequest, controller.listComplaints);
-
-router.get('/:id', authenticate, authorize(...READ_ROLES), validation.getComplaint, validateRequest, controller.getComplaint);
 
 router.patch(
   '/:id',

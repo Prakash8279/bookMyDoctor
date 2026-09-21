@@ -14,9 +14,12 @@
  *   - listReceptionists' doctor-scoping: a doctor only ever sees receptionists at clinics they
  *     are linked to, and a `clinicId` filter outside that allowed set must short-circuit to an
  *     empty page WITHOUT ever reaching prisma.user.findMany.
- *   - getReceptionistById/updateReceptionist/updateReceptionistStatus's 404-not-403 enumeration
- *     avoidance, and updateReceptionist's defense-in-depth non-nullable `name` guard via
- *     pickPresentFields.
+ *   - getReceptionistById's 404-not-403 enumeration avoidance. (updateReceptionist/
+ *     updateReceptionistStatus no longer exist — removed along with PATCH /:id and
+ *     PATCH /:id/status, see receptionists.routes.js's comment — so their tests were removed
+ *     too, along with GET /:id's own route/controller/validation layer in the later
+ *     backend-cleanup audit pass; getReceptionistById itself stays, since createReceptionist
+ *     still calls it internally.)
  *
  * config/db is mocked (no real Postgres in this sandbox); activityLogService/cacheService are
  * mocked to isolate this module's own branching from their internals. bcrypt is left real
@@ -263,78 +266,11 @@ describe('receptionistsService.getReceptionistById — 404-not-403 visibility', 
   });
 });
 
-describe('receptionistsService.updateReceptionist', () => {
-  test('404 when target is missing or not a receptionist', async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
-    await expect(receptionistsService.updateReceptionist('x', { name: 'B' }, ADMIN)).rejects.toMatchObject({
-      code: 'RECEPTIONIST_NOT_FOUND',
-    });
-  });
-
-  test('422 VALIDATION_ERROR when name is explicitly set to null (non-nullable defense-in-depth)', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'recep-1', role: 'receptionist', receptionistProfile: { clinicId: 'clinic-1' } });
-    prisma.doctorClinic.findUnique.mockResolvedValue({ isOwner: true });
-
-    await expect(receptionistsService.updateReceptionist('recep-1', { name: null }, OWNER_DOCTOR)).rejects.toMatchObject({
-      statusCode: 422,
-      code: 'VALIDATION_ERROR',
-    });
-  });
-
-  test('403 for a non-admin actor managing a receptionist with no assigned clinic', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'recep-1', role: 'receptionist', receptionistProfile: null });
-
-    await expect(receptionistsService.updateReceptionist('recep-1', { name: 'B' }, OWNER_DOCTOR)).rejects.toMatchObject({
-      statusCode: 403,
-      code: 'FORBIDDEN',
-    });
-  });
-
-  test('reassigning clinicId re-runs assertClinicUsableForReceptionist on the NEW clinic', async () => {
-    prisma.user.findUnique
-      .mockResolvedValueOnce({ id: 'recep-1', role: 'receptionist', receptionistProfile: { clinicId: 'clinic-1' } })
-      .mockResolvedValueOnce(receptionistRow({ receptionistProfile: { clinicId: 'clinic-2', clinic: { id: 'clinic-2', name: 'New Clinic' } } }));
-    prisma.doctorClinic.findUnique.mockResolvedValue({ isOwner: true }); // used for both the current-clinic ownsClinic check and the new clinic's usability check
-    prisma.clinic.findUnique.mockResolvedValue({ id: 'clinic-2', name: 'New Clinic', approvalStatus: 'active' });
-
-    await receptionistsService.updateReceptionist('recep-1', { clinicId: 'clinic-2' }, OWNER_DOCTOR);
-
-    expect(prisma.clinic.findUnique).toHaveBeenCalledWith({ where: { id: 'clinic-2' }, select: { id: true, name: true, approvalStatus: true } });
-    expect(prisma.receptionistProfile.update).toHaveBeenCalledWith({ where: { userId: 'recep-1' }, data: { clinicId: 'clinic-2' } });
-  });
-
-  test('a no-op body (nothing recognized present, no clinic change) skips the transaction entirely', async () => {
-    prisma.user.findUnique
-      .mockResolvedValueOnce({ id: 'recep-1', role: 'receptionist', receptionistProfile: { clinicId: 'clinic-1' } })
-      .mockResolvedValueOnce(receptionistRow());
-    prisma.doctorClinic.findUnique.mockResolvedValue({ isOwner: true });
-
-    await receptionistsService.updateReceptionist('recep-1', {}, OWNER_DOCTOR);
-
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-  });
-});
-
-describe('receptionistsService.updateReceptionistStatus', () => {
-  test('403 for a non-owner doctor', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'recep-1', role: 'receptionist', receptionistProfile: { clinicId: 'clinic-1' } });
-    prisma.doctorClinic.findUnique.mockResolvedValue({ isOwner: false });
-
-    await expect(
-      receptionistsService.updateReceptionistStatus('recep-1', 'disabled', NON_OWNER_DOCTOR)
-    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
-  });
-
-  test('success updates users.status (not a receptionist-profile field) and logs the action', async () => {
-    prisma.user.findUnique
-      .mockResolvedValueOnce({ id: 'recep-1', role: 'receptionist', receptionistProfile: { clinicId: 'clinic-1' } })
-      .mockResolvedValueOnce(receptionistRow({ status: 'disabled' }));
-    prisma.doctorClinic.findUnique.mockResolvedValue({ isOwner: true });
-
-    const result = await receptionistsService.updateReceptionistStatus('recep-1', 'disabled', OWNER_DOCTOR);
-
-    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'recep-1' }, data: { status: 'disabled' } });
-    expect(activityLogService.log).toHaveBeenCalledWith(expect.objectContaining({ actionType: 'receptionist.status_update' }));
-    expect(result.status).toBe('disabled');
-  });
-});
+// updateReceptionist/updateReceptionistStatus and their tests removed (mobile parity audit
+// round 2 — user request: "backend hai but website me nahi hai to hata do app se backend v oo
+// hata do"): both functions (and PATCH /:id, PATCH /:id/status) were already deleted from
+// receptionists.service.js/routes.js in that pass — see receptionists.routes.js's comment for
+// the full rationale — but these tests were left behind at the time, referencing functions that
+// no longer exist. Fixed here (backend-cleanup audit pass) by removing the stale
+// 'receptionistsService.updateReceptionist' and 'receptionistsService.updateReceptionistStatus'
+// describe blocks along with the code they used to exercise.

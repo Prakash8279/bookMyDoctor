@@ -4,9 +4,8 @@
  * numeric ranges). Business-rule validation (e.g. "appointment already paid", "you don't own
  * this clinic", fee computation) belongs in payments.service.js.
  */
-const { body, param, query } = require('express-validator');
+const { body, query } = require('express-validator');
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Same UPI VPA shape used for the doctor's own payout UPI id (me.validation.js#patchMe's
 // bankUpiId) — handle + '@' + PSP/bank handle in letters.
 const UPI_RE = /^[A-Za-z0-9.\-_]{2,256}@[A-Za-z]{2,64}$/;
@@ -53,26 +52,15 @@ const createPayment = [
   }),
 ];
 
+// status/mode/dateFrom/dateTo/appointmentId/patientId/doctorId/clinicId admin list-filters
+// removed (backend-cleanup audit — user request: "website frontend me nahi hai but backend bna
+// hua hai to backend se hata do"): the admin/receptionist payments pages never wired up filter
+// inputs for any of these — every role's own forced scoping (see payments.service.js#listPayments)
+// is untouched.
 const listPayments = [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
-  query('status')
-    .optional({ values: 'falsy' })
-    .isIn(['pending', 'paid', 'refunded'])
-    .withMessage('status must be one of: pending, paid, refunded.'),
-  query('mode')
-    .optional({ values: 'falsy' })
-    .isIn(['cash', 'upi', 'card', 'online'])
-    .withMessage('mode must be one of: cash, upi, card, online.'),
-  query('dateFrom').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('dateFrom must be in YYYY-MM-DD format.'),
-  query('dateTo').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('dateTo must be in YYYY-MM-DD format.'),
-  query('appointmentId').optional({ values: 'falsy' }).isUUID().withMessage('appointmentId must be a valid id.'),
-  query('patientId').optional({ values: 'falsy' }).isUUID().withMessage('patientId must be a valid id.'),
-  query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid id.'),
-  query('clinicId').optional({ values: 'falsy' }).isUUID().withMessage('clinicId must be a valid id.'),
 ];
-
-const getPayment = [param('id').isUUID().withMessage('id must be a valid id.')];
 
 // Razorpay self-pay flow (razorpay.service.js) — shape-only here, same as every other chain in
 // this file; ownership/already-paid/signature checks are all business-rule validation that
@@ -92,4 +80,4 @@ const verifyRazorpayPayment = [
   body('razorpaySignature').notEmpty().withMessage('razorpaySignature is required.').isString().trim(),
 ];
 
-module.exports = { createPayment, listPayments, getPayment, createRazorpayOrder, verifyRazorpayPayment };
+module.exports = { createPayment, listPayments, createRazorpayOrder, verifyRazorpayPayment };

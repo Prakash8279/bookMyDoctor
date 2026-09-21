@@ -20,16 +20,6 @@ function rejectNull(fieldName) {
     .bail();
 }
 
-const createComplaint = [
-  body('subject').notEmpty().withMessage('subject is required.').isString().trim().isLength({ max: 200 }).withMessage('subject must be at most 200 characters.'),
-  body('description')
-    .optional({ values: 'falsy' })
-    .isString()
-    .trim()
-    .isLength({ max: 5000 })
-    .withMessage('description must be at most 5000 characters.'),
-];
-
 const updateComplaint = [
   param('id').isUUID().withMessage('id must be a valid id.'),
   rejectNull('status')
@@ -52,6 +42,4 @@ const listComplaints = [
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
-const getComplaint = [param('id').isUUID().withMessage('id must be a valid id.')];
-
-module.exports = { createComplaint, updateComplaint, listComplaints, getComplaint };
+module.exports = { updateComplaint, listComplaints };

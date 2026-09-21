@@ -34,6 +34,12 @@ router.post(
 
 router.get('/', authenticate, authorize(...ALL_ROLES), validation.listPayments, validateRequest, controller.listPayments);
 
+// GET /:id removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): no web/mobile screen ever fetched a single payment
+// by id — every payment detail shown in the app comes from the list above. The underlying
+// payments.service.js#getPaymentById function stays — razorpay.service.js's "Pay now" verify flow
+// calls it internally.
+
 // Razorpay self-pay flow — patient-only (the "Pay now" button shown right after a booking is
 // confirmed). Same paymentLimiter as the ledger-write path above: this also mutates payment state
 // and, on verify, consumes the shared payment_receipt_seq sequence via createPaymentForAppointment.
@@ -67,7 +73,5 @@ router.post(
 // call, so req.body here is the untouched raw Buffer the signature was computed over — do not
 // add any body-parsing middleware in front of this route.
 router.post('/webhook/razorpay', controller.handleRazorpayWebhook);
-
-router.get('/:id', authenticate, authorize(...ALL_ROLES), validation.getPayment, validateRequest, controller.getPayment);
 
 module.exports = router;

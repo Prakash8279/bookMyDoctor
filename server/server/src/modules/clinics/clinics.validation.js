@@ -44,10 +44,13 @@ const createClinic = [
     .withMessage('paymentQrUrl must be a valid http(s) URL.'),
 ];
 
+// search filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): neither web nor mobile clinic list/search screen
+// ever sends a free-text `search` param — every one filters by city/area/emergencyAvailable/mine
+// instead.
 const listClinics = [
   query('city').optional({ values: 'falsy' }).isUUID().withMessage('city must be a valid id.'),
   query('area').optional({ values: 'falsy' }).isUUID().withMessage('area must be a valid id.'),
-  query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 200 }),
   query('emergencyAvailable').optional({ values: 'falsy' }).isBoolean().toBoolean(),
   query('approvalStatus').optional({ values: 'falsy' }).isIn(['pending', 'active', 'disabled']),
   query('mine').optional({ values: 'falsy' }).isBoolean().toBoolean(),
@@ -111,13 +114,13 @@ const assignDoctor = [
   rejectNull('onlineBooking').isBoolean().toBoolean(),
 ];
 
+// isOwner/isPrimary removed (backend-cleanup audit — user request: "website frontend me nahi hai
+// but backend bna hua hai to backend se hata do"): no web/mobile screen ever edits either flag
+// after assignment — only the create-time POST (assignDoctor above) sets them; every PATCH caller
+// only ever toggles onlineBooking.
 const updateDoctorAssignment = [
   param('id').isUUID(),
   param('doctorUserId').isUUID(),
-  // Same NOT NULL columns as assignDoctor above — OPT_NULLABLE would let an explicit null
-  // through untyped, which pickPresentFields would then forward straight into a Prisma update.
-  rejectNull('isOwner').isBoolean().toBoolean(),
-  rejectNull('isPrimary').isBoolean().toBoolean(),
   rejectNull('onlineBooking').isBoolean().toBoolean(),
 ];
 
@@ -127,7 +130,11 @@ const removeDoctorAssignment = [param('id').isUUID(), param('doctorUserId').isUU
 
 const putHours = [
   param('clinicId').isUUID(),
-  body('doctorUserId').optional({ values: 'falsy' }).isUUID(),
+  // doctorUserId body field removed (backend-cleanup audit — user request: "website frontend me
+  // nahi hai but backend bna hua hai to backend se hata do"): this only ever mattered for an
+  // admin-initiated request (see clinics.service.js#resolveTargetDoctorId) — no web/mobile screen
+  // ever calls this endpoint as admin or sends this field; a doctor caller always uses their own
+  // id regardless.
   body('weekday').isInt({ min: 0, max: 6 }).withMessage('weekday must be between 0 (Sunday) and 6 (Saturday).').toInt(),
   body('startTime').matches(TIME_RE).withMessage('startTime must be in HH:MM 24-hour format.'),
   body('endTime').matches(TIME_RE).withMessage('endTime must be in HH:MM 24-hour format.'),
@@ -150,18 +157,19 @@ const deleteHours = [param('clinicId').isUUID(), param('hoursId').isUUID()];
 
 // ── doctor_clinic_closures ──────────────────────────────────────────────
 
+// doctorUserId body field removed (backend-cleanup audit) — same reasoning as putHours above.
 const createClosure = [
   param('clinicId').isUUID(),
-  body('doctorUserId').optional({ values: 'falsy' }).isUUID(),
   body('closedDate').isISO8601().withMessage('closedDate must be a valid date (YYYY-MM-DD).').toDate(),
   body('reason').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
 ];
 
+// from/to date-range filter removed (backend-cleanup audit — user request: "website frontend me
+// nahi hai but backend bna hua hai to backend se hata do"): no web/mobile closures list screen
+// ever sends a date range — every one just lists all of a doctor's/clinic's closures.
 const listClosures = [
   param('clinicId').isUUID(),
   query('doctorId').optional({ values: 'falsy' }).isUUID(),
-  query('from').optional({ values: 'falsy' }).isISO8601().toDate(),
-  query('to').optional({ values: 'falsy' }).isISO8601().toDate(),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

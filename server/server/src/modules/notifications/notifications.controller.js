@@ -18,9 +18,10 @@ const listBroadcasts = asyncHandler(async (req, res) => {
   return success(res, rows, { pagination });
 });
 
+// unreadOnly filter removed (backend-cleanup audit) — see notifications.validation.js's comment.
 const listMyNotifications = asyncHandler(async (req, res) => {
-  const { unreadOnly, page, pageSize } = req.query;
-  const { rows, pagination } = await notificationsService.listMyNotifications({ unreadOnly, page, pageSize }, req.user);
+  const { page, pageSize } = req.query;
+  const { rows, pagination } = await notificationsService.listMyNotifications({ page, pageSize }, req.user);
   return success(res, rows, { pagination });
 });
 

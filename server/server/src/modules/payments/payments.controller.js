@@ -13,18 +13,12 @@ const createPayment = asyncHandler(async (req, res) => {
   return success(res, payment, { statusCode: 201, message: 'Payment recorded.' });
 });
 
+// status/mode/dateFrom/dateTo/appointmentId/patientId/doctorId/clinicId admin list-filters
+// removed (backend-cleanup audit) — see payments.service.js#listPayments's comment.
 const listPayments = asyncHandler(async (req, res) => {
-  const { page, pageSize, status, mode, dateFrom, dateTo, appointmentId, patientId, doctorId, clinicId } = req.query;
-  const { rows, pagination } = await paymentsService.listPayments(
-    { page, pageSize, status, mode, dateFrom, dateTo, appointmentId, patientId, doctorId, clinicId },
-    req.user
-  );
+  const { page, pageSize } = req.query;
+  const { rows, pagination } = await paymentsService.listPayments({ page, pageSize }, req.user);
   return success(res, rows, { pagination });
-});
-
-const getPayment = asyncHandler(async (req, res) => {
-  const payment = await paymentsService.getPaymentById(req.params.id, req.user);
-  return success(res, payment);
 });
 
 // Razorpay self-pay flow — see razorpay.service.js for the create-order/verify-signature logic.
@@ -59,7 +53,6 @@ const handleRazorpayWebhook = asyncHandler(async (req, res) => {
 module.exports = {
   createPayment,
   listPayments,
-  getPayment,
   createRazorpayOrder,
   verifyRazorpayPayment,
   handleRazorpayWebhook,

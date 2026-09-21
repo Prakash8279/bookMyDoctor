@@ -15,20 +15,17 @@ const PHONE_RE = /^[6-9]\d{9}$/;
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/;
 const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,149}$/;
 
+// specializationId/cityId/areaId/minRating/status filters removed (backend-cleanup audit — user
+// request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
+// web/mobile doctor list UI ever wired these up (search/emergencyAvailable/sortBy/sortOrder are
+// the ones actually used).
 const listDoctors = [
-  query('specializationId').optional({ values: 'falsy' }).isUUID().withMessage('specializationId must be a valid id.'),
-  query('cityId').optional({ values: 'falsy' }).isUUID().withMessage('cityId must be a valid id.'),
-  query('areaId').optional({ values: 'falsy' }).isUUID().withMessage('areaId must be a valid id.'),
-  query('minRating').optional({ values: 'falsy' }).isFloat({ min: 0, max: 5 }).toFloat(),
   query('search').optional({ values: 'falsy' }).isString().trim().isLength({ max: 150 }),
   query('emergencyAvailable').optional({ values: 'falsy' }).isBoolean().toBoolean(),
   query('sortBy').optional({ values: 'falsy' }).isIn(['rating', 'fee', 'experience']),
   query('sortOrder').optional({ values: 'falsy' }).isIn(['asc', 'desc']),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
-  // Admin/superadmin-only filter (see doctors.service.js#listDoctors) — silently ignored for
-  // every other caller, who is hard-restricted to 'verified' regardless of what's passed here.
-  query('status').optional({ values: 'falsy' }).isIn(['pending', 'verified', 'disabled']),
 ];
 
 const getDoctor = [param('id').isUUID().withMessage('id must be a valid id.')];
@@ -118,16 +115,10 @@ const createDoctor = [
   body('experienceYears').optional({ values: 'falsy' }).isInt({ min: 0, max: 80 }).toInt(),
   body('consultationFee').notEmpty().withMessage('consultationFee is required.').isFloat({ min: 0 }).toFloat(),
   body('emergencyFee').optional({ values: 'falsy' }).isFloat({ min: 0 }).toFloat(),
-  body('languages').optional({ values: 'falsy' }).isArray().withMessage('languages must be an array of strings.'),
-  body('languages.*').optional().isString().isLength({ max: 50 }),
+  // languages/verificationDocuments removed (backend-cleanup audit — user request: "website
+  // frontend me nahi hai but backend bna hua hai to backend se hata do"): the admin "add a
+  // doctor" web form never collected either one — see doctors.service.js#createDoctor.
   body('bio').optional({ values: 'falsy' }).isString().isLength({ max: 2000 }),
-  body('verificationDocuments').optional({ values: 'falsy' }).isArray({ max: 10 }).withMessage('verificationDocuments must be an array of at most 10 items.'),
-  body('verificationDocuments.*.name').if(body('verificationDocuments').exists()).isString().trim().notEmpty().isLength({ max: 150 }),
-  body('verificationDocuments.*.url')
-    .if(body('verificationDocuments').exists())
-    .isString()
-    .isURL({ protocols: ['http', 'https'], require_protocol: true })
-    .withMessage('Each verification document url must be a valid http(s) URL.'),
   body('verifyImmediately').optional({ values: 'falsy' }).isBoolean().toBoolean(),
 ];
 
@@ -157,8 +148,8 @@ const registerDoctor = [
   body('experienceYears').notEmpty().withMessage('experienceYears is required.').isInt({ min: 0, max: 80 }).toInt(),
   body('consultationFee').notEmpty().withMessage('consultationFee is required.').isFloat({ min: 0 }).toFloat(),
   body('emergencyFee').optional({ values: 'falsy' }).isFloat({ min: 0 }).toFloat(),
-  body('languages').optional({ values: 'falsy' }).isArray().withMessage('languages must be an array of strings.'),
-  body('languages.*').optional().isString().isLength({ max: 50 }),
+  // languages removed (backend-cleanup audit) — same reasoning as createDoctor above; the
+  // "Create account" -> doctor tab form never collected it either.
   body('bio').optional({ values: 'falsy' }).isString().isLength({ max: 2000 }),
 ];
 

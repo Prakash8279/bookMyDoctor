@@ -13,15 +13,11 @@ const { body, param, query } = require('express-validator');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+// status query filter removed (backend-cleanup audit — user request: "website frontend me nahi
+// hai but backend bna hua hai to backend se hata do"): neither web nor mobile ever sent it — both
+// always fetch the day's full queue.
 const listQueue = [
   query('date').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('date must be in YYYY-MM-DD format.'),
-  query('status')
-    .optional({ values: 'falsy' })
-    // 'on_hold' is accepted here for API-contract completeness (a valid QueueStatus value), even
-    // though listQueue's `where` always excludes on_hold tokens regardless of this filter — see
-    // queue.service.js#listQueue's comment. Passing it just returns an empty page, never an error.
-    .isIn(['waiting', 'called', 'in_consultation', 'completed', 'on_hold'])
-    .withMessage('status must be one of: waiting, called, in_consultation, completed, on_hold.'),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

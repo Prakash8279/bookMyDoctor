@@ -9,10 +9,14 @@
  *     ACTIVE patient account, and deliberately has NO "prior appointment" gate (a walk-in/
  *     phone-consult record has no prior appointment by definition — see the file's own
  *     comment on this).
- *   - getVisibleMedicalRecordOrThrow: 404 (never 403) for anyone but the treating doctor, the
- *     owning patient, or an admin.
  *   - listMedicalRecords: doctor/patient roles are hard-scoped to their own id regardless of
- *     query params; only admin/superadmin may use the patientId/doctorId/appointmentId filters.
+ *     query params; admin/superadmin gets a fully unfiltered where clause (the
+ *     patientId/doctorId/appointmentId filters were removed — backend-cleanup audit, no
+ *     web/mobile caller ever sent them).
+ *
+ * getMedicalRecordById/getVisibleMedicalRecordOrThrow (the old 3-way visibility check: treating
+ * doctor / owning patient / admin, 404 never 403) were removed from the service entirely along
+ * with GET /medical-records/:id — see medicalRecords.service.js's own comment.
  *
  * config/db is mocked (no real Postgres in this sandbox); activityLogService/cacheService are
  * mocked to isolate this module's own branching from their internals.
@@ -34,7 +38,6 @@ const medicalRecordsService = require('../../../src/modules/medicalRecords/medic
 const DOCTOR = { id: 'doc-1', role: 'doctor' };
 const OTHER_DOCTOR = { id: 'doc-2', role: 'doctor' };
 const PATIENT = { id: 'patient-1', role: 'patient' };
-const OTHER_PATIENT = { id: 'patient-2', role: 'patient' };
 const ADMIN = { id: 'admin-1', role: 'admin' };
 
 function recordRow(overrides = {}) {
@@ -114,45 +117,12 @@ describe('medicalRecordsService.createMedicalRecord — resolvePatientAndAppoint
   });
 });
 
-describe('medicalRecordsService.getMedicalRecordById — 3-way visibility', () => {
-  test('404 when the record does not exist', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(null);
-    await expect(medicalRecordsService.getMedicalRecordById('x', DOCTOR)).rejects.toMatchObject({ code: 'MEDICAL_RECORD_NOT_FOUND' });
-  });
-
-  test('the treating doctor can view it', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(recordRow());
-    const result = await medicalRecordsService.getMedicalRecordById('record-1', DOCTOR);
-    expect(result.id).toBe('record-1');
-  });
-
-  test('an unrelated doctor gets 404 (not 403)', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(recordRow());
-    await expect(medicalRecordsService.getMedicalRecordById('record-1', OTHER_DOCTOR)).rejects.toMatchObject({
-      statusCode: 404,
-      code: 'MEDICAL_RECORD_NOT_FOUND',
-    });
-  });
-
-  test('the owning patient can view it', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(recordRow());
-    const result = await medicalRecordsService.getMedicalRecordById('record-1', PATIENT);
-    expect(result.id).toBe('record-1');
-  });
-
-  test('an unrelated patient gets 404', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(recordRow());
-    await expect(medicalRecordsService.getMedicalRecordById('record-1', OTHER_PATIENT)).rejects.toMatchObject({
-      code: 'MEDICAL_RECORD_NOT_FOUND',
-    });
-  });
-
-  test('admin can view any record', async () => {
-    prisma.medicalRecord.findUnique.mockResolvedValue(recordRow());
-    const result = await medicalRecordsService.getMedicalRecordById('record-1', ADMIN);
-    expect(result.id).toBe('record-1');
-  });
-});
+// getMedicalRecordById/getVisibleMedicalRecordOrThrow removed entirely (backend-cleanup audit —
+// user request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"):
+// neither web nor mobile ever fetches a single medical record by id, and no other module called
+// either function internally — see medicalRecords.service.js's own comment. The 3-way-visibility
+// tests that used to live here (treating doctor / owning patient / admin / unrelated-doctor /
+// unrelated-patient / not-found) were removed along with the code they exercised.
 
 describe('medicalRecordsService.listMedicalRecords — forced role scoping', () => {
   test('a doctor\'s where clause is forced to their own id, ignoring patientId/doctorId query params', async () => {
@@ -173,14 +143,15 @@ describe('medicalRecordsService.listMedicalRecords — forced role scoping', () 
     expect(prisma.medicalRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { patientUserId: PATIENT.id } }));
   });
 
-  test('admin may filter freely by patientId/doctorId/appointmentId', async () => {
+  // patientId/doctorId/appointmentId filters removed (backend-cleanup audit — see
+  // medicalRecords.validation.js's comment): no web/mobile caller ever sent them, so even an
+  // admin's where clause is now always fully unfiltered, regardless of what a caller passes in.
+  test('admin gets a fully unfiltered where clause, even if patientId/doctorId/appointmentId are still passed in', async () => {
     prisma.medicalRecord.findMany.mockResolvedValue([]);
     prisma.medicalRecord.count.mockResolvedValue(0);
 
     await medicalRecordsService.listMedicalRecords({ doctorId: 'doc-x', patientId: 'patient-x', appointmentId: 'appt-x' }, ADMIN);
 
-    expect(prisma.medicalRecord.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { doctorUserId: 'doc-x', patientUserId: 'patient-x', appointmentId: 'appt-x' } })
-    );
+    expect(prisma.medicalRecord.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
   });
 });

@@ -14,7 +14,6 @@ const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
-const { ADMIN_ROLES } = require('../../utils/roles');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -137,54 +136,43 @@ async function createMedicalRecord(body, requester) {
   return shapeMedicalRecord(created);
 }
 
-/**
- * 404 (not 403) for a non-owner, non-treating-doctor, non-admin caller — same enumeration-
- * avoidance posture as appointments.service.js#getVisibleAppointmentOrThrow.
- * @param {string} id
- * @param {{id:string, role:string}} requester
- */
-async function getVisibleMedicalRecordOrThrow(id, requester) {
-  const row = await prisma.medicalRecord.findUnique({ where: { id }, select: MEDICAL_RECORD_SELECT });
-  if (!row) {
-    throw new ApiError(404, 'MEDICAL_RECORD_NOT_FOUND', 'Medical record not found.');
-  }
-  if (ADMIN_ROLES.includes(requester.role)) return row;
-  if (requester.role === 'doctor' && row.doctorUserId === requester.id) return row;
-  if (requester.role === 'patient' && row.patientUserId === requester.id) return row;
-  throw new ApiError(404, 'MEDICAL_RECORD_NOT_FOUND', 'Medical record not found.');
-}
+// getVisibleMedicalRecordOrThrow/getMedicalRecordById removed (backend-cleanup audit — user
+// request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"):
+// neither web nor mobile ever fetches a single medical record by id — grepped and confirmed no
+// other module called either function internally either, so both were safe to delete outright
+// (unlike e.g. payments.service.js#getPaymentById, which stayed because razorpay.service.js
+// still calls it).
 
 /**
+ * patientId/doctorId/appointmentId filters removed (backend-cleanup audit) — see
+ * medicalRecords.validation.js's comment: no web/mobile caller ever sends them, so even the
+ * admin/superadmin branch below is now always fully unfiltered.
  * @param {object} query
  * @param {{id:string, role:string}} requester
  */
-async function listMedicalRecords({ page, pageSize, patientId, doctorId, appointmentId }, requester) {
-  // Ownership-scoped output -> key MUST include role + requester id (patient/doctor) or the
-  // admin filters (admin can see everything, scoped only by its own query params).
+async function listMedicalRecords({ page, pageSize }, requester) {
+  // Ownership-scoped output -> key MUST include role + requester id (patient/doctor); admin's
+  // own bucket stays separate too, even though it's unfiltered, so it never collides with a
+  // doctor/patient scope key.
   const scope =
     requester.role === 'doctor'
       ? `doctor:${requester.id}`
       : requester.role === 'patient'
       ? `patient:${requester.id}`
       : 'admin';
-  const cacheKey = `cache:medicalRecords:list:${scope}:${patientId || ''}:${doctorId || ''}:${
-    appointmentId || ''
-  }:${page || ''}:${pageSize || ''}`;
+  const cacheKey = `cache:medicalRecords:list:${scope}:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
     const where = {};
-    // Forced role scoping (never client-controlled, rule 3): doctorId/patientId/appointmentId
-    // query params are only honored for admin/superadmin.
+    // Forced role scoping (never client-controlled, rule 3). admin/superadmin gets a fully
+    // unfiltered where — the patientId/doctorId/appointmentId query params they used to be able
+    // to pass are gone.
     if (requester.role === 'doctor') {
       where.doctorUserId = requester.id;
     } else if (requester.role === 'patient') {
       where.patientUserId = requester.id;
-    } else if (ADMIN_ROLES.includes(requester.role)) {
-      if (patientId) where.patientUserId = patientId;
-      if (doctorId) where.doctorUserId = doctorId;
-      if (appointmentId) where.appointmentId = appointmentId;
     }
 
     const [rows, total] = await Promise.all([
@@ -205,17 +193,7 @@ async function listMedicalRecords({ page, pageSize, patientId, doctorId, appoint
   });
 }
 
-/**
- * @param {string} id
- * @param {{id:string, role:string}} requester
- */
-async function getMedicalRecordById(id, requester) {
-  const row = await getVisibleMedicalRecordOrThrow(id, requester);
-  return shapeMedicalRecord(row);
-}
-
 module.exports = {
   createMedicalRecord,
   listMedicalRecords,
-  getMedicalRecordById,
 };

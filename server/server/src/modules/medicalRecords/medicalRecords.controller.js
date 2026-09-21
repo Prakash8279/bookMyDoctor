@@ -12,18 +12,16 @@ const createMedicalRecord = asyncHandler(async (req, res) => {
   return success(res, record, { statusCode: 201, message: 'Medical record created.' });
 });
 
+// patientId/doctorId/appointmentId filters removed (backend-cleanup audit) — see
+// medicalRecords.validation.js#listMedicalRecords's comment.
 const listMedicalRecords = asyncHandler(async (req, res) => {
-  const { page, pageSize, patientId, doctorId, appointmentId } = req.query;
-  const { rows, pagination } = await medicalRecordsService.listMedicalRecords(
-    { page, pageSize, patientId, doctorId, appointmentId },
-    req.user
-  );
+  const { page, pageSize } = req.query;
+  const { rows, pagination } = await medicalRecordsService.listMedicalRecords({ page, pageSize }, req.user);
   return success(res, rows, { pagination });
 });
 
-const getMedicalRecord = asyncHandler(async (req, res) => {
-  const record = await medicalRecordsService.getMedicalRecordById(req.params.id, req.user);
-  return success(res, record);
-});
+// getMedicalRecord handler removed (backend-cleanup audit) — see medicalRecords.routes.js's
+// comment. medicalRecordsService.getMedicalRecordById/getVisibleMedicalRecordOrThrow were removed
+// too — grepped and confirmed no other module called either function internally.
 
-module.exports = { createMedicalRecord, listMedicalRecords, getMedicalRecord };
+module.exports = { createMedicalRecord, listMedicalRecords };

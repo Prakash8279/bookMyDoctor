@@ -27,9 +27,12 @@ const listAppointments = asyncHandler(async (req, res) => {
   // city wise doctor name se v aur date se v") — cityId is the new one; date/doctorId were
   // already supported for admin/superadmin (see appointments.service.js#listAppointments), the
   // web Appointments registry page just never exposed a UI for them until now.
-  const { page, pageSize, status, date, dateFrom, dateTo, doctorId, clinicId, patientId, cityId } = req.query;
+  //
+  // patientId/clinicId admin list-filters removed (backend-cleanup audit) — see
+  // appointments.service.js#listAppointments's comment.
+  const { page, pageSize, status, date, dateFrom, dateTo, doctorId, cityId } = req.query;
   const { rows, pagination } = await appointmentsService.listAppointments(
-    { page, pageSize, status, date, dateFrom, dateTo, doctorId, clinicId, patientId, cityId },
+    { page, pageSize, status, date, dateFrom, dateTo, doctorId, cityId },
     req.user
   );
   return success(res, rows, { pagination });

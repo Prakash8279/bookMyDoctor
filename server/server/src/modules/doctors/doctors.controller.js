@@ -9,24 +9,18 @@ const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 const { applyAuthCookies } = require('../../utils/webClientAuth');
 
+// specializationId/cityId/areaId/minRating/status filters removed (backend-cleanup audit) — see
+// doctors.validation.js#listDoctors's comment.
 const listDoctors = asyncHandler(async (req, res) => {
-  const { specializationId, cityId, areaId, minRating, search, emergencyAvailable, sortBy, sortOrder, page, pageSize, status } =
-    req.query;
+  const { search, emergencyAvailable, sortBy, sortOrder, page, pageSize } = req.query;
   const { rows, pagination } = await doctorsService.listDoctors({
-    specializationId,
-    cityId,
-    areaId,
-    minRating,
     search,
     emergencyAvailable,
     sortBy,
     sortOrder,
     page,
     pageSize,
-    // `status` only has any effect for an admin/superadmin requester — see
-    // doctors.service.js#listDoctors's isAdminCaller branch.
     requester: req.user,
-    status,
   });
   return success(res, rows, { pagination });
 });
@@ -65,11 +59,10 @@ const registerDoctor = asyncHandler(async (req, res) => {
     experienceYears,
     consultationFee,
     emergencyFee,
-    languages,
     bio,
   } = req.body;
   const doctor = await doctorsService.createDoctor(
-    { name, email, password, phone, city, specializationId, qualification, registrationNumber, experienceYears, consultationFee, emergencyFee, languages, bio },
+    { name, email, password, phone, city, specializationId, qualification, registrationNumber, experienceYears, consultationFee, emergencyFee, bio },
     null
   );
   const tokens = await tokenService.issueTokenPair({ id: doctor.id, role: 'doctor' });

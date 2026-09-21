@@ -4,7 +4,7 @@
  * numeric ranges). Business-rule validation (e.g. "you don't own this appointment", "patient
  * not found") belongs in medicalRecords.service.js.
  */
-const { body, param, query } = require('express-validator');
+const { body, query } = require('express-validator');
 
 const createMedicalRecord = [
   body('appointmentId').optional({ values: 'falsy' }).isUUID().withMessage('appointmentId must be a valid id.'),
@@ -24,14 +24,16 @@ const createMedicalRecord = [
   body('carePlan').optional({ values: 'falsy' }).isString().trim().isLength({ max: 4000 }).withMessage('carePlan must be at most 4000 characters.'),
 ];
 
+// patientId/doctorId/appointmentId filters removed (backend-cleanup audit — user request:
+// "website frontend me nahi hai but backend bna hua hai to backend se hata do"): neither web nor
+// mobile ever sends any of these three — every caller (doctor/patient scoped automatically,
+// admin unfiltered) just fetches the plain paginated list.
 const listMedicalRecords = [
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
-  query('patientId').optional({ values: 'falsy' }).isUUID().withMessage('patientId must be a valid id.'),
-  query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid id.'),
-  query('appointmentId').optional({ values: 'falsy' }).isUUID().withMessage('appointmentId must be a valid id.'),
 ];
 
-const getMedicalRecord = [param('id').isUUID().withMessage('id must be a valid id.')];
+// getMedicalRecord validation removed (backend-cleanup audit) — see medicalRecords.routes.js's
+// comment.
 
-module.exports = { createMedicalRecord, listMedicalRecords, getMedicalRecord };
+module.exports = { createMedicalRecord, listMedicalRecords };

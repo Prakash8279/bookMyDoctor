@@ -18,9 +18,6 @@ const list = asyncHandler(async (req, res) => {
   return success(res, rows, { pagination });
 });
 
-const getOne = asyncHandler(async (req, res) => {
-  const row = await receptionistsService.getReceptionistById(req.params.id, req.user);
-  return success(res, row);
-});
+// getOne handler removed (backend-cleanup audit) — see receptionists.routes.js's comment.
 
-module.exports = { create, list, getOne };
+module.exports = { create, list };

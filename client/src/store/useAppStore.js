@@ -992,11 +992,9 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, complaints: rows } }))
         return rows
       },
-      addComplaint: async (fields) => {
-        const complaint = await apiClient.post('/complaints', fields)
-        set((state) => ({ data: { ...state.data, complaints: [complaint, ...(state.data.complaints || [])] } }))
-        return complaint
-      },
+      // addComplaint (POST /complaints) removed — it had zero call sites on web/mobile, and the
+      // backend route it called was removed too (backend-cleanup audit — user request: "website
+      // frontend me nahi hai but backend bna hua hai to backend se hata do").
       // Body field is `adminResponse`, not `response` (rename vs the mock).
       updateComplaint: async (id, fields) => {
         const complaint = await apiClient.patch(`/complaints/${id}`, fields)

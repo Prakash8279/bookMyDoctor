@@ -16,20 +16,22 @@ const CITY_SELECT = { id: true, name: true, state: true };
 const AREA_SELECT = { id: true, name: true, pincode: true, cityId: true };
 const SPECIALIZATION_SELECT = { id: true, name: true, icon: true, description: true };
 
+// search filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+// backend bna hua hai to backend se hata do"): see geography.validation.js's comment — neither
+// web nor mobile ever sends it.
+
 /**
- * @param {{search?:string, page?:number, pageSize?:number}} query
+ * @param {{page?:number, pageSize?:number}} query
  */
-async function listCities({ search, page, pageSize }) {
-  const cacheKey = `cache:geography:cities:${search || ''}:${page || ''}:${pageSize || ''}`;
+async function listCities({ page, pageSize }) {
+  const cacheKey = `cache:geography:cities:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
-    const where = search ? { name: { contains: search, mode: 'insensitive' } } : {};
-
     const [rows, total] = await Promise.all([
-      prisma.city.findMany({ where, select: CITY_SELECT, orderBy: { name: 'asc' }, skip, take }),
-      prisma.city.count({ where }),
+      prisma.city.findMany({ select: CITY_SELECT, orderBy: { name: 'asc' }, skip, take }),
+      prisma.city.count(),
     ]);
 
     return { rows, pagination: buildPaginationMeta({ page: p, pageSize: ps, total }) };
@@ -37,18 +39,15 @@ async function listCities({ search, page, pageSize }) {
 }
 
 /**
- * @param {{cityId?:string, search?:string, page?:number, pageSize?:number}} query
+ * @param {{cityId?:string, page?:number, pageSize?:number}} query
  */
-async function listAreas({ cityId, search, page, pageSize }) {
-  const cacheKey = `cache:geography:areas:${cityId || ''}:${search || ''}:${page || ''}:${pageSize || ''}`;
+async function listAreas({ cityId, page, pageSize }) {
+  const cacheKey = `cache:geography:areas:${cityId || ''}:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
-    const where = {
-      ...(cityId ? { cityId } : {}),
-      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
-    };
+    const where = cityId ? { cityId } : {};
 
     const [rows, total] = await Promise.all([
       prisma.area.findMany({ where, select: AREA_SELECT, orderBy: { name: 'asc' }, skip, take }),
@@ -60,19 +59,17 @@ async function listAreas({ cityId, search, page, pageSize }) {
 }
 
 /**
- * @param {{search?:string, page?:number, pageSize?:number}} query
+ * @param {{page?:number, pageSize?:number}} query
  */
-async function listSpecializations({ search, page, pageSize }) {
-  const cacheKey = `cache:geography:specializations:${search || ''}:${page || ''}:${pageSize || ''}`;
+async function listSpecializations({ page, pageSize }) {
+  const cacheKey = `cache:geography:specializations:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
 
-    const where = search ? { name: { contains: search, mode: 'insensitive' } } : {};
-
     const [rows, total] = await Promise.all([
-      prisma.specialization.findMany({ where, select: SPECIALIZATION_SELECT, orderBy: { name: 'asc' }, skip, take }),
-      prisma.specialization.count({ where }),
+      prisma.specialization.findMany({ select: SPECIALIZATION_SELECT, orderBy: { name: 'asc' }, skip, take }),
+      prisma.specialization.count(),
     ]);
 
     return { rows, pagination: buildPaginationMeta({ page: p, pageSize: ps, total }) };

@@ -19,7 +19,13 @@ router.use(authenticate, authorize('doctor', 'admin', 'superadmin'));
 
 router.post('/', validation.create, validateRequest, controller.create);
 router.get('/', validation.list, validateRequest, controller.list);
-router.get('/:id', validation.getOne, validateRequest, controller.getOne);
+
+// GET /:id (getOne) removed (backend-cleanup audit — user request: "website frontend me nahi hai
+// but backend bna hua hai to backend se hata do"): neither DoctorStaff nor admin's
+// ManageReceptionists ever fetches a single receptionist by id — both only ever create + list,
+// same orphaned-endpoint pattern already documented below for PATCH /:id and /:id/status.
+// receptionistsService.getReceptionistById itself stays: createReceptionist below still calls it
+// internally to build its response after inserting a new row.
 
 // COMPLETENESS FIX (mobile parity audit round 2, doctor panel — user request: "backend hai but
 // website me nahi hai to hata do app se backend v oo hata do"): PATCH /:id (edit) and

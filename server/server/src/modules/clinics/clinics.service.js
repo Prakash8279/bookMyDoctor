@@ -298,15 +298,19 @@ async function createClinic(input, actor) {
 }
 
 /**
+ * search filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
+ * backend bna hua hai to backend se hata do"): neither web nor mobile ever sends a free-text
+ * `search` param — every clinic list/search screen filters by city/area/emergencyAvailable/mine
+ * instead.
  * @param {object} query
  * @param {{id:string, role:string}|undefined} requester
  */
-async function listClinics({ city, area, search, emergencyAvailable, approvalStatus, mine, page, pageSize }, requester) {
+async function listClinics({ city, area, emergencyAvailable, approvalStatus, mine, page, pageSize }, requester) {
   const wantsMine = mine === true && !!requester && requester.role === 'doctor';
   // Output is role-invariant EXCEPT for the `mine` branch (a doctor's own, all-statuses view)
   // and the admin branch (sees every status by default) — both must be scoped to the actor.
   const scope = wantsMine ? `mine:${requester.id}` : isAdmin(requester) ? 'admin' : 'public';
-  const cacheKey = `cache:clinics:list:${scope}:${city || ''}:${area || ''}:${search || ''}:${
+  const cacheKey = `cache:clinics:list:${scope}:${city || ''}:${area || ''}:${
     emergencyAvailable ?? ''
   }:${approvalStatus || ''}:${page || ''}:${pageSize || ''}`;
 
@@ -330,7 +334,6 @@ async function listClinics({ city, area, search, emergencyAvailable, approvalSta
       ...statusWhere,
       ...(city ? { cityId: city } : {}),
       ...(area ? { areaId: area } : {}),
-      ...(search ? { name: { contains: search, mode: 'insensitive' } } : {}),
       ...(typeof emergencyAvailable === 'boolean' ? { emergencyAvailable } : {}),
       ...(wantsMine ? { doctorClinics: { some: { doctorUserId: requester.id } } } : {}),
     };
@@ -592,28 +595,17 @@ async function updateDoctorAssignment(clinicId, doctorUserId, body, actor) {
 
   await assertIsClinicOwner(clinicId, actor);
 
-  const updates = pickPresentFields(body, ['isOwner', 'isPrimary', 'onlineBooking'], ASSIGNMENT_NON_NULLABLE);
+  // isOwner/isPrimary removed from this PATCH (backend-cleanup audit — user request: "website
+  // frontend me nahi hai but backend bna hua hai to backend se hata do"): no web/mobile screen
+  // ever edits either flag after assignment — only the initial POST /:id/doctors create call
+  // (assignDoctorToClinic above) sets them, and every PATCH caller only ever toggles
+  // onlineBooking. The "must always have an owner"/"only one primary" guards that used to live
+  // here (for a client-supplied isOwner:false / isPrimary:true) are gone along with the fields.
+  const updates = pickPresentFields(body, ['onlineBooking'], ['onlineBooking']);
 
-  if ('isOwner' in updates && updates.isOwner === false && existing.isOwner === true) {
-    const otherOwners = await prisma.doctorClinic.count({
-      where: { clinicId, isOwner: true, doctorUserId: { not: doctorUserId } },
-    });
-    if (otherOwners === 0 && !isAdmin(actor)) {
-      throw new ApiError(409, 'CLINIC_MUST_HAVE_OWNER', 'A clinic must always have at least one owner.');
-    }
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    if (updates.isPrimary === true) {
-      await tx.doctorClinic.updateMany({
-        where: { clinicId, isPrimary: true, doctorUserId: { not: doctorUserId } },
-        data: { isPrimary: false },
-      });
-    }
-    return tx.doctorClinic.update({
-      where: { doctorUserId_clinicId: { doctorUserId, clinicId } },
-      data: updates,
-    });
+  const updated = await prisma.doctorClinic.update({
+    where: { doctorUserId_clinicId: { doctorUserId, clinicId } },
+    data: updates,
   });
 
   await activityLogService.log({
@@ -874,21 +866,18 @@ async function upsertClosure(clinicId, body, actor) {
 }
 
 /**
+ * from/to date-range filter removed (backend-cleanup audit — user request: "website frontend me
+ * nahi hai but backend bna hua hai to backend se hata do"): no web/mobile closures list screen
+ * ever sends a date range.
  * @param {string} clinicId
  * @param {object} query
  * @param {{id:string, role:string}|undefined} requester
  */
-async function listClosures(clinicId, { doctorId, from, to, page, pageSize }, requester) {
+async function listClosures(clinicId, { doctorId, page, pageSize }, requester) {
   await getVisibleClinicOrThrow(clinicId, requester);
 
   const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
-  const where = {
-    clinicId,
-    ...(doctorId ? { doctorUserId: doctorId } : {}),
-    ...(from || to
-      ? { closedDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
-      : {}),
-  };
+  const where = { clinicId, ...(doctorId ? { doctorUserId: doctorId } : {}) };
 
   const [rows, total] = await Promise.all([
     prisma.doctorClinicClosure.findMany({ where, orderBy: { closedDate: 'asc' }, skip, take }),
