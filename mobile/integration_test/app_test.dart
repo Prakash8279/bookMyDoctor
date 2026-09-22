@@ -1,7 +1,7 @@
-// End-to-end integration test for the BookMyDoctor24 mobile app.
+// End-to-end integration test for the BookMyDoctors mobile app.
 //
 // This drives the REAL widget tree (package:connect_mobile/main.dart's
-// BookMyDoctor24App) inside a real Flutter engine on a real device via the
+// BookMyDoctorsApp) inside a real Flutter engine on a real device via the
 // `integration_test` package — it is NOT a mocked widget-test harness.
 //
 // HOW TO RUN (this file is UNEXECUTED — there is no Flutter/Dart SDK in the
@@ -41,9 +41,9 @@ void main() {
     'app boots straight to the guest home screen and reaches doctor search',
     (WidgetTester tester) async {
       // 1. Boot the real app widget tree, exactly as main() does.
-      await tester.pumpWidget(const BookMyDoctor24App());
+      await tester.pumpWidget(const BookMyDoctorsApp());
 
-      // AuthProvider.bootstrap() is kicked off inside BookMyDoctor24App's
+      // AuthProvider.bootstrap() is kicked off inside BookMyDoctorsApp's
       // ChangeNotifierProvider.create (see lib/main.dart). It only makes a
       // network call (GET /me) when TokenStore.load() finds a saved
       // access+refresh token pair (see lib/state/auth_provider.dart and
@@ -72,7 +72,7 @@ void main() {
       //
       // 3. Verify GuestHomeScreen rendered. Static chrome + headline copy
       // only (see NETWORK CAVEAT above) — never doctor/specialization data.
-      expect(find.widgetWithText(AppBar, 'BookMyDoctor24'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'BookMyDoctors'), findsOneWidget);
       // The hero headline is rendered as Text.rich('Care without the ' +
       // 'waiting room.'); textContaining matches on the combined plain text
       // of a Text widget's textSpan, so this works even though the string

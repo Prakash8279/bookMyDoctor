@@ -39,7 +39,7 @@ void main() {
       ),
     );
 
-    expect(find.text('BookMyDoctor24'), findsOneWidget);
+    expect(find.text('BookMyDoctors'), findsOneWidget);
     expect(find.textContaining('CLINIC BOOKING SLIP'), findsOneWidget);
     expect(find.text('#14'), findsOneWidget);
     expect(find.text('Dr. Sharma'), findsOneWidget);
@@ -87,7 +87,7 @@ void main() {
       ),
     );
 
-    expect(find.text('BookMyDoctor24'), findsOneWidget);
+    expect(find.text('BookMyDoctors'), findsOneWidget);
     expect(find.textContaining('REC-0012'), findsWidgets);
     expect(find.text('₹450'), findsOneWidget);
     expect(find.text('CASH'), findsWidgets);
