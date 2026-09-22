@@ -46,7 +46,7 @@ describe('buildBookingSlipSections', () => {
   it('includes patient, doctor, clinic and appointment details', () => {
     const doc = buildBookingSlipSections({ appointment, fee: 500, paid: 200, due: 300, patientName: 'Rahul Verma' })
 
-    expect(doc.title).toBe('BookMyDoctor24')
+    expect(doc.title).toBe('BookMyDoctors')
     expect(doc.subtitle).toBe('Booking Slip')
     expect(doc.meta.join(' ')).toContain('Booking ID: #5b4a')
 
@@ -334,7 +334,7 @@ describe('buildStaffReceiptSections', () => {
 // Branding: "pdf me logo add karo header me mera colorthem v add kar do" — the header logo image
 // and the app's brand color, not just the receipt content shape tested above.
 describe('renderReceiptDocument branding', () => {
-  const minimalSpec = { title: 'BookMyDoctor24', subtitle: 'Test Receipt', sections: [{ heading: 'Patient', rows: [['Name', 'Rahul Verma']] }], totalRows: [['Total', 'Rs. 500', true]] }
+  const minimalSpec = { title: 'BookMyDoctors', subtitle: 'Test Receipt', sections: [{ heading: 'Patient', rows: [['Name', 'Rahul Verma']] }], totalRows: [['Total', 'Rs. 500', true]] }
 
   it('produces a well-formed PDF even when the logo cannot be rasterized (this test env has no 2D canvas)', async () => {
     const doc = await renderReceiptDocument(minimalSpec)
@@ -348,7 +348,7 @@ describe('renderReceiptDocument branding', () => {
     const pdf = bytesToLatin1String(doc.toBytes())
     const [r, g, b] = hexToRgb01(theme.primary)
     expect(pdf).toContain(`${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`)
-    expect(pdf).toContain('(BookMyDoctor24) Tj')
+    expect(pdf).toContain('(BookMyDoctors) Tj')
   })
 
   it('draws the header rule and section headings in the brand color', async () => {

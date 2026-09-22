@@ -965,7 +965,7 @@ export function WalkIn({ data }) {
   // BUG FIX ("yaha par do doctor kyu aa raha hai... jis doctor ka receptionist hai ushi ka show
   // hona chahiye"): the Doctor dropdown used to read `data.doctors`, which is the PLATFORM-WIDE
   // public directory (loadPublicDirectory()'s searchDoctors({pageSize:100})) — every verified
-  // doctor on BookMyDoctor24, not just the ones at this receptionist's own clinic. Fixed by
+  // doctor on BookMyDoctors, not just the ones at this receptionist's own clinic. Fixed by
   // loading this receptionist's own clinic (GET /clinics/:id via the existing getClinic action,
   // keyed off currentUser.profile.clinicId) and scoping the dropdown to clinic.doctors instead.
   const clinicId = currentUser?.profile?.clinicId

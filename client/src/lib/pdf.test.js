@@ -102,7 +102,7 @@ describe('createPdfDoc', () => {
 
   describe('hexToRgb01', () => {
     it('converts a "#rrggbb" brand color into 0..1 RGB triples', () => {
-      // #ad5d3b is BookMyDoctor24's own brand color (client/src/lib/theme.js) — used here as the
+      // #ad5d3b is BookMyDoctors's own brand color (client/src/lib/theme.js) — used here as the
       // realistic case this helper exists for, not just an arbitrary hex value.
       const [r, g, b] = hexToRgb01('#ad5d3b')
       expect(r).toBeCloseTo(173 / 255, 5)

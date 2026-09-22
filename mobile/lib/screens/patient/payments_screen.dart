@@ -372,7 +372,7 @@ class _PaymentReceiptSheet extends StatelessWidget {
     final isPaid = payment.status == 'paid';
     return '''
 ========================================
-       BOOKMYDOCTOR24 - PAYMENT RECEIPT
+       BOOKMYDOCTORS - PAYMENT RECEIPT
 ========================================
 Receipt No: #${payment.receiptNumber ?? _shortId}
 Status: ${isPaid ? "Settled" : "Pending"}
@@ -428,7 +428,7 @@ This is a digitally generated clinic payment receipt.
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('BookMyDoctor24', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                    Text('BookMyDoctors', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
                     Text('OFFICIAL PAYMENT RECEIPT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppColors.textSecondary)),
                   ],
                 ),

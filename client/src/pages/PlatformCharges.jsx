@@ -101,9 +101,9 @@ export function PlatformCharges({ audience = 'admin' }) {
   const gstAmount = subtotal * ((Number(charges.gstPercent) || 0) / 100)
   const total = subtotal + gstAmount
 
-  if (loading) return <Page title="Platform charges" subtitle={audience === 'superadmin' ? 'Set the global pricing rules used across every clinic and online booking.' : 'Set the platform fee and commission rules for BookMyDoctor24.'}><LoadingSkeleton /></Page>
+  if (loading) return <Page title="Platform charges" subtitle={audience === 'superadmin' ? 'Set the global pricing rules used across every clinic and online booking.' : 'Set the platform fee and commission rules for BookMyDoctors.'}><LoadingSkeleton /></Page>
 
-  return <Page title="Platform charges" subtitle={audience === 'superadmin' ? 'Set the global pricing rules used across every clinic and online booking.' : 'Set the platform fee and commission rules for BookMyDoctor24.'}>
+  return <Page title="Platform charges" subtitle={audience === 'superadmin' ? 'Set the global pricing rules used across every clinic and online booking.' : 'Set the platform fee and commission rules for BookMyDoctors.'}>
     <ErrorNote>{loadError}</ErrorNote>
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       <form onSubmit={save} className="rounded-card border border-border bg-white p-5 shadow-card">

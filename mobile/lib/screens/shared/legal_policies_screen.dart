@@ -39,7 +39,7 @@ class LegalPoliciesScreen extends StatelessWidget {
           ),
           tile(Icons.privacy_tip_outlined, 'Privacy Policy', 'What we collect, why, and who it’s shared with.', kPrivacySections),
           const SizedBox(height: AppSpacing.sm),
-          tile(Icons.description_outlined, 'Terms of Service', 'The terms that govern using BookMyDoctor24.', kTermsSections),
+          tile(Icons.description_outlined, 'Terms of Service', 'The terms that govern using BookMyDoctors.', kTermsSections),
           const SizedBox(height: AppSpacing.sm),
           tile(
             Icons.receipt_long_outlined,
@@ -107,7 +107,7 @@ class LegalDocumentScreen extends StatelessWidget {
 const kPrivacySections = <List<String>>[
   [
     '1. Scope',
-    'This Privacy Policy applies to the BookMyDoctor24 website and mobile app ("the platform"), operated by BookMyDoctor24. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
+    'This Privacy Policy applies to the BookMyDoctors website and mobile app ("the platform"), operated by BookMyDoctors. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
   ],
   [
     '2. Information we collect',
@@ -151,7 +151,7 @@ const kPrivacySections = <List<String>>[
   ],
   [
     '12. Contact & grievance officer',
-    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctor24@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctor24@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
+    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctors@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctors@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
   ],
 ];
 
@@ -160,11 +160,11 @@ const kPrivacySections = <List<String>>[
 const kTermsSections = <List<String>>[
   [
     '1. Acceptance of these terms',
-    'By creating an account or using BookMyDoctor24 ("the platform") as a patient, doctor, clinic, or clinic staff member, you agree to these Terms of Service. If you do not agree, do not use the platform.',
+    'By creating an account or using BookMyDoctors ("the platform") as a patient, doctor, clinic, or clinic staff member, you agree to these Terms of Service. If you do not agree, do not use the platform.',
   ],
   [
     '2. What the platform is — and is not',
-    'BookMyDoctor24 helps patients discover doctors and clinics, book appointments, and follow their live clinic queue. It also gives clinics tools to manage appointments, walk-ins, queues, and payments. BookMyDoctor24 is not a medical provider, does not practice medicine, and is not a substitute for professional medical judgment. In a medical emergency, contact local emergency services directly rather than relying on this platform.',
+    'BookMyDoctors helps patients discover doctors and clinics, book appointments, and follow their live clinic queue. It also gives clinics tools to manage appointments, walk-ins, queues, and payments. BookMyDoctors is not a medical provider, does not practice medicine, and is not a substitute for professional medical judgment. In a medical emergency, contact local emergency services directly rather than relying on this platform.',
   ],
   [
     '3. Accounts and eligibility',
@@ -180,15 +180,15 @@ const kTermsSections = <List<String>>[
   ],
   [
     '6. Doctor and clinic responsibilities',
-    'Doctors and clinics using BookMyDoctor24 remain solely responsible for the medical care they provide, for complying with applicable healthcare regulations and licensing requirements, and for the accuracy of the schedules, fees, and availability they publish on the platform.',
+    'Doctors and clinics using BookMyDoctors remain solely responsible for the medical care they provide, for complying with applicable healthcare regulations and licensing requirements, and for the accuracy of the schedules, fees, and availability they publish on the platform.',
   ],
   [
     '7. Limitation of liability',
-    "BookMyDoctor24 acts as a technology platform connecting patients with independent doctors and clinics. To the maximum extent permitted by applicable law, BookMyDoctor24 is not liable for the medical care, advice, diagnosis, or treatment provided by any doctor or clinic listed on the platform, or for any loss arising from a doctor or clinic's own scheduling, cancellation, or refund decisions.",
+    "BookMyDoctors acts as a technology platform connecting patients with independent doctors and clinics. To the maximum extent permitted by applicable law, BookMyDoctors is not liable for the medical care, advice, diagnosis, or treatment provided by any doctor or clinic listed on the platform, or for any loss arising from a doctor or clinic's own scheduling, cancellation, or refund decisions.",
   ],
   [
     '8. Changes to these terms',
-    'These terms may be updated as the platform changes. Continued use of BookMyDoctor24 after an update means you accept the revised terms.',
+    'These terms may be updated as the platform changes. Continued use of BookMyDoctors after an update means you accept the revised terms.',
   ],
   [
     '9. Governing law',
@@ -196,7 +196,7 @@ const kTermsSections = <List<String>>[
   ],
   [
     '10. Contact',
-    'Questions about these terms can be sent through the Contact page, or to bookmydoctor24@gmail.com.',
+    'Questions about these terms can be sent through the Contact page, or to bookmydoctors@gmail.com.',
   ],
 ];
 

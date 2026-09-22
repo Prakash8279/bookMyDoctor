@@ -18,7 +18,7 @@ import 'guest_doctor_search_screen.dart';
 
 /// Public landing screen — 100% parity with web's PatientLanding (PublicLanding.jsx)
 /// and SiteHeader / SiteFooter:
-/// - Light SiteHeader with brand logo, "BookMyDoctor24" lockup, Log in, and Get started buttons
+/// - Light SiteHeader with brand logo, "BookMyDoctors" lockup, Log in, and Get started buttons
 /// - Hero section with two-tone typography, 5-field search box, trust indicators, and live queue card
 /// - Stats strip (Verified doctors, Partner clinics, Appointments managed, Patient rating)
 /// - "Browse by specialization" card grid with icons and doctor counts
@@ -206,7 +206,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
             const Text.rich(
               TextSpan(
                 children: [
-                  TextSpan(text: 'BookMyDoctor', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
+                  TextSpan(text: 'BookMyDoctors', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
                   TextSpan(text: '24', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
                 ],
               ),
@@ -270,7 +270,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                       child: Text.rich(
                         TextSpan(
                           children: [
-                            TextSpan(text: 'BookMyDoctor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                            TextSpan(text: 'BookMyDoctors', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
                             TextSpan(text: '24', style: TextStyle(color: Color(0xFFF5E9E3), fontWeight: FontWeight.w800, fontSize: 18)),
                           ],
                         ),
@@ -1714,7 +1714,7 @@ class _SiteFooter extends StatelessWidget {
               const Text.rich(
                 TextSpan(
                   children: [
-                    TextSpan(text: 'BookMyDoctor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                    TextSpan(text: 'BookMyDoctors', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
                     TextSpan(text: '24', style: TextStyle(color: AppColors.primaryLight, fontWeight: FontWeight.w800, fontSize: 18)),
                   ],
                 ),
@@ -1731,7 +1731,7 @@ class _SiteFooter extends StatelessWidget {
             children: [
               Icon(Icons.mail_outline, size: 16, color: Color(0xFFB5B5B5)),
               SizedBox(width: 8),
-              Text('bookmydoctor24@gmail.com', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
+              Text('bookmydoctors@gmail.com', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
             ],
           ),
           const Divider(color: Color(0xFF222222), height: 40),
@@ -1777,7 +1777,7 @@ class _SiteFooter extends StatelessWidget {
 
           // Footer Bottom
           const Text(
-            '© 2026 BookMyDoctor24. All rights reserved.',
+            '© 2026 BookMyDoctors. All rights reserved.',
             style: TextStyle(color: Color(0xFF858585), fontSize: 12),
           ),
           const SizedBox(height: 10),

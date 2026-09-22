@@ -15,14 +15,14 @@ class TermsScreen extends StatelessWidget {
   static const _sections = [
     [
       '1. Acceptance of these terms',
-      'By creating an account or using BookMyDoctor24 ("the platform") as a patient, doctor, clinic, or clinic '
+      'By creating an account or using BookMyDoctors ("the platform") as a patient, doctor, clinic, or clinic '
           'staff member, you agree to these Terms of Service. If you do not agree, do not use the platform.',
     ],
     [
       '2. What the platform is — and is not',
-      'BookMyDoctor24 helps patients discover doctors and clinics, book appointments, and follow their live '
+      'BookMyDoctors helps patients discover doctors and clinics, book appointments, and follow their live '
           'clinic queue. It also gives clinics tools to manage appointments, walk-ins, queues, and payments. '
-          'BookMyDoctor24 is not a medical provider, does not practice medicine, and is not a substitute for '
+          'BookMyDoctors is not a medical provider, does not practice medicine, and is not a substitute for '
           'professional medical judgment. In a medical emergency, contact local emergency services directly '
           'rather than relying on this platform.',
     ],
@@ -48,18 +48,18 @@ class TermsScreen extends StatelessWidget {
     ],
     [
       '6. Doctor and clinic responsibilities',
-      'Doctors and clinics using BookMyDoctor24 remain solely responsible for the medical care they provide, '
+      'Doctors and clinics using BookMyDoctors remain solely responsible for the medical care they provide, '
           'for complying with applicable healthcare regulations and licensing requirements, and for the accuracy '
           'of the schedules, fees, and availability they publish on the platform.',
     ],
     [
       '7. Changes to these terms',
-      'These terms may be updated as the platform changes. Continued use of BookMyDoctor24 after an update '
+      'These terms may be updated as the platform changes. Continued use of BookMyDoctors after an update '
           'means you accept the revised terms.',
     ],
     [
       '8. Contact',
-      'Questions about these terms can be sent through the Contact page, or to bookmydoctor24@gmail.com.',
+      'Questions about these terms can be sent through the Contact page, or to bookmydoctors@gmail.com.',
     ],
   ];
 

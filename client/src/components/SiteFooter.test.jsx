@@ -14,7 +14,7 @@ function renderFooter() {
 describe('SiteFooter', () => {
   it('renders the brand name linking home', () => {
     renderFooter()
-    expect(screen.getByRole('link', { name: /BookMyDoctor24/ })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: /BookMyDoctors/ })).toHaveAttribute('href', '/')
   })
 
   it('renders the patient section links', () => {
@@ -37,13 +37,13 @@ describe('SiteFooter', () => {
     renderFooter()
     expect(screen.getByText('India')).toBeInTheDocument()
     expect(screen.getByText('Support available 9 AM–8 PM')).toBeInTheDocument()
-    expect(screen.getByText('bookmydoctor24@gmail.com')).toBeInTheDocument()
+    expect(screen.getByText('bookmydoctors@gmail.com')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Contact support' })).toHaveAttribute('href', '/contact')
   })
 
   it('renders the copyright line and legal links', () => {
     renderFooter()
-    expect(screen.getByText('© 2026 BookMyDoctor24. All rights reserved.')).toBeInTheDocument()
+    expect(screen.getByText('© 2026 BookMyDoctors. All rights reserved.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
     expect(screen.getByText(/Accessibility/)).toBeInTheDocument()

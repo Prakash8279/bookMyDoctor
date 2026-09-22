@@ -130,7 +130,7 @@ describe('DataTable', () => {
         { key: 'name', label: 'Clinic' },
         { key: 'link', label: 'Public profile' },
       ]
-      const LONG_URL = 'https://bookmydoctor24.example.com/book?clinic=Doctor%20Connect%20Demo&doctor=Dr.%20Priya%20Sharma&ref=abcdefghijklmnopqrstuvwxyz'
+      const LONG_URL = 'https://bookmydoctors.example.com/book?clinic=Doctor%20Connect%20Demo&doctor=Dr.%20Priya%20Sharma&ref=abcdefghijklmnopqrstuvwxyz'
       const rows = [{ id: 1, name: 'Doctor Connect Demo', link: LONG_URL }]
       render(<DataTable columns={longValueColumns} rows={rows} />)
 

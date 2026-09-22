@@ -20,7 +20,7 @@ const String _sentryDsn = String.fromEnvironment('SENTRY_DSN');
 
 Future<void> main() async {
   if (_sentryDsn.isEmpty) {
-    runApp(const BookMyDoctor24App());
+    runApp(const BookMyDoctorsApp());
     return;
   }
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,19 +31,19 @@ Future<void> main() async {
       // performance-tracing sample rate; not user-configurable from anywhere else yet.
       options.tracesSampleRate = 0.2;
     },
-    appRunner: () => runApp(const BookMyDoctor24App()),
+    appRunner: () => runApp(const BookMyDoctorsApp()),
   );
 }
 
-class BookMyDoctor24App extends StatelessWidget {
-  const BookMyDoctor24App({super.key});
+class BookMyDoctorsApp extends StatelessWidget {
+  const BookMyDoctorsApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider()..bootstrap(),
       child: MaterialApp(
-        title: 'BookMyDoctor24',
+        title: 'BookMyDoctors',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         onGenerateRoute: onGenerateRoute,

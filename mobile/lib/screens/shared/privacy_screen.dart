@@ -15,7 +15,7 @@ class PrivacyScreen extends StatelessWidget {
   static const _sections = [
     [
       '1. Scope',
-      'This Privacy Policy applies to the BookMyDoctor24 website and mobile app ("the platform"), operated by '
+      'This Privacy Policy applies to the BookMyDoctors website and mobile app ("the platform"), operated by '
           '[FILL: legal company/proprietor name]. It describes what information we collect from patients, '
           'doctors, clinic staff, and visitors, why we collect it, who we share it with, and the choices '
           'available to you — whether you use the platform as a registered account holder or as a visitor '
@@ -105,7 +105,7 @@ class PrivacyScreen extends StatelessWidget {
     [
       '12. Contact & grievance officer',
       'Questions about this policy, or requests about your information, can be sent through the Contact screen, '
-          'or to bookmydoctor24@gmail.com. As required under Indian IT Rules for a grievance-redressal contact '
+          'or to bookmydoctors@gmail.com. As required under Indian IT Rules for a grievance-redressal contact '
           'point: Grievance Officer — [FILL: name], [FILL: designation], [FILL: email/phone], [FILL: registered '
           'address]. We aim to acknowledge grievances promptly and resolve them within the timeframe required by '
           'applicable law.',

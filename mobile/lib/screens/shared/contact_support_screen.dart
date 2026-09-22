@@ -82,10 +82,10 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           // Mirrors web's public Contact page (PublicContent kind: 'contact' — FeaturePages.jsx):
-          // kicker "We are here to help", h1 "Contact BookMyDoctor24", and its lede paragraph.
+          // kicker "We are here to help", h1 "Contact BookMyDoctors", and its lede paragraph.
           const PageHeader(
             kicker: 'We are here to help',
-            title: 'Contact BookMyDoctor24',
+            title: 'Contact BookMyDoctors',
             subtitle: 'Get help with appointments, accounts, doctor onboarding, or clinic operations.',
           ),
           if (_sent)
@@ -138,7 +138,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
                 children: [
                   Text('Send your query and our team will route it to the right specialist.', style: TextStyle(color: AppColors.textSecondary)),
                   SizedBox(height: AppSpacing.sm),
-                  _ContactRow(label: 'Email', value: 'bookmydoctor24@gmail.com'),
+                  _ContactRow(label: 'Email', value: 'bookmydoctors@gmail.com'),
                   _ContactRow(label: 'Support hours', value: 'Monday–Saturday, 9 AM–8 PM'),
                   _ContactRow(label: 'Service region', value: 'India'),
                   _ContactRow(

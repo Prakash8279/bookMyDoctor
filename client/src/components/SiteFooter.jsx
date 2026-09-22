@@ -10,14 +10,14 @@ export function SiteFooter() {
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
               the PDF receipts. */}
           <span className="brand-mark">
-            <img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" />
+            <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
           </span>
-          <span><strong>BookMyDoctor24</strong></span>
+          <span><strong>BookMyDoctors</strong></span>
         </Link>
         <p className="footer-copy">Healthcare that respects your time. Discover verified doctors, book instantly, and follow your clinic queue live.</p>
         <div className="contact-line">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-mail"><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path><rect x="2" y="4" width="20" height="16" rx="2"></rect></svg>
-          bookmydoctor24@gmail.com
+          bookmydoctors@gmail.com
         </div>
       </div>
 
@@ -52,7 +52,7 @@ export function SiteFooter() {
     </div>
 
     <div className="container footer-bottom">
-      <span>© 2026 BookMyDoctor24. All rights reserved.</span>
+      <span>© 2026 BookMyDoctors. All rights reserved.</span>
       {/* Privacy/Terms now point at the real /privacy and /terms pages
           (App.jsx) — previously this whole line was plain non-interactive
           text with no pages behind it. Accessibility stays plain text: no

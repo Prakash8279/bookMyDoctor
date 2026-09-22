@@ -1052,12 +1052,12 @@ export function RevenueReports({ data, doctorOnly = false }) {
     const escape = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const doctorRows = byDoctor.map((item) => `<tr><td>${escape(item.doctor)}</td><td>${item.payments}</td><td>${escape(money(item.revenue))}</td></tr>`).join('')
     const paymentRows = reportPayments.map((item) => `<tr><td>${escape(item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '')}</td><td>${escape(item.doctor?.name || 'Unassigned')}</td><td>${escape(item.receiptNumber || '')}</td><td>${escape(item.mode || 'Other')}</td><td>${escape(money(item.reportAmount))}</td><td>${escape(item.status || '')}</td></tr>`).join('')
-    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookMyDoctor24 Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Payments</td><td>${payments.length}</td></tr><tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr></table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
+    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookMyDoctors Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Payments</td><td>${payments.length}</td></tr><tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr></table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `bookmydoctor24-revenue-${fromDate || 'start'}-to-${toDate || 'end'}.xls`
+    anchor.download = `bookmydoctors-revenue-${fromDate || 'start'}-to-${toDate || 'end'}.xls`
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -1403,7 +1403,7 @@ export function PlatformSettings() {
     <ErrorNote>{loadError}</ErrorNote>
     <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
       <div className="space-y-4">
-        <FormField label="Platform name" name="platformName" defaultValue={systemSettings?.platformName || 'BookMyDoctor24'} required />
+        <FormField label="Platform name" name="platformName" defaultValue={systemSettings?.platformName || 'BookMyDoctors'} required />
         <FormField label="Support email" name="supportEmail" type="email" defaultValue={systemSettings?.supportEmail || ''} />
         <FormField label="Support phone" name="supportPhone" defaultValue={systemSettings?.supportPhone || ''} />
         <label className="flex min-h-11 items-center justify-between gap-3 text-sm font-medium">Maintenance mode <input name="maintenanceMode" type="checkbox" defaultChecked={Boolean(systemSettings?.maintenanceMode)} /></label>

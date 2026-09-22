@@ -136,7 +136,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
             '<td>${escape(p.status)}</td></tr>')
         .join();
     final html = '<html><head><meta charset="UTF-8"></head><body>'
-        '<h2>BookMyDoctor24 Revenue Report</h2>'
+        '<h2>BookMyDoctors Revenue Report</h2>'
         '<p>Period: ${escape(periodLabel)} · Doctor: ${escape(doctorName)}</p>'
         '<table border="1"><tr><th>Metric</th><th>Value</th></tr>'
         '<tr><td>Revenue</td><td>${escape(money(total))}</td></tr>'
@@ -152,7 +152,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
 
     final fromStr = DateFormat('yyyy-MM-dd').format(_from);
     final toStr = DateFormat('yyyy-MM-dd').format(_to);
-    await shareText(filename: 'bookmydoctor24-revenue-$fromStr-to-$toStr.xls', content: html);
+    await shareText(filename: 'bookmydoctors-revenue-$fromStr-to-$toStr.xls', content: html);
   }
 
   @override

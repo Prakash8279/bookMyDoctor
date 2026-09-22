@@ -19,7 +19,7 @@ const LAST_UPDATED = '21 September 2026'
 const SECTIONS = [
   [
     '1. Scope',
-    'This Privacy Policy applies to the BookMyDoctor24 website and mobile app ("the platform"), operated by BookMyDoctor24. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
+    'This Privacy Policy applies to the BookMyDoctors website and mobile app ("the platform"), operated by BookMyDoctors. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
   ],
   [
     '2. Information we collect',
@@ -69,7 +69,7 @@ const SECTIONS = [
   ],
   [
     '12. Contact & grievance officer',
-    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctor24@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctor24@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
+    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctors@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctors@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
   ],
 ]
 

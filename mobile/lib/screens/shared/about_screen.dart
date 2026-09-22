@@ -19,7 +19,7 @@ class AboutScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: const [
-          PageHeader(title: 'About BookMyDoctor24'),
+          PageHeader(title: 'About BookMyDoctors'),
           Text(
             'We help patients find care and track their clinic queue from anywhere.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),

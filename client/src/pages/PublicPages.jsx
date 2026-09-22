@@ -79,14 +79,14 @@ export function SiteHeader() {
   return (
     <header className="site-header relative">
       <div className="container nav-wrap">
-        <Link to="/" className="brand [grid-column:1]" aria-label="BookMyDoctor24 home" onClick={() => setMobileOpen(false)}>
+        <Link to="/" className="brand [grid-column:1]" aria-label="BookMyDoctors home" onClick={() => setMobileOpen(false)}>
           {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
               the PDF receipts. */}
           <span className="brand-mark">
-            <img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" />
+            <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
           </span>
-          <span><strong>BookMyDoctor24</strong></span>
+          <span><strong>BookMyDoctors</strong></span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -352,9 +352,9 @@ export function Login() {
             {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
                 heart-pulse stock icon this used to be. */}
             <span className="brand-mark">
-              <img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" />
+              <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
             </span>
-            <span><strong>BookMyDoctor24</strong></span>
+            <span><strong>BookMyDoctors</strong></span>
           </Link>
           <h1>Healthcare that moves with you.</h1>
           <p>Book care, follow your queue, and keep your family health records together.</p>
@@ -365,7 +365,7 @@ export function Login() {
             <span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-check"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Secure role-based access</span>
           </div>
         </div>
-        <small>BookMyDoctor24 · India</small>
+        <small>BookMyDoctors · India</small>
       </section>
 
       <section className="auth-form-panel">
@@ -406,7 +406,7 @@ export function Login() {
 
             <button type="submit" className="btn btn-primary w-full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button>
             
-            <div className="auth-switch">New to BookMyDoctor24? <Link to="/register">Create an account</Link></div>
+            <div className="auth-switch">New to BookMyDoctors? <Link to="/register">Create an account</Link></div>
 
           </form>
         </div>
@@ -518,9 +518,9 @@ export function Register() {
             {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
                 heart-pulse stock icon this used to be. */}
             <span className="brand-mark">
-              <img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" />
+              <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
             </span>
-            <span><strong>BookMyDoctor24</strong></span>
+            <span><strong>BookMyDoctors</strong></span>
           </Link>
           <h1>Healthcare that moves with you.</h1>
           <p>Book care, follow your queue, and keep your family health records together.</p>
@@ -531,7 +531,7 @@ export function Register() {
             <span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-check"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Secure role-based access</span>
           </div>
         </div>
-        <small>BookMyDoctor24 · India</small>
+        <small>BookMyDoctors · India</small>
       </section>
 
       <section className="auth-form-panel">
@@ -626,7 +626,7 @@ export function ForgotPassword() {
       setSubmitting(false)
     }
   }
-  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctor24</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Reset access to your account securely.</p></div><small>BookMyDoctor24 · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Reset your password</h2><p>We will email you a secure link to choose a new password.</p>{sent ? <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">If an account exists for <strong>{email}</strong>, reset instructions have been sent. Check your inbox (and the server logs, in this local/dev environment) for the reset link.</div> : <form className="mt-6 space-y-4" onSubmit={submit}>{error && <p role="alert" className="form-message error">{error}</p>}<label className="form-field">Account email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Send reset link'}</button></form>}<div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
+  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctors</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Reset access to your account securely.</p></div><small>BookMyDoctors · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Reset your password</h2><p>We will email you a secure link to choose a new password.</p>{sent ? <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">If an account exists for <strong>{email}</strong>, reset instructions have been sent. Check your inbox (and the server logs, in this local/dev environment) for the reset link.</div> : <form className="mt-6 space-y-4" onSubmit={submit}>{error && <p role="alert" className="form-message error">{error}</p>}<label className="form-field">Account email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Send reset link'}</button></form>}<div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
 }
 
 export function ResetPassword() {
@@ -663,5 +663,5 @@ export function ResetPassword() {
     }
   }
 
-  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctor24" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctor24</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Choose a new password to get back into your account.</p></div><small>BookMyDoctor24 · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Choose a new password</h2><p>This link is valid for a limited time. If it has expired, request a new one from the forgot password page.</p>{error && <p role="alert" className="form-message error">{error}</p>}<form className="mt-6 space-y-4" onSubmit={submit}><label className="form-field">New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter new password" minLength="8" required /></label><label className="form-field">Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Confirm new password" minLength="8" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset password'}</button></form><div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
+  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctors</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Choose a new password to get back into your account.</p></div><small>BookMyDoctors · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Choose a new password</h2><p>This link is valid for a limited time. If it has expired, request a new one from the forgot password page.</p>{error && <p role="alert" className="form-message error">{error}</p>}<form className="mt-6 space-y-4" onSubmit={submit}><label className="form-field">New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter new password" minLength="8" required /></label><label className="form-field">Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Confirm new password" minLength="8" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset password'}</button></form><div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
 }

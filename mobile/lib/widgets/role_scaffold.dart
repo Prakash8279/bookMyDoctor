@@ -156,7 +156,7 @@ class RoleScaffoldState extends State<RoleScaffold> {
                     SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        'BookMyDoctor24',
+                        'BookMyDoctors',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
                       ),
                     ),

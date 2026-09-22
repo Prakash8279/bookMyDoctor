@@ -183,7 +183,7 @@ describe('PlatformCharges role gating (RoleGuard, via App)', () => {
     )
 
     expect(await screen.findByText('Platform charges')).toBeInTheDocument()
-    expect(screen.getByText('Set the platform fee and commission rules for BookMyDoctor24.')).toBeInTheDocument()
+    expect(screen.getByText('Set the platform fee and commission rules for BookMyDoctors.')).toBeInTheDocument()
   })
 
   it('redirects a doctor away from the admin-only /admin/platform-fee route', async () => {

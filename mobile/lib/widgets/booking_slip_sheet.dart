@@ -143,7 +143,7 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
   String _buildSlipText() {
     return '''
 ========================================
-       BOOKMYDOCTOR24 - BOOKING SLIP
+       BOOKMYDOCTORS - BOOKING SLIP
 ========================================
 Booking ID: #$_shortId
 Token Number: #${appointment.tokenNumber ?? "Not yet assigned"}
@@ -238,7 +238,7 @@ Please present this slip at the clinic reception upon arrival.
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'BookMyDoctor24',
+                          'BookMyDoctors',
                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
                         ),
                         Text(
@@ -387,7 +387,7 @@ Please present this slip at the clinic reception upon arrival.
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'This is a computer-generated booking slip from BookMyDoctor24. Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
+                'This is a computer-generated booking slip from BookMyDoctors. Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
               ),
@@ -512,7 +512,7 @@ class PaymentReceiptSheet extends StatelessWidget {
     final amount = payment.fees.amount ?? payment.fees.consultationFee ?? 0;
     return '''
 ========================================
-       BOOKMYDOCTOR24 - PAYMENT RECEIPT
+       BOOKMYDOCTORS - PAYMENT RECEIPT
 ========================================
 Receipt No: #${payment.receiptNumber ?? _shortId}
 Status: ${payment.status.toUpperCase()}
@@ -588,7 +588,7 @@ Official computer-generated receipt.
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('BookMyDoctor24', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                        const Text('BookMyDoctors', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
                         Text('RECEIPT #${payment.receiptNumber ?? _shortId}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
                       ],
                     ),

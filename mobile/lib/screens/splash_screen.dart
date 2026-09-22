@@ -25,7 +25,7 @@ class SplashScreen extends StatelessWidget {
             Image(image: AssetImage('assets/branding/app_icon.png'), width: 96, height: 96),
             SizedBox(height: AppSpacing.md),
             Text(
-              'BookMyDoctor24',
+              'BookMyDoctors',
               style: TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.w700),
             ),
             SizedBox(height: AppSpacing.lg),
