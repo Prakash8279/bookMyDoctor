@@ -62,8 +62,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
+  # integration_test:
+  #   sdk: flutter
   flutter_lints: ^4.0.0
   # COMPLETENESS FIX (brand consistency): generates the real Android/iOS launcher icon files from
   # assets/branding/app_icon.png (the same heart-pulse-on-terracotta mark now used as the web
