@@ -65,23 +65,6 @@ void main() {
       expect(find.byIcon(Icons.visibility_off_outlined), findsNothing);
     });
 
-    testWidgets('shows the demo account chips (debug builds only) and fills credentials on tap', (tester) async {
-      await tester.pumpWidget(_wrap(const LoginScreen()));
-
-      // `flutter test` always runs in debug mode, so login_screen.dart's `kDebugMode`-gated demo
-      // row is present here the same way it is in any local debug run — never in a release build.
-      final patientChip = find.widgetWithText(ActionChip, 'Patient');
-      expect(patientChip, findsOneWidget);
-
-      await tester.ensureVisible(patientChip);
-      await tester.tap(patientChip);
-      await tester.pump();
-
-      final emailField = tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Email address'));
-      final passwordField = tester.widget<TextFormField>(find.widgetWithText(TextFormField, 'Password'));
-      expect(emailField.controller?.text, 'patient@connectdoctor.test');
-      expect(passwordField.controller?.text, 'Patient#DC2026!Test');
-    });
 
     testWidgets('shows the forgot-password and create-account links', (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));

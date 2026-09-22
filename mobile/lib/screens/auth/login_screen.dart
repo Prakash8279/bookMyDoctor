@@ -102,11 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _fillDemo(String email, String password) {
-    _emailController.text = email;
-    _passwordController.text = password;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -213,45 +208,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: const Text('Browse without logging in'),
                       ),
                     ),
-                    // SECURITY: demo-account quick-fill chips are a real, live login shortcut —
-                    // they fill in the actual seeded accounts' credentials, admin/superadmin
-                    // included. Compiled out of any non-debug build (kDebugMode is a compile-time
-                    // constant, so `flutter build` for release/profile strips this whole block)
-                    // so a shipped/installed app never exposes one-tap admin access. Found by
-                    // codebase audit — previously shown unconditionally to every user.
-                    if (kDebugMode) ...[
-                      const SizedBox(height: AppSpacing.lg),
-                      const Divider(),
-                      const SizedBox(height: AppSpacing.sm),
-                      const Text('Demo accounts (debug builds only)', style: TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: AppSpacing.sm),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _DemoChip(
-                            label: 'Patient',
-                            onTap: () => _fillDemo('patient@connectdoctor.test', 'Patient#DC2026!Test'),
-                          ),
-                          _DemoChip(
-                            label: 'Doctor',
-                            onTap: () => _fillDemo('doctor@connectdoctor.test', 'Doctor#DC2026!Test'),
-                          ),
-                          _DemoChip(
-                            label: 'Receptionist',
-                            onTap: () => _fillDemo('receptionist@connectdoctor.test', 'Reception#DC2026!Test'),
-                          ),
-                          _DemoChip(
-                            label: 'Admin',
-                            onTap: () => _fillDemo('admin@connectdoctor.test', 'Admin#DC2026!Test'),
-                          ),
-                          _DemoChip(
-                            label: 'Superadmin',
-                            onTap: () => _fillDemo('superadmin@connectdoctor.test', 'Super#DC2026!Test'),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -260,16 +216,5 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
-  }
-}
-
-class _DemoChip extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  const _DemoChip({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(label: Text(label), onPressed: onTap);
   }
 }
