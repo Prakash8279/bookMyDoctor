@@ -203,52 +203,12 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
               child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
             ),
             const SizedBox(width: 6),
-            const Text.rich(
-              TextSpan(
-                children: [
-                  TextSpan(text: 'BookMyDoctors', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16)),
-                  TextSpan(text: '24', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
-                ],
-              ),
+            const Text(
+              'BookMyDoctors',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 4),
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.textPrimary,
-                side: const BorderSide(color: Color(0xFFD4CDC8)),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                minimumSize: const Size(0, 36),
-              ),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
-              child: const Text('Log in', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
-                elevation: 0,
-                minimumSize: const Size(0, 36),
-              ),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RegisterScreen()),
-              ),
-              child: const Text('Get started', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
       ),
 
       drawer: Drawer(
@@ -267,13 +227,9 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     ),
                     SizedBox(width: AppSpacing.sm),
                     Expanded(
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(text: 'BookMyDoctors', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                            TextSpan(text: '24', style: TextStyle(color: Color(0xFFF5E9E3), fontWeight: FontWeight.w800, fontSize: 18)),
-                          ],
-                        ),
+                      child: Text(
+                        'BookMyDoctors',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
                       ),
                     ),
                   ],
@@ -463,12 +419,8 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   onJoin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 ),
 
-                // 9. Site Footer (100% parity with web's SiteFooter.jsx)
-                _SiteFooter(
-                  onSearchDoctors: () => _goSearch(),
-                  onOpenLogin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
-                  onOpenRegister: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                ),
+                // 9. Site Footer
+                const _SiteFooter(),
               ],
             );
           },
@@ -1659,30 +1611,8 @@ class _DoctorCtaSection extends StatelessWidget {
   }
 }
 
-/// 9. Comprehensive Site Footer — 100% parity with web's SiteFooter.jsx
 class _SiteFooter extends StatelessWidget {
-  final VoidCallback onSearchDoctors;
-  final VoidCallback onOpenLogin;
-  final VoidCallback onOpenRegister;
-
-  const _SiteFooter({
-    required this.onSearchDoctors,
-    required this.onOpenLogin,
-    required this.onOpenRegister,
-  });
-
-  Widget _footerLink(String label, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: InkWell(
-        onTap: onTap,
-        child: Text(
-          label,
-          style: const TextStyle(color: Color(0xFFB5B5B5), fontSize: 13, fontWeight: FontWeight.w500),
-        ),
-      ),
-    );
-  }
+  const _SiteFooter();
 
   Widget _footerHeader(String title) {
     return Padding(
@@ -1711,13 +1641,9 @@ class _SiteFooter extends StatelessWidget {
                 child: Image.asset('assets/branding/app_icon.png', width: 34, height: 34),
               ),
               const SizedBox(width: 10),
-              const Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(text: 'BookMyDoctors', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-                    TextSpan(text: '24', style: TextStyle(color: AppColors.primaryLight, fontWeight: FontWeight.w800, fontSize: 18)),
-                  ],
-                ),
+              const Text(
+                'BookMyDoctors',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
               ),
             ],
           ),
@@ -1735,20 +1661,6 @@ class _SiteFooter extends StatelessWidget {
             ],
           ),
           const Divider(color: Color(0xFF222222), height: 40),
-
-          // Patients section
-          _footerHeader('Patients'),
-          _footerLink('Find a doctor', onSearchDoctors),
-          _footerLink('My appointments', onOpenLogin),
-          _footerLink('Live queue', onOpenLogin),
-          _footerLink('Health records', onOpenLogin),
-
-          // Professionals section
-          _footerHeader('Professionals'),
-          _footerLink('Join as a doctor', onOpenRegister),
-          _footerLink('Doctor portal', onOpenLogin),
-          _footerLink('Reception portal', onOpenLogin),
-          _footerLink('Admin portal', onOpenLogin),
 
           // Contact section
           _footerHeader('Contact'),
