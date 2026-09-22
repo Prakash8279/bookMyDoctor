@@ -23,6 +23,8 @@ COPY . .
 #   docker compose build client --build-arg VITE_API_BASE_URL=https://api.example.com
 ARG VITE_API_BASE_URL=http://localhost:4000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG VITE_GOOGLE_CLIENT_ID=855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 
 RUN npm run build
 
