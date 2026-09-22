@@ -131,12 +131,52 @@ Generate-PlayStoreImage `
     -TopR 30 -TopG 64 -TopB 175 `
     -BotR 79 -BotG 70 -BotB 229
 
-# 4. Screen 4: Appointments & Profile
+# 4. Screen 4: Appointments & Family Profiles
 Generate-PlayStoreImage `
     -InputPath "store_assets/screenshot_4_profile.png" `
     -OutputPath "store_assets/playstore_screen_4.png" `
-    -BadgeText "SEAMLESS EXPERIENCE" `
+    -BadgeText "FAMILY HEALTHCARE" `
     -MainHeading "Manage Health for Your Family" `
     -SubHeading "Digital records, appointment reminders, and instant confirmations" `
     -TopR 13 -TopG 148 -TopB 136 `
     -BotR 14 -BotG 116 -BotB 144
+
+# 5. Screen 5: Instant Booking & Slots
+Generate-PlayStoreImage `
+    -InputPath "store_assets/screenshot_2_search.png" `
+    -OutputPath "store_assets/playstore_screen_5.png" `
+    -BadgeText "INSTANT BOOKING" `
+    -MainHeading "Book In Under 30 Seconds" `
+    -SubHeading "Pick your preferred date and time slot with zero hassle" `
+    -TopR 16 -TopG 185 -TopB 129 `
+    -BotR 5 -BotG 150 -BotB 105
+
+# 6. Screen 6: Clinic Network & Maps
+Generate-PlayStoreImage `
+    -InputPath "phone_drawer3.png" `
+    -OutputPath "store_assets/playstore_screen_6.png" `
+    -BadgeText "TRUSTED CLINICS" `
+    -MainHeading "Find Verified Clinics Near You" `
+    -SubHeading "Check clinic addresses, consultation facilities, and timings" `
+    -TopR 217 -TopG 119 -TopB 6 `
+    -BotR 194 -BotG 65 -BotB 12
+
+# 7. Screen 7: Secure Payments
+Generate-PlayStoreImage `
+    -InputPath "store_assets/screenshot_1_home.png" `
+    -OutputPath "store_assets/playstore_screen_7.png" `
+    -BadgeText "100% SECURE PAYMENTS" `
+    -MainHeading "Easy UPI & Card Payments" `
+    -SubHeading "Pay consultation advance seamlessly with instant invoice generation" `
+    -TopR 99 -TopG 102 -TopB 241 `
+    -BotR 67 -BotG 56 -BotB 202
+
+# 8. Screen 8: Digital Records & History
+Generate-PlayStoreImage `
+    -InputPath "store_assets/screenshot_4_profile.png" `
+    -OutputPath "store_assets/playstore_screen_8.png" `
+    -BadgeText "DIGITAL HEALTH" `
+    -MainHeading "Your Records Always With You" `
+    -SubHeading "Access past consultations, doctor notes, and prescriptions anytime" `
+    -TopR 225 -TopG 29 -TopB 72 `
+    -BotR 159 -BotG 18 -BotB 57
