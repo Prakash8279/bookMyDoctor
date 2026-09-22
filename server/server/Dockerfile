@@ -22,12 +22,14 @@
 
 # ---- deps stage: install production dependencies only -----------------------------------------
 FROM node:20-alpine AS deps
+RUN apk add --no-cache openssl
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 # ---- final stage: small runtime image -----------------------------------------------------------
 FROM node:20-alpine AS final
+RUN apk add --no-cache openssl postgresql-client
 WORKDIR /app
 
 # Run as a non-root user rather than the image's default root — limits blast radius if the
