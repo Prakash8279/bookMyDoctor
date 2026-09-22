@@ -30,17 +30,7 @@ class Env {
   static String get apiBaseUrl {
     if (_fromDefine.isNotEmpty) return _fromDefine;
 
-    if (kReleaseMode) {
-      throw StateError(
-        'API_BASE_URL was not provided to this release build. Rebuild with '
-        '--dart-define=API_BASE_URL=https://your-api-host — a release build must never fall '
-        'back to a dev/emulator address.',
-      );
-    }
-
-    if (!kIsWeb && Platform.isAndroid) {
-      return 'http://10.0.2.2:4000';
-    }
-    return 'http://localhost:4000';
+    // Default to the live AWS EC2 backend server
+    return 'http://43.204.150.142:4000';
   }
 }
