@@ -124,7 +124,29 @@ class RoleScaffoldState extends State<RoleScaffold> {
       // bg-surface top bar, a primary-light/primary-dark initials avatar — rather than Material's
       // default white app bar with a generic "Live" badge that has no web equivalent.
       appBar: AppBar(
-        title: Text(current.label),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: AppColors.border),
+        ),
+        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        titleSpacing: 0,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'BookMyDoctors',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+          ],
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: AppSpacing.md),
