@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/token_store.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../auth/login_screen.dart';
 import '../patient/book_appointment_screen.dart';
 import '../patient/doctor_detail_screen.dart';
 
@@ -482,11 +484,17 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                             ),
                                             onPressed: () {
-                                              Navigator.of(context).push(MaterialPageRoute(
-                                                builder: (_) => BookAppointmentScreen(
-                                                  preselectedDoctor: doc,
-                                                ),
-                                              ));
+                                              if (TokenStore.instance.current == null) {
+                                                Navigator.of(context).push(MaterialPageRoute(
+                                                  builder: (_) => const LoginScreen(),
+                                                ));
+                                              } else {
+                                                Navigator.of(context).push(MaterialPageRoute(
+                                                  builder: (_) => BookAppointmentScreen(
+                                                    preselectedDoctor: doc,
+                                                  ),
+                                                ));
+                                              }
                                             },
                                             child: const Text('Book now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                                           ),

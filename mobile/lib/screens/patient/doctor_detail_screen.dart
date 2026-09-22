@@ -5,12 +5,14 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/token_store.dart';
 import '../../models/admin_models.dart';
 import '../../models/clinical_models.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../auth/login_screen.dart';
 import 'book_appointment_screen.dart';
 import 'queue_tracker_screen.dart';
 
@@ -559,23 +561,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   // instead of hitting an API error.
   void _handleBook(BuildContext context, DoctorDirectoryItem doctor) {
     final auth = context.read<AuthProvider>();
-    if (!auth.isLoggedIn) {
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Login required'),
-          content: const Text('Please log in or create a patient account to book an appointment.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Log in'),
-            ),
-          ],
-        ),
+    if (!auth.isLoggedIn || TokenStore.instance.current == null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
       return;
     }

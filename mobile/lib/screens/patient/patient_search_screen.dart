@@ -1,10 +1,15 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/token_store.dart';
 import '../../models/core_models.dart';
+import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../auth/login_screen.dart';
+import 'book_appointment_screen.dart';
 import 'doctor_detail_screen.dart';
 
 /// GET /doctors — public/optionalAuthenticate, always hard-filtered
@@ -527,9 +532,18 @@ class _DoctorCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
-        ),
+        onTap: () {
+          final auth = context.read<AuthProvider>();
+          if (!auth.isLoggedIn || TokenStore.instance.current == null) {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LoginScreen()),
+            );
+          } else {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+            );
+          }
+        },
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.md),
           child: Row(
@@ -611,9 +625,18 @@ class _DoctorCard extends StatelessWidget {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
-                            ),
+                            onPressed: () {
+                              final auth = context.read<AuthProvider>();
+                              if (!auth.isLoggedIn || TokenStore.instance.current == null) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                );
+                              } else {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)),
+                                );
+                              }
+                            },
                             style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6)),
                             child: const Text('Book now', style: TextStyle(fontSize: 12)),
                           ),
