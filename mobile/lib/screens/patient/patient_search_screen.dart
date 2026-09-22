@@ -456,10 +456,39 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     return _FilterField(
       label: label,
       child: DropdownButtonFormField<String>(
-        initialValue: safeValue,
+        value: safeValue,
         isExpanded: true,
-        hint: Text('Select $label'),
-        items: [for (final option in options) DropdownMenuItem(value: option, child: Text(option, overflow: TextOverflow.ellipsis))],
+        dropdownColor: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        elevation: 4,
+        menuMaxHeight: 280,
+        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
+        hint: Text('Select $label', style: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 14)),
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(AppRadius.button),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+          ),
+        ),
+        items: [
+          for (final option in options)
+            DropdownMenuItem(
+              value: option,
+              child: Text(option, overflow: TextOverflow.ellipsis),
+            ),
+        ],
         onChanged: (v) => onChanged(v ?? ''),
       ),
     );
