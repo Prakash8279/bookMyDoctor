@@ -62,19 +62,29 @@ if (env.isProduction) {
 // be loadable by the frontend running on a different origin/port.
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-// 2. CORS — single allowed origin (the frontend).
-// WEB-ONLY REFRESH-COOKIE FIX (risky-item #2, docs/risky-fixes-plan-2026-09-20.md — see
-// utils/webClientAuth.js for the full flow): credentials is now `true` so the browser actually
-// sends/accepts the httpOnly refresh-token cookie on cross-port/cross-subdomain requests to the
-// API. This is safe specifically BECAUSE origin is a single, exact, non-wildcard value (env.
-// clientOrigin) — `credentials: true` together with a wildcard '*' origin is what would be
-// dangerous (and the `cors` package refuses to even combine them), not a pinned single origin.
-// X-Client-Platform is the header apiClient.js sends on every request so the backend can tell a
-// web caller from the Flutter mobile app (which never sends it, and keeps its existing JSON-body
-// refresh-token flow completely unchanged).
+// 2. CORS — allowed origins (supporting multiple origins: AWS IP, AWS public DNS, localhost).
+const configuredOrigins = (env.clientOrigin || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: env.clientOrigin,
+    origin: (origin, callback) => {
+      // Requests without Origin header (e.g. mobile apps, curl) are always allowed.
+      if (!origin) return callback(null, true);
+      // Allow if origin is configured or if origin matches AWS IP / EC2 domain / localhost
+      if (
+        configuredOrigins.length === 0 ||
+        configuredOrigins.includes(origin) ||
+        origin.includes('43.204.150.142') ||
+        origin.includes('amazonaws.com') ||
+        origin.includes('localhost')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Platform'],
     exposedHeaders: ['X-Request-Id'],
