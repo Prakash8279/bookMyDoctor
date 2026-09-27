@@ -203,9 +203,12 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
               child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
             ),
             const SizedBox(width: 6),
-            const Text(
-              'BookMyDoctors',
-              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
+            const Flexible(
+              child: Text(
+                'BookMyDoctors',
+                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -323,8 +326,11 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
         ),
       ),
 
-      body: RefreshIndicator(
-        onRefresh: () async {
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        child: RefreshIndicator(
+          onRefresh: () async {
           setState(() {
             _future = _load();
           });
@@ -426,8 +432,9 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
           },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 /// 1. Hero Section — matches reference_site.css .hero and PublicLanding.jsx
@@ -1272,21 +1279,26 @@ class _HomeDoctorCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 10,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('Consultation', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                   Text('₹${doctor.consultationFee.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary)),
                 ],
               ),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       side: const BorderSide(color: AppColors.border),
@@ -1300,7 +1312,7 @@ class _HomeDoctorCard extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

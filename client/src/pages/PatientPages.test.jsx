@@ -296,6 +296,105 @@ describe('Booking', () => {
     }
   })
 
+  it('searches doctors by name and opens the booking form upon selecting a doctor card', () => {
+    const DOCTOR_2 = {
+      id: 'doc-2',
+      name: 'Dr. Vivek Sharma',
+      consultationFee: 700,
+      clinics: [{ id: 'clinic-2', name: 'Apex Multi-speciality Clinic' }],
+    }
+    seedData({ doctors: [DOCTOR, DOCTOR_2], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+
+    // Both doctors are initially displayed
+    expect(screen.getByRole('heading', { name: 'Dr. Asha Rao' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Dr. Vivek Sharma' })).toBeInTheDocument()
+    expect(screen.getByText('Select a doctor first')).toBeInTheDocument()
+
+    // Search by doctor name "Vivek"
+    const searchInput = screen.getByPlaceholderText('Search doctor or clinic name...')
+    fireEvent.change(searchInput, { target: { value: 'Vivek' } })
+
+    // Dr. Vivek Sharma matches, Dr. Asha Rao is filtered out
+    expect(screen.getByRole('heading', { name: 'Dr. Vivek Sharma' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Dr. Asha Rao' })).not.toBeInTheDocument()
+
+    // Can also search by clinic name "Apex"
+    fireEvent.change(searchInput, { target: { value: 'Apex' } })
+    expect(screen.getByRole('heading', { name: 'Dr. Vivek Sharma' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Dr. Asha Rao' })).not.toBeInTheDocument()
+
+    // Click "Select & Book" on Dr. Vivek Sharma's card
+    fireEvent.click(screen.getByRole('button', { name: 'Select & Book' }))
+
+    // Booking form opens for Dr. Vivek Sharma on next page
+    expect(screen.getByText('Booking with Dr. Vivek Sharma')).toBeInTheDocument()
+    expect(screen.getByText('Apex Multi-speciality Clinic')).toBeInTheDocument()
+    expect(screen.getByText('₹700')).toBeInTheDocument()
+
+    // Can change doctor back to list
+    fireEvent.click(screen.getByRole('button', { name: '← Change doctor' }))
+    expect(screen.getByText('Select a doctor first')).toBeInTheDocument()
+  })
+
+  it('sorts doctors by clinic name A to Z and Z to A', () => {
+    const DOCTOR_A = {
+      id: 'doc-a',
+      name: 'Dr. Anita',
+      consultationFee: 400,
+      clinics: [{ id: 'clinic-z', name: 'Zeta Clinic' }],
+    }
+    const DOCTOR_B = {
+      id: 'doc-b',
+      name: 'Dr. Bimal',
+      consultationFee: 600,
+      clinics: [{ id: 'clinic-a', name: 'Alpha Clinic' }],
+    }
+    seedData({ doctors: [DOCTOR_A, DOCTOR_B], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+
+    // Select Sorted by -> Clinic Name (A to Z)
+    const sortSelect = screen.getByLabelText(/^Sorted by/)
+    fireEvent.change(sortSelect, { target: { value: 'Clinic Name (A to Z)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+    // Alpha Clinic doctor (Dr. Bimal) should appear before Zeta Clinic doctor (Dr. Anita)
+    const doctorCards = screen.getAllByRole('heading', { level: 4 })
+    expect(doctorCards[0]).toHaveTextContent('Dr. Bimal')
+    expect(doctorCards[1]).toHaveTextContent('Dr. Anita')
+
+    // Select Sorted by -> Clinic Name (Z to A)
+    fireEvent.change(sortSelect, { target: { value: 'Clinic Name (Z to A)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+
+    const reversedCards = screen.getAllByRole('heading', { level: 4 })
+    expect(reversedCards[0]).toHaveTextContent('Dr. Anita')
+    expect(reversedCards[1]).toHaveTextContent('Dr. Bimal')
+  })
+
+  it('sorts doctors by default by join date (most recently joined first)', () => {
+    const OLDER_DOCTOR = {
+      id: 'doc-old',
+      name: 'Dr. Old Joiner',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      consultationFee: 500,
+      clinics: [{ id: 'clinic-1', name: 'Clinic 1' }],
+    }
+    const NEWER_DOCTOR = {
+      id: 'doc-new',
+      name: 'Dr. New Joiner',
+      createdAt: '2026-05-15T00:00:00.000Z',
+      consultationFee: 500,
+      clinics: [{ id: 'clinic-2', name: 'Clinic 2' }],
+    }
+    seedData({ doctors: [OLDER_DOCTOR, NEWER_DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+
+    const cards = screen.getAllByRole('heading', { level: 4 })
+    expect(cards[0]).toHaveTextContent('Dr. New Joiner')
+    expect(cards[1]).toHaveTextContent('Dr. Old Joiner')
+  })
+
   it('pays online for a pending_payment booking and shows the confirmed, paid booking once Razorpay verifies', async () => {
     vi.useFakeTimers()
     let capturedOptions = null

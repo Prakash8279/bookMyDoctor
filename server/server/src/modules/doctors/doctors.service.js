@@ -134,6 +134,7 @@ const DOCTOR_LIST_SELECT = {
   photoUrl: true,
   city: true,
   status: true,
+  createdAt: true,
   doctorProfile: { select: DOCTOR_PROFILE_BASE_SELECT },
   doctorClinics: DOCTOR_CLINICS_SELECT,
   doctorClinicHours: DOCTOR_CLINIC_HOURS_SELECT,
@@ -247,6 +248,7 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     name: user.name,
     photoUrl: user.photoUrl,
     city: user.city,
+    createdAt: user.createdAt ? user.createdAt.toISOString() : null,
     // Verification-lifecycle status ('pending'/'verified'/'disabled') — previously omitted here,
     // which meant every consumer of this shape (including the admin doctor-management table) had
     // no way to tell an unverified doctor from a verified one and silently defaulted to showing

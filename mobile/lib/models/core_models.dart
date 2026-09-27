@@ -312,6 +312,7 @@ class DoctorDirectoryItem {
   final String? scheduleSummary;
   final List<DoctorScheduleSlot> schedule;
   final double? minBookingAdvanceAmount;
+  final DateTime? createdAt;
 
   DoctorDirectoryItem({
     required this.id,
@@ -338,6 +339,7 @@ class DoctorDirectoryItem {
     this.scheduleSummary,
     this.schedule = const [],
     this.minBookingAdvanceAmount,
+    this.createdAt,
   });
 
   factory DoctorDirectoryItem.fromJson(Map<String, dynamic> json) => DoctorDirectoryItem(
@@ -378,6 +380,7 @@ class DoctorDirectoryItem {
             .map((e) => DoctorScheduleSlot.fromJson(e as Map<String, dynamic>))
             .toList(),
         minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+        createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'].toString()),
       );
 }
 

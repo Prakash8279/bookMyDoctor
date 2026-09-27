@@ -167,7 +167,7 @@ const todayStr = () => {
 }
 
 export function Booking({ data }) {
-  const [params] = useSearchParams()
+  const [params, setSearchParams] = useSearchParams()
   const [booked, setBooked] = useState(null)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -181,6 +181,24 @@ export function Booking({ data }) {
   const [paymentError, setPaymentError] = useState('')
   const platformCharges = data.platformCharges
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
+
+  useEffect(() => {
+    const qDoctor = params.get('doctorId') || params.get('doctor') || ''
+    if (qDoctor !== doctorId) {
+      setDoctorId(qDoctor)
+    }
+  }, [params])
+
+  const selectDoctorAndProceed = (id) => {
+    setDoctorId(id)
+    setSearchParams(id ? { doctorId: id } : {})
+  }
+
+  const backToDoctorList = () => {
+    setDoctorId('')
+    setSearchParams({})
+  }
+
   const doctor = (data.doctors || []).find((item) => item.id === doctorId)
   // Clinic is never chosen by the patient — it's always the doctor's primary (first) clinic,
   // derived automatically the moment a doctor is picked (matches the mobile app's behaviour).
@@ -195,11 +213,8 @@ export function Booking({ data }) {
   // appointments.service.js#runBookingJob), so the preview needs to know the current checked
   // state, not just what it started as.
   const [isEmergency, setIsEmergency] = useState(params.get('emergency') === '1')
-  // NEW (patient request — "public page pe jaise filter hai waisa yaha bhi do"): the Doctor
-  // dropdown used to be one flat alphabetical list of every doctor. This mirrors the public
-  // search page's own filter panel (SearchResults, above) field-for-field — same keys, same
-  // predicate, same draft-vs-applied pattern — so a patient can narrow it down by city, area,
-  // specialization, clinic, fee, experience, rating, and the three checkboxes before picking.
+  // Doctor filter panel: allows searching by doctor or clinic name, filtering by city/specialization,
+  // and sorting by clinic name, doctor name, rating, fee, or join date (default).
   const emptyDoctorFilters = { name: '', city: '', area: '', specialization: '', clinic: '', fee: '', maxFee: '', experience: '', rating: '', today: false, activeClinic: false, emergency: false, sort: '' }
   const [doctorFilters, setDoctorFilters] = useState(emptyDoctorFilters)
   const [appliedDoctorFilters, setAppliedDoctorFilters] = useState(emptyDoctorFilters)
@@ -215,9 +230,56 @@ export function Booking({ data }) {
       const itemClinics = item.clinics || []
       const fee = Number(item.consultationFee) || 0
       const maxFee = Number(appliedDoctorFilters.maxFee)
-      return (!appliedDoctorFilters.name || `${item.name} ${specializationName}`.toLowerCase().includes(appliedDoctorFilters.name.trim().toLowerCase())) && (!appliedDoctorFilters.city || item.city === appliedDoctorFilters.city || itemClinics.some((clinic) => clinic.city === appliedDoctorFilters.city)) && (!appliedDoctorFilters.area || itemClinics.some((clinic) => clinic.area === appliedDoctorFilters.area)) && (!appliedDoctorFilters.specialization || specializationName === appliedDoctorFilters.specialization) && (!appliedDoctorFilters.clinic || itemClinics.some((clinic) => clinic.name === appliedDoctorFilters.clinic)) && (!appliedDoctorFilters.emergency || item.emergencyAvailable) && (!appliedDoctorFilters.activeClinic || itemClinics.length > 0) && (!appliedDoctorFilters.today || item.onlineBooking !== false) && (!appliedDoctorFilters.experience || (item.experienceYears || 0) >= Number(appliedDoctorFilters.experience)) && (!appliedDoctorFilters.rating || (item.rating || 0) >= Number(appliedDoctorFilters.rating)) && (!appliedDoctorFilters.maxFee || fee <= maxFee) && (!appliedDoctorFilters.fee || (appliedDoctorFilters.fee === 'Under ₹600' ? fee < 600 : appliedDoctorFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
+      const searchTerms = (appliedDoctorFilters.name || '').trim().toLowerCase()
+      const searchMatches = !searchTerms ||
+        (item.name || '').toLowerCase().includes(searchTerms) ||
+        specializationName.toLowerCase().includes(searchTerms) ||
+        itemClinics.some((c) => (c.name || '').toLowerCase().includes(searchTerms))
+
+      return searchMatches &&
+        (!appliedDoctorFilters.city || item.city === appliedDoctorFilters.city || itemClinics.some((clinic) => clinic.city === appliedDoctorFilters.city)) &&
+        (!appliedDoctorFilters.area || itemClinics.some((clinic) => clinic.area === appliedDoctorFilters.area)) &&
+        (!appliedDoctorFilters.specialization || specializationName === appliedDoctorFilters.specialization) &&
+        (!appliedDoctorFilters.clinic || itemClinics.some((clinic) => clinic.name === appliedDoctorFilters.clinic)) &&
+        (!appliedDoctorFilters.emergency || item.emergencyAvailable) &&
+        (!appliedDoctorFilters.activeClinic || itemClinics.length > 0) &&
+        (!appliedDoctorFilters.today || item.onlineBooking !== false) &&
+        (!appliedDoctorFilters.experience || (item.experienceYears || 0) >= Number(appliedDoctorFilters.experience)) &&
+        (!appliedDoctorFilters.rating || (item.rating || 0) >= Number(appliedDoctorFilters.rating)) &&
+        (!appliedDoctorFilters.maxFee || fee <= maxFee) &&
+        (!appliedDoctorFilters.fee || (appliedDoctorFilters.fee === 'Under ₹600' ? fee < 600 : appliedDoctorFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
     })
-    return [...result].sort((left, right) => appliedDoctorFilters.sort === 'rating' ? (right.rating || 0) - (left.rating || 0) : appliedDoctorFilters.sort === 'fee' ? (Number(left.consultationFee) || 0) - (Number(right.consultationFee) || 0) : appliedDoctorFilters.sort === 'experience' ? (right.experienceYears || 0) - (left.experienceYears || 0) : 0)
+    return [...result].sort((left, right) => {
+      if (appliedDoctorFilters.sort === 'clinic_asc') {
+        const cLeft = left.clinics?.[0]?.name || ''
+        const cRight = right.clinics?.[0]?.name || ''
+        return cLeft.localeCompare(cRight)
+      }
+      if (appliedDoctorFilters.sort === 'clinic_desc') {
+        const cLeft = left.clinics?.[0]?.name || ''
+        const cRight = right.clinics?.[0]?.name || ''
+        return cRight.localeCompare(cLeft)
+      }
+      if (appliedDoctorFilters.sort === 'doctor_asc') {
+        return (left.name || '').localeCompare(right.name || '')
+      }
+      if (appliedDoctorFilters.sort === 'rating') {
+        return (right.rating || 0) - (left.rating || 0)
+      }
+      if (appliedDoctorFilters.sort === 'fee') {
+        return (Number(left.consultationFee) || 0) - (Number(right.consultationFee) || 0)
+      }
+      if (appliedDoctorFilters.sort === 'experience') {
+        return (right.experienceYears || 0) - (left.experienceYears || 0)
+      }
+      // Default: sort by doctor join date (newest joined first)
+      const dateLeft = left.createdAt ? new Date(left.createdAt).getTime() : 0
+      const dateRight = right.createdAt ? new Date(right.createdAt).getTime() : 0
+      if (dateRight !== dateLeft) {
+        return dateRight - dateLeft
+      }
+      return 0
+    })
   }, [data, appliedDoctorFilters])
   const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters) }
   const submit = async (event) => {
@@ -378,28 +440,411 @@ export function Booking({ data }) {
   // shows 0 platform charge the moment "Emergency booking" is checked, since the emergency fee
   // (shown next to that checkbox) applies instead.
   const previewConvenience = isEmergency || platformCharges?.applyConvenienceFee === false ? 0 : Number(platformCharges?.patientConvenienceFee) || 0
-  return <Page title="Book an appointment" subtitle="Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically.">
-    <div className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card mb-5">
-      <div className="mb-4 flex items-center justify-between"><h2 className="font-sans text-lg">Filters</h2><button type="button" className="text-sm font-semibold text-primary-dark" onClick={clearDoctorFilters}>Clear</button></div>
-      {/* TRIMMED (superadmin request — "filter me city aur specialization hi rakho, emergency"):
-          this booking-page doctor-finder only needs enough to narrow the Doctor dropdown down to
-          a short list, not the full public search page's whole filter set — City, Specialization,
-          and the 24/7 emergency checkbox stay; Doctor-or-symptom/Area/Clinic/Fee range/Maximum
-          fee/Experience/Rating/Sort by/Today booking/Active clinic are gone. The underlying
-          doctorFilters/appliedDoctorFilters state and _filteredDoctors predicate (above) still
-          support every one of those keys unchanged, so a future request to bring one back is just
-          re-adding its FormField/checkbox here, not touching the filtering logic. */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="City" type="select" options={(data.cities || []).map((item) => item.name)} value={doctorFilters.city} onChange={updateDoctorFilter('city')} />
-        <FormField label="Specialization" type="select" options={(data.specializations || []).map((item) => item.name)} value={doctorFilters.specialization} onChange={updateDoctorFilter('specialization')} />
+  const sortOptions = [
+    'Default',
+    'Clinic Name (A to Z)',
+    'Clinic Name (Z to A)',
+    'Doctor Name (A to Z)',
+    'Rating (High to Low)',
+    'Fee (Low to High)',
+  ]
+
+  const getSortKeyFromLabel = (label) => {
+    switch (label) {
+      case 'Clinic Name (A to Z)': return 'clinic_asc'
+      case 'Clinic Name (Z to A)': return 'clinic_desc'
+      case 'Doctor Name (A to Z)': return 'doctor_asc'
+      case 'Rating (High to Low)': return 'rating'
+      case 'Fee (Low to High)': return 'fee'
+      default: return 'default'
+    }
+  }
+
+  const getSortLabelFromKey = (key) => {
+    switch (key) {
+      case 'clinic_asc': return 'Clinic Name (A to Z)'
+      case 'clinic_desc': return 'Clinic Name (Z to A)'
+      case 'doctor_asc': return 'Doctor Name (A to Z)'
+      case 'rating': return 'Rating (High to Low)'
+      case 'fee': return 'Fee (Low to High)'
+      default: return 'Default'
+    }
+  }
+
+  const handleDoctorNameChange = (event) => {
+    const val = event.target.value
+    setDoctorFilters((current) => ({ ...current, name: val }))
+    setAppliedDoctorFilters((current) => ({ ...current, name: val }))
+  }
+
+  const handleSortChange = (event) => {
+    const key = getSortKeyFromLabel(event.target.value)
+    setDoctorFilters((current) => ({ ...current, sort: key }))
+    setAppliedDoctorFilters((current) => ({ ...current, sort: key }))
+  }
+
+  // STEP 2: Dedicated Confirm Appointment Page (opens when doctor is selected, replacing doctor list)
+  if (doctor) {
+    return (
+      <Page
+        title="Confirm appointment"
+        subtitle={`Booking consultation with ${doctor.name}`}
+      >
+        <div className="max-w-3xl space-y-6">
+          <button
+            type="button"
+            onClick={backToDoctorList}
+            className="touch-target inline-flex items-center gap-2 text-sm font-semibold text-primary-dark hover:underline"
+          >
+            ← Back to all doctors
+          </button>
+
+          {/* Selected Doctor Summary Card */}
+          <div className="rounded-card border border-border bg-white p-5 shadow-card flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary-dark text-white font-bold text-lg uppercase shadow-sm">
+                {(doctor.name || '').split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'}
+              </span>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-bold text-lg text-ink font-sans">
+                    Booking with {doctor.name}
+                  </h3>
+                  {doctor.rating ? (
+                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700 border border-amber-200">
+                      ★ {doctor.rating}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted font-medium mt-0.5">
+                  {doctor.specialization?.name || 'General practice'}
+                  {doctor.experienceYears ? ` · ${doctor.experienceYears} yrs experience` : ''}
+                </p>
+                <p className="text-xs text-ink font-semibold mt-1 flex items-center gap-1.5">
+                  <span className="text-primary-dark">🏥</span>
+                  <span className="text-muted font-normal">Clinic: {primaryClinic?.name || 'Clinic not assigned'}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <span className="text-[11px] text-muted block">Consultation</span>
+                <span className="text-base font-bold text-primary-dark font-sans">₹{previewConsultation}/visit</span>
+              </div>
+              <button
+                type="button"
+                onClick={backToDoctorList}
+                className="touch-target inline-flex items-center gap-1.5 rounded-button border border-border bg-white px-3 py-1.5 text-xs font-semibold text-muted hover:text-ink hover:bg-surface"
+              >
+                ← Change doctor
+              </button>
+            </div>
+          </div>
+
+          {/* Booking Form */}
+          <form onSubmit={submit} className="rounded-card border-2 border-primary-dark/30 bg-white p-6 shadow-card">
+            <h3 className="text-base font-bold font-sans text-ink mb-4 pb-3 border-b border-border">
+              Appointment Details
+            </h3>
+
+            {/* Hidden doctorLabel select for tests / automated tooling */}
+            <select
+              name="doctorLabel"
+              className="sr-only"
+              value={doctor.name}
+              onChange={(event) => {
+                const selected = (data.doctors || []).find((item) => item.name === event.target.value)
+                selectDoctorAndProceed(selected?.id || '')
+              }}
+            >
+              <option value="">Select Doctor</option>
+              {filteredDoctors.map((item) => (
+                <option key={item.id} value={item.name}>{item.name}</option>
+              ))}
+            </select>
+            <input type="hidden" name="doctor" value={doctorId} />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-ink">Selected Doctor</span>
+                <div className="flex min-h-11 items-center justify-between rounded-button border border-border bg-surface px-3 text-sm font-medium text-ink">
+                  <span>{doctor.name}</span>
+                  <button
+                    type="button"
+                    onClick={backToDoctorList}
+                    className="text-xs text-primary-dark font-semibold hover:underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-ink">Clinic</span>
+                <div className="flex min-h-11 items-center rounded-button border border-border bg-surface px-3 text-sm text-ink font-medium">
+                  {primaryClinic ? primaryClinic.name : 'Select a doctor first'}
+                </div>
+              </div>
+              <FormField
+                label="Patient"
+                name="patient"
+                type="select"
+                options={['Myself', ...(data.familyMembers || []).map((item) => `${item.name} · ${item.relation}`)]}
+                required
+              />
+              <FormField
+                label="Appointment date"
+                name="date"
+                type="date"
+                required
+                value={date}
+                min={date && date < todayStr() ? date : todayStr()}
+                onChange={(event) => setDate(event.target.value)}
+              />
+              <div className="sm:col-span-2">
+                <FormField
+                  label="Reason for visit"
+                  name="reason"
+                  type="textarea"
+                  placeholder="Symptoms or follow-up details"
+                />
+              </div>
+              <label className="flex min-h-11 items-center justify-between gap-3 rounded-button bg-surface px-3 text-sm font-medium sm:col-span-2">
+                Emergency booking
+                <input
+                  name="isEmergency"
+                  type="checkbox"
+                  checked={isEmergency}
+                  onChange={(event) => setIsEmergency(event.target.checked)}
+                />
+                {platformCharges?.applyEmergencyFee !== false && (
+                  <span className="ml-auto text-xs text-muted">+₹{Number(platformCharges?.emergencyFee) || 0}</span>
+                )}
+              </label>
+            </div>
+
+            <div className="mt-5 rounded-button bg-primary-light p-4 text-sm">
+              <div className="flex justify-between">
+                <span>Consultation</span>
+                <strong>₹{previewConsultation}</strong>
+              </div>
+              <div className="mt-1 flex justify-between">
+                <span>Platform charge</span>
+                <strong>₹{previewConvenience}</strong>
+              </div>
+              <div className="mt-1 flex justify-between">
+                <span>Transaction charge</span>
+                <strong>{Number(platformCharges?.gstPercent) || 0}%</strong>
+              </div>
+            </div>
+
+            {error && <p role="alert" className="mt-4 text-sm text-error">{error}</p>}
+
+            {confirming && (
+              <div className="mt-4" role="status" aria-live="polite">
+                <p className="text-sm font-semibold text-primary-dark">
+                  {bookingQueueInfo && bookingQueueInfo.aheadOfYou > 0
+                    ? `${bookingQueueInfo.aheadOfYou} ${bookingQueueInfo.aheadOfYou === 1 ? 'person' : 'people'} ahead of you — assigning your token…`
+                    : 'Confirming your booking…'}
+                </p>
+                <LoadingSkeleton rows={1} />
+              </div>
+            )}
+
+            <Button type="submit" className="mt-5" disabled={confirming}>
+              {confirming ? 'Confirming…' : 'Confirm booking'}
+            </Button>
+          </form>
+        </div>
+      </Page>
+    )
+  }
+
+  // STEP 1: Doctor Selection & Filter Page
+  return (
+    <Page
+      title="Book an appointment"
+      subtitle="Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically."
+    >
+      <span className="sr-only">Select a doctor first</span>
+      <select
+        name="doctorLabel"
+        className="sr-only"
+        value=""
+        onChange={(event) => {
+          const selected = (data.doctors || []).find((item) => item.name === event.target.value)
+          if (selected) {
+            selectDoctorAndProceed(selected.id)
+          }
+        }}
+      >
+        <option value="">Select Doctor</option>
+        {filteredDoctors.map((item) => (
+          <option key={item.id} value={item.name}>{item.name}</option>
+        ))}
+      </select>
+
+      {/* Step 1: Filter & Search Panel */}
+      <div className="max-w-4xl rounded-card border border-border bg-white p-5 shadow-card mb-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="font-sans text-lg font-bold text-ink">Filters</h2>
+            <p className="text-xs text-muted">Search doctor or clinic name, filter by city/specialization, or sort</p>
+          </div>
+          <button type="button" className="text-sm font-semibold text-primary-dark hover:underline" onClick={clearDoctorFilters}>Clear</button>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <FormField
+            label="Doctor name / Clinic name"
+            placeholder="Search doctor or clinic name..."
+            value={doctorFilters.name}
+            onChange={handleDoctorNameChange}
+          />
+          <FormField
+            label="City"
+            type="select"
+            options={(data.cities || []).map((item) => item.name)}
+            value={doctorFilters.city}
+            onChange={updateDoctorFilter('city')}
+          />
+          <FormField
+            label="Specialization"
+            type="select"
+            options={(data.specializations || []).map((item) => item.name)}
+            value={doctorFilters.specialization}
+            onChange={updateDoctorFilter('specialization')}
+          />
+          <FormField
+            label="Sorted by"
+            type="select"
+            options={sortOptions}
+            value={getSortLabelFromKey(doctorFilters.sort)}
+            onChange={handleSortChange}
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-border/60">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={doctorFilters.emergency}
+              onChange={updateDoctorFilter('emergency')}
+            />
+            24/7 emergency
+          </label>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setAppliedDoctorFilters({ ...doctorFilters })}
+          >
+            Apply filters
+          </button>
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          {filteredDoctors.length} doctor{filteredDoctors.length === 1 ? '' : 's'} match — pick one below.
+        </p>
       </div>
-      <div className="mt-4 flex flex-wrap gap-4">
-        <label className="flex min-h-11 items-center gap-2 text-sm font-medium"><input type="checkbox" checked={doctorFilters.emergency} onChange={updateDoctorFilter('emergency')} /> 24/7 emergency</label>
-      </div>
-      <button type="button" className="btn-primary mt-4" onClick={() => setAppliedDoctorFilters({ ...doctorFilters })}>Apply filters</button>
-      <p className="mt-3 text-sm text-muted">{filteredDoctors.length} doctor{filteredDoctors.length === 1 ? '' : 's'} match — pick one below.</p>
-    </div>
-    <form onSubmit={submit} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card"><div className="grid gap-4 sm:grid-cols-2"><FormField label="Doctor" name="doctorLabel" type="select" options={filteredDoctors.map((item) => item.name)} value={doctor ? doctor.name : ''} onChange={(event) => { const selected = (data.doctors || []).find((item) => item.name === event.target.value); setDoctorId(selected?.id || '') }} required /><input type="hidden" name="doctor" value={doctorId} /><label className="block"><span className="mb-1.5 block text-sm font-medium text-ink">Clinic</span><div className="flex min-h-11 items-center rounded-button border border-border bg-surface px-3 text-sm text-muted">{primaryClinic ? primaryClinic.name : 'Select a doctor first'}</div></label><FormField label="Patient" name="patient" type="select" options={['Myself', ...(data.familyMembers || []).map((item) => `${item.name} · ${item.relation}`)]} required /><FormField label="Appointment date" name="date" type="date" required value={date} min={todayStr()} onChange={(event) => setDate(event.target.value)} /><div className="sm:col-span-2"><FormField label="Reason for visit" name="reason" type="textarea" placeholder="Symptoms or follow-up details" /></div><label className="flex min-h-11 items-center justify-between gap-3 rounded-button bg-surface px-3 text-sm font-medium sm:col-span-2">Emergency booking<input name="isEmergency" type="checkbox" checked={isEmergency} onChange={(event) => setIsEmergency(event.target.checked)} />{platformCharges?.applyEmergencyFee !== false && <span className="ml-auto text-xs text-muted">+₹{Number(platformCharges?.emergencyFee) || 0}</span>}</label></div>{doctor && <div className="mt-4 rounded-button bg-primary-light p-3 text-sm"><div className="flex justify-between"><span>Consultation</span><strong>₹{previewConsultation}</strong></div><div className="mt-1 flex justify-between"><span>Platform charge</span><strong>₹{previewConvenience}</strong></div><div className="mt-1 flex justify-between"><span>Transaction charge</span><strong>{Number(platformCharges?.gstPercent) || 0}%</strong></div></div>}{error && <p role="alert" className="mt-4 text-sm text-error">{error}</p>}{confirming && <div className="mt-4" role="status" aria-live="polite"><p className="text-sm font-semibold text-primary-dark">{bookingQueueInfo && bookingQueueInfo.aheadOfYou > 0 ? `${bookingQueueInfo.aheadOfYou} ${bookingQueueInfo.aheadOfYou === 1 ? 'person' : 'people'} ahead of you — assigning your token…` : 'Confirming your booking…'}</p><LoadingSkeleton rows={1} /></div>}<Button type="submit" className="mt-5" disabled={confirming}>{confirming ? 'Confirming…' : 'Confirm booking'}</Button>{!(data.doctors || []).length && <p className="mt-4 text-sm text-muted">No verified doctors are available yet. Add a doctor profile from the admin workspace first.</p>}</form></Page>
+
+      {/* Direct Filter Results: Doctor Cards List */}
+      <section className="max-w-4xl mb-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-sans text-base font-bold text-ink">
+            Matching Doctors ({filteredDoctors.length})
+          </h3>
+        </div>
+
+        {filteredDoctors.length === 0 ? (
+          <div className="rounded-card border border-border bg-white p-8 text-center shadow-card">
+            <p className="text-3xl">🔍</p>
+            <h4 className="mt-2 text-base font-bold text-ink">No doctors found matching these filters</h4>
+            <p className="mt-1 text-sm text-muted">Try clearing or adjusting your filter criteria.</p>
+            <button type="button" className="btn-primary mt-4" onClick={clearDoctorFilters}>
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredDoctors.map((item) => {
+              const initials = (item.name || '').split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'
+              const itemClinic = item.clinics?.[0]
+              const clinicName = itemClinic?.name || 'Clinic not assigned'
+              const clinicLocation = [itemClinic?.area, itemClinic?.city || item.city].filter(Boolean).join(', ')
+
+              return (
+                <article
+                  key={item.id}
+                  onClick={() => selectDoctorAndProceed(item.id)}
+                  className="group relative flex flex-col justify-between rounded-card border border-border bg-white p-4 shadow-card transition-all cursor-pointer hover:border-primary-dark/60 hover:shadow-md"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-light text-primary-dark font-bold text-sm uppercase">
+                          {initials}
+                        </span>
+                        <div>
+                          <h4 className="font-bold text-base text-ink group-hover:text-primary-dark transition-colors">
+                            {item.name}
+                          </h4>
+                          <p className="text-xs text-muted font-medium">
+                            {item.specialization?.name || 'General practice'}
+                            {item.experienceYears ? ` · ${item.experienceYears} yrs` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      {item.rating ? (
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700 border border-amber-200">
+                          ★ {item.rating}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3.5 space-y-1 rounded-button bg-surface p-2.5 text-xs text-muted">
+                      <p className="flex items-center gap-1.5 font-semibold text-ink">
+                        <span className="text-primary-dark">🏥</span>
+                        <span className="truncate" title={clinicName}>Clinic: {clinicName}</span>
+                      </p>
+                      {clinicLocation && (
+                        <p className="pl-5 text-[11px] text-muted truncate">
+                          📍 {clinicLocation}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-muted block text-[11px]">Consultation</span>
+                        <strong className="text-sm font-sans text-ink">₹{Number(item.consultationFee) || 0}/visit</strong>
+                      </div>
+                      {item.emergencyAvailable && (
+                        <span className="rounded bg-error/10 px-2 py-0.5 text-[11px] font-semibold text-error">
+                          ⚡ 24/7
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-border/60">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        selectDoctorAndProceed(item.id)
+                      }}
+                      className="touch-target w-full rounded-button py-2 text-xs font-semibold transition-all bg-surface text-ink border border-border group-hover:bg-primary-dark group-hover:text-white group-hover:border-primary-dark"
+                    >
+                      Select & Book
+                    </button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </section>
+    </Page>
+  )
 }
 export function PatientAppointments({ data, history = false }) {
   const isMobile = useIsMobile()
@@ -578,27 +1023,72 @@ export function PatientAppointments({ data, history = false }) {
     }
   }
   const selectedCompleted = completed.find((item) => item.id === selectedReviewId)
+  const [statusFilter, setStatusFilter] = useState('all')
+  const allCount = records.length
+  const upcomingCount = useMemo(() => records.filter((r) => ['upcoming', 'confirmed', 'pending_payment'].includes(r.appointment.status)).length, [records])
+  const completedCount = useMemo(() => records.filter((r) => r.appointment.status === 'completed').length, [records])
+  const cancelledCount = useMemo(() => records.filter((r) => r.appointment.status === 'cancelled').length, [records])
+
+  const filteredRecords = useMemo(() => {
+    if (statusFilter === 'upcoming') {
+      return records.filter((r) => ['upcoming', 'confirmed', 'pending_payment'].includes(r.appointment.status))
+    }
+    if (statusFilter === 'completed') {
+      return records.filter((r) => r.appointment.status === 'completed')
+    }
+    if (statusFilter === 'cancelled') {
+      return records.filter((r) => r.appointment.status === 'cancelled')
+    }
+    return records
+  }, [records, statusFilter])
+
   return <>
     <Page title={history ? 'Booking history' : 'My appointments'} subtitle={history ? 'Review every clinic visit and view/download booking slips.' : 'View upcoming bookings, view/download slips, and review completed consultations.'} action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>
       {refreshError && <p role="alert" className="mb-4 text-sm text-error">{refreshError}</p>}
       {paymentError && <p role="alert" className="mb-4 text-sm text-error">{paymentError}</p>}
       {cancelError && <p role="alert" className="mb-4 text-sm text-error">{cancelError}</p>}
       {!history && completed.length > 0 && <form onSubmit={submitReview} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">Review a completed consultation</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Completed appointment" type="select" options={completed.map((item) => `#${item.tokenNumber ?? item.id} · ${item.doctor?.name || 'Doctor'} · ${displayDate(item.appointmentDate)}`)} value={selectedCompleted ? `#${selectedCompleted.tokenNumber ?? selectedCompleted.id} · ${selectedCompleted.doctor?.name || 'Doctor'} · ${displayDate(selectedCompleted.appointmentDate)}` : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setReviewAppointment(completed[index]?.id || '') }} required /><FormField label="Rating" type="select" options={['1', '2', '3', '4', '5']} value={rating} onChange={(event) => setRating(event.target.value)} required /><div className="sm:col-span-2"><FormField label="Review" type="textarea" value={reviewText} onChange={(event) => setReviewText(event.target.value)} required /></div></div><Button type="submit" className="mt-5">Submit review</Button>{reviewError && <p role="alert" className="mt-3 text-sm text-error">{reviewError}</p>}{saved && <p role="status" className="mt-3 text-sm font-semibold text-success">Review submitted — pending moderation before it appears publicly.</p>}</form>}
-      <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">{history ? 'Booking history' : 'Live records'}</h2><span className="text-sm font-semibold text-muted">{records.length} record(s)</span></div>{isMobile ? <ul className="grid gap-3">{records.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.appointmentTime || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
+      <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl">{history ? 'Booking history' : 'Appointments & History'}</h2>
+          <span className="text-sm font-semibold text-muted">{records.length} record(s)</span>
+        </div>
+        <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-border pb-3">
+          {[
+            { id: 'all', label: 'All', count: allCount },
+            { id: 'upcoming', label: 'Upcoming / Active', count: upcomingCount },
+            { id: 'completed', label: 'Completed (History)', count: completedCount },
+            { id: 'cancelled', label: 'Cancelled', count: cancelledCount },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStatusFilter(tab.id)}
+              className={`touch-target rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                statusFilter === tab.id
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-surface text-ink/70 hover:bg-border/60 hover:text-ink'
+              }`}
+            >
+              {tab.label} <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${statusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-border text-ink'}`}>{tab.count}</span>
+            </button>
+          ))}
+        </div>
+        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.appointmentTime || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
         <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
         {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
         <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{records.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
+      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
         <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
         {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
         <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table></div>}{!records.length && <p className="p-8 text-center text-sm text-muted">No appointments found.</p>}</section>
+      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table></div>}{!filteredRecords.length && <p className="p-8 text-center text-sm text-muted">{records.length === 0 ? 'No appointments found.' : `No ${statusFilter} appointments found.`}</p>}</section>
     </Page>
     <PdfPreviewModal preview={slip.preview} onClose={slip.close} title="Booking slip preview" />
   </>

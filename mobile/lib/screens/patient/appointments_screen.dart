@@ -103,6 +103,9 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.isHistory) {
+      _statusFilter = 'completed';
+    }
     _future = _fetch();
   }
 
@@ -266,11 +269,11 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
               scrollDirection: Axis.horizontal,
               children: [
                 _StatusChip(label: 'All', selected: _statusFilter == null, onTap: () => setState(() { _statusFilter = null; _load(); })),
-                _StatusChip(label: 'Upcoming', selected: _statusFilter == 'upcoming', onTap: () => setState(() { _statusFilter = 'upcoming'; _load(); })),
+                _StatusChip(label: 'Upcoming / Active', selected: _statusFilter == 'upcoming', onTap: () => setState(() { _statusFilter = 'upcoming'; _load(); })),
+                _StatusChip(label: 'Completed (History)', selected: _statusFilter == 'completed', onTap: () => setState(() { _statusFilter = 'completed'; _load(); })),
+                _StatusChip(label: 'Cancelled', selected: _statusFilter == 'cancelled', onTap: () => setState(() { _statusFilter = 'cancelled'; _load(); })),
                 _StatusChip(label: 'Pending payment', selected: _statusFilter == 'pending_payment', onTap: () => setState(() { _statusFilter = 'pending_payment'; _load(); })),
                 _StatusChip(label: 'Confirmed', selected: _statusFilter == 'confirmed', onTap: () => setState(() { _statusFilter = 'confirmed'; _load(); })),
-                _StatusChip(label: 'Completed', selected: _statusFilter == 'completed', onTap: () => setState(() { _statusFilter = 'completed'; _load(); })),
-                _StatusChip(label: 'Cancelled', selected: _statusFilter == 'cancelled', onTap: () => setState(() { _statusFilter = 'cancelled'; _load(); })),
               ],
             ),
           ),

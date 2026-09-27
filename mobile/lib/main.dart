@@ -46,6 +46,21 @@ class BookMyDoctorsApp extends StatelessWidget {
         title: 'BookMyDoctors',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
+        builder: (context, child) {
+          final mediaQuery = MediaQuery.of(context);
+          // Clamp text scaling between 0.85 and 1.15 to ensure compatibility
+          // across different phone screen sizes and OS accessibility font settings,
+          // preventing RenderFlex overflows on devices with huge display scales.
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              textScaler: mediaQuery.textScaler.clamp(
+                minScaleFactor: 0.85,
+                maxScaleFactor: 1.15,
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         onGenerateRoute: onGenerateRoute,
         home: const AppRoot(),
       ),

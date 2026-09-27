@@ -141,9 +141,12 @@ class RoleScaffoldState extends State<RoleScaffold> {
               child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
             ),
             const SizedBox(width: 8),
-            const Text(
-              'BookMyDoctors',
-              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
+            const Flexible(
+              child: Text(
+                'BookMyDoctors',
+                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -289,11 +292,15 @@ class RoleScaffoldState extends State<RoleScaffold> {
       ),
       // A single obvious top-level mount point for every role portal screen — see
       // widgets/connectivity_banner.dart's own doc comment for what it does and doesn't cover.
-      body: Column(
-        children: [
-          const ConnectivityBanner(),
-          Expanded(child: current.builder(context)),
-        ],
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        child: Column(
+          children: [
+            const ConnectivityBanner(),
+            Expanded(child: current.builder(context)),
+          ],
+        ),
       ),
       ),
     );

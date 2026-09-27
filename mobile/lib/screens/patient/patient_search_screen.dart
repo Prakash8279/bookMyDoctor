@@ -569,12 +569,19 @@ class _DoctorCard extends StatelessWidget {
                     if (doctor.specialization != null)
                       Text(doctor.specialization!.name, style: const TextStyle(color: AppColors.textSecondary)),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: AppSpacing.md,
+                      runSpacing: 4,
                       children: [
-                        const Icon(Icons.star, size: 16, color: AppColors.warning),
-                        const SizedBox(width: 2),
-                        Text('${doctor.rating.toStringAsFixed(1)} (${doctor.reviewCount})'),
-                        const SizedBox(width: AppSpacing.md),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.star, size: 16, color: AppColors.warning),
+                            const SizedBox(width: 2),
+                            Text('${doctor.rating.toStringAsFixed(1)} (${doctor.reviewCount})'),
+                          ],
+                        ),
                         if (doctor.experienceYears != null) Text('${doctor.experienceYears} yrs exp'),
                       ],
                     ),
@@ -600,10 +607,14 @@ class _DoctorCard extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.schedule_outlined, size: 13, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary),
-                        const SizedBox(width: 3),
-                        Text(
-                          doctor.onlineBooking ? 'Today queue open' : 'Not accepting bookings today',
-                          style: TextStyle(fontSize: 12, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary, fontWeight: FontWeight.w600),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            doctor.onlineBooking ? 'Today queue open' : 'Not accepting bookings today',
+                            style: TextStyle(fontSize: 12, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),

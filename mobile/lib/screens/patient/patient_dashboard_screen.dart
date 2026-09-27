@@ -158,7 +158,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     }
     final role = RoleScaffold.of(context);
     if (isHistory) {
-      if (role != null && role.navigateToLabel('Booking history')) return;
+      if (role != null && (role.navigateToLabel('Booking history') || role.navigateToLabel('My appointments'))) return;
     } else {
       if (role != null && role.navigateToLabel('My appointments')) return;
     }
@@ -253,16 +253,14 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                       onTap: () => _goToAppointments(context),
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: StatCard(
-                      label: 'PENDING PAYMENTS',
-                      value: pendingPayments.toString(),
-                      icon: Icons.currency_rupee,
-                      onTap: () => _goToPayments(context),
-                    ),
-                  ),
                 ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              StatCard(
+                label: 'PENDING PAYMENTS',
+                value: pendingPayments.toString(),
+                icon: Icons.currency_rupee,
+                onTap: () => _goToPayments(context),
               ),
               const SizedBox(height: AppSpacing.md),
 

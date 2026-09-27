@@ -202,29 +202,33 @@ class PatientPaymentsScreen extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Receipt #${p.receiptNumber ?? (p.id.length > 8 ? p.id.substring(0, 8) : p.id)}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Mode: ${p.mode.toUpperCase()}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                          // COMPLETENESS FIX (mobile parity audit): web's
-                          // PaymentSourceBadge — see payment_visibility.dart.
-                          const SizedBox(width: 6),
-                          PaymentSourceBadge(payment: p),
-                        ],
-                      ),
-                    ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Receipt #${p.receiptNumber ?? (p.id.length > 8 ? p.id.substring(0, 8) : p.id)}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 6,
+                          runSpacing: 2,
+                          children: [
+                            Text(
+                              'Mode: ${p.mode.toUpperCase()}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            ),
+                            PaymentSourceBadge(payment: p),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     '₹${(p.fees.amount ?? 0).toStringAsFixed(0)}',
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),

@@ -209,32 +209,45 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                     const SizedBox(height: AppSpacing.xs),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Row(
-                          children: [
-                            Text(
-                              doctor.rating.toStringAsFixed(1),
-                              style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(width: 6),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Row(
+                        Flexible(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                doctor.rating.toStringAsFixed(1),
+                                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.star, color: AppColors.gold, size: 14),
-                                    SizedBox(width: 2),
-                                    Text('Patient rating', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600)),
+                                    const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.star, color: AppColors.gold, size: 14),
+                                        SizedBox(width: 2),
+                                        Flexible(
+                                          child: Text('Patient rating', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      '${doctor.reviewCount} review(s)',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                                    ),
                                   ],
                                 ),
-                                Text(
-                                  '${doctor.reviewCount} verified review(s)',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
-                                ),
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -348,7 +361,7 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                   children: [
                                     const Text('Experience', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                                     const SizedBox(height: 2),
-                                    Text('${doctor.experienceYears ?? 0} years', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    Text('${doctor.experienceYears ?? 0} years', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                                   ],
                                 ),
                               ),
@@ -360,7 +373,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                     const SizedBox(height: 2),
                                     Text(
                                       doctor.languages.isNotEmpty ? doctor.languages.join(', ') : 'Not specified',
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
@@ -377,8 +392,10 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                     const SizedBox(height: 2),
                                     Text(
                                       doctor.scheduleSummary ??
-                                          (!doctor.onlineBooking ? 'Not accepting online bookings' : 'Schedule not added'),
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                          (!doctor.onlineBooking ? 'Not accepting online' : 'Schedule not added'),
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),
