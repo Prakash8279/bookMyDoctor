@@ -31,6 +31,6 @@ class Env {
     if (_fromDefine.isNotEmpty) return _fromDefine;
 
     // Default to the live AWS EC2 backend server
-    return 'http://43.204.150.142:4000';
+    return 'https://api.bookmydoctors.me';
   }
 }
