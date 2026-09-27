@@ -62,6 +62,7 @@ class PatientHomeScreen extends StatelessWidget {
         RoleNavItem(icon: Icons.calendar_month_outlined, label: 'Book appointment', builder: _buildBook),
         RoleNavItem(icon: Icons.event_note_outlined, label: 'My appointments', builder: _buildAppointments),
         RoleNavItem(icon: Icons.confirmation_number_outlined, label: 'Queue tracker', builder: _buildQueue),
+        RoleNavItem(icon: Icons.history_rounded, label: 'Booking history', builder: _buildHistory),
         RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Payments', builder: _buildPayments),
         RoleNavItem(icon: Icons.people_outline, label: 'Family members', builder: _buildFamily),
         RoleNavItem(icon: Icons.star_outline_rounded, label: 'My reviews', builder: _buildReviews),
@@ -77,6 +78,7 @@ Widget _buildSearch(BuildContext context) => const PatientSearchScreen();
 Widget _buildBook(BuildContext context) => const BookAppointmentScreen();
 Widget _buildAppointments(BuildContext context) => const PatientAppointmentsScreen();
 Widget _buildQueue(BuildContext context) => const QueueTrackerScreen(embedded: true);
+Widget _buildHistory(BuildContext context) => const PatientAppointmentsScreen(isHistory: true);
 Widget _buildPayments(BuildContext context) => const PatientPaymentsScreen();
 Widget _buildFamily(BuildContext context) => const FamilyMembersScreen();
 Widget _buildReviews(BuildContext context) => const PatientReviewsScreen();

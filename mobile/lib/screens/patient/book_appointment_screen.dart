@@ -41,18 +41,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   PlatformCharges? _platformCharges;
 
   // Filter draft state
-  final _doctorNameFilterController = TextEditingController();
   String? _filterCity;
   String? _filterSpecialization;
   bool _filterEmergency = false;
-  String _sortOption = 'default';
 
   // Filter applied state
-  String _appliedDoctorName = '';
   String? _appliedCity;
   String? _appliedSpecialization;
   bool _appliedEmergency = false;
-  String _appliedSortOption = 'default';
 
   // Form selections
   DoctorDirectoryItem? _selectedDoctor;
@@ -85,7 +81,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   @override
   void dispose() {
-    _doctorNameFilterController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
@@ -156,14 +151,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   List<DoctorDirectoryItem> get _filteredDoctors {
-    final list = _doctors.where((doctor) {
-      if (_appliedDoctorName.isNotEmpty) {
-        final q = _appliedDoctorName.toLowerCase();
-        final match = doctor.name.toLowerCase().contains(q) ||
-            (doctor.specialization?.name ?? '').toLowerCase().contains(q) ||
-            doctor.clinics.any((c) => c.name.toLowerCase().contains(q));
-        if (!match) return false;
-      }
+    return _doctors.where((doctor) {
       if (_appliedCity != null && _appliedCity!.isNotEmpty) {
         final matchesCity = doctor.city == _appliedCity ||
             doctor.clinics.any((c) => c.city == _appliedCity);
@@ -178,65 +166,24 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       }
       return true;
     }).toList();
-
-    if (_appliedSortOption == 'clinic_asc') {
-      list.sort((a, b) {
-        final ca = a.clinics.isNotEmpty ? a.clinics.first.name : '';
-        final cb = b.clinics.isNotEmpty ? b.clinics.first.name : '';
-        return ca.compareTo(cb);
-      });
-    } else if (_appliedSortOption == 'clinic_desc') {
-      list.sort((a, b) {
-        final ca = a.clinics.isNotEmpty ? a.clinics.first.name : '';
-        final cb = b.clinics.isNotEmpty ? b.clinics.first.name : '';
-        return cb.compareTo(ca);
-      });
-    } else if (_appliedSortOption == 'doctor_asc') {
-      list.sort((a, b) => a.name.compareTo(b.name));
-    } else if (_appliedSortOption == 'rating') {
-      list.sort((a, b) => b.rating.compareTo(a.rating));
-    } else if (_appliedSortOption == 'fee') {
-      list.sort((a, b) => a.consultationFee.compareTo(b.consultationFee));
-    } else {
-      // Default: sort by doctor join date (newest first)
-      list.sort((a, b) {
-        final da = a.createdAt;
-        final db = b.createdAt;
-        if (da != null && db != null) {
-          return db.compareTo(da);
-        } else if (db != null) {
-          return 1;
-        } else if (da != null) {
-          return -1;
-        }
-        return 0;
-      });
-    }
-    return list;
   }
 
   void _clearFilters() {
     setState(() {
-      _doctorNameFilterController.clear();
-      _appliedDoctorName = '';
       _filterCity = null;
       _filterSpecialization = null;
       _filterEmergency = false;
-      _sortOption = 'default';
       _appliedCity = null;
       _appliedSpecialization = null;
       _appliedEmergency = false;
-      _appliedSortOption = 'default';
     });
   }
 
   void _applyFilters() {
     setState(() {
-      _appliedDoctorName = _doctorNameFilterController.text.trim();
       _appliedCity = _filterCity;
       _appliedSpecialization = _filterSpecialization;
       _appliedEmergency = _filterEmergency;
-      _appliedSortOption = _sortOption;
       // If current doctor doesn't match new filter, reset selection
       if (_selectedDoctor != null && !_filteredDoctors.any((d) => d.id == _selectedDoctor!.id)) {
         _selectedDoctor = null;
@@ -369,48 +316,24 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     final platformFee = isEmergencyFee ? 0.0 : (_platformCharges?.patientConvenienceFee ?? 0.0);
     final gstPercent = _platformCharges?.gstPercent ?? 0.0;
 
-    // STEP 2: Dedicated Confirm Appointment Page (opens when doctor is selected, replacing doctor list)
-    if (_selectedDoctor != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Confirm Appointment'),
-          leading: widget.preselectedDoctor == null
-              ? IconButton(
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    setState(() {
-                      _selectedDoctor = null;
-                      _selectedClinic = null;
-                    });
-                  },
-                )
-              : null,
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            if (widget.preselectedDoctor == null) ...[
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _selectedDoctor = null;
-                      _selectedClinic = null;
-                    });
-                  },
-                  icon: const Icon(Icons.arrow_back, size: 16),
-                  label: const Text('Back to all doctors', style: TextStyle(fontWeight: FontWeight.w600)),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primaryDark,
-                    padding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-            ],
+    return Scaffold(
+      appBar: AppBar(title: const Text('Book an appointment')),
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        children: [
+          const PageHeader(
+            title: 'Book an appointment',
+            subtitle: 'Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically.',
+          ),
+          const SizedBox(height: AppSpacing.sm),
 
-            // Selected Doctor Summary Card
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md),
+          ],
+
+          // Card 1: Filters (matches PatientPages.jsx lines 379-398)
+          if (widget.preselectedDoctor == null) ...[
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -425,191 +348,136 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 ],
               ),
               padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: AppColors.primaryDark,
-                    child: Text(
-                      _selectedDoctor!.name.split(' ').where((p) => p.isNotEmpty).take(2).map((p) => p[0]).join().toUpperCase(),
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _selectedDoctor!.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${_selectedDoctor!.specialization?.name ?? 'General Practice'}${_selectedDoctor!.experienceYears != null ? ' · ${_selectedDoctor!.experienceYears} yrs experience' : ''}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.apartment_outlined, size: 14, color: AppColors.primaryDark),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                _selectedClinic != null ? _selectedClinic!.name : 'Clinic not assigned',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (widget.preselectedDoctor == null)
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _selectedDoctor = null;
-                          _selectedClinic = null;
-                        });
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: AppColors.surface,
-                        foregroundColor: AppColors.primaryDark,
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          side: const BorderSide(color: AppColors.border),
-                        ),
-                      ),
-                      child: const Text('Change', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            if (_error != null) ...[
-              ErrorBanner(error: _error!),
-              const SizedBox(height: AppSpacing.md),
-            ],
-
-            // Appointment Details Form
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.primaryDark.withValues(alpha: 0.5), width: 1.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(AppSpacing.md),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('APPOINTMENT DETAILS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
-                  const SizedBox(height: 2),
-                  Text('Booking with ${_selectedDoctor!.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const Divider(height: 20),
-
-                  // Clinic (Read-only, auto-assigned)
-                  const Text('Clinic', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.apartment_outlined, size: 18, color: AppColors.primary),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            _selectedClinic != null ? _selectedClinic!.name : 'Clinic not assigned',
-                            style: const TextStyle(fontSize: 14, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Patient Dropdown
-                  DropdownButtonFormField<String>(
-                    initialValue: _patientChoice,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Patient',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                    ),
-                    items: [
-                      const DropdownMenuItem(value: 'self', child: Text('Myself')),
-                      for (final f in _familyMembers)
-                        DropdownMenuItem(value: f.id, child: Text('${f.name} · ${f.relation}')),
-                    ],
-                    onChanged: (v) => setState(() => _patientChoice = v),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Appointment date
-                  const Text('Appointment date', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                  const SizedBox(height: 6),
-                  InkWell(
-                    onTap: _pickDate,
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.border),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Filters',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            DateFormat('yyyy-MM-dd').format(_selectedDate),
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      TextButton(
+                        onPressed: _clearFilters,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.primaryDark,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                        ),
+                        child: const Text('Clear', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterCity,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'City',
+                            filled: true,
+                            fillColor: AppColors.surface,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
                           ),
-                          const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.primary),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('All cities')),
+                            for (final c in _cities) DropdownMenuItem(value: c.name, child: Text(c.name)),
+                          ],
+                          onChanged: (v) => setState(() => _filterCity = v),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _filterSpecialization,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: 'Specialization',
+                            filled: true,
+                            fillColor: AppColors.surface,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                          ),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('All specialties')),
+                            for (final s in _specializations) DropdownMenuItem(value: s.name, child: Text(s.name)),
+                          ],
+                          onChanged: (v) => setState(() => _filterSpecialization = v),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  InkWell(
+                    onTap: () => setState(() => _filterEmergency = !_filterEmergency),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: _filterEmergency,
+                            onChanged: (v) => setState(() => _filterEmergency = v ?? false),
+                            activeColor: AppColors.primary,
+                          ),
+                          const Text('24/7 emergency', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.md),
-
-                  // Reason for visit
-                  TextField(
-                    controller: _reasonController,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      labelText: 'Reason for visit',
-                      hintText: 'Symptoms or follow-up details',
-                      alignLabelWithHint: true,
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                  const SizedBox(height: AppSpacing.xs),
+                  ElevatedButton(
+                    onPressed: _applyFilters,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryDark,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
+                    child: const Text('Apply filters', style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
-                  const SizedBox(height: AppSpacing.md),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    '${filtered.length} doctor${filtered.length == 1 ? '' : 's'} match — pick one below.',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
 
-                  // Emergency booking
+          // Card 2: Form (matches PatientPages.jsx lines 399)
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 1. Doctor field
+                if (widget.preselectedDoctor != null) ...[
+                  const Text('Doctor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(10),
@@ -617,35 +485,180 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Expanded(
-                          child: Text(
-                            'Emergency booking',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        const Icon(Icons.verified, color: AppColors.primary, size: 20),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(widget.preselectedDoctor!.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                              if (widget.preselectedDoctor!.specialization?.name != null)
+                                Text(widget.preselectedDoctor!.specialization!.name, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                            ],
                           ),
-                        ),
-                        if (_platformCharges?.applyEmergencyFee != false)
-                          Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              '+₹${(_platformCharges?.emergencyFee ?? 0).toStringAsFixed(0)}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
-                            ),
-                          ),
-                        Checkbox(
-                          value: _isEmergency,
-                          onChanged: (v) => setState(() => _isEmergency = v ?? false),
-                          activeColor: AppColors.primary,
                         ),
                       ],
                     ),
                   ),
+                ] else ...[
+                  DropdownButtonFormField<DoctorDirectoryItem>(
+                    initialValue: (_selectedDoctor != null && filtered.any((d) => d.id == _selectedDoctor!.id)) ? _selectedDoctor : null,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Doctor',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    ),
+                    hint: const Text('Select a doctor'),
+                    items: [
+                      for (final d in filtered)
+                        DropdownMenuItem(
+                          value: d,
+                          child: Text('${d.name}${d.specialization != null ? " · ${d.specialization!.name}" : ""}'),
+                        ),
+                    ],
+                    onChanged: (d) => setState(() {
+                      _selectedDoctor = d;
+                      _selectedClinic = (d?.clinics.isNotEmpty == true) ? d!.clinics.first : null;
+                    }),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.md),
 
-                  // Live Price Preview Box
+                // 2. Clinic (Read-only, matching web)
+                const Text('Clinic', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.apartment_outlined, size: 18, color: _selectedClinic != null ? AppColors.primary : AppColors.textSecondary),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          _selectedClinic != null ? _selectedClinic!.name : 'Select a doctor first',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: _selectedClinic != null ? AppColors.textPrimary : AppColors.textSecondary,
+                            fontWeight: _selectedClinic != null ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // 3. Patient Dropdown
+                DropdownButtonFormField<String>(
+                  initialValue: _patientChoice,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Patient',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: 'self', child: Text('Myself')),
+                    for (final f in _familyMembers)
+                      DropdownMenuItem(value: f.id, child: Text('${f.name} · ${f.relation}')),
+                  ],
+                  onChanged: (v) => setState(() => _patientChoice = v),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // 4. Appointment date
+                const Text('Appointment date', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          DateFormat('yyyy-MM-dd').format(_selectedDate),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        ),
+                        const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.primary),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // 5. Reason for visit
+                TextField(
+                  controller: _reasonController,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    labelText: 'Reason for visit',
+                    hintText: 'Symptoms or follow-up details',
+                    alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                // 6. Emergency booking
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Emergency booking',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                        ),
+                      ),
+                      if (_platformCharges?.applyEmergencyFee != false)
+                        Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '+₹${(_platformCharges?.emergencyFee ?? 0).toStringAsFixed(0)}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
+                          ),
+                        ),
+                      Checkbox(
+                        value: _isEmergency,
+                        onChanged: (v) => setState(() => _isEmergency = v ?? false),
+                        activeColor: AppColors.primary,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // 7. Live Price Preview Box (matches web PatientPages.jsx lines 399)
+                if (_selectedDoctor != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -682,385 +695,52 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       ],
                     ),
                   ),
-
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // Polling status
-                  if (_pollingStatus != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.sm),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
-                          const SizedBox(width: AppSpacing.sm),
-                          Flexible(
-                            child: Text(
-                              _pollingStatus!,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                  ],
-
-                  // Submit Button
-                  ElevatedButton(
-                    onPressed: _canSubmit ? _submit : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: Text(
-                      _submitting ? 'Confirming…' : 'Confirm booking',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                    ),
-                  ),
                 ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-          ],
-        ),
-      );
-    }
 
-    // STEP 1: Doctor Selection & Filter Page
-    return Scaffold(
-      appBar: AppBar(title: const Text('Book an appointment')),
-      body: ListView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        children: [
-          const PageHeader(
-            title: 'Book an appointment',
-            subtitle: 'Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically.',
-          ),
-          const SizedBox(height: AppSpacing.sm),
+                const SizedBox(height: AppSpacing.lg),
 
-          if (_error != null) ...[
-            ErrorBanner(error: _error!),
-            const SizedBox(height: AppSpacing.md),
-          ],
-
-          // Card 1: Filters
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Filters',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                // Queue confirmation polling state
+                if (_pollingStatus != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    TextButton(
-                      onPressed: _clearFilters,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primaryDark,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        minimumSize: Size.zero,
-                      ),
-                      child: const Text('Clear', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                TextFormField(
-                  controller: _doctorNameFilterController,
-                  decoration: InputDecoration(
-                    labelText: 'Doctor name / Clinic name',
-                    hintText: 'Search doctor or clinic name...',
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                  ),
-                  onFieldSubmitted: (_) => _applyFilters(),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _filterCity,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: 'City',
-                          filled: true,
-                          fillColor: AppColors.surface,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                        ),
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('All cities')),
-                          for (final c in _cities) DropdownMenuItem(value: c.name, child: Text(c.name)),
-                        ],
-                        onChanged: (v) => setState(() => _filterCity = v),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _filterSpecialization,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: 'Specialization',
-                          filled: true,
-                          fillColor: AppColors.surface,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                        ),
-                        items: [
-                          const DropdownMenuItem(value: null, child: Text('All specialties')),
-                          for (final s in _specializations) DropdownMenuItem(value: s.name, child: Text(s.name)),
-                        ],
-                        onChanged: (v) => setState(() => _filterSpecialization = v),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                DropdownButtonFormField<String>(
-                  initialValue: _sortOption,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: 'Sorted by',
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'default', child: Text('Default')),
-                    DropdownMenuItem(value: 'clinic_asc', child: Text('Clinic Name (A to Z)')),
-                    DropdownMenuItem(value: 'clinic_desc', child: Text('Clinic Name (Z to A)')),
-                    DropdownMenuItem(value: 'doctor_asc', child: Text('Doctor Name (A to Z)')),
-                    DropdownMenuItem(value: 'rating', child: Text('Rating (High to Low)')),
-                    DropdownMenuItem(value: 'fee', child: Text('Fee (Low to High)')),
-                  ],
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() {
-                        _sortOption = v;
-                        _appliedSortOption = v;
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                InkWell(
-                  onTap: () => setState(() => _filterEmergency = !_filterEmergency),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Checkbox(
-                          value: _filterEmergency,
-                          onChanged: (v) => setState(() => _filterEmergency = v ?? false),
-                          activeColor: AppColors.primary,
+                        const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+                        const SizedBox(width: AppSpacing.sm),
+                        Flexible(
+                          child: Text(
+                            _pollingStatus!,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
+                          ),
                         ),
-                        const Text('24/7 emergency', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.xs),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+
+                // Submit Button
                 ElevatedButton(
-                  onPressed: _applyFilters,
+                  onPressed: _canSubmit ? _submit : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryDark,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   ),
-                  child: const Text('Apply filters', style: TextStyle(fontWeight: FontWeight.w700)),
-                ),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  '${filtered.length} doctor${filtered.length == 1 ? '' : 's'} match — pick one below.',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  child: Text(
+                    _submitting ? 'Confirming…' : 'Confirm booking',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-
-          // Card 2: Matching Doctors List (Direct display from filters)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Matching Doctors (${filtered.length})',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          if (filtered.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.search_off, size: 40, color: AppColors.textSecondary),
-                  const SizedBox(height: AppSpacing.xs),
-                  const Text('No doctors match these filters', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  const Text('Try adjusting or clearing your search filters.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  const SizedBox(height: AppSpacing.sm),
-                  TextButton(onPressed: _clearFilters, child: const Text('Clear filters')),
-                ],
-              ),
-            )
-          else
-            for (final doc in filtered) ...[
-              Builder(
-                builder: (context) {
-                  final clinicName = doc.clinics.isNotEmpty ? doc.clinics.first.name : 'Clinic not assigned';
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedDoctor = doc;
-                        _selectedClinic = doc.clinics.isNotEmpty ? doc.clinics.first : null;
-                      });
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: AppColors.border,
-                          width: 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.03),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 20,
-                                backgroundColor: AppColors.primaryLight,
-                                child: Text(
-                                  doc.name.split(' ').where((p) => p.isNotEmpty).take(2).map((p) => p[0]).join().toUpperCase(),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.primaryDark,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: AppSpacing.sm),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(doc.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                                    Text(
-                                      '${doc.specialization?.name ?? 'General Practice'}${doc.experienceYears != null ? ' · ${doc.experienceYears} yrs' : ''}',
-                                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (doc.rating > 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.shade50,
-                                    borderRadius: BorderRadius.circular(6),
-                                    border: Border.all(color: Colors.amber.shade300),
-                                  ),
-                                  child: Text('★ ${doc.rating}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade900)),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: AppSpacing.xs),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.apartment_outlined, size: 14, color: AppColors.primaryDark),
-                                const SizedBox(width: 6),
-                                Expanded(child: Text(clinicName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.xs),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Fee: ₹${doc.consultationFee.toInt()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _selectedDoctor = doc;
-                                    _selectedClinic = doc.clinics.isNotEmpty ? doc.clinics.first : null;
-                                  });
-                                },
-                                style: TextButton.styleFrom(
-                                  backgroundColor: AppColors.surface,
-                                  foregroundColor: AppColors.textPrimary,
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                  minimumSize: Size.zero,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                child: const Text('Select & Book', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
           const SizedBox(height: AppSpacing.xl),
         ],
       ),
