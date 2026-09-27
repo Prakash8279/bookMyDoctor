@@ -88,8 +88,8 @@ describe('Sidebar', () => {
       </MemoryRouter>
     )
     expect(screen.getByText('Admin workspace')).toBeInTheDocument()
-    const text = container.textContent
-    expect(text.indexOf('Admin workspace')).toBeLessThan(text.indexOf('Doctors'))
+    const navText = container.querySelector('nav').textContent
+    expect(navText.indexOf('Admin workspace')).toBeLessThan(navText.indexOf('Doctors'))
   })
 
   it('does not show the "Admin workspace" divider for the plain admin role', () => {
