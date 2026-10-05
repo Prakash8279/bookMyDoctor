@@ -57,10 +57,10 @@ export function PatientLanding() {
         <div className="hero-copy">
           <div className="eyebrow">
             <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield-check"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg> 
-            Trusted healthcare, simpler
+            BookMyDoctors • Verified Doctors &amp; Live OPD Queue
           </div>
-          <h1>Care without the <span>waiting room.</span></h1>
-          <p className="hero-lead">Find verified doctors, reserve your clinic slot, and follow your live queue token from home.</p>
+          <h1>Book Doctor Appointments Online with <span>BookMyDoctors.</span></h1>
+          <p className="hero-lead">Find top verified doctors near you, book clinic appointments instantly, and track live clinic queue tokens from home.</p>
 
           <form className="hero-search" onSubmit={handleSearch}>
             <label>
@@ -333,6 +333,58 @@ export function PatientLanding() {
           <p>Appointments, live queue, payments, and patient history in one workspace.</p>
         </div>
         <Link to="/register?role=doctor" className="btn btn-primary">Join as a doctor <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></Link>
+      </div>
+    </section>
+
+    {/* Frequently Asked Questions (FAQ SEO Section) */}
+    <section className="section faq-section py-16 bg-surface/60">
+      <div className="container max-w-4xl mx-auto px-4">
+        <div className="section-heading centered text-center mb-10">
+          <span className="kicker">Questions &amp; Answers</span>
+          <h2 className="text-3xl font-bold mt-2">Frequently Asked Questions about BookMyDoctors</h2>
+          <p className="text-muted mt-2">Everything you need to know about booking verified doctors and tracking live OPD clinic queues.</p>
+        </div>
+        <div className="space-y-4">
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group" open>
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>What is BookMyDoctors?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              BookMyDoctors (bookmydoctors.me) is an online healthcare appointment platform that connects patients with verified doctors across multiple specialties. You can easily book OPD appointments, consult specialists, and track live clinic queues directly from your home.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>How do I book a doctor appointment on BookMyDoctors?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              Simply search by your city, doctor specialization, or clinic name on the BookMyDoctors homepage. Select a convenient date and time slot, enter patient details, and confirm your booking instantly.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>How does the Live Clinic Queue Tracker work?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              Once your appointment is confirmed, you receive a digital token. Our Live Queue system updates in real-time as the doctor sees each patient, allowing you to see current token numbers and arrive at the clinic right when your turn approaches.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>Are all doctors and clinics verified?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              Yes, all doctors, clinics, and medical practitioners listed on BookMyDoctors undergo verification of credentials, qualifications, and clinic registration before being published.
+            </p>
+          </details>
+        </div>
       </div>
     </section>
   </main></>
