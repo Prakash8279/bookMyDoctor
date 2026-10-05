@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/RoleGuard'
 import { SiteFooter } from './components/SiteFooter'
+import { WhatsAppButton } from './components/WhatsAppButton'
 import { LoadingSkeleton } from './components/LoadingSkeleton'
 import { PortalLayout } from './layouts/PortalLayout'
 import { getTokens } from './lib/apiClient'
@@ -150,7 +151,15 @@ export default function App() {
 
   const requires = (targetRole, element) => <ProtectedRoute role={targetRole} currentRole={role}>{element}</ProtectedRoute>
   const portal = (targetRole) => <ProtectedLayout role={targetRole} currentRole={role} onLogout={logout} />
-  const publicPage = (element) => <>{element}<SiteFooter /></>
+  const publicPage = (element) => <>{element}<SiteFooter /><WhatsAppButton /></>
+
+  // Direct WhatsApp click-to-chat redirect for SEO & direct traffic
+  const WhatsAppRedirect = () => {
+    useEffect(() => {
+      window.location.href = 'https://wa.me/917323074966?text=Hi%20BookMyDoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments.'
+    }, [])
+    return null
+  }
 
   // First-load splash (plan §4.3): only on the very first bulk load, never on
   // subsequent refetches (dataLoaded stays true once the initial public
@@ -179,6 +188,7 @@ export default function App() {
     <Route path="/about" element={publicPage(<PublicContent kind="about" />)} />
     <Route path="/blog" element={publicPage(<PublicContent kind="blog" />)} />
     <Route path="/contact" element={publicPage(<PublicContent kind="contact" />)} />
+    <Route path="/whatsapp" element={<WhatsAppRedirect />} />
     <Route path="/terms" element={publicPage(<TermsOfService />)} />
     <Route path="/privacy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/cancellation-refund-policy" element={publicPage(<CancellationRefundPolicy />)} />

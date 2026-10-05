@@ -49,6 +49,13 @@
     <priority>0.7</priority>
   </url>
 
+  <!-- WhatsApp Quick Chat -->
+  <url>
+    <loc>https://bookmydoctors.me/whatsapp</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
   <!-- Blog -->
   <url>
     <loc>https://bookmydoctors.me/blog</loc>
