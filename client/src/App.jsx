@@ -172,6 +172,9 @@ export default function App() {
     <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route path="/reset-password" element={<ResetPassword />} />
     <Route path="/search" element={publicPage(<SearchResults data={data} />)} />
+    <Route path="/doctors" element={<Navigate to="/search" replace />} />
+    <Route path="/specialists" element={<Navigate to="/search" replace />} />
+    <Route path="/appointment" element={<Navigate to="/search" replace />} />
     <Route path="/clinics" element={publicPage(<ClinicSearch data={data} />)} />
     <Route path="/about" element={publicPage(<PublicContent kind="about" />)} />
     <Route path="/blog" element={publicPage(<PublicContent kind="blog" />)} />

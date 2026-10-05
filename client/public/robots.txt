@@ -1,0 +1,18 @@
+# robots.txt for https://bookmydoctors.me
+User-agent: *
+Allow: /
+
+# Disallow private user portals and administrative sections
+Disallow: /patient/
+Disallow: /doctor/
+Disallow: /receptionist/
+Disallow: /admin/
+Disallow: /super-admin/
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /delete-account
+
+# Sitemap location
+Sitemap: https://bookmydoctors.me/sitemap.xml
