@@ -21,9 +21,10 @@ export function SiteFooter() {
         </div>
         <div className="contact-line">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-phone"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-          <a href="tel:+917323074966" className="font-medium hover:underline">+91 7323074966</a>
+          <a href="tel:+917323074966" className="hover:underline">+91 7323074966</a>
         </div>
-        <div className="mt-3 flex items-center gap-3">
+        {/* Social & WhatsApp Buttons */}
+        <div className="mt-4 flex items-center gap-3">
           <a
             href="https://wa.me/917323074966?text=Hi%20BookMyDoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments."
             target="_blank"
@@ -65,19 +66,40 @@ export function SiteFooter() {
           </a>
         </div>
       </div>
+
+      <div>
+        <h3>Patients</h3>
+        <Link to="/search">Find a doctor</Link>
+        <Link to="/patient/appointments">My appointments</Link>
+        <Link to="/patient/queue">Live queue</Link>
+        <Link to="/patient/records">Health records</Link>
+      </div>
+
+      <div>
+        <h3>Professionals</h3>
+        <Link to="/register?role=doctor">Join as a doctor</Link>
+        <Link to="/doctor/dashboard">Doctor portal</Link>
+        <Link to="/receptionist/dashboard">Reception portal</Link>
+        <Link to="/admin/dashboard">Admin portal</Link>
+      </div>
+
+      <div>
+        <h3>Contact</h3>
+        <div className="contact-line">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-map-pin"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          India
+        </div>
+        <div className="contact-line">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-phone"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"></path></svg>
+          Support available 9 AM–8 PM
+        </div>
+        <Link to="/contact" className="footer-support">Contact support</Link>
+      </div>
     </div>
 
     <div className="container footer-bottom">
       <span>© 2026 BookMyDoctors. All rights reserved.</span>
-      {/* Privacy/Terms now point at the real /privacy and /terms pages
-          (App.jsx) — previously this whole line was plain non-interactive
-          text with no pages behind it. Accessibility stays plain text: no
-          accessibility statement page exists yet, and stubbing one is out
-          of scope here. */}
       <span><Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · <Link to="/cancellation-refund-policy">Cancellation &amp; Refund</Link> · Accessibility</span>
     </div>
   </footer>
 }
-
-
-
