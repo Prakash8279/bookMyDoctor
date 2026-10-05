@@ -4,7 +4,15 @@
 // §2 `apiClient.js` design).
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL
+const getBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL
+  if (typeof window !== 'undefined' && window.location.hostname.includes('bookmydoctors.me')) {
+    return 'https://api.bookmydoctors.me'
+  }
+  return envUrl || 'http://localhost:4000'
+}
+
+const BASE_URL = getBaseUrl()
 
 // Keep the raw access token in module-scope + localStorage (persisted across reloads). Tokens are
 // deliberately kept OUT of the Zustand `data` object / its persisted blob — auth-token storage
