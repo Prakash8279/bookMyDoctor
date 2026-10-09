@@ -20,24 +20,70 @@
  * No other file in this codebase needs to change — every call site already calls sendEmail()
  * with the same {to, subject, text, html} shape regardless of which provider answers it.
  */
+const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
 const env = require('../config/env');
 
+let cachedTransporter = null;
+
+function getTransporter() {
+  if (cachedTransporter) return cachedTransporter;
+
+  const emailService = process.env.EMAIL_SERVICE;
+  const emailUser = process.env.EMAIL_USER;
+  const emailPass = process.env.EMAIL_PASS || process.env.EMAIL_APP_PASSWORD;
+
+  if (emailService === 'gmail' || (emailUser && emailUser.endsWith('@gmail.com'))) {
+    cachedTransporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+    });
+  } else if (process.env.SMTP_HOST) {
+    cachedTransporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: emailUser ? { user: emailUser, pass: emailPass } : undefined,
+    });
+  }
+
+  return cachedTransporter;
+}
+
 /**
- * The only provider wired up today. Writes a structured log line instead of actually sending
- * anything, so the intent ("this app would have emailed X about Y here") stays visible in
- * server logs for local/dev/staging use, and so no call site anywhere in the app has to
- * special-case "email isn't configured yet" — sendEmail() always succeeds.
- *
- * SECURITY FIX (audit finding: "password-reset token/link written to logs in plaintext") — this
- * placeholder was logging the FULL body, which for auth.service.js#forgotPassword is a live,
- * valid password-reset link (the token itself). Anyone with read access to application logs
- * (a log-aggregation tool, an over-permissioned ops role, a misconfigured log-shipping
- * destination) could lift that link and take over the account, without ever touching email. In
- * production the body is redacted; subject/recipient still log (useful for "did we even try to
- * send this") without leaking the sensitive payload. Local/dev/staging keep the full body —
- * that's exactly where a developer needs to read the reset link out of the console since no real
- * provider is wired up yet (see this file's header comment on why that's still true).
+ * Real SMTP email provider via nodemailer (supports free Gmail SMTP or any custom SMTP server).
+ */
+const smtpProvider = {
+  name: 'smtp',
+  async send({ to, subject, text, html }) {
+    const transporter = getTransporter();
+    if (!transporter) {
+      logger.warn('[email:smtp] SMTP is selected as EMAIL_PROVIDER but EMAIL_USER or SMTP_HOST is not configured — falling back to log');
+      return logProvider.send({ to, subject, text });
+    }
+
+    const senderEmail = process.env.EMAIL_USER || 'bookmydoctor24@gmail.com';
+    const fromAddress = process.env.EMAIL_FROM || `"BookMyDoctor" <${senderEmail}>`;
+
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to,
+      replyTo: fromAddress,
+      subject,
+      text,
+      html: html || text,
+    });
+    logger.info(`[email:smtp] message sent to=${to} messageId=${info.messageId}`);
+    return info;
+  },
+};
+
+/**
+ * The default provider for dev/testing when no external SMTP is configured.
+ * Writes a structured log line.
  */
 const logProvider = {
   name: 'log',
@@ -47,9 +93,11 @@ const logProvider = {
   },
 };
 
-// A real provider gets added here once one is chosen (see file header) — only 'log' exists
-// today, by design, per this round's explicit "don't pick a vendor yet" decision.
-const PROVIDERS = { log: logProvider };
+const PROVIDERS = {
+  log: logProvider,
+  smtp: smtpProvider,
+  gmail: smtpProvider,
+};
 
 function resolveProvider() {
   const key = (process.env.EMAIL_PROVIDER || 'log').trim().toLowerCase();
@@ -57,16 +105,13 @@ function resolveProvider() {
 }
 
 /**
- * Best-effort, never throws — email delivery (real or placeholder) is always a side effect of
- * an action that has already succeeded (a booking, a password-reset request, a status change);
- * a delivery failure must never fail or roll back that action. Matches
- * notifications.service.js#notifySystemEventSafe's same non-fatal posture for the in-app channel.
+ * Best-effort, never throws — email delivery (real or placeholder) is always a side effect.
  * @param {{to?:string|null, subject:string, text:string, html?:string}} message
  */
 async function sendEmail({ to, subject, text, html }) {
-  if (!to) return; // no address on file — silently skip, same as every other best-effort notifier here
+  if (!to) return; // no address on file — silently skip
   try {
-    await resolveProvider().send({ to, subject, text, html });
+    return await resolveProvider().send({ to, subject, text, html });
   } catch (err) {
     logger.warn(`[email] sendEmail failed for ${to}: ${err.message}`);
   }

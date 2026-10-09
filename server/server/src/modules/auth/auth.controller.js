@@ -66,4 +66,41 @@ const resetPassword = asyncHandler(async (req, res) => {
   return success(res, null, { message: 'Your password has been reset. Please log in with your new password.' });
 });
 
-module.exports = { register, login, googleAuth, logout, refresh, me, forgotPassword, resetPassword };
+const sendOtp = asyncHandler(async (req, res) => {
+  const { identifier, purpose, channel } = req.body;
+  const result = await authService.sendAuthOtp({ identifier, purpose, channel });
+  return success(res, result);
+});
+
+const verifyOtpLogin = asyncHandler(async (req, res) => {
+  const { identifier, otp } = req.body;
+  const result = await authService.verifyOtpLogin({ identifier, otp });
+  return success(res, applyAuthCookies(req, res, result));
+});
+
+const verifyOtpRegister = asyncHandler(async (req, res) => {
+  const { name, email, password, phone, city, otp, verifyTarget } = req.body;
+  const result = await authService.verifyOtpRegister({ name, email, password, phone, city, otp, verifyTarget });
+  return success(res, applyAuthCookies(req, res, result), { statusCode: 201, message: 'Registration successful' });
+});
+
+const resetPasswordOtp = asyncHandler(async (req, res) => {
+  const { identifier, otp, newPassword } = req.body;
+  const result = await authService.resetPasswordWithOtp({ identifier, otp, newPassword });
+  return success(res, null, { message: result.message });
+});
+
+module.exports = {
+  register,
+  login,
+  googleAuth,
+  logout,
+  refresh,
+  me,
+  forgotPassword,
+  resetPassword,
+  sendOtp,
+  verifyOtpLogin,
+  verifyOtpRegister,
+  resetPasswordOtp,
+};

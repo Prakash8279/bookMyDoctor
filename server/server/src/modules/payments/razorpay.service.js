@@ -29,6 +29,7 @@ const activityLogService = require('../../services/activityLogService');
 const paymentsService = require('./payments.service');
 const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
 const { withLock, LockAcquisitionError } = require('../../services/lockService');
+const paymentHoldService = require('./paymentHold.service');
 
 const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
 
@@ -69,7 +70,13 @@ async function fetchOrderDetails(orderId) {
   if (!response.ok || !payload || typeof payload.amount !== 'number') {
     throw new ApiError(502, 'PAYMENT_GATEWAY_ERROR', 'Could not verify the payment amount with the payment gateway.');
   }
-  return { amountRupees: payload.amount / 100, notes: (payload.notes && typeof payload.notes === 'object') ? payload.notes : {} };
+  return {
+    amountRupees: payload.amount / 100,
+    amount: payload.amount,
+    currency: payload.currency || 'INR',
+    status: payload.status || null,
+    notes: (payload.notes && typeof payload.notes === 'object') ? payload.notes : {},
+  };
 }
 
 function assertGatewayConfigured() {
@@ -112,6 +119,8 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
       status: true,
       paymentStatus: true,
       totalAmount: true,
+      source: true,
+      appointmentDate: true,
       consultationFee: true,
       convenienceFee: true,
       emergencyFee: true,
@@ -194,6 +203,53 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
     );
   }
 
+  // ATOMIC PAYMENT HOLD & CAPACITY RESERVATION
+  // Under PostgreSQL advisory lock for (doctorUserId, appointmentDate):
+  // 1. Lock doctor + appointment_date.
+  // 2. Remove/release expired payment holds for that doctor/date.
+  // 3. Count confirmed active bookings.
+  // 4. Count active pending payment holds.
+  // 5. Calculate effective occupancy (confirmed + active holds).
+  // 6. If capacity is full: reject request. DO NOT create Razorpay order.
+  // 7. If capacity is available: create temporary payment hold.
+  let holdResult = null;
+  if (appointment.source === 'online') {
+    holdResult = await prisma.$transaction(async (tx) => {
+      return paymentHoldService.createOrRefreshHoldTx(tx, {
+        appointment,
+        patientUserId: appointment.patientUserId,
+      });
+    });
+  }
+
+  if (holdResult && holdResult.reusedExistingOrder) {
+    const existingOrder = await fetchOrderDetails(holdResult.hold.razorpayOrderId);
+    if (
+      existingOrder.notes.appointmentId !== appointment.id ||
+      existingOrder.notes.patientUserId !== appointment.patientUserId
+    ) {
+      throw new ApiError(502, 'PAYMENT_ORDER_MISMATCH', 'The active payment order could not be safely reused. Please contact support.');
+    }
+    if (existingOrder.notes.paymentOption && existingOrder.notes.paymentOption !== paymentOption) {
+      throw new ApiError(
+        409,
+        'PAYMENT_ORDER_ACTIVE',
+        `A ${existingOrder.notes.paymentOption} payment is already in progress for this appointment. Please complete it or wait for it to expire.`
+      );
+    }
+    return {
+      orderId: holdResult.hold.razorpayOrderId,
+      amount: existingOrder.amount,
+      currency: existingOrder.currency,
+      keyId: env.razorpay.keyId,
+      appointmentId: appointment.id,
+      holdId: holdResult.hold.id,
+      holdExpiresAt: holdResult.hold.holdExpiresAt.toISOString(),
+      holdDurationSeconds: holdResult.durationSeconds,
+      reused: true,
+    };
+  }
+
   let amountToCharge = appointment.totalAmount;
   if (paymentOption === 'minimum') {
     // MIN-BOOKING-AMOUNT FIX (superadmin request) — this used to charge the doctor's raw
@@ -216,6 +272,9 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
         })
       : null;
     if (minBookingAmount == null) {
+      if (holdResult && holdResult.hold) {
+        await paymentHoldService.cancelHold(holdResult.hold.id, 'MIN_BOOKING_AMOUNT_NOT_SET');
+      }
       throw new ApiError(
         400,
         'MIN_BOOKING_AMOUNT_NOT_SET',
@@ -241,16 +300,27 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
       }),
     });
   } catch (networkError) {
+    if (holdResult && holdResult.hold) {
+      await paymentHoldService.cancelHold(holdResult.hold.id, 'GATEWAY_NETWORK_ERROR');
+    }
     throw new ApiError(502, 'PAYMENT_GATEWAY_UNREACHABLE', 'Could not reach the payment gateway. Please try again.');
   }
 
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload || !payload.id) {
+    if (holdResult && holdResult.hold) {
+      await paymentHoldService.cancelHold(holdResult.hold.id, 'GATEWAY_ERROR');
+    }
     throw new ApiError(
       502,
       'PAYMENT_GATEWAY_ERROR',
       (payload && payload.error && payload.error.description) || 'The payment gateway rejected the request.'
     );
+  }
+
+  // Attach Razorpay order ID to hold record
+  if (holdResult && holdResult.hold) {
+    await paymentHoldService.attachRazorpayOrderToHold(holdResult.hold.id, payload.id);
   }
 
   return {
@@ -259,6 +329,9 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
     currency: payload.currency,
     keyId: env.razorpay.keyId,
     appointmentId: appointment.id,
+    holdId: holdResult && holdResult.hold ? holdResult.hold.id : null,
+    holdExpiresAt: holdResult && holdResult.hold ? holdResult.hold.holdExpiresAt.toISOString() : null,
+    holdDurationSeconds: holdResult ? holdResult.durationSeconds : env.paymentHoldDurationSeconds,
   };
 }
 
@@ -355,6 +428,26 @@ async function verifyAndRecordPayment(body, requester) {
       'Your payment was recorded, but we could not load the latest booking details. Please refresh.'
     );
   }
+
+  if (row.autoRefunded) {
+    const refund = prisma.refund
+      ? await prisma.refund.findFirst({
+          where: { paymentId: row.id },
+        })
+      : null;
+
+    return {
+      payment,
+      appointment,
+      refund: refund || null,
+      status: refund?.status === 'processed' ? 'REFUNDED' : 'REFUND_PENDING',
+      bookingConfirmed: false,
+      message: refund?.status === 'processed'
+        ? `Payment received, but booking could not be confirmed (${row.cannotConfirmReason || 'capacity full'}). Payment has been refunded.`
+        : `Payment received, but booking could not be confirmed (${row.cannotConfirmReason || 'capacity full'}). Refund has been initiated.`,
+    };
+  }
+
   return { payment, appointment };
 }
 
@@ -466,8 +559,13 @@ async function reconcilePendingPaymentsFromWebhook(rawBody, signatureHeader) {
     throw new ApiError(400, 'PAYMENT_WEBHOOK_MALFORMED', 'Webhook body was not valid JSON.');
   }
 
+  // Handle refund events (refund.processed / refund.failed / refund.created)
+  if (event.event === 'refund.processed' || event.event === 'refund.failed' || event.event === 'refund.created') {
+    return await handleRefundWebhookEvent(event);
+  }
+
   // Only `payment.captured` actually means "money has landed" — every other Razorpay webhook
-  // event (order.paid, payment.failed, payment.authorized, refund.*, ...) is either redundant
+  // event (order.paid, payment.failed, payment.authorized, ...) is either redundant
   // with this one or not something this reconciliation job needs to act on. Acknowledging with
   // handled:false (not an error) is deliberate: an unrecognized-but-legitimate event must still
   // get a 2xx back so Razorpay does not retry it forever.
@@ -495,17 +593,29 @@ async function reconcilePendingPaymentsFromWebhook(rawBody, signatureHeader) {
   const requester = { id: notes.patientUserId, role: 'patient' };
 
   try {
-    await recordOnlinePayment(notes.appointmentId, requester, razorpayPaymentId, chargedAmount);
-    return { handled: true };
+    const row = await recordOnlinePayment(notes.appointmentId, requester, razorpayPaymentId, chargedAmount);
+    return row && row.autoRefunded ? { handled: true, autoRefunded: true, paymentId: row.id } : { handled: true };
   } catch (err) {
-    if (err instanceof ApiError && (err.statusCode === 409 || err.statusCode === 404)) {
+    if (err instanceof ApiError && err.statusCode === 409) {
       // 409 PAYMENT_ALREADY_RECORDED: the patient's own verify call already recorded this exact
       // payment (or a replay of this same webhook event, which Razorpay can send more than once)
-      // — createPaymentForAppointment's transactionRef replay guard is what actually makes this
-      // safe; this branch just means "nothing left to do here, and that is a success, not a bug."
-      // 404 APPOINTMENT_NOT_FOUND: the appointment referenced by the order's notes no longer
-      // exists (very unlikely, but not a reason to make Razorpay retry forever).
       return { handled: false, reason: err.code || 'already_settled_or_missing' };
+    }
+    if (err instanceof ApiError && err.statusCode === 404) {
+      // 404 APPOINTMENT_NOT_FOUND: The payment succeeded on Razorpay, but no appointment exists locally.
+      // Orphan payment detected — automatically initiate refund on Razorpay so funds are not lost!
+      logger.warn(`[webhook-reconciliation] Orphan captured payment ${razorpayPaymentId} for missing appt ${notes.appointmentId}. Initiating direct refund.`);
+      try {
+        await processDirectRefund({
+          paymentId: razorpayPaymentId,
+          amount: chargedAmount,
+          reason: 'Orphan payment — booking does not exist',
+        });
+        return { handled: true, orphanRefunded: true };
+      } catch (orphanErr) {
+        logger.error(`[webhook-reconciliation] Failed to refund orphan payment ${razorpayPaymentId}: ${orphanErr.message}`);
+        return { handled: false, reason: 'orphan_refund_failed' };
+      }
     }
     // Any other failure (a genuine DB error, an unexpected Prisma exception) is a REAL problem —
     // rethrow so the controller returns a 5xx and Razorpay's normal retry-with-backoff behavior
@@ -514,4 +624,361 @@ async function reconcilePendingPaymentsFromWebhook(rawBody, signatureHeader) {
   }
 }
 
-module.exports = { createOrder, verifyAndRecordPayment, reconcilePendingPaymentsFromWebhook };
+/**
+ * Webhook handler specifically for refund.processed, refund.failed, and refund.created events.
+ */
+async function handleRefundWebhookEvent(event) {
+  const refundEntity = event && event.payload && event.payload.refund && event.payload.refund.entity;
+  if (!refundEntity || !refundEntity.id) {
+    return { handled: false, reason: 'missing_refund_entity' };
+  }
+
+  const razorpayRefundId = refundEntity.id;
+  const razorpayPaymentId = refundEntity.payment_id;
+  const refundNotes = refundEntity.notes || {};
+
+  // Find corresponding refund record in database
+  let refund = await prisma.refund.findFirst({
+    where: {
+      OR: [
+        { razorpayRefundId },
+        ...(refundNotes.refundId ? [{ id: refundNotes.refundId }] : []),
+        ...(refundNotes.appointmentId ? [{ appointmentId: refundNotes.appointmentId }] : []),
+        { razorpayPaymentId },
+      ],
+    },
+  });
+
+  if (!refund) {
+    return { handled: false, reason: 'refund_not_ours' };
+  }
+
+  if (event.event === 'refund.created') {
+    if (refund.status === 'processed') {
+      return { handled: true, alreadyProcessed: true };
+    }
+    await prisma.refund.update({
+      where: { id: refund.id },
+      data: {
+        razorpayRefundId,
+        status: refund.status === 'processed' ? 'processed' : 'pending',
+        updatedAt: new Date(),
+      },
+    });
+    return { handled: true, event: 'refund.created' };
+  }
+
+  if (event.event === 'refund.processed') {
+    if (refund.status === 'processed') {
+      // Idempotent webhook retry handling: return 200 without duplicate DB write
+      return { handled: true, alreadyProcessed: true };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.refund.update({
+        where: { id: refund.id },
+        data: {
+          razorpayRefundId,
+          status: 'processed',
+          updatedAt: new Date(),
+        },
+      });
+
+      await tx.appointment.update({
+        where: { id: refund.appointmentId },
+        data: { paymentStatus: 'refunded' },
+      });
+
+      await tx.payment.updateMany({
+        where: { appointmentId: refund.appointmentId, transactionRef: refund.razorpayPaymentId },
+        data: { status: 'refunded' },
+      });
+    });
+
+    await activityLogService.log({
+      actionType: 'payment.refund_processed',
+      targetEntityType: 'refund',
+      targetEntityId: refund.id,
+      description: `Refund ${refund.id} confirmed processed by webhook (Razorpay refund ${razorpayRefundId})`,
+    });
+
+    return { handled: true, event: 'refund.processed' };
+  }
+
+  if (event.event === 'refund.failed') {
+    await prisma.refund.update({
+      where: { id: refund.id },
+      data: {
+        razorpayRefundId,
+        status: 'failed',
+        failureReason: refundEntity.error_description || 'Refund failed at gateway',
+        updatedAt: new Date(),
+      },
+    });
+
+    await activityLogService.log({
+      actionType: 'payment.refund_failed',
+      targetEntityType: 'refund',
+      targetEntityId: refund.id,
+      description: `Refund ${refund.id} failed at gateway: ${refundEntity.error_description || 'unknown'}`,
+    });
+
+    return { handled: true, event: 'refund.failed' };
+  }
+
+  return { handled: false, reason: 'unhandled_refund_event' };
+}
+
+const RAZORPAY_REFUNDS_URL = 'https://api.razorpay.com/v1/payments';
+
+/**
+ * Initiates an online refund with Razorpay.
+ * Follows strict safety:
+ * - Test / sandbox mode support: does not trigger real money loss
+ * - Database state transitions: 'pending' -> 'processed' | 'failed'
+ * - DB 'refunded' marker applied ONLY when refund is confirmed successful!
+ */
+async function processRefund({ refundId, paymentId, amount, appointmentId, reason = 'Appointment cancelled' }) {
+  const refundRecord = await prisma.refund.findUnique({ where: { id: refundId } });
+  if (!refundRecord) {
+    throw new ApiError(404, 'REFUND_NOT_FOUND', 'Refund record not found.');
+  }
+
+  // Idempotency: if already processed, do not call Razorpay again
+  if (refundRecord.status === 'processed') {
+    return { success: true, status: 'processed', razorpayRefundId: refundRecord.razorpayRefundId, alreadyProcessed: true };
+  }
+
+  // Sandbox / mock mode check:
+  // If paymentId is a mock test id, or test environment with simulated payments
+  const isMockPayment = !paymentId || paymentId.startsWith('mock_') || paymentId.startsWith('pay_mock_');
+  const isGatewayMissing = !env.razorpay.keyId || !env.razorpay.keySecret;
+
+  if (isMockPayment || (isGatewayMissing && process.env.NODE_ENV === 'test')) {
+    const mockRefundId = 'rfnd_mock_' + crypto.randomBytes(8).toString('hex');
+    await prisma.$transaction(async (tx) => {
+      await tx.refund.update({
+        where: { id: refundId },
+        data: {
+          razorpayRefundId: mockRefundId,
+          status: 'processed',
+          updatedAt: new Date(),
+        },
+      });
+      await tx.appointment.update({
+        where: { id: appointmentId },
+        data: { paymentStatus: 'refunded' },
+      });
+      await tx.payment.updateMany({
+        where: { appointmentId, transactionRef: paymentId },
+        data: { status: 'refunded' },
+      });
+    });
+
+    return { success: true, status: 'processed', razorpayRefundId: mockRefundId };
+  }
+
+  if (isGatewayMissing) {
+    await prisma.refund.update({
+      where: { id: refundId },
+      data: {
+        status: 'failed',
+        failureReason: 'PAYMENT_GATEWAY_NOT_CONFIGURED: Online payments/refunds not configured on this server.',
+      },
+    });
+    return { success: false, status: 'failed', error: 'Payment gateway not configured' };
+  }
+
+  const amountPaise = Math.round(Number(amount) * 100);
+
+  try {
+    const response = await fetch(`${RAZORPAY_REFUNDS_URL}/${encodeURIComponent(paymentId)}/refund`, {
+      method: 'POST',
+      headers: {
+        Authorization: razorpayAuthHeader(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount: amountPaise,
+        notes: {
+          appointmentId,
+          refundId,
+          reason,
+        },
+      }),
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload || !payload.id) {
+      const errorMsg = (payload && payload.error && payload.error.description) || `Gateway returned HTTP ${response.status}`;
+      await prisma.refund.update({
+        where: { id: refundId },
+        data: {
+          status: 'failed',
+          failureReason: errorMsg,
+          updatedAt: new Date(),
+        },
+      });
+      return { success: false, status: 'failed', error: errorMsg };
+    }
+
+    const rzpStatus = payload.status === 'processed' ? 'processed' : 'pending';
+    await prisma.$transaction(async (tx) => {
+      await tx.refund.update({
+        where: { id: refundId },
+        data: {
+          razorpayRefundId: payload.id,
+          status: rzpStatus,
+          updatedAt: new Date(),
+        },
+      });
+
+      if (rzpStatus === 'processed') {
+        await tx.appointment.update({
+          where: { id: appointmentId },
+          data: { paymentStatus: 'refunded' },
+        });
+        await tx.payment.updateMany({
+          where: { appointmentId, transactionRef: paymentId },
+          data: { status: 'refunded' },
+        });
+      }
+    });
+
+    return { success: true, status: rzpStatus, razorpayRefundId: payload.id };
+  } catch (netErr) {
+    await prisma.refund.update({
+      where: { id: refundId },
+      data: {
+        status: 'failed',
+        failureReason: `Network error: ${netErr.message}`,
+        updatedAt: new Date(),
+      },
+    });
+    return { success: false, status: 'failed', error: netErr.message };
+  }
+}
+
+/**
+ * List refunds with optional pagination and filters (Admin / Superadmin only).
+ */
+async function listRefunds({ page = 1, pageSize = 20, status, appointmentId } = {}) {
+  const where = {};
+  if (status) where.status = status;
+  if (appointmentId) where.appointmentId = appointmentId;
+
+  const total = await prisma.refund.count({ where });
+  const refunds = await prisma.refund.findMany({
+    where,
+    include: {
+      appointment: {
+        select: {
+          id: true,
+          appointmentDate: true,
+          appointmentTime: true,
+          status: true,
+          patient: { select: { id: true, name: true, phone: true } },
+          doctor: { select: { id: true, name: true } },
+        },
+      },
+      payment: {
+        select: {
+          id: true,
+          receiptNumber: true,
+          amount: true,
+          mode: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    skip: (Number(page) - 1) * Number(pageSize),
+    take: Number(pageSize),
+  });
+
+  return {
+    refunds,
+    pagination: {
+      page: Number(page),
+      pageSize: Number(pageSize),
+      total,
+      totalPages: Math.ceil(total / Number(pageSize)),
+    },
+  };
+}
+
+/**
+ * Allows admin to retry a failed or pending refund.
+ */
+async function retryRefund(refundId, actor) {
+  const refund = await prisma.refund.findUnique({ where: { id: refundId } });
+  if (!refund) {
+    throw new ApiError(404, 'REFUND_NOT_FOUND', 'Refund not found.');
+  }
+  if (refund.status === 'processed') {
+    throw new ApiError(400, 'REFUND_ALREADY_PROCESSED', 'This refund has already been processed.');
+  }
+
+  const result = await processRefund({
+    refundId: refund.id,
+    paymentId: refund.razorpayPaymentId,
+    amount: refund.amount,
+    appointmentId: refund.appointmentId,
+    reason: 'Admin refund retry',
+  });
+
+  if (actor) {
+    await activityLogService.log({
+      actorUserId: actor.id,
+      actorRole: actor.role,
+      actionType: 'payment.refund_retry',
+      targetEntityType: 'refund',
+      targetEntityId: refund.id,
+      description: `Admin retried refund ${refund.id} (result: ${result.status})`,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Direct refund helper for orphan payments or cases where no local refund record exists yet.
+ */
+async function processDirectRefund({ paymentId, amount, reason = 'Direct/Orphan refund' }) {
+  if (!env.razorpay.keyId || !env.razorpay.keySecret) {
+    return { success: false, reason: 'gateway_not_configured' };
+  }
+  const isMockPayment = !paymentId || paymentId.startsWith('mock_') || paymentId.startsWith('pay_mock_');
+  if (isMockPayment || process.env.NODE_ENV === 'test') {
+    return { success: true, razorpayRefundId: 'rfnd_direct_' + crypto.randomBytes(8).toString('hex') };
+  }
+  const amountPaise = Math.round(Number(amount) * 100);
+  const response = await fetch(`${RAZORPAY_REFUNDS_URL}/${encodeURIComponent(paymentId)}/refund`, {
+    method: 'POST',
+    headers: {
+      Authorization: razorpayAuthHeader(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: amountPaise,
+      notes: { reason },
+    }),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || !payload.id) {
+    throw new Error((payload && payload.error && payload.error.description) || `HTTP ${response.status}`);
+  }
+  return { success: true, razorpayRefundId: payload.id };
+}
+
+module.exports = {
+  createOrder,
+  verifyAndRecordPayment,
+  reconcilePendingPaymentsFromWebhook,
+  handleRefundWebhookEvent,
+  processRefund,
+  processDirectRefund,
+  listRefunds,
+  retryRefund,
+};

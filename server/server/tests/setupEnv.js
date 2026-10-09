@@ -47,3 +47,7 @@ process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'test-only-google
 // path instead of every test needing to set this itself. NEVER use this value anywhere real.
 process.env.BANK_DETAILS_ENCRYPTION_KEY =
   process.env.BANK_DETAILS_ENCRYPTION_KEY || '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+// Test-isolated providers (never send live external SMS or emails during unit tests)
+process.env.EMAIL_PROVIDER = 'log';
+process.env.SMS_PROVIDER = 'log';

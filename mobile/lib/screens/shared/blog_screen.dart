@@ -24,7 +24,7 @@ class BlogScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          const PageHeader(title: 'BookMyDoctors Blog'),
+          const PageHeader(title: 'BookADoctors Blog'),
           const Text(
             'Guides for healthier choices, clinic visits, and managing your care.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
@@ -36,7 +36,7 @@ class BlogScreen extends StatelessWidget {
               child: SectionCard(
                 title: title,
                 child: const Text(
-                  'A practical BookMyDoctors guide.',
+                  'A practical BookADoctors guide.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
               ),

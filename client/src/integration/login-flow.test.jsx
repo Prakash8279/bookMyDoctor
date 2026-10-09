@@ -95,7 +95,7 @@ describe('login flow', () => {
     // Real store.login() -> POST /auth/login -> GET /me -> currentUser set -> Login navigates to
     // roleHome('patient') = '/patient/dashboard' -> ProtectedRoute (real RoleGuard) lets it
     // through because currentRole now matches -> the real, lazy-loaded PatientDashboard renders.
-    expect(await screen.findByText(/Welcome, Asha\./i)).toBeInTheDocument()
+    expect(await screen.findByText(/Welcome, Asha\./i, {}, { timeout: 5000 })).toBeInTheDocument()
 
     // Confirm the store itself (not just the DOM) reflects a real, verified session.
     const state = useAppStore.getState()

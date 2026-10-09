@@ -10,9 +10,9 @@ export function SiteFooter() {
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
               the PDF receipts. */}
           <span className="brand-mark">
-            <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
+            <img src={brandLogoUrl} alt="" className="h-full w-full rounded-[13px] object-cover" />
           </span>
-          <span><strong>BookMyDoctors</strong></span>
+          <span><strong>BookADoctors</strong></span>
         </Link>
         <p className="footer-copy">Healthcare that respects your time. Discover verified doctors, book instantly, and follow your clinic queue live.</p>
         <div className="contact-line">
@@ -26,11 +26,11 @@ export function SiteFooter() {
         {/* Social & WhatsApp Buttons */}
         <div className="mt-4 flex items-center gap-3">
           <a
-            href="https://wa.me/917323074966?text=Hi%20BookMyDoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments."
+            href="https://wa.me/917323074966?text=Hi%20BookADoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments."
             target="_blank"
             rel="noopener noreferrer"
             title="Chat on WhatsApp"
-            aria-label="BookMyDoctors WhatsApp"
+            aria-label="BookADoctors WhatsApp"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#25D366] text-white transition-transform hover:scale-110"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
@@ -43,7 +43,7 @@ export function SiteFooter() {
             target="_blank"
             rel="noopener noreferrer"
             title="Follow on Instagram"
-            aria-label="BookMyDoctors Instagram"
+            aria-label="BookADoctors Instagram"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white transition-transform hover:scale-110"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
@@ -57,7 +57,7 @@ export function SiteFooter() {
             target="_blank"
             rel="noopener noreferrer"
             title="Follow on Facebook"
-            aria-label="BookMyDoctors Facebook"
+            aria-label="BookADoctors Facebook"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1877F2] text-white transition-transform hover:scale-110"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
@@ -80,6 +80,7 @@ export function SiteFooter() {
         <Link to="/register?role=doctor">Join as a doctor</Link>
         <Link to="/doctor/dashboard">Doctor portal</Link>
         <Link to="/receptionist/dashboard">Reception portal</Link>
+        <Link to="/admin/dashboard">Admin portal</Link>
       </div>
 
       <div>
@@ -97,7 +98,7 @@ export function SiteFooter() {
     </div>
 
     <div className="container footer-bottom">
-      <span>© 2026 BookMyDoctors. All rights reserved.</span>
+      <span>© 2026 BookADoctors. All rights reserved.</span>
       <span><Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · <Link to="/cancellation-refund-policy">Cancellation &amp; Refund</Link> · Accessibility</span>
     </div>
   </footer>

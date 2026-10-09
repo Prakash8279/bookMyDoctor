@@ -137,7 +137,7 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
  */
 export function buildBookingSlipSections({ appointment, fee, paid, due, patientName }) {
   return {
-    title: 'BookMyDoctors',
+    title: 'BookADoctors',
     subtitle: 'Booking Slip',
     meta: [`Booking ID: ${shortId(appointment.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
@@ -196,7 +196,7 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
       ['Paid', formatMoneyPlain(paid)],
       ['Due', formatMoneyPlain(due), true],
     ],
-    footer: ['This is a computer-generated booking slip from BookMyDoctors.', 'Please carry a valid photo ID to your appointment.'],
+    footer: ['This is a computer-generated booking slip from BookADoctors.', 'Please carry a valid photo ID to your appointment.'],
   }
 }
 
@@ -299,7 +299,7 @@ export function buildPatientReceiptSections(item) {
   paymentRows.push(['Status', item.status])
 
   return {
-    title: 'BookMyDoctors',
+    title: 'BookADoctors',
     subtitle: 'Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
@@ -333,7 +333,7 @@ export function buildPatientReceiptSections(item) {
       { heading: 'Payment', rows: paymentRows },
     ],
     totalRows,
-    footer: ['This is a computer-generated receipt from BookMyDoctors.'],
+    footer: ['This is a computer-generated receipt from BookADoctors.'],
   }
 }
 
@@ -360,7 +360,7 @@ export async function buildPatientReceiptPdfBlob(item) {
 export function buildStaffReceiptSections(item) {
   const appointment = item.appointment
   return {
-    title: 'BookMyDoctors',
+    title: 'BookADoctors',
     subtitle: 'Clinic Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
@@ -404,7 +404,7 @@ export function buildStaffReceiptSections(item) {
     ],
     totalRows: [['Consultation fee collected', formatMoneyPlain(item.fees?.consultationFee ?? item.clinicAmount), true]],
     footer: [
-      'This is a computer-generated receipt from BookMyDoctors.',
+      'This is a computer-generated receipt from BookADoctors.',
       'Amount shown is the consultation fee only, per this platform’s clinic-staff fee-visibility policy.',
     ],
   }

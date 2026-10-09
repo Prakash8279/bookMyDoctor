@@ -145,7 +145,7 @@ model User {
   passwordHash String?       @map("password_hash")
   role         UserRole
   name         String
-  phone        String?
+  phone        String?       @unique
   city         String?
   photoUrl     String?       @map("photo_url")
   status       AccountStatus @default(active)
@@ -180,6 +180,8 @@ model User {
   doctorMedicalRecords  MedicalRecord[]    @relation("DoctorMedicalRecords")
   patientPayments     Payment[]            @relation("PatientPayments")
   doctorPayments      Payment[]            @relation("DoctorPayments")
+  patientPaymentHolds PaymentHold[]        @relation("PatientPaymentHolds")
+  doctorPaymentHolds  PaymentHold[]        @relation("DoctorPaymentHolds")
   patientReviews      Review[]             @relation("PatientReviews")
   doctorReviews       Review[]             @relation("DoctorReviews")
   complaints          Complaint[]
@@ -523,6 +525,8 @@ model Appointment {
 
   queueToken    QueueToken?
   payments      Payment[]
+  refunds       Refund[]
+  paymentHolds  PaymentHold[]
   medicalRecords MedicalRecord[]
   review        Review?
 
@@ -638,6 +642,8 @@ model Payment {
   status          PaymentStatus @default(pending)
   createdAt       DateTime      @default(now()) @map("created_at")
 
+  refunds         Refund[]
+
   @@index([patientUserId])
   @@index([doctorUserId])
   @@index([clinicId])
@@ -652,6 +658,50 @@ model Payment {
   @@index([patientUserId, createdAt])
   @@index([doctorUserId, createdAt])
   @@map("payments")
+}
+
+model Refund {
+  id                String       @id @default(uuid())
+  appointmentId     String       @map("appointment_id")
+  appointment       Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  paymentId         String       @map("payment_id")
+  payment           Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  amount            Decimal      @db.Decimal(10, 2)
+  razorpayPaymentId String       @map("razorpay_payment_id")
+  razorpayRefundId  String?      @unique @map("razorpay_refund_id")
+  status            String       @default("pending") // "pending" | "processed" | "failed"
+  failureReason     String?      @map("failure_reason")
+  idempotencyKey    String       @unique @map("idempotency_key")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  @@index([appointmentId])
+  @@index([paymentId])
+  @@index([status])
+  @@map("refunds")
+}
+
+model PaymentHold {
+  id              String       @id @default(uuid())
+  appointmentId   String       @map("appointment_id")
+  appointment     Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  doctorUserId    String       @map("doctor_user_id")
+  doctor          User         @relation("DoctorPaymentHolds", fields: [doctorUserId], references: [id], onDelete: Cascade)
+  patientUserId   String       @map("patient_user_id")
+  patient         User         @relation("PatientPaymentHolds", fields: [patientUserId], references: [id], onDelete: Cascade)
+  appointmentDate DateTime     @map("appointment_date") @db.Date
+  razorpayOrderId String?      @unique @map("razorpay_order_id")
+  status          String       @default("PENDING") // "PENDING" | "CONFIRMED" | "EXPIRED" | "CANCELLED" | "REFUNDED"
+  holdCreatedAt   DateTime     @default(now()) @map("hold_created_at")
+  holdExpiresAt   DateTime     @map("hold_expires_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@index([doctorUserId, appointmentDate])
+  @@index([doctorUserId, appointmentDate, status, holdExpiresAt])
+  @@index([appointmentId])
+  @@index([status, holdExpiresAt])
+  @@map("payment_holds")
 }
 
 model PlatformCharges {

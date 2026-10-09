@@ -13,6 +13,7 @@ const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 
 const env = require('./config/env');
+const { buildAllowedOriginSet, isAllowedOrigin } = require('./utils/corsOrigins');
 const swaggerSpec = require('./config/swagger');
 const sentry = require('./config/sentry');
 const requestLogger = require('./middleware/requestLogger');
@@ -62,25 +63,16 @@ if (env.isProduction) {
 // be loadable by the frontend running on a different origin/port.
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
-// 2. CORS — allowed origins (supporting multiple origins: AWS IP, AWS public DNS, localhost).
-const configuredOrigins = (env.clientOrigin || '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// 2. CORS — exact, normalized origin allow-list. Never use substring/hostname-suffix checks here:
+// credentials are enabled, so an origin such as https://localhost.attacker.example must not pass.
+const configuredOrigins = buildAllowedOriginSet(env.clientOrigin);
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Requests without Origin header (e.g. mobile apps, curl) are always allowed.
       if (!origin) return callback(null, true);
-      // Allow if origin is configured or if origin matches AWS IP / EC2 domain / localhost
-      if (
-        configuredOrigins.length === 0 ||
-        configuredOrigins.includes(origin) ||
-        origin.includes('43.204.150.142') ||
-        origin.includes('amazonaws.com') ||
-        origin.includes('localhost')
-      ) {
+      if (isAllowedOrigin(origin, configuredOrigins)) {
         return callback(null, true);
       }
       return callback(null, false);

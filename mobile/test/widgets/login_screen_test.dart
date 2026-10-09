@@ -70,7 +70,7 @@ void main() {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
       expect(find.text('Forgot password?'), findsOneWidget);
-      expect(find.text('New to BookMyDoctors? Create an account'), findsOneWidget);
+      expect(find.text('New to BookADoctors? Create an account'), findsOneWidget);
       expect(find.text('Browse without logging in'), findsOneWidget);
     });
   });

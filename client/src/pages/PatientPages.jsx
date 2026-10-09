@@ -338,7 +338,7 @@ export function Booking({ data }) {
         amount: order.amount,
         currency: order.currency,
         order_id: order.orderId,
-        name: 'BookMyDoctors',
+        name: 'BookADoctors',
         description: `Consultation with ${doctor?.name || booked.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : ''}`,
         prefill: { name: currentUser.name || '', email: currentUser.email || '', contact: currentUser.phone || '' },
         theme: { color: '#ad5d3b' },

@@ -72,7 +72,7 @@ void main() {
       //
       // 3. Verify GuestHomeScreen rendered. Static chrome + headline copy
       // only (see NETWORK CAVEAT above) — never doctor/specialization data.
-      expect(find.widgetWithText(AppBar, 'BookMyDoctors'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'BookADoctors'), findsOneWidget);
       // The hero headline is rendered as Text.rich('Care without the ' +
       // 'waiting room.'); textContaining matches on the combined plain text
       // of a Text widget's textSpan, so this works even though the string

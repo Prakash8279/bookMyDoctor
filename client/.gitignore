@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 coverage
+.vitest/
 
 # Env files (repo root .gitignore already covers these, but listing them here too means this
 # rule survives even if client/ is ever split into its own repo).

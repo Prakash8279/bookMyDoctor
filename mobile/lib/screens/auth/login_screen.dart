@@ -185,7 +185,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Center(
                       child: TextButton(
                         onPressed: () => Navigator.of(context).pushNamed(Routes.register),
-                        child: const Text('New to BookMyDoctors? Create an account'),
+                        child: const Text('New to BookADoctors? Create an account'),
                       ),
                     ),
                     // COMPLETENESS FIX (mobile parity): the web app has a whole public/signed-out

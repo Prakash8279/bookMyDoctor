@@ -9,11 +9,8 @@
  * repo-wide reformat. There's no Prettier/stylistic setup here to defer to either, so this stays
  * deliberately narrow rather than inventing a style policy.
  *
- * NOTE: eslint (and any flat-config helper package like @eslint/js) is not present in
- * node_modules in this environment — this config was written and reviewed by hand, but `npm run
- * lint` / `npx eslint .` has not actually been run against it here. Add "eslint" (and, if you
- * want its bundled recommended rule set instead of the hand-picked list below, "@eslint/js") to
- * devDependencies and install normally before relying on it in CI.
+ * ESLint itself is pinned in devDependencies; no helper package is needed for this hand-picked
+ * correctness-focused rule set.
  */
 'use strict';
 

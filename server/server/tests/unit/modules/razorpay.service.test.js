@@ -250,6 +250,9 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
       currency: 'INR',
       keyId: KEY_ID,
       appointmentId: 'appt-1',
+      holdId: null,
+      holdExpiresAt: null,
+      holdDurationSeconds: 600,
     });
   });
 

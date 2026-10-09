@@ -74,4 +74,11 @@ router.post(
 // add any body-parsing middleware in front of this route.
 router.post('/webhook/razorpay', controller.handleRazorpayWebhook);
 
+// Admin / Superadmin refund monitoring & retry operations
+router.get('/refunds', authenticate, authorize('admin', 'superadmin'), controller.listRefunds);
+router.post('/refunds/:id/retry', authenticate, authorize('admin', 'superadmin'), controller.retryRefund);
+
+// Admin / Superadmin payment reconciliation dashboard & ledger view
+router.get('/reconciliation', authenticate, authorize('admin', 'superadmin'), controller.getReconciliationReport);
+
 module.exports = router;

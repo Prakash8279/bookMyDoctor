@@ -113,7 +113,7 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
             children: [
               const PageHeader(
                 title: 'Super Admin control center',
-                subtitle: 'One clear place to manage the complete BookMyDoctors platform.',
+                subtitle: 'One clear place to manage the complete BookADoctors platform.',
               ),
               if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
               if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),

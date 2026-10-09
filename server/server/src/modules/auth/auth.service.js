@@ -17,6 +17,7 @@ const smsService = require('../../services/smsService');
 const logger = require('../../config/logger');
 const idGenerators = require('../../utils/idGenerators');
 const { verifyGoogleIdToken } = require('../../services/googleIdTokenVerifier');
+const otpService = require('../../services/otpService');
 
 // Base columns returned for "who am I" responses across this module — never includes passwordHash.
 const USER_SUMMARY_SELECT = {
@@ -46,6 +47,25 @@ function normalizeEmail(email) {
   return String(email).trim().toLowerCase();
 }
 
+function normalizePhone(phone) {
+  if (!phone || typeof phone !== 'string') return null;
+  const digits = phone.replace(/\D/g, '');
+  if (!digits) return null;
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+function getPhoneSearchVariants(phone) {
+  const norm = normalizePhone(phone);
+  if (!norm) return [];
+  return [
+    { phone: norm },
+    { phone: `+91${norm}` },
+    { phone: `+91 ${norm}` },
+    { phone: `0${norm}` },
+    { phone: `91${norm}` },
+  ];
+}
+
 /**
  * Creates a bare-bones in-app notification for a single user. Writes the Notification +
  * NotificationRecipient rows directly (same shape notifications.service.js#broadcastNotification
@@ -73,10 +93,23 @@ async function notifyUserInApp(userId, { title, body, type = 'security' }) {
  */
 async function register({ name, email, password, phone, city }) {
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
 
-  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
-  if (existing) {
+  const existingEmail = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+  if (existingEmail) {
     throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
+  }
+
+  if (normalizedPhone) {
+    const existingPhone = await prisma.user.findFirst({
+      where: {
+        OR: getPhoneSearchVariants(normalizedPhone),
+      },
+      select: { id: true },
+    });
+    if (existingPhone) {
+      throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
@@ -84,6 +117,19 @@ async function register({ name, email, password, phone, city }) {
   let user;
   try {
     user = await prisma.$transaction(async (tx) => {
+      if (normalizedPhone) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'user-phone:' + normalizedPhone}))`;
+        const racePhone = await tx.user.findFirst({
+          where: {
+            OR: getPhoneSearchVariants(normalizedPhone),
+          },
+          select: { id: true },
+        });
+        if (racePhone) {
+          throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+        }
+      }
+
       // Drawn once, right before the insert that stores it — same "only burn a number once
       // everything else is confirmed" posture as payments.service.js's nextReceiptNumber calls.
       // Sequences are non-transactional in Postgres (a nextval() is never rolled back even if
@@ -98,7 +144,7 @@ async function register({ name, email, password, phone, city }) {
           email: normalizedEmail,
           passwordHash,
           role: 'patient',
-          phone: phone ? phone.trim() : null,
+          phone: normalizedPhone,
           city: city ? city.trim() : null,
           status: 'active',
           patientNumber,
@@ -113,9 +159,13 @@ async function register({ name, email, password, phone, city }) {
       return created;
     });
   } catch (err) {
-    // Race with a concurrent registration of the same email: the pre-check above is not
-    // atomic with the insert, so the DB's unique constraint is the real backstop.
+    // Race with a concurrent registration of the same email or phone:
+    // the pre-check above is not atomic with the insert, so the DB's unique constraint is the real backstop.
     if (err.code === 'P2002') {
+      const target = err.meta && Array.isArray(err.meta.target) ? err.meta.target : [];
+      if (target.includes('phone') || (err.message && err.message.toLowerCase().includes('phone'))) {
+        throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+      }
       throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
     }
     throw err;
@@ -353,7 +403,7 @@ async function forgotPassword({ email }) {
 
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    select: { id: true, role: true, status: true, phone: true },
+    select: { id: true, role: true, status: true, phone: true, passwordHash: true },
   });
 
   // Skip token issuance entirely for a disabled account too — same enumeration-avoidance logic
@@ -361,7 +411,7 @@ async function forgotPassword({ email }) {
   // infer "this email belongs to a disabled account" from a side effect (an emailed/texted link,
   // a notification) even though the outward HTTP response is identical either way.
   if (user && user.status !== 'disabled') {
-    const resetToken = tokenService.signResetToken(user.id);
+    const resetToken = tokenService.signResetToken(user.id, user.passwordHash || '');
     const resetLink = `${env.clientOrigin}/reset-password?token=${resetToken}`;
 
     await Promise.all([
@@ -412,7 +462,10 @@ async function forgotPassword({ email }) {
 async function resetPassword({ token, newPassword }) {
   const userId = tokenService.verifyResetToken(token);
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true, status: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, status: true, passwordHash: true },
+  });
   // Same generic error as an invalid token itself — the account could have been deleted since
   // the link was issued; that's not information a caller holding a mere token should get either.
   if (!user) {
@@ -422,8 +475,18 @@ async function resetPassword({ token, newPassword }) {
     throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
   }
 
+  // Bind the reset link to the credential version that existed when it was issued. Once any
+  // reset succeeds, the password hash changes and every copy/replay of that link becomes invalid.
+  tokenService.verifyResetToken(token, user.passwordHash || '');
+
   const passwordHash = await bcrypt.hash(newPassword, env.bcryptSaltRounds);
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+  const updated = await prisma.user.updateMany({
+    where: { id: user.id, passwordHash: user.passwordHash },
+    data: { passwordHash },
+  });
+  if (updated.count !== 1) {
+    throw new ApiError(400, 'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.');
+  }
 
   await tokenService.revokeAllForUser(user.id);
 
@@ -437,4 +500,200 @@ async function resetPassword({ token, newPassword }) {
   });
 }
 
-module.exports = { register, login, googleAuth, logout, refresh, getMe, forgotPassword, resetPassword };
+/**
+ * Finds an active user by email or 10-digit phone number.
+ * Uses safe lookup: if multiple accounts exist with the same phone, refuses ambiguous login to prevent account takeover.
+ */
+async function findUserByIdentifier(rawIdentifier) {
+  const norm = otpService.normalizeIdentifier(rawIdentifier);
+  if (!norm) return null;
+
+  if (norm.includes('@')) {
+    return prisma.user.findUnique({
+      where: { email: norm },
+      select: { ...USER_SUMMARY_SELECT, passwordHash: true },
+    });
+  }
+
+  // Look up by phone formats
+  const variants = [
+    { phone: norm },
+    { phone: `+91${norm}` },
+    { phone: `+91 ${norm}` },
+    { phone: `0${norm}` },
+    { phone: `91${norm}` },
+    { phone: norm.slice(-10) },
+  ];
+
+  const users = await prisma.user.findMany({
+    where: { OR: variants },
+    select: { ...USER_SUMMARY_SELECT, passwordHash: true },
+  });
+
+  if (users.length === 0) return null;
+  if (users.length > 1) {
+    logger.warn(`[authService] Multiple accounts (${users.length}) found for phone ${norm}: ${users.map((u) => u.id).join(', ')}`);
+    throw new ApiError(409, 'AMBIGUOUS_PHONE_ACCOUNT', 'Multiple accounts are associated with this mobile number. Please log in with your email address or contact support.');
+  }
+
+  return users[0];
+}
+
+/**
+ * Sends an OTP for Login, Registration, or Forgot Password.
+ */
+async function sendAuthOtp({ identifier, purpose, channel }) {
+  const norm = otpService.normalizeIdentifier(identifier);
+  if (!norm) {
+    throw new ApiError(400, 'INVALID_IDENTIFIER', 'Valid email or 10-digit phone number is required.');
+  }
+
+  if (purpose === 'register') {
+    let existing;
+    try {
+      existing = await findUserByIdentifier(norm);
+    } catch (err) {
+      if (err.statusCode === 409) {
+        throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', 'An account with this email/phone already exists. Please login instead.');
+      }
+      throw err;
+    }
+    if (existing) {
+      throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', 'An account with this email/phone already exists. Please login instead.');
+    }
+  } else if (purpose === 'forgot_password') {
+    const existing = await findUserByIdentifier(norm);
+    if (!existing) {
+      throw new ApiError(404, 'ACCOUNT_NOT_FOUND', 'No account found with this email or phone number.');
+    }
+    if (existing.status === 'disabled') {
+      throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+    }
+  }
+
+  return otpService.sendOtp({ identifier: norm, purpose, channel });
+}
+
+/**
+ * Verifies OTP for passwordless login (auto-registers if first-time user).
+ */
+async function verifyOtpLogin({ identifier, otp }) {
+  const norm = otpService.normalizeIdentifier(identifier);
+  await otpService.verifyOtp({ identifier: norm, purpose: 'login', otp });
+
+  let user = await findUserByIdentifier(norm);
+  let isNewAccount = false;
+
+  if (!user) {
+    // Modern UX: Auto-register patient account on first-time OTP verification
+    isNewAccount = true;
+    user = await prisma.$transaction(async (tx) => {
+      const patientNumber = await idGenerators.nextPatientNumber();
+      const isEmail = norm.includes('@');
+      const fallbackName = isEmail ? norm.split('@')[0] : `User ${norm.slice(-4)}`;
+
+      const created = await tx.user.create({
+        data: {
+          name: fallbackName,
+          email: isEmail ? norm : `user_${norm}@bookmydoctor.local`,
+          phone: isEmail ? null : norm,
+          passwordHash: null,
+          role: 'patient',
+          status: 'active',
+          patientNumber,
+        },
+        select: USER_SUMMARY_SELECT,
+      });
+
+      await tx.patientProfile.create({ data: { userId: created.id } });
+      return created;
+    });
+  } else {
+    if (user.status === 'disabled') {
+      throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+    }
+  }
+
+  const tokens = await tokenService.issueTokenPair(user);
+
+  await activityLogService.log({
+    actorUserId: user.id,
+    actorRole: user.role,
+    actionType: isNewAccount ? 'auth.register_otp' : 'auth.login_otp',
+    targetEntityType: 'user',
+    targetEntityId: user.id,
+    description: isNewAccount ? 'Patient registered via OTP' : 'User logged in via OTP',
+  });
+
+  const { passwordHash, ...safeUser } = user;
+  return { user: safeUser, ...tokens, isNewAccount };
+}
+
+/**
+ * Verifies OTP and registers a new patient account.
+ */
+async function verifyOtpRegister({ name, email, password, phone, city, otp, verifyTarget }) {
+  const target = otpService.normalizeIdentifier(verifyTarget || phone || email);
+  const normalizedEmail = otpService.normalizeIdentifier(email);
+  const normalizedPhone = otpService.normalizeIdentifier(phone);
+  if (!target || (target !== normalizedEmail && target !== normalizedPhone)) {
+    throw new ApiError(
+      400,
+      'OTP_TARGET_MISMATCH',
+      'The OTP must be verified against the email address or phone number being registered.'
+    );
+  }
+  await otpService.verifyOtp({ identifier: target, purpose: 'register', otp });
+
+  // Complete normal registration
+  return register({ name, email, password, phone, city });
+}
+
+/**
+ * Resets user password using verified OTP.
+ */
+async function resetPasswordWithOtp({ identifier, otp, newPassword }) {
+  const norm = otpService.normalizeIdentifier(identifier);
+  await otpService.verifyOtp({ identifier: norm, purpose: 'forgot_password', otp });
+
+  const user = await findUserByIdentifier(norm);
+  if (!user) {
+    throw new ApiError(404, 'ACCOUNT_NOT_FOUND', 'No account found with this email or phone.');
+  }
+  if (user.status === 'disabled') {
+    throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, env.bcryptSaltRounds);
+  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+  await tokenService.revokeAllForUser(user.id);
+
+  await activityLogService.log({
+    actorUserId: user.id,
+    actorRole: user.role,
+    actionType: 'auth.password_reset_otp',
+    targetEntityType: 'user',
+    targetEntityId: user.id,
+    description: 'Password reset via OTP verification',
+  });
+
+  return { success: true, message: 'Password has been reset successfully. Please log in with your new password.' };
+}
+
+module.exports = {
+  register,
+  login,
+  googleAuth,
+  logout,
+  refresh,
+  getMe,
+  forgotPassword,
+  resetPassword,
+  findUserByIdentifier,
+  normalizePhone,
+  sendAuthOtp,
+  verifyOtpLogin,
+  verifyOtpRegister,
+  resetPasswordWithOtp,
+};

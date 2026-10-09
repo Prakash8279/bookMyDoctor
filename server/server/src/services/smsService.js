@@ -16,6 +16,108 @@ const env = require('../config/env');
  * body is redacted in production (SECURITY FIX — same OTP/reset-link-in-plaintext-logs finding
  * applies here identically, e.g. auth.service.js#forgotPassword's SMS variant).
  */
+/**
+ * Real SMS provider via Fast2SMS (India Quick SMS / OTP route — free testing bonus on signup).
+ */
+const fast2smsProvider = {
+  name: 'fast2sms',
+  async send({ to, message, otp }) {
+    const apiKey = process.env.FAST2SMS_API_KEY;
+    if (!apiKey) {
+      logger.warn('[sms:fast2sms] FAST2SMS_API_KEY missing — falling back to log provider');
+      return logProvider.send({ to, message });
+    }
+
+    // Clean phone number: Indian numbers are 10 digits; strip any leading +91 or 0
+    const cleanNumber = String(to).replace(/\D/g, '').slice(-10);
+
+    // Extract OTP if present in message or passed directly
+    const extractedOtp = otp || (typeof message === 'string' && message.match(/\b\d{4,8}\b/) ? message.match(/\b\d{4,8}\b/)[0] : null);
+
+    const payload = extractedOtp
+      ? {
+          route: 'otp',
+          variables_values: extractedOtp,
+          numbers: cleanNumber,
+        }
+      : {
+          route: 'q',
+          message,
+          language: 'english',
+          flash: 0,
+          numbers: cleanNumber,
+        };
+
+    const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: {
+        authorization: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.return === false) {
+      throw new Error(`Fast2SMS failed: ${Array.isArray(data.message) ? data.message.join(', ') : data.message || res.statusText}`);
+    }
+    logger.info(`[sms:fast2sms] SMS sent successfully to=${cleanNumber}`);
+    return data;
+  },
+};
+
+/**
+ * Real SMS provider via Twilio (free $15 trial credits on signup).
+ */
+const twilioProvider = {
+  name: 'twilio',
+  async send({ to, message }) {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
+    if (!accountSid || !authToken || !fromNumber) {
+      logger.warn('[sms:twilio] Twilio credentials missing — falling back to log provider');
+      return logProvider.send({ to, message });
+    }
+
+    const authHeader = 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+
+    // Ensure E.164 format (+91...)
+    let formattedTo = String(to).trim();
+    if (!formattedTo.startsWith('+')) {
+      const digits = formattedTo.replace(/\D/g, '');
+      formattedTo = digits.length === 10 ? `+91${digits}` : `+${digits}`;
+    }
+
+    const params = new URLSearchParams();
+    params.append('To', formattedTo);
+    params.append('From', fromNumber);
+    params.append('Body', message);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(`Twilio failed: ${data.message || res.statusText}`);
+    }
+    logger.info(`[sms:twilio] SMS sent to=${formattedTo} sid=${data.sid}`);
+    return data;
+  },
+};
+
+/**
+ * The default provider for dev/testing when no external SMS gateway is configured.
+ * Writes a structured log line.
+ */
 const logProvider = {
   name: 'log',
   async send({ to, message }) {
@@ -24,9 +126,11 @@ const logProvider = {
   },
 };
 
-// A real provider gets added here once one is chosen (see file header) — only 'log' exists
-// today, by design.
-const PROVIDERS = { log: logProvider };
+const PROVIDERS = {
+  log: logProvider,
+  fast2sms: fast2smsProvider,
+  twilio: twilioProvider,
+};
 
 function resolveProvider() {
   const key = (process.env.SMS_PROVIDER || 'log').trim().toLowerCase();
@@ -34,14 +138,13 @@ function resolveProvider() {
 }
 
 /**
- * Best-effort, never throws — same non-fatal posture as emailService.js#sendEmail and
- * notifications.service.js#notifySystemEventSafe.
- * @param {{to?:string|null, message:string}} content
+ * Best-effort, never throws — returns error object if failed instead of unhandled exception.
+ * @param {{to?:string|null, message:string, otp?:string}} content
  */
-async function sendSms({ to, message }) {
+async function sendSms({ to, message, otp }) {
   if (!to) return; // no phone number on file — silently skip
   try {
-    await resolveProvider().send({ to, message });
+    return await resolveProvider().send({ to, message, otp });
   } catch (err) {
     logger.warn(`[sms] sendSms failed for ${to}: ${err.message}`);
   }

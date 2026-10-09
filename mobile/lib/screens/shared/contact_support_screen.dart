@@ -85,7 +85,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
           // kicker "We are here to help", h1 "Contact BookMyDoctors", and its lede paragraph.
           const PageHeader(
             kicker: 'We are here to help',
-            title: 'Contact BookMyDoctors',
+            title: 'Contact BookADoctors',
             subtitle: 'Get help with appointments, accounts, doctor onboarding, or clinic operations.',
           ),
           if (_sent)

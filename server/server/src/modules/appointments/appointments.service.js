@@ -24,10 +24,17 @@ const notificationsService = require('../notifications/notifications.service');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const bookingQueue = require('../../jobs/bookingQueue');
 const env = require('../../config/env');
+const logger = require('../../config/logger');
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
-const { formatDateOnly, todayUTCDateOnly } = require('../../utils/dateOnly');
+const {
+  formatDateOnly,
+  currentBusinessTimeHHMM,
+  todayBusinessDateOnly,
+  businessDateTimeToUtc,
+} = require('../../utils/dateOnly');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
 const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
+const paymentHoldService = require('../payments/paymentHold.service');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
 // live booking state; see cacheService.js header for the general caching contract.
@@ -775,13 +782,12 @@ async function runBookingJob(payload) {
       });
     }
     if (effectiveWindow) {
-      // Plain HH:MM string comparison against the current UTC clock — the same convention this
-      // codebase already uses for OPD-hours matching (see the same-day slot logic further below
-      // in this function); zero-padded 24h HH:MM strings compare correctly with plain string
-      // operators. Doesn't support a window spanning midnight (e.g. "22:00"-"06:00") — both
+      // OPD and booking-window values are business-local wall-clock times. Zero-padded 24h HH:MM
+      // strings compare correctly with plain string operators. Doesn't support a window spanning
+      // midnight (e.g. "22:00"-"06:00") — both
       // admin.validation.js#updateBookingRules and doctors.validation.js#patchDoctor require
       // start < end at save time, so that case can never be saved in the first place.
-      const nowHHMM = new Date().toISOString().slice(11, 16);
+      const nowHHMM = currentBusinessTimeHHMM();
       if (nowHHMM < effectiveWindow.start || nowHHMM > effectiveWindow.end) {
         throw new ApiError(
           403,
@@ -796,7 +802,7 @@ async function runBookingJob(payload) {
   // Explicit UTC-midnight construction (not `new Date(dateStr)`) to dodge local-timezone-shift
   // bugs when comparing calendar dates.
   const appointmentDateUTC = new Date(`${dateStr}T00:00:00.000Z`);
-  const todayUTC = todayUTCDateOnly();
+  const todayUTC = todayBusinessDateOnly();
 
   if (appointmentDateUTC.getTime() < todayUTC.getTime()) {
     throw new ApiError(400, 'INVALID_DATE', 'appointmentDate cannot be in the past.');
@@ -846,15 +852,12 @@ async function runBookingJob(payload) {
   // inside the transaction below, AFTER the per-doctor-day advisory lock is acquired. Kept here
   // too so the common (non-racing) case rejects before doing any OPD-hours/lock work at all.
   if (source === 'online' && doctorProfile.maxOnlineBookingsPerDay != null) {
-    const onlineBookingsToday = await prisma.appointment.count({
-      where: {
-        doctorUserId,
-        appointmentDate: appointmentDateUTC,
-        source: 'online',
-        status: { notIn: ['cancelled', 'no_show'] },
-      },
-    });
-    if (onlineBookingsToday >= doctorProfile.maxOnlineBookingsPerDay) {
+    const { effectiveOccupied } = await paymentHoldService.getEffectiveOccupancyTx(
+      prisma,
+      doctorUserId,
+      appointmentDateUTC
+    );
+    if (effectiveOccupied >= doctorProfile.maxOnlineBookingsPerDay) {
       throw new ApiError(
         400,
         'DAILY_ONLINE_LIMIT_REACHED',
@@ -885,10 +888,10 @@ async function runBookingJob(payload) {
     // Same-day bookings must be for a time still ahead of "now" — the calendar-date check above
     // (appointmentDateUTC < todayUTC) only rejects a past DATE, so without this a same-day slot
     // whose TIME has already gone by would otherwise sail through. Current time compared as the
-    // same "HH:MM" UTC string shape as appointmentTime/hours.startTime/hours.endTime above.
+    // same business-local "HH:MM" shape as appointmentTime/hours.startTime/hours.endTime above.
     if (isSameDay) {
-      const currentTimeUTC = new Date().toISOString().slice(11, 16);
-      if (timeStr < currentTimeUTC) {
+      const currentTime = currentBusinessTimeHHMM();
+      if (timeStr < currentTime) {
         throw new ApiError(400, 'TIME_ALREADY_PASSED', 'appointmentTime cannot be in the past for a same-day booking.');
       }
     }
@@ -1030,15 +1033,13 @@ async function runBookingJob(payload) {
       // it (token numbering, the INSERT itself) already relies on this same lock for the exact
       // same reason.
       if (source === 'online' && doctorProfile.maxOnlineBookingsPerDay != null) {
-        const onlineBookingsTodayLocked = await tx.appointment.count({
-          where: {
-            doctorUserId,
-            appointmentDate: appointmentDateUTC,
-            source: 'online',
-            status: { notIn: ['cancelled', 'no_show'] },
-          },
-        });
-        if (onlineBookingsTodayLocked >= doctorProfile.maxOnlineBookingsPerDay) {
+        await paymentHoldService.cleanExpiredHoldsTx(tx, doctorUserId, appointmentDateUTC);
+        const { effectiveOccupied } = await paymentHoldService.getEffectiveOccupancyTx(
+          tx,
+          doctorUserId,
+          appointmentDateUTC
+        );
+        if (effectiveOccupied >= doctorProfile.maxOnlineBookingsPerDay) {
           throw new ApiError(
             400,
             'DAILY_ONLINE_LIMIT_REACHED',
@@ -1060,7 +1061,7 @@ async function runBookingJob(payload) {
           select: { appointmentTime: true },
         });
         const takenTimes = new Set(existingForDay.map((row) => row.appointmentTime));
-        const currentTimeUTC = isSameDay ? new Date().toISOString().slice(11, 16) : null;
+        const currentTimeUTC = isSameDay ? currentBusinessTimeHHMM() : null;
         resolvedTimeStr = generateSlotCandidates(hours.startTime, hours.endTime, hours.slotMinutes).find(
           (candidate) => !takenTimes.has(candidate) && (!currentTimeUTC || candidate >= currentTimeUTC)
         );
@@ -1399,7 +1400,7 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
   // close out) — only a still-upcoming date is blocked.
   if (targetStatus === 'completed') {
     const apptDateUTC = new Date(`${formatDateOnly(row.appointmentDate)}T00:00:00.000Z`);
-    if (apptDateUTC.getTime() > todayUTCDateOnly().getTime()) {
+    if (apptDateUTC.getTime() > todayBusinessDateOnly().getTime()) {
       throw new ApiError(
         400,
         'APPOINTMENT_NOT_YET_DUE',
@@ -1423,7 +1424,7 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
     // for that status.
     const rules = await prisma.bookingRules.findUnique({ where: { id: 1 }, select: { cancellationWindowHours: true } });
     const windowHours = rules ? rules.cancellationWindowHours : 2;
-    const apptDateTime = new Date(`${formatDateOnly(row.appointmentDate)}T${row.appointmentTime}:00.000Z`);
+    const apptDateTime = businessDateTimeToUtc(formatDateOnly(row.appointmentDate), row.appointmentTime);
     const hoursUntilAppointment = (apptDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
     if (hoursUntilAppointment < windowHours) {
       throw new ApiError(
@@ -1434,14 +1435,35 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
     }
   }
 
+  // ── Refund eligibility check on cancellation ──────────────────────────
+  let refundToProcess = null;
+  if (targetStatus === 'cancelled') {
+    const isPaid = (row.paymentStatus === 'paid' || row.paymentStatus === 'partial');
+    if (isPaid && prisma.payment && typeof prisma.payment.findFirst === 'function') {
+      const onlinePayment = await prisma.payment.findFirst({
+        where: {
+          appointmentId: id,
+          mode: 'online',
+          status: 'paid',
+          transactionRef: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (onlinePayment) {
+        refundToProcess = {
+          paymentId: onlinePayment.id,
+          amount: onlinePayment.amount,
+          razorpayPaymentId: onlinePayment.transactionRef,
+        };
+      }
+    }
+  }
+
+  let createdRefundRecord = null;
   await prisma.$transaction(async (tx) => {
     await tx.appointment.update({ where: { id }, data: { status: targetStatus } });
 
-    // Release the token from the live queue — literal fix for the "queue token has no FK back
-    // to its appointment and is only kept 'fresh' by a manual sweep" gap. payment_status is
-    // deliberately left untouched even if already 'paid': a real refund needs the (out-of-
-    // scope) Payments module — flipping it to 'refunded' here without money actually moving
-    // would be a misleading DB state.
+    // Release the token from the live queue
     if (
       (targetStatus === 'cancelled' || targetStatus === 'no_show') &&
       row.queueToken &&
@@ -1451,13 +1473,45 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
     }
 
     // Mirror queue.service.js#updateQueueStatus's own completed cascade (queue -> appointment)
-    // in the opposite direction: completing an appointment directly via this PATCH must also
-    // finish its linked queueToken (if any), or GET /queue keeps listing an already-finished
-    // visit as still active (waiting/called/in_consultation) until a manual sweep catches it.
     if (targetStatus === 'completed' && row.queueToken && row.queueToken.status !== 'completed') {
       await tx.queueToken.update({ where: { id: row.queueToken.id }, data: { status: 'completed' } });
     }
+
+    // Automated refund initiation: create a pending refund record with idempotency protection.
+    // paymentStatus on appointment and payment remains as-is ('paid') until refund confirmation.
+    if (refundToProcess && tx.refund && typeof tx.refund.create === 'function') {
+      const idempotencyKey = `refund:appt:${id}`;
+      const existingRefund = tx.refund.findUnique ? await tx.refund.findUnique({ where: { idempotencyKey } }) : null;
+      if (!existingRefund) {
+        createdRefundRecord = await tx.refund.create({
+          data: {
+            appointmentId: id,
+            paymentId: refundToProcess.paymentId,
+            amount: refundToProcess.amount,
+            razorpayPaymentId: refundToProcess.razorpayPaymentId,
+            status: 'pending',
+            idempotencyKey,
+          },
+        });
+      }
+    }
   });
+
+  // Once cancellation transaction successfully commits, trigger Razorpay refund API
+  if (createdRefundRecord) {
+    try {
+      const razorpayService = require('../payments/razorpay.service');
+      await razorpayService.processRefund({
+        refundId: createdRefundRecord.id,
+        paymentId: createdRefundRecord.razorpayPaymentId,
+        amount: createdRefundRecord.amount,
+        appointmentId: id,
+        reason: 'Appointment cancelled',
+      });
+    } catch (refundErr) {
+      logger.error(`[refund] Error executing refund for appointment ${id}: ${refundErr.message}`);
+    }
+  }
 
   await activityLogService.log({
     actorUserId: actor.id,

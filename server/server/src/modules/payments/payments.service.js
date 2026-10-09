@@ -20,6 +20,7 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../config/db');
 const redis = require('../../config/redis');
+const env = require('../../config/env');
 const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
@@ -29,6 +30,7 @@ const { parsePagination, buildPaginationMeta } = require('../../utils/pagination
 const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
 const { computeMinBookingRemainder, resolvePaymentRowFeeSplit } = require('../../utils/minBookingAmount');
+const paymentHoldService = require('./paymentHold.service');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -252,251 +254,329 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
   // payment was the one that just unlocked a pending_payment booking, plus the token number to
   // mention in the alert).
   let notifyContext = null;
+  let autoRefundContext = null;
 
-  const paymentId = await prisma.$transaction(async (tx) => {
-    const lockRows = await tx.$queryRaw`SELECT id FROM appointments WHERE id = ${appointmentId} FOR UPDATE`;
-    if (lockRows.length === 0) {
-      throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
-    }
-
-    const appointment = await tx.appointment.findUnique({
-      where: { id: appointmentId },
-      select: {
-        id: true,
-        status: true,
-        patientUserId: true,
-        doctorUserId: true,
-        clinicId: true,
-        paymentStatus: true,
-        tokenNumber: true,
-        consultationFee: true,
-        convenienceFee: true,
-        emergencyFee: true,
-        gstAmount: true,
-        totalAmount: true,
-        // doctor.doctorProfile.minBookingAdvanceAmount added (MIN-BOOKING-REMAINDER FIX) — the
-        // 'partial' branch below needs it to compute the correct clinic-collected remainder
-        // (consultationFee - minBookingAdvanceAmount), not totalAmount - alreadyPaid; see
-        // utils/minBookingAmount.js#computeMinBookingRemainder.
-        doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true } } } },
-      },
-    });
-
-    // Authorization MUST run before any check that reveals appointment/payment state (rule:
-    // no enumeration of out-of-scope appointments). A receptionist outside this appointment's
-    // clinic must get the same 403 regardless of whether the appointment is already paid,
-    // cancelled, or perfectly payable — checking paymentStatus/status first would let a
-    // receptionist probe arbitrary appointment ids and learn their state before ever being
-    // told they don't own them. Only the 404-for-nonexistent-id check above is allowed to run
-    // first, since a truly nonexistent id genuinely doesn't exist for anyone. Mirrors the
-    // walk-in booking scoping in appointments.service.js#runBookingJob. Admin/superadmin bypass.
-    if (requester.role === 'receptionist') {
-      const rp = await tx.receptionistProfile.findUnique({
-        where: { userId: requester.id },
-        select: { clinicId: true },
-      });
-      if (!rp || !rp.clinicId || rp.clinicId !== appointment.clinicId) {
-        throw new ApiError(403, 'RECEPTIONIST_CLINIC_MISMATCH', 'You can only record payments for your own clinic.');
+  const result = await prisma.$transaction(
+    async (tx) => {
+      const lockRows = await tx.$queryRaw`SELECT id FROM appointments WHERE id = ${appointmentId} FOR UPDATE`;
+      if (lockRows.length === 0) {
+        throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
       }
-    }
 
-    // A patient reaches this function only via the Razorpay self-pay flow (razorpay.service.js) —
-    // 404, not 403, on a mismatch (same enumeration-avoidance posture as everywhere else): a
-    // patient probing someone else's appointment id must not learn it exists. This is a no-op for
-    // the pre-existing receptionist/admin/superadmin callers (the only ones before Razorpay was
-    // added), since requester.role is never 'patient' for those.
-    if (requester.role === 'patient' && appointment.patientUserId !== requester.id) {
-      throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
-    }
-
-    if (appointment.paymentStatus === 'paid') {
-      throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
-    }
-
-    // REPLAY-PROTECTION FIX (multi-agent payment audit — critical): a Razorpay verify request is
-    // safe to retry on the frontend (network blip, double-click, browser back-then-forward), and
-    // nothing on Razorpay's side stops the SAME order/payment/signature from being POSTed to our
-    // /verify endpoint twice — the HMAC check is a pure function of orderId|paymentId, so it
-    // validates identically every time. Without this guard, replaying an already-recorded
-    // 'minimum'-advance verify request would fall into the `paymentStatus === 'partial'` branch
-    // below a second time and silently fabricate a SECOND Payment row for the remaining balance
-    // (recomputed as totalAmount - alreadyPaid) with NO new real charge behind it, flipping the
-    // appointment to fully 'paid' for a fraction of its real price. Guard by transactionRef (the
-    // Razorpay payment id, or a receptionist's UTR/reference number) + appointmentId: if a payment
-    // already exists for this exact (appointment, transactionRef) pair, this is a retried request,
-    // not a new charge — return the existing row instead of creating a duplicate. `transactionRef`
-    // can legitimately be null (cash payments with no reference number), so only short-circuits
-    // when one was actually supplied.
-    if (transactionRef) {
-      const existing = await tx.payment.findFirst({
-        where: { appointmentId: appointment.id, transactionRef },
-        select: { id: true },
+      const appointment = await tx.appointment.findUnique({
+        where: { id: appointmentId },
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          appointmentDate: true,
+          patientUserId: true,
+          doctorUserId: true,
+          clinicId: true,
+          paymentStatus: true,
+          tokenNumber: true,
+          consultationFee: true,
+          convenienceFee: true,
+          emergencyFee: true,
+          gstAmount: true,
+          totalAmount: true,
+          doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true } } } },
+        },
       });
-      if (existing) {
-        return existing.id;
+
+      // ATOMIC CONCURRENCY GUARD: Acquire per-doctor-day advisory lock to ensure daily capacity cap
+      // is enforced strictly atomically under high-concurrency verify requests.
+      if (appointment.appointmentDate && appointment.doctorUserId) {
+        const dateStr =
+          appointment.appointmentDate instanceof Date
+            ? appointment.appointmentDate.toISOString().slice(0, 10)
+            : String(appointment.appointmentDate).slice(0, 10);
+        const lockKey = `doctor-day:${appointment.doctorUserId}:${dateStr}`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
       }
-    }
 
-    // Refuse to record money against a visit that never happened / was called off — otherwise a
-    // cancelled or no-show appointment could be flipped to paymentStatus:'paid', a misleading
-    // state with no legitimate business meaning.
-    if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
-      throw new ApiError(
-        409,
-        'APPOINTMENT_NOT_PAYABLE',
-        `Cannot record a payment for an appointment with status "${appointment.status}".`
-      );
-    }
-
-    // Only draw a receipt number once every validation check above has passed — deferring this
-    // until the last possible moment (mirroring createStandalonePayment below) means a rejected
-    // attempt (404/409/403) never burns a number from the shared payment_receipt_seq sequence.
-    // This matters most on exactly the double-submit scenario this row lock guards against: a
-    // receptionist double-clicking "Record payment" should not skip a receipt number just
-    // because the second click lost the race.
-    const receiptNumber = await idGenerators.nextReceiptNumber();
-
-    // `amount` defaults to the full fee — every pre-existing caller relies on this (see this
-    // function's doc comment). A Payment row itself is always `status: 'paid'` (a recorded
-    // transaction that succeeded, full stop); whether that transaction covered the FULL fee or
-    // just the doctor's minimum advance amount is recorded on the *appointment* below instead.
-    //
-    // paymentStatus:'partial' means the patient already paid the doctor's minimum advance amount
-    // online (Razorpay flow) and the REST is being collected now — almost always by a
-    // receptionist recording cash/UPI/card at the clinic, which never passes an explicit `amount`
-    // (see createPayment above). Blindly defaulting that call to the FULL totalAmount again would
-    // double-record this appointment's revenue (already-paid advance + a second "full fee"
-    // charge) and silently break the "one paid payment row per appointment" assumption the admin
-    // dashboard/revenue-trend aggregates rely on. So for a 'partial' appointment, the amount to
-    // charge is ALWAYS auto-computed as the doctor's remaining consultation-fee share (see the
-    // MIN-BOOKING-REMAINDER FIX below — deliberately NOT totalAmount-alreadyPaid) — never trusted
-    // from a caller, exactly like every other amount in this function.
-    let chargedAmount;
-    let alreadyPaid = new Prisma.Decimal(0);
-    // Set only on the "clinic collects the doctor's remaining consultation share" path below —
-    // used afterwards to force isFullPayment/newPaymentStatus without re-comparing to
-    // totalAmount (see the MIN-BOOKING-REMAINDER FIX comment further down for why).
-    let isClinicRemainderSettlement = false;
-    if (appointment.paymentStatus === 'partial') {
-      const priorPaidAgg = await tx.payment.aggregate({
-        where: { appointmentId: appointment.id, status: 'paid' },
-        _sum: { amount: true },
-      });
-      alreadyPaid = priorPaidAgg._sum.amount || new Prisma.Decimal(0);
-      if (mode === 'online' && amount != null) {
-        // ACCOUNTING FIX (multi-agent payment audit — critical): razorpay.service.js DOES pass an
-        // explicit amount here, and it is never a client-supplied figure — it's whatever
-        // Razorpay's own order API says was actually charged (see
-        // razorpay.service.js#verifyAndRecordPayment). If a patient somehow ends up with two
-        // outstanding Razorpay orders for the same appointment (e.g. two tabs, one for 'minimum'
-        // and one for 'full') and both get verified, silently clamping the second charge down to
-        // "whatever's left" throws away the real amount Razorpay captured — the difference
-        // vanishes with no Payment row, no receipt, and no way to detect it from the admin
-        // ledger. Recording the actual verified amount instead keeps the books accurate even in
-        // that edge case (an overpayment is then visible and refundable, instead of silently
-        // lost).
-        chargedAmount = new Prisma.Decimal(amount);
-      } else {
-        // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna
-        // chahiye") — this used to ALWAYS recompute chargedAmount as totalAmount - alreadyPaid,
-        // which double-subtracts the platform charge/GST already fully settled by the online
-        // minimum payment (see utils/minBookingAmount.js#computeMinBookingRemainder for the full
-        // rationale). The receptionist/admin counter-payment caller never passes an explicit
-        // amount, so this is the only path that reaches here.
-        const remainder = computeMinBookingRemainder({
-          consultationFee: appointment.consultationFee,
-          minBookingAdvanceAmount: appointment.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+      // Authorization MUST run before any check that reveals appointment/payment state
+      if (requester.role === 'receptionist') {
+        const rp = await tx.receptionistProfile.findUnique({
+          where: { userId: requester.id },
+          select: { clinicId: true },
         });
-        // Falls back to the old totalAmount-based remainder if the doctor's minimum can't be
-        // found any more (e.g. cleared from their profile after the online min-payment was made)
-        // — better a defensive answer than a crash on an edge case this rare.
-        chargedAmount = remainder != null ? new Prisma.Decimal(remainder) : appointment.totalAmount.minus(alreadyPaid);
-        isClinicRemainderSettlement = true;
+        if (!rp || !rp.clinicId || rp.clinicId !== appointment.clinicId) {
+          throw new ApiError(403, 'RECEPTIONIST_CLINIC_MISMATCH', 'You can only record payments for your own clinic.');
+        }
       }
-      if (chargedAmount.lessThanOrEqualTo(0.01)) {
-        // Rounding already covered the balance (or somehow over-covered it) — nothing left to
-        // collect. Surface the same error a fully-paid appointment gets rather than recording a
-        // zero/negative-amount Payment row.
+
+      if (requester.role === 'patient' && appointment.patientUserId !== requester.id) {
+        throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
+      }
+
+      if (appointment.paymentStatus === 'paid') {
         throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
       }
-    } else {
-      chargedAmount = amount != null ? new Prisma.Decimal(amount) : appointment.totalAmount;
-    }
-    // MIN-BOOKING-REMAINDER FIX: once the clinic collects exactly the computed remainder above,
-    // the booking is fully settled BY DESIGN even though alreadyPaid + chargedAmount can land
-    // below totalAmount (the platform's convenience charge is collected online in full either
-    // way, and GST only ever applies to whatever portion of the consultation fee actually went
-    // through the online gateway — so nothing is left owing once this remainder is paid). Every
-    // other path keeps the original totalAmount comparison: a tiny (1 paisa) tolerance absorbs
-    // Decimal/paise rounding between our totalAmount and whatever Razorpay's order API echoes
-    // back, computed against the CUMULATIVE amount paid so far (this charge plus whatever was
-    // already paid), not this charge alone.
-    const isFullPayment =
-      isClinicRemainderSettlement || alreadyPaid.plus(chargedAmount).greaterThanOrEqualTo(appointment.totalAmount.minus(0.01));
-    const newPaymentStatus = isFullPayment ? 'paid' : 'partial';
 
-    // Every fee field is copied verbatim from the appointment — this is the "never trust client
-    // math" rule satisfied by reusing the figure already computed server-side at booking time,
-    // not by recomputing (recomputing here would risk drifting from what the patient was quoted).
-    const created = await tx.payment.create({
-      data: {
-        receiptNumber,
-        appointmentId: appointment.id,
+      // REPLAY-PROTECTION: if a payment already exists for this exact (appointment, transactionRef) pair,
+      // return the existing row instead of creating a duplicate.
+      if (transactionRef) {
+        const existing = await tx.payment.findFirst({
+          where: { appointmentId: appointment.id, transactionRef },
+          select: { id: true },
+        });
+        if (existing) {
+          return { id: existing.id, isReplay: true };
+        }
+      }
+
+      // ── AUTHORITATIVE CONFIRMATION & CAPACITY CHECK ──────────────────────────
+      // When an online payment is captured by Razorpay, we MUST verify whether the booking can actually
+      // be confirmed:
+      // 1. Is appointment status cancelled / no_show (e.g. hold expired while patient was on payment page)?
+      // 2. Has the doctor's daily online capacity been exhausted by other concurrent bookings?
+      let cannotConfirmBooking = false;
+      let cannotConfirmReason = null;
+
+      if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
+        cannotConfirmBooking = true;
+        cannotConfirmReason = `Appointment status is already "${appointment.status}".`;
+      } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {
+        // Check if there is an active valid payment hold for this appointment
+        const hold = await tx.paymentHold.findFirst({
+          where: { appointmentId: appointment.id },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        const now = new Date();
+        const hasValidHold = hold && hold.status === 'PENDING' && hold.holdExpiresAt > now;
+
+        const maxLimit = appointment.doctor?.doctorProfile?.maxOnlineBookingsPerDay;
+        if (maxLimit != null) {
+          const activeConfirmedCount = await tx.appointment.count({
+            where: {
+              doctorUserId: appointment.doctorUserId,
+              appointmentDate: appointment.appointmentDate,
+              source: 'online',
+              status: { in: ['upcoming', 'confirmed', 'completed'] },
+              id: { not: appointment.id },
+            },
+          });
+
+          if (hasValidHold) {
+            // Patient holds a valid reservation! Booking confirmed without double counting.
+            cannotConfirmBooking = false;
+          } else if (activeConfirmedCount >= maxLimit) {
+            // Hold expired or missing, and capacity is already full!
+            cannotConfirmBooking = true;
+            cannotConfirmReason = `Payment hold expired and doctor daily online capacity (${maxLimit}) is already full.`;
+          }
+        }
+      }
+
+      // If booking CANNOT be confirmed:
+      if (cannotConfirmBooking) {
+        // If receptionist is trying to record offline payment on a cancelled booking, reject normally
+        if (mode !== 'online' || !transactionRef) {
+          throw new ApiError(
+            409,
+            'APPOINTMENT_NOT_PAYABLE',
+            `Cannot record a payment for an appointment with status "${appointment.status}". ${cannotConfirmReason || ''}`
+          );
+        }
+
+        // CRITICAL FINTECH BUSINESS REQUIREMENT:
+        // Razorpay payment was CAPTURED, but booking cannot be confirmed!
+        // NO SUCCESSFUL PAYMENT MAY EVER DISAPPEAR.
+        // 1. Maintain complete Payment record in DB.
+        // 2. Mark appointment status = 'cancelled', paymentStatus = 'refunded'.
+        // 3. Create persistent Refund record (status: 'pending').
+        // 4. Return context to execute Razorpay refund immediately after commit.
+        const receiptNumber = await idGenerators.nextReceiptNumber(tx);
+        const chargedAmount = amount != null ? new Prisma.Decimal(amount) : appointment.totalAmount;
+
+        const created = await tx.payment.create({
+          data: {
+            receiptNumber,
+            appointmentId: appointment.id,
+            patientUserId: appointment.patientUserId,
+            doctorUserId: appointment.doctorUserId,
+            clinicId: appointment.clinicId,
+            consultationFee: appointment.consultationFee,
+            convenienceFee: appointment.convenienceFee,
+            emergencyFee: appointment.emergencyFee,
+            gstAmount: appointment.gstAmount,
+            amount: chargedAmount,
+            mode,
+            transactionRef,
+            payerUpiId,
+            status: 'paid', // Recorded as paid transaction
+          },
+          select: { id: true },
+        });
+
+        await tx.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            status: 'cancelled',
+            paymentStatus: 'refunded',
+            paymentMethod: mode,
+          },
+        });
+
+        await tx.queueToken.deleteMany({
+          where: { appointmentId: appointment.id },
+        });
+
+        await paymentHoldService.markHoldRefundedTx(tx, appointment.id);
+
+        const idempotencyKey = `refund:appt:${appointment.id}`;
+        const refund = await tx.refund.upsert({
+          where: { idempotencyKey },
+          create: {
+            appointmentId: appointment.id,
+            paymentId: created.id,
+            amount: chargedAmount,
+            razorpayPaymentId: transactionRef,
+            status: 'pending',
+            idempotencyKey,
+            failureReason: cannotConfirmReason,
+          },
+          update: {},
+        });
+
+        autoRefundContext = {
+          paymentId: created.id,
+          refundId: refund.id,
+          chargedAmount: chargedAmount.toString(),
+          appointmentId: appointment.id,
+          patientUserId: appointment.patientUserId,
+          doctorUserId: appointment.doctorUserId,
+          transactionRef,
+          cannotConfirmReason,
+        };
+
+        return { id: created.id, autoRefunded: true };
+      }
+
+      // Normal booking confirmation path:
+      // Pass transactional client `tx` to idGenerators so it uses the same DB connection!
+      const receiptNumber = await idGenerators.nextReceiptNumber(tx);
+
+      let chargedAmount;
+      let alreadyPaid = new Prisma.Decimal(0);
+      let isClinicRemainderSettlement = false;
+      if (appointment.paymentStatus === 'partial') {
+        const priorPaidAgg = await tx.payment.aggregate({
+          where: { appointmentId: appointment.id, status: 'paid' },
+          _sum: { amount: true },
+        });
+        alreadyPaid = priorPaidAgg._sum.amount || new Prisma.Decimal(0);
+        if (mode === 'online' && amount != null) {
+          chargedAmount = new Prisma.Decimal(amount);
+        } else {
+          const remainder = computeMinBookingRemainder({
+            consultationFee: appointment.consultationFee,
+            minBookingAdvanceAmount: appointment.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+          });
+          chargedAmount = remainder != null ? new Prisma.Decimal(remainder) : appointment.totalAmount.minus(alreadyPaid);
+          isClinicRemainderSettlement = true;
+        }
+        if (chargedAmount.lessThanOrEqualTo(0.01)) {
+          throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
+        }
+      } else {
+        chargedAmount = amount != null ? new Prisma.Decimal(amount) : appointment.totalAmount;
+      }
+
+      const isFullPayment =
+        isClinicRemainderSettlement || alreadyPaid.plus(chargedAmount).greaterThanOrEqualTo(appointment.totalAmount.minus(0.01));
+      const newPaymentStatus = isFullPayment ? 'paid' : 'partial';
+
+      const created = await tx.payment.create({
+        data: {
+          receiptNumber,
+          appointmentId: appointment.id,
+          patientUserId: appointment.patientUserId,
+          doctorUserId: appointment.doctorUserId,
+          clinicId: appointment.clinicId,
+          consultationFee: appointment.consultationFee,
+          convenienceFee: appointment.convenienceFee,
+          emergencyFee: appointment.emergencyFee,
+          gstAmount: appointment.gstAmount,
+          amount: chargedAmount,
+          mode,
+          transactionRef,
+          payerUpiId,
+          status: 'paid',
+        },
+        select: { id: true },
+      });
+
+      await tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          paymentStatus: newPaymentStatus,
+          paymentMethod: mode,
+          ...(appointment.status === 'pending_payment' ? { status: 'upcoming' } : {}),
+        },
+      });
+
+      if (appointment.status === 'pending_payment') {
+        await tx.queueToken.updateMany({
+          where: { appointmentId: appointment.id, status: 'on_hold' },
+          data: { status: 'waiting' },
+        });
+        await paymentHoldService.confirmHoldTx(tx, appointment.id, transactionRef);
+      }
+
+      notifyContext = {
         patientUserId: appointment.patientUserId,
         doctorUserId: appointment.doctorUserId,
-        clinicId: appointment.clinicId,
-        consultationFee: appointment.consultationFee,
-        convenienceFee: appointment.convenienceFee,
-        emergencyFee: appointment.emergencyFee,
-        gstAmount: appointment.gstAmount,
-        amount: chargedAmount,
-        mode,
-        transactionRef,
-        payerUpiId,
-        status: 'paid',
-      },
-      select: { id: true },
-    });
+        tokenNumber: appointment.tokenNumber,
+        chargedAmount: chargedAmount.toString(),
+        justConfirmedBooking: appointment.status === 'pending_payment',
+      };
 
-    // Payment-before-token: EITHER payment amount (full or the doctor's minimum advance) unlocks
-    // a booking that was held in `pending_payment` — flip it to `upcoming` and its queue token
-    // from `on_hold` to `waiting` in the same transaction as the payment itself, so a booking is
-    // never left half-confirmed if something fails partway through. A no-op for every booking
-    // that was never gated in the first place (walk-ins, free consultations, or an appointment
-    // already `upcoming`/`confirmed`).
-    await tx.appointment.update({
-      where: { id: appointment.id },
-      data: {
-        paymentStatus: newPaymentStatus,
-        paymentMethod: mode,
-        ...(appointment.status === 'pending_payment' ? { status: 'upcoming' } : {}),
-      },
-    });
-    if (appointment.status === 'pending_payment') {
-      await tx.queueToken.updateMany({
-        where: { appointmentId: appointment.id, status: 'on_hold' },
-        data: { status: 'waiting' },
+      return { id: created.id, autoRefunded: false };
+    },
+    {
+      timeout: env.booking.txTimeoutMs ? Math.max(env.booking.txTimeoutMs, 25000) : 25000,
+      maxWait: env.booking.txMaxWaitMs ? Math.max(env.booking.txMaxWaitMs, 25000) : 25000,
+    }
+  );
+
+  if (result.isReplay) {
+    return prisma.payment.findUnique({ where: { id: result.id }, select: PAYMENT_SELECT });
+  }
+
+  // Handle AUTO-REFUND if booking could not be confirmed
+  if (result.autoRefunded && autoRefundContext) {
+    try {
+      const razorpayService = require('./razorpay.service');
+      await razorpayService.processRefund({
+        refundId: autoRefundContext.refundId,
+        paymentId: autoRefundContext.transactionRef,
+        amount: autoRefundContext.chargedAmount,
+        appointmentId: autoRefundContext.appointmentId,
+        reason: autoRefundContext.cannotConfirmReason,
+      });
+    } catch (refundErr) {
+      logger.error(`[auto-refund] Error executing refund for payment ${autoRefundContext.paymentId}: ${refundErr.message}`);
+    }
+
+    if (autoRefundContext.patientUserId) {
+      await notificationsService.notifySystemEventSafe(autoRefundContext.patientUserId, {
+        title: 'Payment received — refund initiated',
+        body: `Payment of Rs.${autoRefundContext.chargedAmount} received, but booking could not be confirmed (${autoRefundContext.cannotConfirmReason}). A refund has been automatically initiated.`,
+        type: 'payment',
       });
     }
 
-    notifyContext = {
-      patientUserId: appointment.patientUserId,
-      doctorUserId: appointment.doctorUserId,
-      tokenNumber: appointment.tokenNumber,
-      chargedAmount: chargedAmount.toString(),
-      justConfirmedBooking: appointment.status === 'pending_payment',
-    };
+    const finalPayment = await prisma.payment.findUnique({ where: { id: result.id }, select: PAYMENT_SELECT });
+    return Object.assign(finalPayment, {
+      autoRefunded: true,
+      refundId: autoRefundContext.refundId,
+      cannotConfirmReason: autoRefundContext.cannotConfirmReason,
+    });
+  }
 
-    return created.id;
-  });
-
-  // Real-time in-app alert — covers BOTH payment paths that reach this function: a patient's own
-  // Razorpay online payment (razorpay.service.js#verifyAndRecordPayment) and a receptionist/admin
-  // recording cash/UPI/card at the clinic. `justConfirmedBooking` distinguishes "this payment is
-  // what unlocked a pending_payment booking" (patient + doctor both get the booking-confirmed
-  // alert appointments.service.js#runBookingJob deliberately withheld for prepay-gated bookings)
-  // from an ordinary/top-up payment on an already-upcoming appointment (patient gets a lighter
-  // "payment received" receipt-style alert; the doctor isn't paged for routine payment admin).
   if (notifyContext) {
     if (notifyContext.justConfirmedBooking) {
       await notificationsService.notifySystemEventSafe(notifyContext.patientUserId, {
@@ -518,7 +598,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
     }
   }
 
-  return prisma.payment.findUnique({ where: { id: paymentId }, select: PAYMENT_SELECT });
+  return prisma.payment.findUnique({ where: { id: result.id }, select: PAYMENT_SELECT });
 }
 
 /**
@@ -825,6 +905,217 @@ async function getPaymentById(id, requester) {
   return shapePayment(row, requester.role, commissionPercent);
 }
 
+/**
+ * Admin Payment Reconciliation Report
+ * Identifies:
+ * - Payment successful + booking confirmed (BOOKED_AND_PAID)
+ * - Payment successful + refund pending (REFUND_PENDING)
+ * - Payment successful + refunded (REFUNDED)
+ * - Payment successful + refund failed (REFUND_FAILED)
+ * - Payment pending (PAYMENT_PENDING)
+ * - Unreconciled payments (UNRECONCILED)
+ *
+ * Filters: doctorId, date, patientId, paymentId, orderId, appointmentId, status, refundStatus
+ */
+async function getPaymentReconciliationReport({
+  doctorId,
+  date,
+  patientId,
+  paymentId,
+  orderId,
+  appointmentId,
+  status,
+  refundStatus,
+  page = 1,
+  pageSize = 50,
+} = {}) {
+  const where = {};
+  if (doctorId) where.doctorUserId = doctorId;
+  if (patientId) where.patientUserId = patientId;
+  if (paymentId) where.id = paymentId;
+  if (appointmentId) where.appointmentId = appointmentId;
+  if (orderId) where.transactionRef = { contains: orderId };
+  if (status) where.status = status;
+  if (date) {
+    const startOfDay = new Date(date);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+    where.OR = [
+      { appointment: { appointmentDate: startOfDay } },
+      { createdAt: { gte: startOfDay, lte: endOfDay } },
+    ];
+  }
+
+  const [totalCount, rows, allPayments] = await Promise.all([
+    prisma.payment.count({ where }),
+    prisma.payment.findMany({
+      where,
+      include: {
+        appointment: {
+          select: {
+            id: true,
+            appointmentDate: true,
+            appointmentTime: true,
+            tokenNumber: true,
+            status: true,
+            paymentStatus: true,
+            paymentHolds: {
+              select: { status: true, holdExpiresAt: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+        patient: { select: { id: true, name: true, phone: true } },
+        doctor: { select: { id: true, name: true } },
+        refunds: {
+          select: {
+            id: true,
+            amount: true,
+            razorpayPaymentId: true,
+            razorpayRefundId: true,
+            status: true,
+            failureReason: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      skip: (Number(page) - 1) * Number(pageSize),
+      take: Number(pageSize),
+    }),
+    prisma.payment.findMany({
+      where,
+      select: {
+        status: true,
+        amount: true,
+        appointment: {
+          select: {
+            status: true,
+            paymentStatus: true,
+            paymentHolds: {
+              select: { status: true, holdExpiresAt: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+        refunds: { select: { status: true } },
+      },
+    }),
+  ]);
+
+  let bookedAndPaidCount = 0;
+  let refundPendingCount = 0;
+  let refundedCount = 0;
+  let refundFailedCount = 0;
+  let unreconciledCount = 0;
+  let holdActiveCount = 0;
+  let holdExpiredCount = 0;
+  let totalRevenue = new Prisma.Decimal(0);
+
+  for (const p of allPayments) {
+    totalRevenue = totalRevenue.plus(p.amount);
+    const latestRefund = p.refunds && p.refunds[0];
+    const latestHold = p.appointment?.paymentHolds && p.appointment.paymentHolds[0];
+
+    if (
+      p.status === 'paid' &&
+      p.appointment &&
+      (p.appointment.status === 'upcoming' || p.appointment.status === 'confirmed' || p.appointment.status === 'completed')
+    ) {
+      bookedAndPaidCount++;
+    } else if (p.status === 'refunded' || latestRefund?.status === 'processed') {
+      refundedCount++;
+    } else if (latestRefund?.status === 'pending') {
+      refundPendingCount++;
+    } else if (latestRefund?.status === 'failed') {
+      refundFailedCount++;
+    } else if (p.status === 'pending') {
+      if (latestHold && latestHold.status === 'PENDING' && new Date(latestHold.holdExpiresAt) > new Date()) {
+        holdActiveCount++;
+      } else if (latestHold && (latestHold.status === 'EXPIRED' || new Date(latestHold.holdExpiresAt) <= new Date())) {
+        holdExpiredCount++;
+      }
+    } else if (p.status === 'paid' && (!p.appointment || p.appointment.status === 'cancelled')) {
+      unreconciledCount++;
+    }
+  }
+
+  const items = rows.map((p) => {
+    let reconciliationCategory = 'UNRECONCILED';
+    const latestRefund = p.refunds && p.refunds[0];
+    const latestHold = p.appointment?.paymentHolds && p.appointment.paymentHolds[0];
+
+    if (p.status === 'paid' && p.appointment && ['upcoming', 'confirmed', 'completed'].includes(p.appointment.status)) {
+      reconciliationCategory = 'BOOKED_AND_PAID';
+    } else if (p.status === 'refunded' || latestRefund?.status === 'processed') {
+      reconciliationCategory = 'REFUNDED';
+    } else if (latestRefund?.status === 'pending') {
+      reconciliationCategory = 'REFUND_PENDING';
+    } else if (latestRefund?.status === 'failed') {
+      reconciliationCategory = 'REFUND_FAILED';
+    } else if (p.status === 'pending') {
+      if (latestHold && latestHold.status === 'PENDING' && new Date(latestHold.holdExpiresAt) > new Date()) {
+        reconciliationCategory = 'HOLD_ACTIVE';
+      } else if (latestHold && (latestHold.status === 'EXPIRED' || new Date(latestHold.holdExpiresAt) <= new Date())) {
+        reconciliationCategory = 'HOLD_EXPIRED';
+      } else {
+        reconciliationCategory = 'PAYMENT_PENDING';
+      }
+    }
+
+    return {
+      id: p.id,
+      receiptNumber: p.receiptNumber,
+      transactionRef: p.transactionRef,
+      mode: p.mode,
+      amount: p.amount,
+      paymentStatus: p.status,
+      appointmentId: p.appointmentId,
+      bookingStatus: p.appointment?.status || 'NO_APPOINTMENT',
+      appointmentPaymentStatus: p.appointment?.paymentStatus || null,
+      tokenNumber: p.appointment?.tokenNumber || null,
+      appointmentDate: p.appointment?.appointmentDate || null,
+      patient: p.patient,
+      doctor: p.doctor,
+      refunds: p.refunds,
+      reconciliationCategory,
+      createdAt: p.createdAt,
+    };
+  });
+
+  const filteredItems = refundStatus
+    ? items.filter((item) => {
+        if (refundStatus === 'none') return !item.refunds || item.refunds.length === 0;
+        return item.refunds?.some((r) => r.status === refundStatus);
+      })
+    : items;
+
+  return {
+    kpi: {
+      totalPayments: totalCount,
+      totalAmount: totalRevenue.toString(),
+      bookedAndPaidCount,
+      refundPendingCount,
+      refundedCount,
+      refundFailedCount,
+      unreconciledCount,
+      holdActiveCount,
+      holdExpiredCount,
+    },
+    items: filteredItems,
+    pagination: {
+      page: Number(page),
+      pageSize: Number(pageSize),
+      total: totalCount,
+      totalPages: Math.ceil(totalCount / Number(pageSize)),
+    },
+  };
+}
+
 module.exports = {
   createPayment,
   listPayments,
@@ -834,4 +1125,5 @@ module.exports = {
   // fee-copy/row-lock/status-guard path instead of duplicating it, passing mode:'online' and the
   // Razorpay payment id as transactionRef.
   createPaymentForAppointment,
+  getPaymentReconciliationReport,
 };

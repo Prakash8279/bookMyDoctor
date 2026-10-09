@@ -25,7 +25,7 @@ class DeleteAccountScreen extends StatefulWidget {
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   static const _retainedItems = [
     'Financial and payment records we are required to keep for accounting, tax, or audit purposes.',
-    "A clinic's own clinical notes and records for consultations you completed with them — these are the treating clinic's independent recordkeeping obligation, separate from your BookMyDoctors account.",
+    "A clinic's own clinical notes and records for consultations you completed with them — these are the treating clinic's independent recordkeeping obligation, separate from your BookADoctors account.",
     'Information relevant to an open dispute, complaint, or investigation, until it is resolved.',
   ];
 
@@ -106,7 +106,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             )
           else ...[
                 const Text(
-                  'You can request deletion of your BookMyDoctors account and the personal data associated with '
+                  'You can request deletion of your BookADoctors account and the personal data associated with '
                   'it, whether or not you still have the app installed. Simply uninstalling the app does not '
                   'delete your account or your data — please submit a request below.',
                   style: TextStyle(color: AppColors.textSecondary),
@@ -155,7 +155,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   value: _confirmed,
                   onChanged: (v) => setState(() => _confirmed = v ?? false),
                   title: const Text(
-                    'I understand this permanently deletes my BookMyDoctors account and associated personal data '
+                    'I understand this permanently deletes my BookADoctors account and associated personal data '
                     '(subject to the exceptions above), and this cannot be undone.',
                     style: TextStyle(fontSize: 13),
                   ),

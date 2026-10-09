@@ -82,4 +82,58 @@ const resetPassword = [
   body('newPassword').notEmpty().withMessage('newPassword is required.').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
 ];
 
-module.exports = { register, login, googleAuth, logout, refresh, forgotPassword, resetPassword };
+const sendOtp = [
+  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
+  body('purpose')
+    .trim()
+    .notEmpty()
+    .withMessage('purpose is required.')
+    .isIn(['login', 'register', 'forgot_password'])
+    .withMessage('purpose must be login, register, or forgot_password.'),
+  body('channel')
+    .optional()
+    .trim()
+    .isIn(['email', 'sms'])
+    .withMessage('channel must be email or sms.'),
+];
+
+const verifyOtpLogin = [
+  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
+  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
+];
+
+const verifyOtpRegister = [
+  ...register,
+  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
+  body('verifyTarget')
+    .optional({ values: 'falsy' })
+    .trim()
+    .isLength({ min: 3, max: 255 })
+    .withMessage('verifyTarget must be the email address or phone number being registered.'),
+];
+
+const resetPasswordOtp = [
+  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
+  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
+  body('newPassword')
+    .notEmpty()
+    .withMessage('newPassword is required.')
+    .isLength({ min: 8, max: 72 })
+    .withMessage('Password must be between 8 and 72 characters.')
+    .matches(PASSWORD_RE)
+    .withMessage('Password must include at least one letter and one number.'),
+];
+
+module.exports = {
+  register,
+  login,
+  googleAuth,
+  logout,
+  refresh,
+  forgotPassword,
+  resetPassword,
+  sendOtp,
+  verifyOtpLogin,
+  verifyOtpRegister,
+  resetPasswordOtp,
+};

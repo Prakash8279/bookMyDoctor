@@ -12,8 +12,8 @@ const prisma = require('../config/db');
  * because Postgres sequences are atomic, no application-level locking needed.
  * @returns {Promise<string>}
  */
-async function nextReceiptNumber() {
-  const rows = await prisma.$queryRaw`SELECT nextval('payment_receipt_seq') AS value`;
+async function nextReceiptNumber(client = prisma) {
+  const rows = await client.$queryRaw`SELECT nextval('payment_receipt_seq') AS value`;
   const value = rows[0].value; // BigInt from node-postgres
   return `CDR-${value.toString().padStart(8, '0')}`;
 }
@@ -25,30 +25,33 @@ async function nextReceiptNumber() {
  * ("DCP") is a presentation concern the frontend owns (client/src/lib/format.js), not something
  * to bake into the stored number itself. Called once, at registration, and the result is stored
  * forever on User.patientNumber — never recomputed, never re-derived from list position.
+ * @param {import('@prisma/client').PrismaClient} [client=prisma]
  * @returns {Promise<number>}
  */
-async function nextPatientNumber() {
-  const rows = await prisma.$queryRaw`SELECT nextval('patient_number_seq') AS value`;
+async function nextPatientNumber(client = prisma) {
+  const rows = await client.$queryRaw`SELECT nextval('patient_number_seq') AS value`;
   return Number(rows[0].value); // BigInt from node-postgres
 }
 
 /**
  * Same pattern as nextPatientNumber, backed by `doctor_number_seq`, stored on
  * DoctorProfile.doctorNumber. Called once, at doctor creation.
+ * @param {import('@prisma/client').PrismaClient} [client=prisma]
  * @returns {Promise<number>}
  */
-async function nextDoctorNumber() {
-  const rows = await prisma.$queryRaw`SELECT nextval('doctor_number_seq') AS value`;
+async function nextDoctorNumber(client = prisma) {
+  const rows = await client.$queryRaw`SELECT nextval('doctor_number_seq') AS value`;
   return Number(rows[0].value);
 }
 
 /**
  * Same pattern as nextPatientNumber, backed by `clinic_number_seq`, stored on
  * Clinic.clinicNumber. Called once, at clinic creation.
+ * @param {import('@prisma/client').PrismaClient} [client=prisma]
  * @returns {Promise<number>}
  */
-async function nextClinicNumber() {
-  const rows = await prisma.$queryRaw`SELECT nextval('clinic_number_seq') AS value`;
+async function nextClinicNumber(client = prisma) {
+  const rows = await client.$queryRaw`SELECT nextval('clinic_number_seq') AS value`;
   return Number(rows[0].value);
 }
 

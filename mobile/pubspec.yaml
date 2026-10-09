@@ -1,5 +1,5 @@
 name: connect_mobile
-description: "BookMyDoctors - mobile app for Patient, Doctor, Receptionist and Admin roles, backed by the same Node/Express/PostgreSQL API as the web app."
+description: "BookADoctors - mobile app for Patient, Doctor, Receptionist and Admin roles, backed by the same Node/Express/PostgreSQL API as the web app."
 publish_to: 'none'
 version: 1.0.1+4
 

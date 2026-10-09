@@ -186,6 +186,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
       backgroundColor: const Color(0xFFFDFCFB),
       // Clean, light SiteHeader matching website navbar
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
@@ -194,7 +195,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
           child: Divider(height: 1, color: AppColors.border),
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        titleSpacing: 0,
+        titleSpacing: AppSpacing.md,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -202,19 +203,26 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
               borderRadius: BorderRadius.circular(9),
               child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
             ),
-            const SizedBox(width: 6),
-            const Flexible(
-              child: Text(
-                'BookMyDoctors',
-                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
-                overflow: TextOverflow.ellipsis,
-              ),
+            const SizedBox(width: 8),
+            const Text(
+              'BookADoctors',
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 17),
             ),
           ],
         ),
+        actions: [
+          Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.menu, color: AppColors.textPrimary),
+              tooltip: 'Navigation Menu',
+              onPressed: () => Scaffold.of(ctx).openEndDrawer(),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+        ],
       ),
 
-      drawer: Drawer(
+      endDrawer: Drawer(
         backgroundColor: AppColors.charcoal,
         child: SafeArea(
           child: Column(
@@ -231,7 +239,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        'BookMyDoctors',
+                        'BookADoctors',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
                       ),
                     ),
@@ -425,7 +433,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   onJoin: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RegisterScreen())),
                 ),
 
-                // 9. Site Footer
+                // 9. Frequently Asked Questions about BookMyDoctors (FAQ Section)
+                const _FaqSection(),
+
+                // 10. Site Footer
                 const _SiteFooter(),
               ],
             );
@@ -501,36 +512,46 @@ class _HeroSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Eyebrow
-                const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.verified_user_outlined, size: 16, color: AppColors.primary),
-                    SizedBox(width: 6),
-                    Text(
-                      'TRUSTED HEALTHCARE, SIMPLER',
-                      style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1.2),
-                    ),
-                  ],
+                // Eyebrow matching web's .eyebrow
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryLight.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(AppRadius.pill),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shield_outlined, size: 15, color: AppColors.primary),
+                      SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'BookADoctors • Verified Doctors & Live OPD Queue',
+                          style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11.5),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: AppSpacing.sm),
 
-                // Hero H1
+                // Hero H1 matching web: "Book Doctor Appointments Online with BookADoctors."
                 const Text.rich(
                   TextSpan(
                     children: [
-                      TextSpan(text: 'Care without the ', style: TextStyle(color: AppColors.textPrimary)),
-                      TextSpan(text: 'waiting room.', style: TextStyle(color: AppColors.primary)),
+                      TextSpan(text: 'Book Doctor Appointments Online with ', style: TextStyle(color: AppColors.textPrimary)),
+                      TextSpan(text: 'BookADoctors.', style: TextStyle(color: AppColors.primary)),
                     ],
                   ),
-                  style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, height: 1.05, letterSpacing: -1),
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: -0.8),
                 ),
                 const SizedBox(height: AppSpacing.sm),
 
-                // Hero Lead
+                // Hero Lead matching web
                 const Text(
-                  'Find verified doctors, reserve your clinic slot, and follow your live queue token from home.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
+                  'Find top verified doctors near you, book clinic appointments instantly, and track live clinic queue tokens from home.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14.5, height: 1.5),
                 ),
                 const SizedBox(height: AppSpacing.md),
 
@@ -1354,7 +1375,7 @@ class _StepsSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const SizedBox(height: AppSpacing.md),
-          const Text('THREE SIMPLE STEPS', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 1.2)),
+          const Text('Three simple steps', textAlign: TextAlign.center, style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1.0)),
           const SizedBox(height: 6),
           const Text('From search to consultation', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -0.5)),
           const SizedBox(height: 6),
@@ -1643,6 +1664,182 @@ class _DoctorCtaSection extends StatelessWidget {
   }
 }
 
+/// 9. Frequently Asked Questions Section — matches web's .faq-section in PublicLanding.jsx
+class _FaqSection extends StatefulWidget {
+  const _FaqSection();
+
+  @override
+  State<_FaqSection> createState() => _FaqSectionState();
+}
+
+class _FaqSectionState extends State<_FaqSection> {
+  // Track open item index; index 0 open by default matching web's <details ... open>
+  int _openIndex = 0;
+
+  static const _faqs = [
+    (
+      question: 'What is BookADoctors?',
+      answer:
+          'BookADoctors (bookadoctors) is an online healthcare appointment platform that connects patients with verified doctors across multiple specialties. You can easily book OPD appointments, consult specialists, and track live clinic queues directly from your home.',
+    ),
+    (
+      question: 'How do I book a doctor appointment on BookADoctors?',
+      answer:
+          'Simply search by your city, doctor specialization, or clinic name on the BookADoctors homepage. Select a convenient date and time slot, enter patient details, and confirm your booking instantly.',
+    ),
+    (
+      question: 'How does the Live Clinic Queue Tracker work?',
+      answer:
+          'Once your appointment is confirmed, you receive a digital token. Our Live Queue system updates in real-time as the doctor sees each patient, allowing you to see current token numbers and arrive at the clinic right when your turn approaches.',
+    ),
+    (
+      question: 'Are all doctors and clinics verified?',
+      answer:
+          'Yes, all doctors, clinics, and medical practitioners listed on BookADoctors undergo verification of credentials, qualifications, and clinic registration before being published.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFAF7F4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 36),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Center(
+            child: Text(
+              'Questions & Answers',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.primaryDark,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Center(
+            child: Text(
+              'Frequently Asked Questions about BookADoctors',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Center(
+            child: Text(
+              'Everything you need to know about booking verified doctors and tracking live OPD clinic queues.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          for (int i = 0; i < _faqs.length; i++) ...[
+            _FaqItem(
+              question: _faqs[i].question,
+              answer: _faqs[i].answer,
+              isOpen: _openIndex == i,
+              onToggle: () {
+                setState(() {
+                  _openIndex = _openIndex == i ? -1 : i;
+                });
+              },
+            ),
+            if (i < _faqs.length - 1) const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FaqItem extends StatelessWidget {
+  final String question;
+  final String answer;
+  final bool isOpen;
+  final VoidCallback onToggle;
+
+  const _FaqItem({
+    required this.question,
+    required this.answer,
+    required this.isOpen,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        question,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                          height: 1.3,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      isOpen ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      color: AppColors.primary,
+                      size: 22,
+                    ),
+                  ],
+                ),
+                if (isOpen) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    answer,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      color: AppColors.textSecondary,
+                      height: 1.55,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SiteFooter extends StatelessWidget {
   const _SiteFooter();
 
@@ -1674,7 +1871,7 @@ class _SiteFooter extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               const Text(
-                'BookMyDoctors',
+                'BookADoctors',
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18),
               ),
             ],
@@ -1721,7 +1918,7 @@ class _SiteFooter extends StatelessWidget {
 
           // Footer Bottom
           const Text(
-            '© 2026 BookMyDoctors. All rights reserved.',
+            '© 2026 BookADoctors. All rights reserved.',
             style: TextStyle(color: Color(0xFF858585), fontSize: 12),
           ),
           const SizedBox(height: 10),

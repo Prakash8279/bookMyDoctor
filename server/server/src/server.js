@@ -11,7 +11,7 @@ const prisma = require('./config/db');
 const redis = require('./config/redis');
 
 const server = app.listen(env.port, () => {
-  logger.info(`[server] BookMyDoctors API listening on port ${env.port} (${env.nodeEnv})`);
+  logger.info(`[server] BookADoctors API listening on port ${env.port} (${env.nodeEnv})`);
 });
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;

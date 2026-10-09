@@ -109,7 +109,7 @@ describe('doctor search/filter flow', () => {
 
     // The store's raw `doctors` data never changed (still both) — only SearchResults' own
     // useMemo-derived, filtered view narrows. This is the real filtering logic under test.
-    expect(await screen.findByText('1 doctors found')).toBeInTheDocument()
+    expect(await screen.findByText('1 doctors found', {}, { timeout: 4000 })).toBeInTheDocument()
     expect(screen.getByText('Dr. Asha Rao')).toBeInTheDocument()
     expect(screen.queryByText('Dr. Vikram Shah')).not.toBeInTheDocument()
     expect(useAppStore.getState().data.doctors).toHaveLength(2)

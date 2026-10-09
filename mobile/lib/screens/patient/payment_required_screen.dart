@@ -65,7 +65,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
         'amount': order['amount'],
         'currency': order['currency'],
         'order_id': order['orderId'],
-        'name': 'BookMyDoctors',
+        'name': 'BookADoctors',
         'description': 'Consultation with ${_appointment.doctor?.name ?? "doctor"}${option == "minimum" ? " · Booking amount" : ""}',
         'theme': {'color': '#AD5D3B'},
       });

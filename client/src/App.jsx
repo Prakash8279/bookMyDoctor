@@ -155,7 +155,7 @@ export default function App() {
   // Direct WhatsApp click-to-chat redirect for SEO & direct traffic
   const WhatsAppRedirect = () => {
     useEffect(() => {
-      window.location.href = 'https://wa.me/917323074966?text=Hi%20BookMyDoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments.'
+      window.location.href = 'https://wa.me/917323074966?text=Hi%20BookADoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments.'
     }, [])
     return null
   }

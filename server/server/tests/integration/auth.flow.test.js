@@ -80,6 +80,19 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       return project(record, select);
     });
 
+    prisma.user.findFirst.mockImplementation(async ({ where, select }) => {
+      if (where.OR) {
+        for (const cond of where.OR) {
+          if (cond.phone) {
+            for (const user of usersById.values()) {
+              if (user.phone === cond.phone) return project(user, select);
+            }
+          }
+        }
+      }
+      return null;
+    });
+
     // Mimics the real Postgres row auth.service.js#register creates: captures the REAL bcrypt
     // hash register() computed (bcrypt itself is never mocked in this file) so the subsequent
     // login step in the same test exercises a REAL bcrypt.compare against it, not a fixture hash.

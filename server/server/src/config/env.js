@@ -28,6 +28,15 @@ if (missing.length > 0) {
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
+const businessTimeZone = process.env.BUSINESS_TIME_ZONE || 'Asia/Kolkata';
+
+try {
+  new Intl.DateTimeFormat('en-US', { timeZone: businessTimeZone }).format();
+} catch (_err) {
+  // eslint-disable-next-line no-console
+  console.error(`[config/env] BUSINESS_TIME_ZONE is not a valid IANA time zone: ${businessTimeZone}`);
+  process.exit(1);
+}
 
 const jwtAccessSecret = process.env.JWT_ACCESS_SECRET;
 const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
@@ -72,6 +81,7 @@ module.exports = {
   isProduction,
   port: parseIntWithDefault(process.env.PORT, 4000),
   clientOrigin: process.env.CLIENT_ORIGIN,
+  businessTimeZone,
   // Exact number of reverse-proxy hops (nginx, ALB, etc.) sitting in front of this process,
   // passed straight to Express's `trust proxy` setting so req.ip/req.secure reflect the real
   // client. Deliberately a fixed integer, not `true` — `true` trusts the entire (attacker
@@ -248,6 +258,11 @@ module.exports = {
     // with the webhook route simply rejecting every call until an operator sets a real value.
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
   },
+
+  // PAYMENT HOLD CONFIGURATION
+  // Authoritative temporary slot reservation window for checkout sessions.
+  // Default: 600 seconds (10 minutes).
+  paymentHoldDurationSeconds: parseIntWithDefault(process.env.PAYMENT_HOLD_DURATION_SECONDS, 600),
 
   // GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro") — "Continue with
   // Google" on the login/register pages (modules/auth/auth.service.js#googleAuth). Same

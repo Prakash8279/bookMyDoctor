@@ -24,6 +24,7 @@ function createMockPrisma() {
   const prisma = {
     user: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
       create: jest.fn(),
@@ -60,6 +61,13 @@ function createMockPrisma() {
       findUnique: jest.fn(),
       upsert: jest.fn(),
     },
+    paymentHold: {
+      findFirst: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      create: jest.fn(),
+    },
   };
 
   prisma.$transaction = jest.fn(async (fnOrArray) => {
@@ -79,6 +87,7 @@ function createMockPrisma() {
   // `$transaction` default right above. Returns a fresh BigInt-shaped row every call, matching
   // node-postgres's real return shape for `nextval()`.
   prisma.$queryRaw = jest.fn().mockResolvedValue([{ value: 1n }]);
+  prisma.$executeRaw = jest.fn().mockResolvedValue(1);
 
   return prisma;
 }

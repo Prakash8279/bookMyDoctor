@@ -642,7 +642,7 @@ describe('AuditLog', () => {
 describe('PlatformSettings', () => {
   it('saves platform identity/maintenance settings with the real maintenanceMode field name', async () => {
     mockGetRoutes({
-      '/admin/system-settings': { platformName: 'BookMyDoctors', maintenanceMode: false },
+      '/admin/system-settings': { platformName: 'BookADoctors', maintenanceMode: false },
       '/admin/booking-rules': { cancellationWindowHours: 2, maxBookingsPerPatient: 5, defaultSlotMinutes: 15 },
     })
     apiClient.put.mockResolvedValue({})
@@ -653,7 +653,7 @@ describe('PlatformSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Save settings$/ }))
 
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith('/admin/system-settings', {
-      platformName: 'BookMyDoctors',
+      platformName: 'BookADoctors',
       supportEmail: undefined,
       supportPhone: undefined,
       maintenanceMode: true,
@@ -662,7 +662,7 @@ describe('PlatformSettings', () => {
 
   it('clears the online-booking window entirely when "always open" is checked', async () => {
     mockGetRoutes({
-      '/admin/system-settings': { platformName: 'BookMyDoctors' },
+      '/admin/system-settings': { platformName: 'BookADoctors' },
       '/admin/booking-rules': { cancellationWindowHours: 2, maxBookingsPerPatient: 5, defaultSlotMinutes: 15, onlineBookingWindowStart: '09:00', onlineBookingWindowEnd: '21:00' },
     })
     apiClient.put.mockResolvedValue({})

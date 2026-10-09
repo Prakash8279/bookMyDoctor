@@ -79,14 +79,14 @@ export function SiteHeader() {
   return (
     <header className="site-header relative">
       <div className="container nav-wrap">
-        <Link to="/" className="brand [grid-column:1]" aria-label="BookMyDoctors home" onClick={() => setMobileOpen(false)}>
+        <Link to="/" className="brand [grid-column:1]" aria-label="BookADoctors home" onClick={() => setMobileOpen(false)}>
           {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
               the PDF receipts. */}
           <span className="brand-mark">
-            <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
+            <img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" />
           </span>
-          <span><strong>BookMyDoctors</strong></span>
+          <span><strong>BookADoctors</strong></span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -210,8 +210,15 @@ export function SearchResults({ data }) {
       const specializationName = doctor.specialization?.name || ''
       const doctorClinics = doctor.clinics || []
       const fee = Number(doctor.consultationFee) || 0
-      const maxFee = Number(appliedFilters.maxFee)
-      return (!appliedFilters.name || `${doctor.name} ${specializationName}`.toLowerCase().includes(appliedFilters.name.trim().toLowerCase())) && (!appliedFilters.city || doctor.city === appliedFilters.city || doctorClinics.some((clinic) => clinic.city === appliedFilters.city)) && (!appliedFilters.area || doctorClinics.some((clinic) => clinic.area === appliedFilters.area)) && (!appliedFilters.specialization || specializationName === appliedFilters.specialization) && (!appliedFilters.clinic || doctorClinics.some((clinic) => clinic.name === appliedFilters.clinic)) && (!appliedFilters.emergency || doctor.emergencyAvailable) && (!appliedFilters.activeClinic || doctorClinics.length > 0) && (!appliedFilters.today || doctor.onlineBooking !== false) && (!appliedFilters.experience || (doctor.experienceYears || 0) >= Number(appliedFilters.experience)) && (!appliedFilters.rating || (doctor.rating || 0) >= Number(appliedFilters.rating)) && (!appliedFilters.maxFee || fee <= maxFee) && (!appliedFilters.fee || (appliedFilters.fee === 'Under ₹600' ? fee < 600 : appliedFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
+      const queryTerm = (appliedFilters.name || '').trim().toLowerCase().replace(/\s+/g, '')
+      const isBrandSearch = [
+        'bookmydoctors', 'bookmydoctor', 'bookmydoctorsme',
+        'bookadoctors', 'bookadoctor', 'bookadoctorsme',
+        'bookmydoc', 'bookmydocs', 'bookadoc', 'bookadocs',
+        'bookmydocme', 'bookadocme'
+      ].includes(queryTerm)
+      const matchesName = !appliedFilters.name || isBrandSearch || `${doctor.name} ${specializationName}`.toLowerCase().includes(appliedFilters.name.trim().toLowerCase())
+      return matchesName && (!appliedFilters.city || doctor.city === appliedFilters.city || doctorClinics.some((clinic) => clinic.city === appliedFilters.city)) && (!appliedFilters.area || doctorClinics.some((clinic) => clinic.area === appliedFilters.area)) && (!appliedFilters.specialization || specializationName === appliedFilters.specialization) && (!appliedFilters.clinic || doctorClinics.some((clinic) => clinic.name === appliedFilters.clinic)) && (!appliedFilters.emergency || doctor.emergencyAvailable) && (!appliedFilters.activeClinic || doctorClinics.length > 0) && (!appliedFilters.today || doctor.onlineBooking !== false) && (!appliedFilters.experience || (doctor.experienceYears || 0) >= Number(appliedFilters.experience)) && (!appliedFilters.rating || (doctor.rating || 0) >= Number(appliedFilters.rating)) && (!appliedFilters.maxFee || fee <= maxFee) && (!appliedFilters.fee || (appliedFilters.fee === 'Under ₹600' ? fee < 600 : appliedFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
     })
     return [...result].sort((left, right) => appliedFilters.sort === 'rating' ? (right.rating || 0) - (left.rating || 0) : appliedFilters.sort === 'fee' ? (Number(left.consultationFee) || 0) - (Number(right.consultationFee) || 0) : appliedFilters.sort === 'experience' ? (right.experienceYears || 0) - (left.experienceYears || 0) : 0)
   }, [data, appliedFilters])
@@ -285,30 +292,39 @@ export function DoctorProfile({ data }) {
 }
 export function EmergencyPage({ data }) { const doctors = (data.doctors || []).filter((doctor) => doctor.emergencyAvailable); return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><Badge tone="error">Emergency care</Badge><h1 className="mt-3 text-3xl">Doctors and clinics available now</h1>{doctors.length ? <div className="mt-5 grid gap-4">{doctors.map((doctor) => <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={doctor.id}><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl">{doctor.name}</h2><p className="text-sm text-muted">{doctor.specialization?.name || 'General practice'} · {doctor.clinics?.[0]?.name || 'Clinic not added'}</p></div><Badge tone="error">Available now</Badge></div><div className="mt-4 grid grid-cols-2 gap-3"><a className="touch-target flex items-center justify-center rounded-button border border-error text-sm font-semibold text-error" href="tel:+912240001111">Call clinic</a><Link className="btn-primary" to="/patient/emergency">Book now</Link></div></article>)}</div> : <div className="mt-5"><EmptyState title="No emergency doctors available right now" message="Emergency-ready doctors will appear here when marked available." /></div>}</main></> }
 export function Login() {
+  const [authMode, setAuthMode] = useState('password') // 'password' | 'otp'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [otpIdentifier, setOtpIdentifier] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otpCooldown, setOtpCooldown] = useState(0)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  // GOOGLE SIGN-IN FEATURE — separate loading flag from `submitting` (the email/password form's
-  // own submit state) so the two buttons never show each other's spinner.
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const login = useAppStore((state) => state.login)
   const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
-  // One-shot success banner handed in via router state — currently only ResetPassword uses
-  // this (after POST /auth/reset-password succeeds), but any future redirect-with-message flow
-  // can reuse the same `state: { message }` convention. Read once into local state rather than
-  // straight from `location.state` so it doesn't reappear if the user navigates away and back
-  // with the same location (React Router keeps state on back/forward navigation).
-  const [notice] = useState(location.state?.message || '')
+  const sendOtp = useAppStore((state) => state.sendOtp)
+  const loginWithOtp = useAppStore((state) => state.loginWithOtp)
+  const [notice, setNotice] = useState(location.state?.message || '')
+
+  useEffect(() => {
+    let timer
+    if (otpCooldown > 0) {
+      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000)
+    }
+    return () => clearInterval(timer)
+  }, [otpCooldown])
 
   const handleLogin = async (e) => {
     e.preventDefault()
     setSubmitting(true)
+    setError('')
     try {
       const account = await login(email, password)
-      setError('')
       navigate(location.state?.from || roleHome(account.role), { replace: true })
     } catch (loginError) {
       setError(loginError.message)
@@ -317,17 +333,55 @@ export function Login() {
     }
   }
 
-  // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix kro") — replaces the
-  // old stub that only ever showed "Google sign-in is unavailable in this browser-only
-  // workspace." One backend call (POST /auth/google) covers login, first-time account-linking,
-  // and self-registration together, so this same handler is reused as-is on the Register page
-  // below.
+  const handleSendOtp = async (e) => {
+    if (e) e.preventDefault()
+    if (!otpIdentifier.trim()) {
+      setError('Please enter your email or 10-digit mobile number.')
+      return
+    }
+    setOtpSending(true)
+    setError('')
+    try {
+      const res = await sendOtp({ identifier: otpIdentifier.trim(), purpose: 'login' })
+      setOtpSent(true)
+      const data = res?.data || res
+      setOtpCooldown(data?.cooldownSeconds || 30)
+      if (data?.devOtp) {
+        setNotice(`${data.message || 'Verification OTP sent!'} (Dev test code: ${data.devOtp})`)
+      } else {
+        setNotice(data.message || 'Verification OTP sent!')
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setOtpSending(false)
+    }
+  }
+
+  const handleVerifyOtpLogin = async (e) => {
+    e.preventDefault()
+    if (!otpCode.trim()) {
+      setError('Please enter the 6-digit OTP code.')
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    try {
+      const account = await loginWithOtp({ identifier: otpIdentifier.trim(), otp: otpCode.trim() })
+      navigate(location.state?.from || roleHome(account.role), { replace: true })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleGoogleSignIn = async () => {
     setGoogleSubmitting(true)
+    setError('')
     try {
       const idToken = await signInWithGoogle()
       const account = await loginWithGoogle(idToken)
-      setError('')
       navigate(location.state?.from || roleHome(account.role), { replace: true })
     } catch (googleError) {
       setError(googleError.message)
@@ -349,12 +403,10 @@ export function Login() {
         </Link>
         <div>
           <Link to="/" className="brand brand-light">
-            {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
-                heart-pulse stock icon this used to be. */}
             <span className="brand-mark">
-              <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
+              <img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" />
             </span>
-            <span><strong>BookMyDoctors</strong></span>
+            <span><strong>BookADoctors</strong></span>
           </Link>
           <h1>Healthcare that moves with you.</h1>
           <p>Book care, follow your queue, and keep your family health records together.</p>
@@ -365,7 +417,7 @@ export function Login() {
             <span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-check"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Secure role-based access</span>
           </div>
         </div>
-        <small>BookMyDoctors · India</small>
+        <small>BookADoctors · India</small>
       </section>
 
       <section className="auth-form-panel">
@@ -382,33 +434,115 @@ export function Login() {
         <div className="auth-box">
           <h2>Welcome back</h2>
           <p>Sign in to manage appointments, queues, and health records.</p>
-          <form onSubmit={handleLogin}>
-            <button type="button" onClick={handleGoogleSignIn} disabled={googleSubmitting} className="google-auth-button">
-              <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
+
+          <button type="button" onClick={handleGoogleSignIn} disabled={googleSubmitting} className="google-auth-button">
+            <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
+          </button>
+          
+          <div className="oauth-divider"><span>or sign in with</span></div>
+
+          {/* Mode Tabs */}
+          <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-surface-muted rounded-button border border-border">
+            <button
+              type="button"
+              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${authMode === 'password' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
+              onClick={() => { setAuthMode('password'); setError(''); }}
+            >
+              Password
             </button>
-            <div className="oauth-divider"><span>or continue with email</span></div>
+            <button
+              type="button"
+              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${authMode === 'otp' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
+              onClick={() => { setAuthMode('otp'); setError(''); }}
+            >
+              OTP (SMS / Email)
+            </button>
+          </div>
 
-            {notice && !error && <p role="status" className="form-message success">{notice}</p>}
-            {error && <p role="alert" className="form-message error">{error}</p>}
+          {notice && !error && <p role="status" className="form-message success">{notice}</p>}
+          {error && <p role="alert" className="form-message error">{error}</p>}
 
-            <label className="form-field">Email address
-              <input type="email" autoComplete="email" required placeholder="you@example.com" name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
+          {authMode === 'password' ? (
+            <form onSubmit={handleLogin}>
+              <label className="form-field">Email address
+                <input type="email" autoComplete="email" required placeholder="you@example.com" name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </label>
 
-            <label className="form-field">Password
-              <input type="password" autoComplete="current-password" required placeholder="Enter your password" name="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            </label>
+              <label className="form-field">Password
+                <input type="password" autoComplete="current-password" required placeholder="Enter your password" name="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              </label>
 
-            <div className="form-help">
-              <label className="checkbox-row"><input type="checkbox" name="remember" defaultChecked /> Remember me</label>
-              <Link to="/forgot-password">Forgot password?</Link>
-            </div>
+              <div className="form-help">
+                <label className="checkbox-row"><input type="checkbox" name="remember" defaultChecked /> Remember me</label>
+                <Link to="/forgot-password">Forgot password?</Link>
+              </div>
 
-            <button type="submit" className="btn btn-primary w-full" disabled={submitting}>{submitting ? 'Signing in…' : 'Sign in'} <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button>
-            
-            <div className="auth-switch">New to BookMyDoctors? <Link to="/register">Create an account</Link></div>
+              <button type="submit" className="btn btn-primary w-full" disabled={submitting}>
+                {submitting ? 'Signing in…' : 'Sign in'} <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={otpSent ? handleVerifyOtpLogin : handleSendOtp} className="space-y-4">
+              <label className="form-field">
+                <div className="flex justify-between items-center mb-1">
+                  <span>Mobile number or Email</span>
+                  {otpSent && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary-dark underline hover:no-underline font-semibold"
+                      onClick={() => { setOtpSent(false); setOtpCode(''); setError(''); }}
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="9876543210 or you@example.com"
+                    value={otpIdentifier}
+                    disabled={otpSent}
+                    onChange={(e) => setOtpIdentifier(e.target.value)}
+                  />
+                  {otpSent && (
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-button border border-border bg-surface hover:bg-surface-muted disabled:opacity-50 whitespace-nowrap"
+                      disabled={otpCooldown > 0 || otpSending}
+                      onClick={handleSendOtp}
+                    >
+                      {otpSending ? 'Sending…' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : 'Resend OTP'}
+                    </button>
+                  )}
+                </div>
+              </label>
 
-          </form>
+              {otpSent && (
+                <label className="form-field">6-digit Verification Code (OTP)
+                  <input
+                    type="text"
+                    required
+                    maxLength={8}
+                    placeholder="Enter 6-digit code"
+                    value={otpCode}
+                    autoFocus
+                    onChange={(e) => setOtpCode(e.target.value)}
+                  />
+                </label>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary w-full"
+                disabled={submitting || otpSending}
+              >
+                {otpSending ? 'Sending OTP…' : submitting ? 'Verifying…' : otpSent ? 'Verify & Sign in' : 'Send Verification OTP'}
+              </button>
+            </form>
+          )}
+
+          <div className="auth-switch">New to BookADoctors? <Link to="/register">Create an account</Link></div>
         </div>
       </section>
     </main>
@@ -518,9 +652,9 @@ export function Register() {
             {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
                 heart-pulse stock icon this used to be. */}
             <span className="brand-mark">
-              <img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" />
+              <img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" />
             </span>
-            <span><strong>BookMyDoctors</strong></span>
+            <span><strong>BookADoctors</strong></span>
           </Link>
           <h1>Healthcare that moves with you.</h1>
           <p>Book care, follow your queue, and keep your family health records together.</p>
@@ -531,7 +665,7 @@ export function Register() {
             <span><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-check"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg> Secure role-based access</span>
           </div>
         </div>
-        <small>BookMyDoctors · India</small>
+        <small>BookADoctors · India</small>
       </section>
 
       <section className="auth-form-panel">
@@ -601,32 +735,254 @@ export function Register() {
 }
 
 export function ForgotPassword() {
-  const [sent, setSent] = useState(false)
-  const [email, setEmail] = useState('')
+  const [resetMethod, setResetMethod] = useState('link') // 'link' | 'otp'
+  const [identifier, setIdentifier] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otpCooldown, setOtpCooldown] = useState(0)
+  const [sentLink, setSentLink] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const navigate = useNavigate()
   const forgotPassword = useAppStore((state) => state.forgotPassword)
-  // POST /auth/forgot-password ALWAYS responds 200 with the same generic message whether or
-  // not `email` belongs to a real account (server-side enumeration avoidance — see
-  // auth.service.js#forgotPassword) — so `sent` flips on any successful response, never on a
-  // per-account "found"/"not found" branch, which the server deliberately never reports.
-  const submit = async (event) => {
-    event.preventDefault()
-    if (!email.trim()) return
-    setSubmitting(true)
+  const sendOtp = useAppStore((state) => state.sendOtp)
+  const resetPasswordWithOtp = useAppStore((state) => state.resetPasswordWithOtp)
+
+  useEffect(() => {
+    let timer
+    if (otpCooldown > 0) {
+      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000)
+    }
+    return () => clearInterval(timer)
+  }, [otpCooldown])
+
+  const handleSendOtp = async (event) => {
+    if (event) event.preventDefault()
+    if (!identifier.trim()) {
+      setError('Please enter your email or 10-digit mobile number.')
+      return
+    }
+    setOtpSending(true)
+    setError('')
     try {
-      await forgotPassword(email.trim())
-      setError('')
-      setSent(true)
+      const res = await sendOtp({ identifier: identifier.trim(), purpose: 'forgot_password' })
+      setOtpSent(true)
+      const data = res?.data || res
+      setOtpCooldown(data?.cooldownSeconds || 30)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setOtpSending(false)
+    }
+  }
+
+  const handleResetWithOtp = async (event) => {
+    event.preventDefault()
+    if (!otpCode.trim()) {
+      setError('Please enter the 6-digit OTP code.')
+      return
+    }
+    if (!newPassword || newPassword.length < 8) {
+      setError('Password must be at least 8 characters long.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    setSubmitting(true)
+    setError('')
+    try {
+      await resetPasswordWithOtp({
+        identifier: identifier.trim(),
+        otp: otpCode.trim(),
+        newPassword,
+      })
+      navigate('/login', {
+        replace: true,
+        state: { message: 'Password has been reset successfully! Please sign in with your new password.' },
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleSendLink = async (event) => {
+    event.preventDefault()
+    if (!identifier.trim()) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await forgotPassword(identifier.trim())
+      setSentLink(true)
     } catch (submitError) {
-      // A genuine failure (network/server error, rate-limited, etc.) — distinct from "no such
-      // account", which never reaches here because the server doesn't distinguish it either.
       setError(submitError.message)
     } finally {
       setSubmitting(false)
     }
   }
-  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctors</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Reset access to your account securely.</p></div><small>BookMyDoctors · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Reset your password</h2><p>We will email you a secure link to choose a new password.</p>{sent ? <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">If an account exists for <strong>{email}</strong>, reset instructions have been sent. Check your inbox (and the server logs, in this local/dev environment) for the reset link.</div> : <form className="mt-6 space-y-4" onSubmit={submit}>{error && <p role="alert" className="form-message error">{error}</p>}<label className="form-field">Account email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Send reset link'}</button></form>}<div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
+
+  return (
+    <main className="auth-page">
+      <section className="auth-brand-panel">
+        <Link to="/" className="back-home">← Back to home</Link>
+        <div>
+          <Link to="/" className="brand brand-light">
+            <span className="brand-mark">
+              <img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" />
+            </span>
+            <span><strong>BookADoctors</strong></span>
+          </Link>
+          <h1>Healthcare that moves with you.</h1>
+          <p>Reset access to your account securely via OTP or email.</p>
+        </div>
+        <small>BookADoctors · India</small>
+      </section>
+
+      <section className="auth-form-panel">
+        <div className="auth-box">
+          <h2>Reset your password</h2>
+          <p>Choose your preferred way to regain access to your account.</p>
+
+          {/* Reset Method Tabs */}
+          <div className="grid grid-cols-2 gap-2 my-4 p-1 bg-surface-muted rounded-button border border-border">
+            <button
+              type="button"
+              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${resetMethod === 'otp' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
+              onClick={() => { setResetMethod('otp'); setError(''); }}
+            >
+              Instant OTP (SMS / Email)
+            </button>
+            <button
+              type="button"
+              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${resetMethod === 'link' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
+              onClick={() => { setResetMethod('link'); setError(''); }}
+            >
+              Email Link
+            </button>
+          </div>
+
+          {error && <p role="alert" className="form-message error">{error}</p>}
+
+          {resetMethod === 'otp' ? (
+            <form onSubmit={otpSent ? handleResetWithOtp : handleSendOtp} className="space-y-4">
+              <label className="form-field">
+                <div className="flex justify-between items-center mb-1">
+                  <span>Email address or Mobile number</span>
+                  {otpSent && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary-dark underline hover:no-underline font-semibold"
+                      onClick={() => { setOtpSent(false); setOtpCode(''); setError(''); }}
+                    >
+                      Change
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="you@example.com or 9876543210"
+                    value={identifier}
+                    disabled={otpSent}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                  />
+                  {otpSent && (
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 text-xs font-semibold rounded-button border border-border bg-surface hover:bg-surface-muted disabled:opacity-50 whitespace-nowrap"
+                      disabled={otpCooldown > 0 || otpSending}
+                      onClick={handleSendOtp}
+                    >
+                      {otpSending ? 'Sending…' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : 'Resend OTP'}
+                    </button>
+                  )}
+                </div>
+              </label>
+
+              {otpSent && (
+                <>
+                  <label className="form-field">6-digit Verification Code (OTP)
+                    <input
+                      type="text"
+                      required
+                      maxLength={8}
+                      placeholder="Enter 6-digit OTP code"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="form-field">New Password
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      placeholder="At least 8 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </label>
+
+                  <label className="form-field">Confirm New Password
+                    <input
+                      type="password"
+                      required
+                      minLength={8}
+                      placeholder="Re-enter password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+
+              <button
+                type="submit"
+                className="btn btn-primary w-full"
+                disabled={submitting || otpSending}
+              >
+                {otpSending ? 'Sending OTP…' : submitting ? 'Resetting password…' : otpSent ? 'Reset & Save Password' : 'Send Verification OTP'}
+              </button>
+            </form>
+          ) : (
+            <>
+              {sentLink ? (
+                <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">
+                  If an account exists for <strong>{identifier}</strong>, reset instructions have been sent. Check your inbox (and server logs in local/dev) for the reset link.
+                </div>
+              ) : (
+                <form className="mt-4 space-y-4" onSubmit={handleSendLink}>
+                  <label className="form-field">Account email
+                    <input
+                      type="email"
+                      value={identifier}
+                      onChange={(e) => setIdentifier(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                    />
+                  </label>
+                  <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
+                    {submitting ? 'Sending…' : 'Send reset link'}
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          <div className="auth-switch">
+            <Link to="/login">Return to sign in</Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
 }
 
 export function ResetPassword() {
@@ -663,5 +1019,5 @@ export function ResetPassword() {
     }
   }
 
-  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookMyDoctors" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookMyDoctors</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Choose a new password to get back into your account.</p></div><small>BookMyDoctors · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Choose a new password</h2><p>This link is valid for a limited time. If it has expired, request a new one from the forgot password page.</p>{error && <p role="alert" className="form-message error">{error}</p>}<form className="mt-6 space-y-4" onSubmit={submit}><label className="form-field">New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter new password" minLength="8" required /></label><label className="form-field">Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Confirm new password" minLength="8" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset password'}</button></form><div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
+  return <main className="auth-page"><section className="auth-brand-panel"><Link to="/" className="back-home">← Back to home</Link><div><Link to="/" className="brand brand-light"><span className="brand-mark"><img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" /></span><span><strong>BookADoctors</strong></span></Link><h1>Healthcare that moves with you.</h1><p>Choose a new password to get back into your account.</p></div><small>BookADoctors · India</small></section><section className="auth-form-panel"><div className="auth-box"><h2>Choose a new password</h2><p>This link is valid for a limited time. If it has expired, request a new one from the forgot password page.</p>{error && <p role="alert" className="form-message error">{error}</p>}<form className="mt-6 space-y-4" onSubmit={submit}><label className="form-field">New password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Enter new password" minLength="8" required /></label><label className="form-field">Confirm new password<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} placeholder="Confirm new password" minLength="8" required /></label><button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset password'}</button></form><div className="auth-switch"><Link to="/login">Return to sign in</Link></div></div></section></main>
 }

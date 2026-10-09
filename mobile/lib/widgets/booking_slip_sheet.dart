@@ -143,7 +143,7 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
   String _buildSlipText() {
     return '''
 ========================================
-       BOOKMYDOCTORS - BOOKING SLIP
+       BOOKADOCTORS - BOOKING SLIP
 ========================================
 Booking ID: #$_shortId
 Token Number: #${appointment.tokenNumber ?? "Not yet assigned"}
@@ -240,7 +240,7 @@ Please present this slip at the clinic reception upon arrival.
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'BookMyDoctors',
+                              'BookADoctors',
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -396,7 +396,7 @@ Please present this slip at the clinic reception upon arrival.
                 borderRadius: BorderRadius.circular(8),
               ),
               child: const Text(
-                'This is a computer-generated booking slip from BookMyDoctors. Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
+                'This is a computer-generated booking slip from BookADoctors. Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
               ),
@@ -521,7 +521,7 @@ class PaymentReceiptSheet extends StatelessWidget {
     final amount = payment.fees.amount ?? payment.fees.consultationFee ?? 0;
     return '''
 ========================================
-       BOOKMYDOCTORS - PAYMENT RECEIPT
+       BOOKADOCTORS - PAYMENT RECEIPT
 ========================================
 Receipt No: #${payment.receiptNumber ?? _shortId}
 Status: ${payment.status.toUpperCase()}
@@ -601,7 +601,7 @@ Official computer-generated receipt.
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'BookMyDoctors',
+                              'BookADoctors',
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

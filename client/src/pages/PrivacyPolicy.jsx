@@ -19,7 +19,7 @@ const LAST_UPDATED = '21 September 2026'
 const SECTIONS = [
   [
     '1. Scope',
-    'This Privacy Policy applies to the BookMyDoctors website and mobile app ("the platform"), operated by BookMyDoctors. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
+    'This Privacy Policy applies to the BookADoctors website and mobile app ("the platform"), operated by BookADoctors. It describes what information we collect from patients, doctors, clinic staff (receptionists/admins), and visitors, why we collect it, who we share it with, and the choices available to you. It applies whether you use the platform as a registered account holder or as a visitor browsing public pages.',
   ],
   [
     '2. Information we collect',

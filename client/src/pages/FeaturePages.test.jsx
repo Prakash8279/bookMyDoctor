@@ -92,18 +92,18 @@ describe('ClinicSearch', () => {
 describe('PublicContent', () => {
   it('renders the About page content', () => {
     render(<MemoryRouter><PublicContent kind="about" /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: 'About BookMyDoctors' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'About BookADoctors' })).toBeInTheDocument()
   })
 
   it('renders the Blog page with its list of guide articles', () => {
     render(<MemoryRouter><PublicContent kind="blog" /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: 'BookMyDoctors Blog' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'BookADoctors Blog' })).toBeInTheDocument()
     expect(screen.getByText('How to prepare for a specialist visit')).toBeInTheDocument()
   })
 
   it('renders the Contact page with support details and submits the contact form for real', async () => {
     render(<MemoryRouter><PublicContent kind="contact" /></MemoryRouter>)
-    expect(screen.getByRole('heading', { name: 'Contact BookMyDoctors' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Contact BookADoctors' })).toBeInTheDocument()
     expect(screen.getByText('bookmydoctors@gmail.com')).toBeInTheDocument()
 
     // Every field here is `required`, so FormField appends a " *" to the visible label text.

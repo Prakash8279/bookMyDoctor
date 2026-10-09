@@ -69,7 +69,7 @@ describe('PatientLanding', () => {
       },
     })
     renderWithLocation(<PatientLanding />)
-    expect(screen.getByRole('heading', { name: /Care without the/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Book Doctor Appointments Online/i })).toBeInTheDocument()
     // Stats strip counts (1 doctor, 1 clinic).
     expect(screen.getAllByText('1', { selector: 'strong' })).toHaveLength(2)
     // The specialization card shows the real doctor count for that specialization (1 doctor).

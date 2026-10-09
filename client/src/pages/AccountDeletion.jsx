@@ -20,7 +20,7 @@ const ErrorNote = ({ children }) => (children ? <p role="alert" className="mt-3 
 
 const RETAINED_ITEMS = [
   'Financial and payment records we are required to keep for accounting, tax, or audit purposes.',
-  'A clinic\'s own clinical notes and records for consultations you completed with them — these are the treating clinic\'s independent recordkeeping obligation, separate from your BookMyDoctors account.',
+  'A clinic\'s own clinical notes and records for consultations you completed with them — these are the treating clinic\'s independent recordkeeping obligation, separate from your BookADoctors account.',
   'Information relevant to an open dispute, complaint, or investigation, until it is resolved.',
 ]
 
@@ -70,7 +70,7 @@ export function AccountDeletion() {
           <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">Account settings</p>
           <h1 className="mt-1 text-3xl">Request account & data deletion</h1>
           <p className="mt-3 leading-7 text-muted">
-            You can request deletion of your BookMyDoctors account and the personal data associated with it, whether
+            You can request deletion of your BookADoctors account and the personal data associated with it, whether
             or not you still have the app installed. Simply uninstalling the app does not delete your account or your
             data — please submit a request below.
           </p>
@@ -105,7 +105,7 @@ export function AccountDeletion() {
               <label className="flex items-start gap-2 text-sm text-ink">
                 <input type="checkbox" name="confirm" className="mt-1" />
                 <span>
-                  I understand this permanently deletes my BookMyDoctors account and associated personal data
+                  I understand this permanently deletes my BookADoctors account and associated personal data
                   (subject to the exceptions listed above), and this cannot be undone.
                 </span>
               </label>

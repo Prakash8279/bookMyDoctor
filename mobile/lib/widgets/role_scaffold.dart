@@ -143,7 +143,7 @@ class RoleScaffoldState extends State<RoleScaffold> {
             const SizedBox(width: 8),
             const Flexible(
               child: Text(
-                'BookMyDoctors',
+                'BookADoctors',
                 style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -181,7 +181,7 @@ class RoleScaffoldState extends State<RoleScaffold> {
                     SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        'BookMyDoctors',
+                        'BookADoctors',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
                       ),
                     ),

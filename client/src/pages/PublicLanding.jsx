@@ -57,9 +57,9 @@ export function PatientLanding() {
         <div className="hero-copy">
           <div className="eyebrow">
             <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield-check"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg> 
-            BookMyDoctors • Verified Doctors &amp; Live OPD Queue
+            BookADoctors • Verified Doctors &amp; Live OPD Queue
           </div>
-          <h1>Book Doctor Appointments Online with <span>BookMyDoctors.</span></h1>
+          <h1>Book Doctor Appointments Online with <span>BookADoctors.</span></h1>
           <p className="hero-lead">Find top verified doctors near you, book clinic appointments instantly, and track live clinic queue tokens from home.</p>
 
           <form className="hero-search" onSubmit={handleSearch}>
@@ -341,27 +341,27 @@ export function PatientLanding() {
       <div className="container max-w-4xl mx-auto px-4">
         <div className="section-heading centered text-center mb-10">
           <span className="kicker">Questions &amp; Answers</span>
-          <h2 className="text-3xl font-bold mt-2">Frequently Asked Questions about BookMyDoctors</h2>
+          <h2 className="text-3xl font-bold mt-2">Frequently Asked Questions about BookADoctors</h2>
           <p className="text-muted mt-2">Everything you need to know about booking verified doctors and tracking live OPD clinic queues.</p>
         </div>
         <div className="space-y-4">
           <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group" open>
             <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
-              <span>What is BookMyDoctors?</span>
+              <span>What is BookADoctors?</span>
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>
             <p className="mt-3 text-muted text-sm leading-relaxed">
-              BookMyDoctors (bookmydoctors.me) is an online healthcare appointment platform that connects patients with verified doctors across multiple specialties. You can easily book OPD appointments, consult specialists, and track live clinic queues directly from your home.
+              BookADoctors (bookadoctors) is an online healthcare appointment platform that connects patients with verified doctors across multiple specialties. You can easily book OPD appointments, consult specialists, and track live clinic queues directly from your home.
             </p>
           </details>
 
           <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
             <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
-              <span>How do I book a doctor appointment on BookMyDoctors?</span>
+              <span>How do I book a doctor appointment on BookADoctors?</span>
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>
             <p className="mt-3 text-muted text-sm leading-relaxed">
-              Simply search by your city, doctor specialization, or clinic name on the BookMyDoctors homepage. Select a convenient date and time slot, enter patient details, and confirm your booking instantly.
+              Simply search by your city, doctor specialization, or clinic name on the BookADoctors homepage. Select a convenient date and time slot, enter patient details, and confirm your booking instantly.
             </p>
           </details>
 
@@ -381,7 +381,17 @@ export function PatientLanding() {
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>
             <p className="mt-3 text-muted text-sm leading-relaxed">
-              Yes, all doctors, clinics, and medical practitioners listed on BookMyDoctors undergo verification of credentials, qualifications, and clinic registration before being published.
+              Yes, all doctors, clinics, and medical practitioners listed on BookADoctors undergo verification of credentials, qualifications, and clinic registration before being published.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>Is BookADoctors also known as BookMyDoctors, BookMyDoc, or BookADoctor?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              Yes! BookADoctors (commonly searched online as bookadoctors, bookadoctor, bookmydoctors, bookmydoctor, BookMyDoc, or book a doctor) is the official healthcare booking portal at bookmydoctors.me for finding verified doctors, booking appointments, and tracking live clinic queues.
             </p>
           </details>
         </div>
@@ -425,6 +435,6 @@ export function ProviderLanding() {
     <section className="bg-charcoal px-4 py-14 text-white sm:py-20"><div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[1.1fr_.9fr] lg:items-center"><div><Badge tone="gold">For doctors & clinics</Badge><h1 className="mt-5 max-w-3xl text-4xl leading-tight text-white sm:text-6xl">A calmer clinic, from arrival to consultation.</h1><p className="mt-5 max-w-xl text-base leading-7 text-white/75 sm:text-lg">Bring appointments, walk-ins, check-ins, live tokens, payments, staff, and daily reports into one simple clinic workflow.</p><div className="mt-7 flex flex-wrap gap-3"><Link className="btn-primary" to="/register">Register your clinic</Link><a className="touch-target inline-flex items-center justify-center rounded-button border border-white/30 px-4 text-sm font-semibold text-white" href="#clinic-demo">Request a demo</a></div></div><div className="rounded-card bg-white p-5 text-charcoal shadow-card"><p className="text-sm font-semibold text-teal-dark">Today’s clinic flow</p><div className="mt-5 grid grid-cols-2 gap-3"><div className="rounded-button bg-primary-light p-4"><p className="text-xs text-muted">Now serving</p><p className="mt-1 font-sans text-4xl text-primary-dark">15</p></div><div className="rounded-button bg-surface p-4"><p className="text-xs text-muted">Waiting</p><p className="mt-1 font-sans text-4xl">8</p></div></div><div className="mt-4 space-y-3 text-sm"><p className="flex justify-between border-b border-border pb-3"><span>Walk-ins checked in</span><strong>12</strong></p><p className="flex justify-between border-b border-border pb-3"><span>Payments received</span><strong>₹8,400</strong></p><p className="flex justify-between"><span>Doctor status</span><strong className="text-success">On duty</strong></p></div></div></div></section>
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6"><div className="max-w-2xl"><p className="text-sm font-semibold text-teal-dark">One operating view</p><h2 className="mt-2 text-3xl">Tools your team can use from day one.</h2></div><div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[['Live queue control', 'Call next, skip, pause, and keep patient tokens current.'], ['Walk-ins and check-in', 'Register arrivals quickly from the reception desk.'], ['Payments and receipts', 'Support cash and UPI with clear daily collection visibility.'], ['Team and branch setup', 'Manage schedules, fees, staff access, and multiple clinics.']].map(([title, text], index) => <article key={title} className="rounded-card border border-border bg-white p-5 shadow-card"><p className="font-sans text-2xl text-primary-dark">0{index + 1}</p><h2 className="mt-4 text-xl">{title}</h2><p className="mt-2 text-sm leading-6 text-muted">{text}</p></article>)}</div></section>
     <section className="bg-primary-light/45 py-12"><div className="mx-auto max-w-7xl px-4 sm:px-6"><p className="text-sm font-semibold text-primary-dark">Simple onboarding</p><h2 className="mt-2 text-3xl">Go live in three clear steps.</h2><div className="mt-7 grid gap-4 md:grid-cols-3">{[['01', 'Create your clinic profile', 'Add clinic details, branches, working hours, and doctors.'], ['02', 'Configure daily operations', 'Set fees, payment methods, queue rules, and team access.'], ['03', 'Verify and welcome patients', 'Complete verification and start receiving bookings and walk-ins.']].map(([number, title, text]) => <article key={number} className="rounded-card bg-white p-5 shadow-card"><p className="font-sans text-4xl text-primary-dark">{number}</p><h2 className="mt-4 text-xl">{title}</h2><p className="mt-2 text-sm leading-6 text-muted">{text}</p></article>)}</div></div></section>
-    <section id="clinic-demo" className="mx-auto grid max-w-5xl gap-6 px-4 py-12 sm:px-6 lg:grid-cols-[.85fr_1.15fr]"><div><p className="text-sm font-semibold text-teal-dark">Clinic demo</p><h2 className="mt-2 text-3xl">See BookMyDoctors in your clinic flow.</h2><p className="mt-3 text-sm leading-7 text-muted">Tell us about your practice and we’ll show how queues, staff, payments, and appointments can work together.</p></div><form onSubmit={submitDemo} className="rounded-card border border-border bg-white p-5 shadow-card">{error && <p role="alert" className="form-message error">{error}</p>}<div className="grid gap-3 sm:grid-cols-2"><input required name="name" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Your name" aria-label="Your name" /><input required type="email" name="email" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Email address" aria-label="Email address" /><input required name="clinicName" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Clinic name" aria-label="Clinic name" /><input required name="phone" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Phone number" aria-label="Phone number" /><input required name="city" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="City" aria-label="City" /></div><button className="btn-primary mt-5" type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Request a demo'}</button>{submitted && <p role="status" className="mt-3 text-sm font-semibold text-success">Thanks—your demo request has been received.</p>}</form></section>
+    <section id="clinic-demo" className="mx-auto grid max-w-5xl gap-6 px-4 py-12 sm:px-6 lg:grid-cols-[.85fr_1.15fr]"><div><p className="text-sm font-semibold text-teal-dark">Clinic demo</p><h2 className="mt-2 text-3xl">See BookADoctors in your clinic flow.</h2><p className="mt-3 text-sm leading-7 text-muted">Tell us about your practice and we’ll show how queues, staff, payments, and appointments can work together.</p></div><form onSubmit={submitDemo} className="rounded-card border border-border bg-white p-5 shadow-card">{error && <p role="alert" className="form-message error">{error}</p>}<div className="grid gap-3 sm:grid-cols-2"><input required name="name" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Your name" aria-label="Your name" /><input required type="email" name="email" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Email address" aria-label="Email address" /><input required name="clinicName" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Clinic name" aria-label="Clinic name" /><input required name="phone" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="Phone number" aria-label="Phone number" /><input required name="city" className="min-h-11 rounded-button border border-border px-3 text-sm" placeholder="City" aria-label="City" /></div><button className="btn-primary mt-5" type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Request a demo'}</button>{submitted && <p role="status" className="mt-3 text-sm font-semibold text-success">Thanks—your demo request has been received.</p>}</form></section>
   </main></>
 }

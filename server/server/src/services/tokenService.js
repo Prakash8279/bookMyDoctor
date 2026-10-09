@@ -137,10 +137,22 @@ const RESET_TOKEN_EXPIRES_IN = '30m';
  * @param {string} userId
  * @returns {string} signed JWT
  */
-function signResetToken(userId) {
-  return jwt.sign({ sub: userId, purpose: RESET_TOKEN_PURPOSE }, env.jwt.accessSecret, {
+function resetCredentialFingerprint(passwordHash) {
+  return hashToken(String(passwordHash || ''));
+}
+
+function signResetToken(userId, passwordHash = '') {
+  return jwt.sign(
+    {
+      sub: userId,
+      purpose: RESET_TOKEN_PURPOSE,
+      credentialVersion: resetCredentialFingerprint(passwordHash),
+    },
+    env.jwt.accessSecret,
+    {
     expiresIn: RESET_TOKEN_EXPIRES_IN,
-  });
+    }
+  );
 }
 
 /**
@@ -151,7 +163,7 @@ function signResetToken(userId) {
  *   well-formed token of the wrong purpose (e.g. someone passing in a real access token) all
  *   collapse to the same generic error, so a caller probing tokens can't distinguish them.
  */
-function verifyResetToken(token) {
+function verifyResetToken(token, currentPasswordHash) {
   let payload;
   try {
     payload = verifyWithSecrets(token, env.jwt.accessVerifySecrets);
@@ -161,6 +173,14 @@ function verifyResetToken(token) {
 
   if (payload.purpose !== RESET_TOKEN_PURPOSE) {
     throw new ApiError(400, 'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.');
+  }
+
+  if (currentPasswordHash !== undefined) {
+    const expected = Buffer.from(resetCredentialFingerprint(currentPasswordHash), 'hex');
+    const supplied = Buffer.from(String(payload.credentialVersion || ''), 'hex');
+    if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) {
+      throw new ApiError(400, 'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.');
+    }
   }
 
   return payload.sub;

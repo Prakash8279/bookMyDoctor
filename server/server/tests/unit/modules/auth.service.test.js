@@ -9,7 +9,7 @@
  * policy this suite follows).
  */
 jest.mock('../../../src/config/db', () => ({
-  user: { findUnique: jest.fn(), update: jest.fn() },
+  user: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   patientProfile: { create: jest.fn() },
   $transaction: jest.fn(),
 }));
@@ -52,6 +52,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   tokenService.issueTokenPair.mockResolvedValue(FAKE_TOKENS);
   idGenerators.nextPatientNumber.mockResolvedValue(42);
+  prisma.user.findFirst.mockResolvedValue(null);
+  prisma.user.findMany.mockResolvedValue([]);
 });
 
 describe('auth.service.register — password hashing', () => {
@@ -63,7 +65,9 @@ describe('auth.service.register — password hashing', () => {
       // Mimics Prisma's interactive-transaction callback API ($transaction(async (tx) => ...)),
       // which is the form register() actually calls (see auth.service.js#register).
       const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(1),
         user: {
+          findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn((args) => {
             capturedCreateData = args.data;
             return Promise.resolve({

@@ -421,9 +421,15 @@ describe('tokenService — revokeRefreshToken / revokeAllForUser', () => {
 
 describe('tokenService — password-reset tokens', () => {
   test('signResetToken/verifyResetToken round-trip returns the userId it was signed for', () => {
-    const token = tokenService.signResetToken(SAMPLE_USER.id);
+    const token = tokenService.signResetToken(SAMPLE_USER.id, 'old-password-hash');
 
-    expect(tokenService.verifyResetToken(token)).toBe(SAMPLE_USER.id);
+    expect(tokenService.verifyResetToken(token, 'old-password-hash')).toBe(SAMPLE_USER.id);
+  });
+
+  test('a reset token is invalid after the password hash changes', () => {
+    const token = tokenService.signResetToken(SAMPLE_USER.id, 'old-password-hash');
+
+    expect(() => tokenService.verifyResetToken(token, 'new-password-hash')).toThrow(/invalid or has expired/);
   });
 
   test('verifyResetToken rejects a real access token (wrong purpose) with the generic error', () => {

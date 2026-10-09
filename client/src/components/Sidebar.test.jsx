@@ -19,7 +19,7 @@ describe('Sidebar', () => {
         <Sidebar role="patient" open onClose={() => {}} onLogout={() => {}} />
       </MemoryRouter>
     )
-    expect(screen.getByRole('link', { name: /BookMyDoctors/ })).toHaveAttribute('href', '/')
+    expect(screen.getByRole('link', { name: /BookADoctors/ })).toHaveAttribute('href', '/')
   })
 
   it('renders the nav items for the given role', () => {

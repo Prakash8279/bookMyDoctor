@@ -1,12 +1,12 @@
 export function WhatsAppButton() {
-  const whatsappUrl = 'https://wa.me/917323074966?text=Hi%20BookMyDoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments.'
+  const whatsappUrl = 'https://wa.me/917323074966?text=Hi%20BookADoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments.'
 
   return (
     <a
       href={whatsappUrl}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label="Chat with BookMyDoctors on WhatsApp"
+      aria-label="Chat with BookADoctors on WhatsApp"
       className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-3 text-white shadow-xl transition-all duration-300 hover:scale-105 hover:bg-[#20ba5a] hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-[#25D366]/40"
       style={{ boxShadow: '0 8px 24px rgba(37, 211, 102, 0.4)' }}
     >

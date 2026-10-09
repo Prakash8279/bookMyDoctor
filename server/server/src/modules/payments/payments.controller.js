@@ -50,10 +50,41 @@ const handleRazorpayWebhook = asyncHandler(async (req, res) => {
   return success(res, result);
 });
 
+const listRefunds = asyncHandler(async (req, res) => {
+  const { page, pageSize, status, appointmentId } = req.query;
+  const { refunds, pagination } = await razorpayService.listRefunds({ page, pageSize, status, appointmentId });
+  return success(res, refunds, { pagination });
+});
+
+const retryRefund = asyncHandler(async (req, res) => {
+  const result = await razorpayService.retryRefund(req.params.id, req.user);
+  return success(res, result);
+});
+
+const getReconciliationReport = asyncHandler(async (req, res) => {
+  const { doctorId, date, patientId, paymentId, orderId, appointmentId, status, refundStatus, page, pageSize } = req.query;
+  const result = await paymentsService.getPaymentReconciliationReport({
+    doctorId,
+    date,
+    patientId,
+    paymentId,
+    orderId,
+    appointmentId,
+    status,
+    refundStatus,
+    page,
+    pageSize,
+  });
+  return success(res, result.items, { kpi: result.kpi, pagination: result.pagination });
+});
+
 module.exports = {
   createPayment,
   listPayments,
   createRazorpayOrder,
   verifyRazorpayPayment,
   handleRazorpayWebhook,
+  listRefunds,
+  retryRefund,
+  getReconciliationReport,
 };
