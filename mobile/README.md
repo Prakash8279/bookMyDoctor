@@ -30,7 +30,7 @@ For a production check, also run:
 ```
 flutter test
 flutter analyze
-flutter build appbundle --release --dart-define=API_BASE_URL=https://api.bookmydoctors.me
+flutter build appbundle --release --dart-define=API_BASE_URL=https://api.bookadoctors.com
 ```
 
 Release builds require `android/key.properties` and the configured upload

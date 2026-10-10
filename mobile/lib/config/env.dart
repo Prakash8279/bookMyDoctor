@@ -25,6 +25,6 @@ class Env {
 
     // Safe default for an installed build. Do not replace this with a plain
     // HTTP URL: Android release builds intentionally reject clear-text traffic.
-    return 'https://api.bookmydoctors.me';
+    return 'https://api.bookadoctors.com';
   }
 }
