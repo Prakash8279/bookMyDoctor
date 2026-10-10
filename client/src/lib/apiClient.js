@@ -9,8 +9,8 @@ const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
     const { hostname, protocol, port } = window.location
     if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      if (port === '3000' || port === '5173') {
-        return `${protocol}//${hostname}:4000`
+      if (port === '3000' || port === '5173' || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+        return '/api'
       }
       if (hostname.includes('bookadoctors.com')) {
         return `${protocol}//api.bookadoctors.com`
@@ -18,7 +18,7 @@ const getBaseUrl = () => {
       if (hostname.includes('bookmydoctors.me')) {
         return `${protocol}//api.bookmydoctors.me`
       }
-      return `${protocol}//${hostname}:4000`
+      return '/api'
     }
   }
   return envUrl || 'http://localhost:4000'
