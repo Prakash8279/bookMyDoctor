@@ -22,7 +22,23 @@ function buildAllowedOriginSet(configuredValue) {
 function isAllowedOrigin(origin, allowedOrigins) {
   if (!origin) return true;
   const normalized = normalizeOrigin(origin);
-  return Boolean(normalized && allowedOrigins.has(normalized));
+  if (!normalized) return false;
+  if (allowedOrigins && allowedOrigins.has(normalized)) return true;
+  try {
+    const url = new URL(normalized);
+    if (
+      url.hostname.endsWith('bookadoctors.com') ||
+      url.hostname.endsWith('bookmydoctors.me') ||
+      url.hostname === 'localhost' ||
+      url.hostname === '127.0.0.1' ||
+      /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(url.hostname)
+    ) {
+      return true;
+    }
+  } catch (_err) {
+    // ignore
+  }
+  return false;
 }
 
 module.exports = { normalizeOrigin, buildAllowedOriginSet, isAllowedOrigin };

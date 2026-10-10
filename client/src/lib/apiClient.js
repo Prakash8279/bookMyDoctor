@@ -6,8 +6,20 @@ import axios from 'axios'
 
 const getBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL
-  if (typeof window !== 'undefined' && window.location.hostname.includes('bookmydoctors.me')) {
-    return 'https://api.bookmydoctors.me'
+  if (typeof window !== 'undefined') {
+    const { hostname, protocol, port } = window.location
+    if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      if (port === '3000' || port === '5173') {
+        return `${protocol}//${hostname}:4000`
+      }
+      if (hostname.includes('bookadoctors.com')) {
+        return `${protocol}//api.bookadoctors.com`
+      }
+      if (hostname.includes('bookmydoctors.me')) {
+        return `${protocol}//api.bookmydoctors.me`
+      }
+      return `${protocol}//${hostname}:4000`
+    }
   }
   return envUrl || 'http://localhost:4000'
 }
