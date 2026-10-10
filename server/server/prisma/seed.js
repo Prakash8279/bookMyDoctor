@@ -18,8 +18,9 @@ const { PrismaClient } = require('@prisma/client');
 // in the app's own demo-login UI). That's fine for dev/staging, but if `npm run seed` were
 // ever pointed at a production DATABASE_URL — by accident, or by copy-pasting a deploy script
 // — it would create real, known-password privileged accounts. Refuse outright instead.
-if (process.env.NODE_ENV === 'production') {
-  console.error('[seed] refusing to run: NODE_ENV=production. This script creates demo accounts with known passwords and must never touch a production database.');
+const allowSeed = process.env.ALLOW_SEED === 'true' || process.env.FORCE_SEED === 'true' || process.argv.includes('--force');
+if (process.env.NODE_ENV === 'production' && !allowSeed) {
+  console.error('[seed] refusing to run: NODE_ENV=production. Pass ALLOW_SEED=true or --force if you intentionally want to seed accounts in this environment.');
   process.exit(1);
 }
 
