@@ -44,27 +44,7 @@ app.set('trust proxy', env.trustProxyHops);
 // after trust-proxy is set (above) and before every route/controller (below).
 app.use(requestContextMiddleware);
 
-// 0.6. Force HTTPS in production. This app has no TLS of its own — it expects to sit behind a
-// TLS-terminating load balancer/CDN that forwards the original scheme via X-Forwarded-Proto.
-// `req.secure` reflects that header correctly once `trust proxy` is set to a real hop count
-// (done above), which is exactly the case here. A no-op in development, and a no-op for a
-// request that already arrived over HTTPS — this only catches a plain-HTTP request slipping
-// through in production and redirects it once, permanently, before anything else runs.
-if (env.isProduction) {
-  app.use((req, res, next) => {
-    if (req.secure) return next();
-    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
-  });
-}
-
-// 1. Security headers. crossOriginResourcePolicy is relaxed to 'cross-origin' because
-// /uploads files — public ones (profile photos, clinic QR codes) via express.static below, and
-// private ones (doctor verification documents) via the authenticated route just above it — must
-// be loadable by the frontend running on a different origin/port.
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-
-// 2. CORS — exact, normalized origin allow-list. Never use substring/hostname-suffix checks here:
-// credentials are enabled, so an origin such as https://localhost.attacker.example must not pass.
+// 1. CORS — exact, normalized origin allow-list. Must run BEFORE HTTPS redirect so preflight OPTIONS requests are handled with 204.
 const configuredOrigins = buildAllowedOriginSet(env.clientOrigin);
 
 app.use(
@@ -82,6 +62,22 @@ app.use(
     exposedHeaders: ['X-Request-Id'],
   })
 );
+
+// 2. Force HTTPS in production (skip OPTIONS preflight and check x-forwarded-proto).
+if (env.isProduction) {
+  app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') return next();
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    if (proto === 'https' || req.secure) return next();
+    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
+  });
+}
+
+// 2.5. Security headers. crossOriginResourcePolicy is relaxed to 'cross-origin' because
+// /uploads files — public ones (profile photos, clinic QR codes) via express.static below, and
+// private ones (doctor verification documents) via the authenticated route just above it — must
+// be loadable by the frontend running on a different origin/port.
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // 3. Response compression.
 app.use(compression());
