@@ -37,6 +37,16 @@ const DEMO_ACCOUNTS = [
 ];
 
 async function main() {
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255);
+      CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_key ON users (google_id);
+      ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+    `);
+  } catch (err) {
+    console.warn('[seed] Notice executing self-healing schema patch:', err.message);
+  }
+
   console.log('Seeding reference data...');
 
   // NOTE: these used to be human-readable slug ids ("seed-city-mumbai" etc). Every backend
