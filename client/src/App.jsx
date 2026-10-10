@@ -189,9 +189,14 @@ export default function App() {
     <Route path="/contact" element={publicPage(<PublicContent kind="contact" />)} />
     <Route path="/whatsapp" element={<WhatsAppRedirect />} />
     <Route path="/terms" element={publicPage(<TermsOfService />)} />
+    <Route path="/terms-of-service" element={publicPage(<TermsOfService />)} />
     <Route path="/privacy" element={publicPage(<PrivacyPolicy />)} />
+    <Route path="/privacy-policy" element={publicPage(<PrivacyPolicy />)} />
+    <Route path="/privacypolicy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/cancellation-refund-policy" element={publicPage(<CancellationRefundPolicy />)} />
     <Route path="/delete-account" element={publicPage(<AccountDeletion />)} />
+    <Route path="/account-deletion" element={publicPage(<AccountDeletion />)} />
+    <Route path="/deleteaccount" element={publicPage(<AccountDeletion />)} />
     <Route path="/doctors/:doctorId" element={publicPage(<DoctorProfile data={data} />)} />
     <Route path="/doctor/:doctorId" element={publicPage(<DoctorProfile data={data} />)} />
     <Route path="/emergency" element={publicPage(<EmergencyPage data={data} />)} />
