@@ -29,6 +29,11 @@
   .hero-orb-reverse { animation-direction: alternate-reverse; animation-duration: 11s; }
   .queue-live { animation: dc-queue-pulse 2.4s ease-in-out infinite; }
   .lift-card { @apply transition duration-300 ease-out hover:-translate-y-1 hover:shadow-card; }
+  .google-sign-in { @apply relative min-h-[44px] w-full; }
+  .google-sign-in__button { @apply min-h-[44px] w-full; }
+  .google-sign-in__button > div { @apply w-full; }
+  .google-sign-in__busy { @apply absolute inset-0 grid place-items-center rounded-button bg-white/80 text-sm font-semibold text-ink; }
+  .google-sign-in__error { @apply mt-2 text-center text-xs text-error; }
 }
 
 @keyframes dc-orb-drift {

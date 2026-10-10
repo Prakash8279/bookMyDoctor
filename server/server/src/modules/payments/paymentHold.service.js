@@ -338,7 +338,7 @@ async function markHoldRefundedTx(tx, appointmentId) {
     return;
   }
   await tx.paymentHold.updateMany({
-    where: { appointmentId, status: { in: ['PENDING', 'EXPIRED'] } },
+    where: { appointmentId, status: { in: ['PENDING', 'EXPIRED', 'CANCELLED'] } },
     data: { status: 'REFUNDED', updatedAt: new Date() },
   });
 }

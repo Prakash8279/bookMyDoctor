@@ -37,12 +37,9 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: doctor_connect
-      # Overridable via a POSTGRES_PASSWORD env var (or a root .env — docker compose reads one
-      # automatically) so this stack isn't stuck on the "changeme" default the moment it's
-      # anywhere reachable beyond your own machine (a shared staging box, a LAN demo, etc.).
-      # Local `docker compose up` with nothing set still works exactly as before. If you do set
-      # POSTGRES_PASSWORD, update server/server/.env's DATABASE_URL to match.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      # Required even for local Compose. Put a strong value in the root .env, URL-encode the same
+      # value in server/server/.env's DATABASE_URL, and never deploy a password fallback.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env before starting Compose}
       POSTGRES_DB: doctor_connect
     ports:
       - "127.0.0.1:5432:5432"
@@ -67,13 +64,18 @@ services:
     # If your REAL production deployment uses a managed Redis (ElastiCache, Upstash, etc.)
     # instead of this compose file, confirm that service has equivalent persistence/durability
     # enabled there too — this fix only covers the local/staging stack this file describes.
-    command: redis-server --appendonly yes
+    # Redis holds session-adjacent rate-limit/lock state and the booking queue. Require a password
+    # even on the internal Compose network; configure server/server/.env REDIS_URL with the same
+    # URL-encoded value (redis://:PASSWORD@redis:6379).
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in the root .env before starting Compose}
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
       interval: 5s
       timeout: 5s
       retries: 10

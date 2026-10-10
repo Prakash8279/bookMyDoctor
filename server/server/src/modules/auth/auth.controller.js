@@ -9,7 +9,8 @@ const asyncHandler = require('../../utils/asyncHandler');
 const { applyAuthCookies, clearAuthCookie, resolveIncomingRefreshToken } = require('../../utils/webClientAuth');
 
 const register = asyncHandler(async (req, res) => {
-  const { name, email, password, phone, city } = req.body;
+  const { name, email, password, phone, city, emailOtp } = req.body;
+  await authService.verifyRegistrationEmailOtp({ email, otp: emailOtp });
   const result = await authService.register({ name, email, password, phone, city });
   // WEB-ONLY REFRESH-COOKIE FIX (risky-item #2) — see utils/webClientAuth.js. For a web caller
   // this sets the httpOnly cookie and strips refreshToken out of the body; for anyone else
@@ -66,28 +67,10 @@ const resetPassword = asyncHandler(async (req, res) => {
   return success(res, null, { message: 'Your password has been reset. Please log in with your new password.' });
 });
 
-const sendOtp = asyncHandler(async (req, res) => {
-  const { identifier, purpose, channel } = req.body;
-  const result = await authService.sendAuthOtp({ identifier, purpose, channel });
+const sendRegistrationEmailOtp = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  const result = await authService.sendRegistrationEmailOtp({ email });
   return success(res, result);
-});
-
-const verifyOtpLogin = asyncHandler(async (req, res) => {
-  const { identifier, otp } = req.body;
-  const result = await authService.verifyOtpLogin({ identifier, otp });
-  return success(res, applyAuthCookies(req, res, result));
-});
-
-const verifyOtpRegister = asyncHandler(async (req, res) => {
-  const { name, email, password, phone, city, otp, verifyTarget } = req.body;
-  const result = await authService.verifyOtpRegister({ name, email, password, phone, city, otp, verifyTarget });
-  return success(res, applyAuthCookies(req, res, result), { statusCode: 201, message: 'Registration successful' });
-});
-
-const resetPasswordOtp = asyncHandler(async (req, res) => {
-  const { identifier, otp, newPassword } = req.body;
-  const result = await authService.resetPasswordWithOtp({ identifier, otp, newPassword });
-  return success(res, null, { message: result.message });
 });
 
 module.exports = {
@@ -99,8 +82,5 @@ module.exports = {
   me,
   forgotPassword,
   resetPassword,
-  sendOtp,
-  verifyOtpLogin,
-  verifyOtpRegister,
-  resetPasswordOtp,
+  sendRegistrationEmailOtp,
 };

@@ -10,16 +10,22 @@
 /// This value is a public identifier, not a secret — it's fine that it ships inside the app.
 ///
 /// A SEPARATE "Android" OAuth Client ID must also exist in the same Google Cloud project before
-/// sign-in works on a real device — Android's Google Sign-In matches by your app's package name
-/// (applicationId) + your debug/release keystore's SHA-1 fingerprint, and its value is never
-/// referenced directly anywhere in this app's Dart code (Google's Play Services layer looks it
-/// up itself using those two things). BUT: this repo has no android/ folder yet (no `flutter
-/// create .` has been run here in an environment with the Flutter SDK — see mobile/README.md's
-/// Prerequisites section), so that Android registration step can only happen once that exists.
-/// Until then, this whole feature can compile but cannot actually complete a sign-in on a device
-/// or emulator.
+/// sign-in works on a real device — Android's Google Sign-In matches by this app's package name
+/// (`com.bookmydoctor24.app`) plus the debug/release signing certificate's SHA-1 fingerprint.
+/// That client ID is not referenced in Dart: Google Play services resolves it from the installed
+/// app's package and certificate. Configure both debug and release SHA-1 values in Google Cloud
+/// before testing or publishing Google sign-in.
 class GoogleAuthConfig {
-  static const String webClientId = '855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com';
+  // Allows a client-ID rotation or a staging OAuth project without changing source code. The
+  // default is intentionally the verified production Web client ID, so normal builds remain
+  // zero-config. This is a public identifier, not an OAuth secret.
+  static const String webClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue: '855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com',
+  );
 
-  static bool get isConfigured => !webClientId.startsWith('REPLACE_WITH_');
+  static bool get isConfigured {
+    final clientId = webClientId.trim();
+    return clientId.isNotEmpty && !clientId.startsWith('REPLACE_WITH_');
+  }
 }

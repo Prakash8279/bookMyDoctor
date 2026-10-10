@@ -1,8 +1,6 @@
-# Flutter/Dart build artifacts and tool-managed files — standard set for a Flutter project.
-# No android/ or ios/ platform directories exist in this repo yet (this app hasn't been through
-# `flutter create`/first build in an environment with the Flutter SDK — see mobile/README.md's
-# Prerequisites section), so their entries below are future-proofing for whenever those
-# directories get generated, not a reflection of anything present today.
+# Flutter/Dart build artifacts and tool-managed files.
+# Android is a supported platform in this repository. iOS project files have
+# not been added yet; keep its generated/local files ignored when they are.
 
 .dart_tool/
 .flutter-plugins
@@ -11,9 +9,8 @@
 build/
 *.iml
 
-# Platform directories (not present yet — see note above). Ignore their generated/local-only
-# files so that if/when `flutter create` regenerates android/ or ios/ here, machine-specific
-# config doesn't get committed.
+# Platform-local/generated files. Signing keys and their properties are kept
+# separately under android/.gitignore and must never be committed.
 android/local.properties
 android/**/build/
 ios/Flutter/

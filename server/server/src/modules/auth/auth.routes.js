@@ -268,11 +268,9 @@ router.post('/google', authLimiter, validation.googleAuth, validateRequest, cont
 router.post('/forgot-password', authLimiter, validation.forgotPassword, validateRequest, controller.forgotPassword);
 router.post('/reset-password', authLimiter, validation.resetPassword, validateRequest, controller.resetPassword);
 
-// OTP-based Multi-channel Authentication (Email OTP, SMS OTP)
-router.post('/otp/send', authLimiter, validation.sendOtp, validateRequest, controller.sendOtp);
-router.post('/otp/verify-login', authLimiter, validation.verifyOtpLogin, validateRequest, controller.verifyOtpLogin);
-router.post('/otp/verify-register', authLimiter, validation.verifyOtpRegister, validateRequest, controller.verifyOtpRegister);
-router.post('/otp/reset-password', authLimiter, validation.resetPasswordOtp, validateRequest, controller.resetPasswordOtp);
+// Email verification is deliberately limited to registration. Passwordless SMS/email OTP login
+// and phone-based password resets were removed: sign-in is email+password or Google only.
+router.post('/register/email-otp', authLimiter, validation.sendRegistrationEmailOtp, validateRequest, controller.sendRegistrationEmailOtp);
 
 // Requires a currently-valid access token (revokes the caller's own refresh token).
 router.post('/logout', authenticate, validation.logout, validateRequest, controller.logout);

@@ -20,6 +20,7 @@ const logger = require('../config/logger');
 
 const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
+const GOOGLE_JWKS_TIMEOUT_MS = 10_000;
 // Google rotates its signing keys periodically but publishes the old + new key together for a
 // transition window (standard JWKS rotation practice) — a short in-process cache is enough to
 // avoid re-fetching the JWKS on every single sign-in, while still picking up a rotated key well
@@ -31,7 +32,17 @@ const JWKS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 let jwksCache = null; // { fetchedAt: number, keysByKid: Map<string, crypto.KeyObject> }
 
 async function fetchGoogleJwks() {
-  const res = await fetch(GOOGLE_JWKS_URL);
+  // A blocked DNS lookup or upstream connection must not leave a login request hanging until
+  // the hosting platform's much longer default timeout. The auth service turns this into its
+  // existing safe, retryable GOOGLE_SIGNIN_UNAVAILABLE response.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GOOGLE_JWKS_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(GOOGLE_JWKS_URL, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) {
     throw new Error(`Failed to fetch Google's signing keys (HTTP ${res.status}).`);
   }
@@ -111,7 +122,11 @@ async function verifyGoogleIdToken(idToken, audience) {
     throw new ApiError(401, 'INVALID_GOOGLE_TOKEN', 'Google sign-in failed: the token could not be verified.');
   }
 
-  if (!payload.email || !payload.email_verified) {
+  if (!payload.sub || typeof payload.sub !== 'string') {
+    throw new ApiError(401, 'INVALID_GOOGLE_TOKEN', 'Google sign-in failed: the token subject is missing.');
+  }
+
+  if (!payload.email || typeof payload.email !== 'string' || !payload.email_verified) {
     throw new ApiError(401, 'GOOGLE_EMAIL_NOT_VERIFIED', "Your Google account's email is not verified.");
   }
 

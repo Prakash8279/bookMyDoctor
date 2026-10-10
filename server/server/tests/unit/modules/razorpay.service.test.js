@@ -60,6 +60,12 @@ jest.mock('../../../src/services/lockService', () => ({
   withLock: jest.fn((key, fn) => fn()),
   LockAcquisitionError: class LockAcquisitionError extends Error {},
 }));
+jest.mock('../../../src/modules/payments/paymentHold.service', () => ({
+  createOrRefreshHoldTx: jest.fn(),
+  cancelHold: jest.fn(),
+  attachRazorpayOrderToHold: jest.fn(),
+  markHoldRefundedTx: jest.fn(),
+}));
 
 const crypto = require('crypto');
 const prisma = require('../../../src/config/db');
@@ -69,6 +75,7 @@ const paymentsService = require('../../../src/modules/payments/payments.service'
 const appointmentsService = require('../../../src/modules/appointments/appointments.service');
 const queueService = require('../../../src/modules/queue/queue.service');
 const lockService = require('../../../src/services/lockService');
+const paymentHoldService = require('../../../src/modules/payments/paymentHold.service');
 const razorpayService = require('../../../src/modules/payments/razorpay.service');
 
 const KEY_ID = 'rzp_test_key_id';
@@ -226,6 +233,40 @@ describe('razorpay.service.createOrder — no-double-charge lock', () => {
     // The appointment lookup (inside the locked function) never even ran — the lock is acquired
     // BEFORE any DB/gateway work starts.
     expect(prisma.appointment.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe('razorpay.service.createOrder — active order reuse', () => {
+  test('returns the existing active Razorpay order instead of creating a second payable order', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(
+      buildAppointmentRow({ source: 'online', appointmentDate: new Date('2026-10-15T00:00:00.000Z') })
+    );
+    prisma.$transaction = jest.fn((callback) => callback(prisma));
+    paymentHoldService.createOrRefreshHoldTx.mockResolvedValue({
+      hold: {
+        id: 'hold-1',
+        razorpayOrderId: 'order_active',
+        holdExpiresAt: new Date('2026-10-15T10:00:00.000Z'),
+      },
+      reusedExistingOrder: true,
+      durationSeconds: 600,
+    });
+    global.fetch.mockResolvedValue(
+      jsonResponse({
+        id: 'order_active',
+        amount: 61360,
+        currency: 'INR',
+        status: 'created',
+        notes: { appointmentId: 'appt-1', patientUserId: 'patient-1', paymentOption: 'full' },
+      })
+    );
+
+    const result = await razorpayService.createOrder('appt-1', PATIENT, 'full');
+
+    expect(result).toMatchObject({ orderId: 'order_active', reused: true, holdId: 'hold-1' });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toBe('https://api.razorpay.com/v1/orders/order_active');
+    expect(global.fetch.mock.calls[0][1].method).toBeUndefined();
   });
 });
 
@@ -423,7 +464,8 @@ describe('razorpay.service.verifyAndRecordPayment — HMAC signature verificatio
       'online',
       PAYMENT_ID,
       null,
-      613.6
+      613.6,
+      ORDER_ID
     );
     expect(result).toEqual({ payment: { id: 'pay-1' }, appointment: { id: 'appt-1' } });
   });
@@ -607,7 +649,7 @@ describe('razorpay.service.verifyAndRecordPayment — never trusts the frontend 
       PATIENT
     );
 
-    expect(paymentsService.createPaymentForAppointment).toHaveBeenCalledWith('appt-1', PATIENT, 'online', PAYMENT_ID, null, 100);
+    expect(paymentsService.createPaymentForAppointment).toHaveBeenCalledWith('appt-1', PATIENT, 'online', PAYMENT_ID, null, 100, ORDER_ID);
   });
 });
 
@@ -827,7 +869,8 @@ describe('razorpay.service.reconcilePendingPaymentsFromWebhook', () => {
       'online',
       PAYMENT_ID,
       null,
-      613.6
+      613.6,
+      ORDER_ID
     );
     expect(activityLogService.log).toHaveBeenCalled();
     expect(paymentsService.invalidatePaymentListCaches).toHaveBeenCalled();

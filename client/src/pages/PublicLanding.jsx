@@ -55,12 +55,8 @@ export function PatientLanding() {
       <div className="hero-orb hero-orb-two"></div>
       <div className="container hero-grid">
         <div className="hero-copy">
-          <div className="eyebrow">
-            <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-shield-check"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg> 
-            BookADoctors • Verified Doctors &amp; Live OPD Queue
-          </div>
-          <h1>Book Doctor Appointments Online with <span>BookADoctors.</span></h1>
-          <p className="hero-lead">Find top verified doctors near you, book clinic appointments instantly, and track live clinic queue tokens from home.</p>
+          <h1>Care without the <span>waiting room.</span></h1>
+          <p className="hero-lead">Find verified doctors, reserve your clinic slot, and follow your live queue token from home.</p>
 
           <form className="hero-search" onSubmit={handleSearch}>
             <label>
@@ -133,8 +129,11 @@ export function PatientLanding() {
           </div>
 
           <div className="hero-card floating-card floating-doctor">
-            <div className="avatar">+</div>
-             <div><strong>{(data.doctors || []).length ? `${(data.doctors || []).length} doctor profile${(data.doctors || []).length === 1 ? '' : 's'}` : 'No doctor profiles yet'}</strong><small>{(data.doctors || []).length ? 'Added profiles appear in search' : 'Add a doctor profile to continue'}</small></div>
+            <div className="avatar">{(data.doctors || []).length || '+'}</div>
+            <div>
+              <strong>{(data.doctors || []).length ? `${(data.doctors || []).length} doctor profile${(data.doctors || []).length === 1 ? '' : 's'}` : 'No doctor profiles yet'}</strong>
+              <small>{(data.doctors || []).length ? 'Added profiles appear in search' : 'Add a doctor profile to continue'}</small>
+            </div>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-check"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
           </div>
 

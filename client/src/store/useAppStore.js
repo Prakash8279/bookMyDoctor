@@ -256,44 +256,10 @@ export const useAppStore = create(
         return true
       },
 
-      // OTP-based authentication actions (Email OTP & SMS OTP)
-      sendOtp: async ({ identifier, purpose, channel }) => {
-        return await apiClient.post('/auth/otp/send', { identifier, purpose, channel })
-      },
-
-      loginWithOtp: async ({ identifier, otp }) => {
-        set({ authLoading: true })
-        try {
-          const result = await apiClient.post('/auth/otp/verify-login', { identifier, otp })
-          setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken })
-          const me = await apiClient.get('/me')
-          set({ currentUser: me, isAuthenticated: true, authLoading: false, sessionVerified: true })
-          await get().loadUserData().catch((err) => console.error('[useAppStore] post-login bulk load failed', err))
-          return me
-        } catch (err) {
-          set({ authLoading: false })
-          throw err
-        }
-      },
-
-      registerWithOtp: async (fields) => {
-        set({ authLoading: true })
-        try {
-          const body = { ...fields, role: 'patient' }
-          const result = await apiClient.post('/auth/otp/verify-register', body)
-          setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken })
-          const me = await apiClient.get('/me')
-          set({ currentUser: me, isAuthenticated: true, authLoading: false, sessionVerified: true })
-          await get().loadUserData().catch((err) => console.error('[useAppStore] post-login bulk load failed', err))
-          return me
-        } catch (err) {
-          set({ authLoading: false })
-          throw err
-        }
-      },
-
-      resetPasswordWithOtp: async ({ identifier, otp, newPassword }) => {
-        return await apiClient.post('/auth/otp/reset-password', { identifier, otp, newPassword })
+      // Email verification is for new-account creation only. Sign-in stays email/password or
+      // Google; phone numbers are never used as an authentication channel.
+      sendRegistrationEmailOtp: async (email) => {
+        return await apiClient.post('/auth/register/email-otp', { email })
       },
 
       // POST /auth/reset-password verifies the short-lived token from the emailed/logged reset

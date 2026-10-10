@@ -6,7 +6,7 @@ import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
-import { signInWithGoogle } from '../lib/googleSignIn'
+import { GoogleSignInButton } from '../lib/GoogleSignInButton'
 import { useAppStore } from '../store/useAppStore'
 import { usePolling } from '../hooks/usePolling'
 
@@ -23,8 +23,6 @@ const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/
 const NAME_RE = /^[A-Za-z][A-Za-z .'-]{1,149}$/
 const PHONE_RE = /^[6-9]\d{9}$/
 const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/
-
-const Button = ({ children, className = '', ...props }) => <button className={`btn-primary ${className}`} {...props}>{children}</button>
 
 // `data.queueTokens` (GET /queue) is doctor/receptionist-only and never populated for a patient —
 // both LiveQueueWidget usages below used to read from it anyway, so they always rendered the
@@ -292,14 +290,8 @@ export function DoctorProfile({ data }) {
 }
 export function EmergencyPage({ data }) { const doctors = (data.doctors || []).filter((doctor) => doctor.emergencyAvailable); return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><Badge tone="error">Emergency care</Badge><h1 className="mt-3 text-3xl">Doctors and clinics available now</h1>{doctors.length ? <div className="mt-5 grid gap-4">{doctors.map((doctor) => <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={doctor.id}><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl">{doctor.name}</h2><p className="text-sm text-muted">{doctor.specialization?.name || 'General practice'} · {doctor.clinics?.[0]?.name || 'Clinic not added'}</p></div><Badge tone="error">Available now</Badge></div><div className="mt-4 grid grid-cols-2 gap-3"><a className="touch-target flex items-center justify-center rounded-button border border-error text-sm font-semibold text-error" href="tel:+912240001111">Call clinic</a><Link className="btn-primary" to="/patient/emergency">Book now</Link></div></article>)}</div> : <div className="mt-5"><EmptyState title="No emergency doctors available right now" message="Emergency-ready doctors will appear here when marked available." /></div>}</main></> }
 export function Login() {
-  const [authMode, setAuthMode] = useState('password') // 'password' | 'otp'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [otpIdentifier, setOtpIdentifier] = useState('')
-  const [otpCode, setOtpCode] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpSending, setOtpSending] = useState(false)
-  const [otpCooldown, setOtpCooldown] = useState(0)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -307,17 +299,7 @@ export function Login() {
   const location = useLocation()
   const login = useAppStore((state) => state.login)
   const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
-  const sendOtp = useAppStore((state) => state.sendOtp)
-  const loginWithOtp = useAppStore((state) => state.loginWithOtp)
   const [notice, setNotice] = useState(location.state?.message || '')
-
-  useEffect(() => {
-    let timer
-    if (otpCooldown > 0) {
-      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000)
-    }
-    return () => clearInterval(timer)
-  }, [otpCooldown])
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -333,54 +315,10 @@ export function Login() {
     }
   }
 
-  const handleSendOtp = async (e) => {
-    if (e) e.preventDefault()
-    if (!otpIdentifier.trim()) {
-      setError('Please enter your email or 10-digit mobile number.')
-      return
-    }
-    setOtpSending(true)
-    setError('')
-    try {
-      const res = await sendOtp({ identifier: otpIdentifier.trim(), purpose: 'login' })
-      setOtpSent(true)
-      const data = res?.data || res
-      setOtpCooldown(data?.cooldownSeconds || 30)
-      if (data?.devOtp) {
-        setNotice(`${data.message || 'Verification OTP sent!'} (Dev test code: ${data.devOtp})`)
-      } else {
-        setNotice(data.message || 'Verification OTP sent!')
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setOtpSending(false)
-    }
-  }
-
-  const handleVerifyOtpLogin = async (e) => {
-    e.preventDefault()
-    if (!otpCode.trim()) {
-      setError('Please enter the 6-digit OTP code.')
-      return
-    }
-    setSubmitting(true)
-    setError('')
-    try {
-      const account = await loginWithOtp({ identifier: otpIdentifier.trim(), otp: otpCode.trim() })
-      navigate(location.state?.from || roleHome(account.role), { replace: true })
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const handleGoogleSignIn = async () => {
+  const handleGoogleCredential = async (idToken) => {
     setGoogleSubmitting(true)
     setError('')
     try {
-      const idToken = await signInWithGoogle()
       const account = await loginWithGoogle(idToken)
       navigate(location.state?.from || roleHome(account.role), { replace: true })
     } catch (googleError) {
@@ -388,6 +326,10 @@ export function Login() {
     } finally {
       setGoogleSubmitting(false)
     }
+  }
+
+  const handleGoogleError = (googleError) => {
+    setError(googleError.message)
   }
 
   const { dark, toggle } = useTheme()
@@ -435,35 +377,19 @@ export function Login() {
           <h2>Welcome back</h2>
           <p>Sign in to manage appointments, queues, and health records.</p>
 
-          <button type="button" onClick={handleGoogleSignIn} disabled={googleSubmitting} className="google-auth-button">
-            <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
-          </button>
+          <GoogleSignInButton
+            disabled={googleSubmitting}
+            onCredential={handleGoogleCredential}
+            onError={handleGoogleError}
+            text="continue_with"
+          />
           
           <div className="oauth-divider"><span>or sign in with</span></div>
-
-          {/* Mode Tabs */}
-          <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-surface-muted rounded-button border border-border">
-            <button
-              type="button"
-              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${authMode === 'password' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
-              onClick={() => { setAuthMode('password'); setError(''); }}
-            >
-              Password
-            </button>
-            <button
-              type="button"
-              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${authMode === 'otp' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
-              onClick={() => { setAuthMode('otp'); setError(''); }}
-            >
-              OTP (SMS / Email)
-            </button>
-          </div>
 
           {notice && !error && <p role="status" className="form-message success">{notice}</p>}
           {error && <p role="alert" className="form-message error">{error}</p>}
 
-          {authMode === 'password' ? (
-            <form onSubmit={handleLogin}>
+          <form onSubmit={handleLogin}>
               <label className="form-field">Email address
                 <input type="email" autoComplete="email" required placeholder="you@example.com" name="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </label>
@@ -480,67 +406,7 @@ export function Login() {
               <button type="submit" className="btn btn-primary w-full" disabled={submitting}>
                 {submitting ? 'Signing in…' : 'Sign in'} <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
               </button>
-            </form>
-          ) : (
-            <form onSubmit={otpSent ? handleVerifyOtpLogin : handleSendOtp} className="space-y-4">
-              <label className="form-field">
-                <div className="flex justify-between items-center mb-1">
-                  <span>Mobile number or Email</span>
-                  {otpSent && (
-                    <button
-                      type="button"
-                      className="text-xs text-primary-dark underline hover:no-underline font-semibold"
-                      onClick={() => { setOtpSent(false); setOtpCode(''); setError(''); }}
-                    >
-                      Change
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="9876543210 or you@example.com"
-                    value={otpIdentifier}
-                    disabled={otpSent}
-                    onChange={(e) => setOtpIdentifier(e.target.value)}
-                  />
-                  {otpSent && (
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 text-xs font-semibold rounded-button border border-border bg-surface hover:bg-surface-muted disabled:opacity-50 whitespace-nowrap"
-                      disabled={otpCooldown > 0 || otpSending}
-                      onClick={handleSendOtp}
-                    >
-                      {otpSending ? 'Sending…' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : 'Resend OTP'}
-                    </button>
-                  )}
-                </div>
-              </label>
-
-              {otpSent && (
-                <label className="form-field">6-digit Verification Code (OTP)
-                  <input
-                    type="text"
-                    required
-                    maxLength={8}
-                    placeholder="Enter 6-digit code"
-                    value={otpCode}
-                    autoFocus
-                    onChange={(e) => setOtpCode(e.target.value)}
-                  />
-                </label>
-              )}
-
-              <button
-                type="submit"
-                className="btn btn-primary w-full"
-                disabled={submitting || otpSending}
-              >
-                {otpSending ? 'Sending OTP…' : submitting ? 'Verifying…' : otpSent ? 'Verify & Sign in' : 'Send Verification OTP'}
-              </button>
-            </form>
-          )}
+          </form>
 
           <div className="auth-switch">New to BookADoctors? <Link to="/register">Create an account</Link></div>
         </div>
@@ -560,11 +426,15 @@ export function Register() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [emailOtp, setEmailOtp] = useState('')
+  const [verificationSent, setVerificationSent] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
   // GOOGLE SIGN-IN FEATURE — separate loading flag, same reasoning as Login above.
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
   const navigate = useNavigate()
   const register = useAppStore((state) => state.register)
   const registerDoctor = useAppStore((state) => state.registerDoctor)
+  const sendRegistrationEmailOtp = useAppStore((state) => state.sendRegistrationEmailOtp)
   const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
   const specializations = useAppStore((state) => state.data.specializations)
   const fetchSpecializations = useAppStore((state) => state.fetchSpecializations)
@@ -587,6 +457,23 @@ export function Register() {
       if (!doctorForm.registrationNumber.trim()) { setError('Please enter your medical council registration number.'); return }
       if (doctorForm.experienceYears === '' || Number(doctorForm.experienceYears) < 0 || Number(doctorForm.experienceYears) > 80) { setError('Please enter your years of experience (0-80).'); return }
     }
+    if (!verificationSent) {
+      setOtpSending(true)
+      setError('')
+      setMessage('')
+      try {
+        const response = await sendRegistrationEmailOtp(form.email.trim())
+        const data = response?.data || response
+        setVerificationSent(true)
+        setMessage(data?.devOtp ? `Verification code sent to your email. Dev code: ${data.devOtp}` : 'Verification code sent to your email. Enter it below to create your account.')
+      } catch (otpError) {
+        setError(otpError.message)
+      } finally {
+        setOtpSending(false)
+      }
+      return
+    }
+    if (!/^\d{6}$/.test(emailOtp.trim())) { setError('Please enter the 6-digit code sent to your email.'); return }
     setSubmitting(true)
     try {
       const account = accountType === 'doctor'
@@ -595,6 +482,7 @@ export function Register() {
             phone: trimmedPhone,
             email: form.email,
             password: form.password,
+            emailOtp: emailOtp.trim(),
             specializationId: doctorForm.specializationId,
             // Mandatory now (validated above) rather than the old `|| undefined` fallback that
             // let a self-registered doctor skip them entirely.
@@ -603,7 +491,7 @@ export function Register() {
             experienceYears: Number(doctorForm.experienceYears),
             consultationFee: Number(doctorForm.consultationFee) || 0,
           })
-        : await register({ name: trimmedName, phone: trimmedPhone, email: form.email, password: form.password })
+        : await register({ name: trimmedName, phone: trimmedPhone, email: form.email, password: form.password, emailOtp: emailOtp.trim() })
       setError('')
       navigate(roleHome(account.role), { replace: true })
     } catch (registrationError) {
@@ -620,10 +508,9 @@ export function Register() {
   // /auth/register already enforces for the email/password form (a doctor account can only ever
   // be created via the dedicated "Submit for verification" doctor form below, never a generic
   // sign-up button).
-  const handleGoogleSignIn = async () => {
+  const handleGoogleCredential = async (idToken) => {
     setGoogleSubmitting(true)
     try {
-      const idToken = await signInWithGoogle()
       const account = await loginWithGoogle(idToken)
       setError('')
       setMessage('')
@@ -634,6 +521,11 @@ export function Register() {
     } finally {
       setGoogleSubmitting(false)
     }
+  }
+
+  const handleGoogleError = (googleError) => {
+    setMessage('')
+    setError(googleError.message)
   }
 
   const { dark, toggle } = useTheme()
@@ -688,9 +580,14 @@ export function Register() {
             <button type="button" role="tab" aria-selected={accountType === 'doctor'} onClick={() => setAccountType('doctor')} className={`touch-target rounded-button border px-3 py-2 text-sm font-semibold ${accountType === 'doctor' ? 'border-primary-dark bg-primary-light text-primary-dark' : 'border-border bg-white text-muted'}`}>I'm a doctor</button>
           </div>
 
-          <button type="button" className="google-auth-button mt-3" onClick={handleGoogleSignIn} disabled={googleSubmitting}>
-            <span className="google-g" aria-hidden="true">G</span>{googleSubmitting ? 'Signing in…' : 'Continue with Google'}
-          </button>
+          <div className="mt-3">
+            <GoogleSignInButton
+              disabled={googleSubmitting}
+              onCredential={handleGoogleCredential}
+              onError={handleGoogleError}
+              text="signup_with"
+            />
+          </div>
           <p className="mt-2 text-center text-xs text-muted">
             {accountType === 'doctor'
               ? 'Your account will be reviewed by an admin before you appear in patient search — you can sign in right away to check your status.'
@@ -705,7 +602,7 @@ export function Register() {
           <form className="space-y-3" onSubmit={handleSubmit}>
             <label className="form-field">Full name<input type="text" value={form.name} onChange={update('name')} placeholder="Enter your full name" pattern="[A-Za-z][A-Za-z .'-]{1,149}" title="Letters only, at least 2 characters." required /></label>
             <label className="form-field">Phone<input type="tel" value={form.phone} onChange={update('phone')} placeholder="Enter mobile number" pattern="[6-9][0-9]{9}" maxLength="10" title="A valid 10-digit mobile number." required /></label>
-            <label className="form-field">Email address<input type="email" value={form.email} onChange={update('email')} placeholder="you@example.com" required /></label>
+            <label className="form-field">Email address<input type="email" value={form.email} onChange={update('email')} placeholder="you@example.com" disabled={verificationSent} required /></label>
             <label className="form-field">Password<input type="password" value={form.password} onChange={update('password')} placeholder="Create password" minLength="8" pattern="(?=.*[A-Za-z])(?=.*\d).{8,72}" title="At least 8 characters, with letters and numbers." required /></label>
             <label className="form-field">Confirm password<input type="password" value={form.confirm} onChange={update('confirm')} placeholder="Confirm password" minLength="8" required /></label>
 
@@ -724,7 +621,9 @@ export function Register() {
               </>
             )}
 
-            <button type="submit" className="btn btn-primary w-full mt-4" disabled={submitting}>{submitting ? 'Creating account…' : accountType === 'doctor' ? 'Submit for verification' : 'Create account'}</button>
+            {verificationSent && <label className="form-field">Email verification code<input type="text" inputMode="numeric" autoComplete="one-time-code" value={emailOtp} onChange={(event) => setEmailOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6-digit code" required /></label>}
+            {verificationSent && <button type="button" className="w-full text-sm font-semibold text-primary-dark" disabled={otpSending} onClick={() => { setVerificationSent(false); setEmailOtp(''); setMessage(''); }}>Change email or request a new code</button>}
+            <button type="submit" className="btn btn-primary w-full mt-4" disabled={submitting || otpSending}>{otpSending ? 'Sending code…' : submitting ? 'Creating account…' : verificationSent ? 'Verify email & create account' : 'Send email verification code'}</button>
           </form>
 
           <div className="auth-switch">Already registered? <Link to="/login">Sign in</Link></div>

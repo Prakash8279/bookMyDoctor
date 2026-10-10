@@ -281,7 +281,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
                 const SizedBox(height: AppSpacing.sm),
                 Row(
                   children: [
-                    Expanded(
+                    const Expanded(
                       child: StatCard(
                         label: 'Platform commission',
                         value: '—',

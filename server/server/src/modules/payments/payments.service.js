@@ -21,6 +21,7 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../../config/db');
 const redis = require('../../config/redis');
 const env = require('../../config/env');
+const logger = require('../../config/logger');
 const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
@@ -248,7 +249,7 @@ async function getVisiblePaymentOrThrow(id, requester) {
  *   minimum advance amount; whichever was actually authorized by Razorpay (never a client-
  *   supplied figure — see razorpay.service.js#verifyAndRecordPayment).
  */
-async function createPaymentForAppointment(appointmentId, requester, mode, transactionRef, payerUpiId, amount) {
+async function createPaymentForAppointment(appointmentId, requester, mode, transactionRef, payerUpiId, amount, gatewayOrderId = null) {
   // Set inside the transaction below (closure variable — the transaction's return value is just
   // the new payment's id, but the post-transaction notification below needs to know whether THIS
   // payment was the one that just unlocked a pending_payment booking, plus the token number to
@@ -310,10 +311,6 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
       }
 
-      if (appointment.paymentStatus === 'paid') {
-        throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
-      }
-
       // REPLAY-PROTECTION: if a payment already exists for this exact (appointment, transactionRef) pair,
       // return the existing row instead of creating a duplicate.
       if (transactionRef) {
@@ -326,6 +323,14 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         }
       }
 
+      // A distinct online gateway payment can arrive after the appointment was settled (for
+      // example an old checkout tab completed after a retry). Never lose that captured payment:
+      // persist it and immediately refund it below. Offline staff entries still fail normally.
+      const alreadyPaidByAnotherTransaction = appointment.paymentStatus === 'paid';
+      if (alreadyPaidByAnotherTransaction && (mode !== 'online' || !transactionRef)) {
+        throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
+      }
+
       // ── AUTHORITATIVE CONFIRMATION & CAPACITY CHECK ──────────────────────────
       // When an online payment is captured by Razorpay, we MUST verify whether the booking can actually
       // be confirmed:
@@ -334,7 +339,12 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       let cannotConfirmBooking = false;
       let cannotConfirmReason = null;
 
-      if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
+      let refundOnlyDuplicatePayment = false;
+      if (alreadyPaidByAnotherTransaction) {
+        cannotConfirmBooking = true;
+        refundOnlyDuplicatePayment = true;
+        cannotConfirmReason = 'This appointment was already paid through a different payment attempt.';
+      } else if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
         cannotConfirmBooking = true;
         cannotConfirmReason = `Appointment status is already "${appointment.status}".`;
       } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {
@@ -385,7 +395,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         // Razorpay payment was CAPTURED, but booking cannot be confirmed!
         // NO SUCCESSFUL PAYMENT MAY EVER DISAPPEAR.
         // 1. Maintain complete Payment record in DB.
-        // 2. Mark appointment status = 'cancelled', paymentStatus = 'refunded'.
+        // 2. Keep the local payment as paid until Razorpay confirms its refund.
         // 3. Create persistent Refund record (status: 'pending').
         // 4. Return context to execute Razorpay refund immediately after commit.
         const receiptNumber = await idGenerators.nextReceiptNumber(tx);
@@ -411,22 +421,24 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           select: { id: true },
         });
 
-        await tx.appointment.update({
-          where: { id: appointment.id },
-          data: {
-            status: 'cancelled',
-            paymentStatus: 'refunded',
-            paymentMethod: mode,
-          },
-        });
+        if (!refundOnlyDuplicatePayment) {
+          await tx.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              status: 'cancelled',
+              paymentStatus: 'paid',
+              paymentMethod: mode,
+            },
+          });
 
-        await tx.queueToken.deleteMany({
-          where: { appointmentId: appointment.id },
-        });
+          await tx.queueToken.deleteMany({
+            where: { appointmentId: appointment.id },
+          });
 
-        await paymentHoldService.markHoldRefundedTx(tx, appointment.id);
+          await paymentHoldService.releaseHoldForRefundTx(tx, appointment.id);
+        }
 
-        const idempotencyKey = `refund:appt:${appointment.id}`;
+        const idempotencyKey = `refund:gateway-payment:${transactionRef}`;
         const refund = await tx.refund.upsert({
           where: { idempotencyKey },
           create: {
@@ -523,7 +535,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           where: { appointmentId: appointment.id, status: 'on_hold' },
           data: { status: 'waiting' },
         });
-        await paymentHoldService.confirmHoldTx(tx, appointment.id, transactionRef);
+        await paymentHoldService.confirmHoldTx(tx, appointment.id, gatewayOrderId);
       }
 
       notifyContext = {
@@ -1029,7 +1041,7 @@ async function getPaymentReconciliationReport({
       bookedAndPaidCount++;
     } else if (p.status === 'refunded' || latestRefund?.status === 'processed') {
       refundedCount++;
-    } else if (latestRefund?.status === 'pending') {
+    } else if (['pending', 'processing'].includes(latestRefund?.status)) {
       refundPendingCount++;
     } else if (latestRefund?.status === 'failed') {
       refundFailedCount++;
@@ -1053,7 +1065,7 @@ async function getPaymentReconciliationReport({
       reconciliationCategory = 'BOOKED_AND_PAID';
     } else if (p.status === 'refunded' || latestRefund?.status === 'processed') {
       reconciliationCategory = 'REFUNDED';
-    } else if (latestRefund?.status === 'pending') {
+    } else if (['pending', 'processing'].includes(latestRefund?.status)) {
       reconciliationCategory = 'REFUND_PENDING';
     } else if (latestRefund?.status === 'failed') {
       reconciliationCategory = 'REFUND_FAILED';

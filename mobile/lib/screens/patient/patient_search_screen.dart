@@ -461,7 +461,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     return _FilterField(
       label: label,
       child: DropdownButtonFormField<String>(
-        value: safeValue,
+        initialValue: safeValue,
         isExpanded: true,
         dropdownColor: Colors.white,
         borderRadius: BorderRadius.circular(12),

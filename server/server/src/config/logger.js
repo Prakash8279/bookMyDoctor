@@ -29,7 +29,6 @@ const prodFormat = combine(timestamp(), errors({ stack: true }), json());
 let rotateTransport = null;
 if (env.isProduction) {
   try {
-    // eslint-disable-next-line global-require, import/no-extraneous-dependencies
     const DailyRotateFile = require('winston-daily-rotate-file');
     rotateTransport = new DailyRotateFile({
       dirname: 'logs',

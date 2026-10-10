@@ -4,6 +4,7 @@
  * response via utils/apiResponse.js. Stay THIN — no DB queries, no business rules here.
  */
 const doctorsService = require('./doctors.service');
+const authService = require('../auth/auth.service');
 const tokenService = require('../../services/tokenService');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
@@ -60,7 +61,9 @@ const registerDoctor = asyncHandler(async (req, res) => {
     consultationFee,
     emergencyFee,
     bio,
+    emailOtp,
   } = req.body;
+  await authService.verifyRegistrationEmailOtp({ email, otp: emailOtp });
   const doctor = await doctorsService.createDoctor(
     { name, email, password, phone, city, specializationId, qualification, registrationNumber, experienceYears, consultationFee, emergencyFee, bio },
     null

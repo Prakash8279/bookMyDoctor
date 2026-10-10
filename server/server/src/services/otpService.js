@@ -1,6 +1,7 @@
 /**
  * Redis-backed OTP generation, rate limiting, and verification service.
- * Supports Email OTP and SMS OTP for Login, Registration, and Forgot Password flows.
+ * Supports email OTP for account registration only. Login uses email/password or Google, and
+ * password reset uses its emailed reset link.
  */
 const crypto = require('crypto');
 const redis = require('../config/redis');
@@ -8,32 +9,13 @@ const env = require('../config/env');
 const logger = require('../config/logger');
 const ApiError = require('../utils/ApiError');
 const emailService = require('./emailService');
-const smsService = require('./smsService');
 
 const OTP_TTL_SECONDS = 300; // 5 minutes
 const COOLDOWN_SECONDS = env.isProduction ? 30 : 10;
 const MAX_ATTEMPTS = 5;
 
-/**
- * Normalizes an identifier (email or phone).
- */
-function normalizeIdentifier(rawIdentifier) {
-  if (!rawIdentifier || typeof rawIdentifier !== 'string') return '';
-  const trimmed = rawIdentifier.trim();
-  if (trimmed.includes('@')) {
-    return trimmed.toLowerCase();
-  }
-  // Strip all non-digit characters for phone numbers
-  const digits = trimmed.replace(/\D/g, '');
-  // If Indian number with 10 digits or 12 digits (+91)
-  return digits.length > 10 ? digits.slice(-10) : digits;
-}
-
-/**
- * Autodetects whether the identifier is an email or phone number.
- */
-function detectChannel(identifier) {
-  return identifier.includes('@') ? 'email' : 'sms';
+function normalizeEmail(rawEmail) {
+  return typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
 }
 
 /**
@@ -44,20 +26,17 @@ function generateOtp() {
 }
 
 /**
- * Dispatches an OTP to the user via their chosen or auto-detected channel.
- *
- * @param {{ identifier: string, purpose: 'login'|'register'|'forgot_password', channel?: 'email'|'sms' }} param0
+ * Dispatches a registration OTP to an email address.
+ * @param {{ email: string }} param0
  */
-async function sendOtp({ identifier, purpose, channel }) {
-  const normalized = normalizeIdentifier(identifier);
-  if (!normalized) {
-    throw new ApiError(400, 'INVALID_IDENTIFIER', 'Valid email address or 10-digit phone number is required.');
+async function sendOtp({ email }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) {
+    throw new ApiError(400, 'INVALID_EMAIL', 'A valid email address is required.');
   }
-
-  const selectedChannel = channel || detectChannel(normalized);
-  const otpKey = `otp:${purpose}:${normalized}`;
-  const cooldownKey = `otp:cooldown:${purpose}:${normalized}`;
-  const attemptsKey = `otp:attempts:${purpose}:${normalized}`;
+  const otpKey = `otp:register:${normalized}`;
+  const cooldownKey = `otp:cooldown:register:${normalized}`;
+  const attemptsKey = `otp:attempts:register:${normalized}`;
 
   // Cooldown check (prevent spamming user / provider)
   const inCooldown = await redis.get(cooldownKey);
@@ -78,20 +57,12 @@ async function sendOtp({ identifier, purpose, channel }) {
   // Set fresh cooldown
   await redis.setex(cooldownKey, COOLDOWN_SECONDS, '1');
 
-  logger.info(`[otpService] Dispatched OTP for purpose=${purpose} channel=${selectedChannel} to=${normalized}`);
+  logger.info(`[otpService] Dispatched registration OTP to=${normalized}`);
 
-  const purposeLabels = {
-    login: 'Login',
-    register: 'Registration',
-    forgot_password: 'Password Reset',
-  };
-  const label = purposeLabels[purpose] || 'Verification';
-
-  if (selectedChannel === 'email') {
-    await emailService.sendEmail({
+  await emailService.sendEmail({
       to: normalized,
       subject: `BookMyDoctor verification code: ${otp}`,
-      text: `Hello,\n\nYour BookMyDoctor verification code for ${label} is: ${otp}\n\nThis code is valid for 5 minutes.\n\nSecurity Notice: For your security, never share this code with anyone. BookMyDoctor staff will never ask for your verification code.\n\nIf you did not request this verification, no further action is required and you can safely disregard this email.\n\nThis message was sent to ${normalized}.\n© 2026 BookMyDoctor. All rights reserved.`,
+      text: `Hello,\n\nYour BookMyDoctor email verification code is: ${otp}\n\nThis code is valid for 5 minutes.\n\nSecurity Notice: For your security, never share this code with anyone. BookMyDoctor staff will never ask for your verification code.\n\nIf you did not request this verification, no further action is required and you can safely disregard this email.\n\nThis message was sent to ${normalized}.\n© 2026 BookMyDoctor. All rights reserved.`,
       html: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -106,7 +77,7 @@ async function sendOtp({ identifier, purpose, channel }) {
     </div>
     <h2 style="font-size: 18px; margin: 0 0 12px; color: #0f172a;">Verification Code</h2>
     <p style="font-size: 14px; margin: 0 0 16px; line-height: 1.5;">
-      Hello, here is your one-time verification code for <strong>${label}</strong>:
+      Hello, here is your one-time verification code to verify your email address:
     </p>
     <div style="text-align: center; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
       <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0284c7;">${otp}</span>
@@ -128,20 +99,11 @@ async function sendOtp({ identifier, purpose, channel }) {
 </body>
 </html>`,
     });
-  } else {
-    // SMS
-    await smsService.sendSms({
-      to: normalized,
-      message: `Your BookMyDoctor OTP for ${label} is ${otp}. Valid for 5 minutes. Do not share this code.`,
-      otp,
-    });
-  }
 
   return {
     success: true,
-    message: `Verification OTP sent to ${normalized} via ${selectedChannel.toUpperCase()}`,
-    channel: selectedChannel,
-    identifier: normalized,
+    message: `Verification code sent to ${normalized}.`,
+    email: normalized,
     cooldownSeconds: COOLDOWN_SECONDS,
     // Provide devOtp in non-production for instant visibility
     ...(!env.isProduction ? { devOtp: otp } : {}),
@@ -151,19 +113,19 @@ async function sendOtp({ identifier, purpose, channel }) {
 /**
  * Verifies the OTP entered by the user.
  *
- * @param {{ identifier: string, purpose: 'login'|'register'|'forgot_password', otp: string }} param0
+ * @param {{ email: string, otp: string }} param0
  */
-async function verifyOtp({ identifier, purpose, otp }) {
-  const normalized = normalizeIdentifier(identifier);
+async function verifyOtp({ email, otp }) {
+  const normalized = normalizeEmail(email);
   // Strip non-digits and spaces from the OTP input
   const cleanOtp = String(otp || '').trim().replace(/\D/g, '');
 
   if (!normalized || !cleanOtp) {
-    throw new ApiError(400, 'INVALID_INPUT', 'Identifier and a valid numeric OTP are required.');
+    throw new ApiError(400, 'INVALID_INPUT', 'Email and a valid numeric verification code are required.');
   }
 
-  const otpKey = `otp:${purpose}:${normalized}`;
-  const attemptsKey = `otp:attempts:${purpose}:${normalized}`;
+  const otpKey = `otp:register:${normalized}`;
+  const attemptsKey = `otp:attempts:register:${normalized}`;
 
   const storedOtp = await redis.get(otpKey);
   if (!storedOtp) {
@@ -191,8 +153,7 @@ async function verifyOtp({ identifier, purpose, otp }) {
 }
 
 module.exports = {
-  normalizeIdentifier,
-  detectChannel,
+  normalizeEmail,
   generateOtp,
   sendOtp,
   verifyOtp,

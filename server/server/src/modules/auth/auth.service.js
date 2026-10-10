@@ -13,7 +13,6 @@ const ApiError = require('../../utils/ApiError');
 const tokenService = require('../../services/tokenService');
 const activityLogService = require('../../services/activityLogService');
 const emailService = require('../../services/emailService');
-const smsService = require('../../services/smsService');
 const logger = require('../../config/logger');
 const idGenerators = require('../../utils/idGenerators');
 const { verifyGoogleIdToken } = require('../../services/googleIdTokenVerifier');
@@ -501,184 +500,20 @@ async function resetPassword({ token, newPassword }) {
 }
 
 /**
- * Finds an active user by email or 10-digit phone number.
- * Uses safe lookup: if multiple accounts exist with the same phone, refuses ambiguous login to prevent account takeover.
+ * Sends an OTP only to the email address that will be used for a new account. Phone numbers
+ * remain contact details; they are never an authentication or verification channel.
  */
-async function findUserByIdentifier(rawIdentifier) {
-  const norm = otpService.normalizeIdentifier(rawIdentifier);
-  if (!norm) return null;
-
-  if (norm.includes('@')) {
-    return prisma.user.findUnique({
-      where: { email: norm },
-      select: { ...USER_SUMMARY_SELECT, passwordHash: true },
-    });
+async function sendRegistrationEmailOtp({ email }) {
+  const normalizedEmail = normalizeEmail(email);
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+  if (existing) {
+    throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists. Please sign in instead.');
   }
-
-  // Look up by phone formats
-  const variants = [
-    { phone: norm },
-    { phone: `+91${norm}` },
-    { phone: `+91 ${norm}` },
-    { phone: `0${norm}` },
-    { phone: `91${norm}` },
-    { phone: norm.slice(-10) },
-  ];
-
-  const users = await prisma.user.findMany({
-    where: { OR: variants },
-    select: { ...USER_SUMMARY_SELECT, passwordHash: true },
-  });
-
-  if (users.length === 0) return null;
-  if (users.length > 1) {
-    logger.warn(`[authService] Multiple accounts (${users.length}) found for phone ${norm}: ${users.map((u) => u.id).join(', ')}`);
-    throw new ApiError(409, 'AMBIGUOUS_PHONE_ACCOUNT', 'Multiple accounts are associated with this mobile number. Please log in with your email address or contact support.');
-  }
-
-  return users[0];
+  return otpService.sendOtp({ email: normalizedEmail });
 }
 
-/**
- * Sends an OTP for Login, Registration, or Forgot Password.
- */
-async function sendAuthOtp({ identifier, purpose, channel }) {
-  const norm = otpService.normalizeIdentifier(identifier);
-  if (!norm) {
-    throw new ApiError(400, 'INVALID_IDENTIFIER', 'Valid email or 10-digit phone number is required.');
-  }
-
-  if (purpose === 'register') {
-    let existing;
-    try {
-      existing = await findUserByIdentifier(norm);
-    } catch (err) {
-      if (err.statusCode === 409) {
-        throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', 'An account with this email/phone already exists. Please login instead.');
-      }
-      throw err;
-    }
-    if (existing) {
-      throw new ApiError(409, 'ACCOUNT_ALREADY_EXISTS', 'An account with this email/phone already exists. Please login instead.');
-    }
-  } else if (purpose === 'forgot_password') {
-    const existing = await findUserByIdentifier(norm);
-    if (!existing) {
-      throw new ApiError(404, 'ACCOUNT_NOT_FOUND', 'No account found with this email or phone number.');
-    }
-    if (existing.status === 'disabled') {
-      throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
-    }
-  }
-
-  return otpService.sendOtp({ identifier: norm, purpose, channel });
-}
-
-/**
- * Verifies OTP for passwordless login (auto-registers if first-time user).
- */
-async function verifyOtpLogin({ identifier, otp }) {
-  const norm = otpService.normalizeIdentifier(identifier);
-  await otpService.verifyOtp({ identifier: norm, purpose: 'login', otp });
-
-  let user = await findUserByIdentifier(norm);
-  let isNewAccount = false;
-
-  if (!user) {
-    // Modern UX: Auto-register patient account on first-time OTP verification
-    isNewAccount = true;
-    user = await prisma.$transaction(async (tx) => {
-      const patientNumber = await idGenerators.nextPatientNumber();
-      const isEmail = norm.includes('@');
-      const fallbackName = isEmail ? norm.split('@')[0] : `User ${norm.slice(-4)}`;
-
-      const created = await tx.user.create({
-        data: {
-          name: fallbackName,
-          email: isEmail ? norm : `user_${norm}@bookmydoctor.local`,
-          phone: isEmail ? null : norm,
-          passwordHash: null,
-          role: 'patient',
-          status: 'active',
-          patientNumber,
-        },
-        select: USER_SUMMARY_SELECT,
-      });
-
-      await tx.patientProfile.create({ data: { userId: created.id } });
-      return created;
-    });
-  } else {
-    if (user.status === 'disabled') {
-      throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
-    }
-  }
-
-  const tokens = await tokenService.issueTokenPair(user);
-
-  await activityLogService.log({
-    actorUserId: user.id,
-    actorRole: user.role,
-    actionType: isNewAccount ? 'auth.register_otp' : 'auth.login_otp',
-    targetEntityType: 'user',
-    targetEntityId: user.id,
-    description: isNewAccount ? 'Patient registered via OTP' : 'User logged in via OTP',
-  });
-
-  const { passwordHash, ...safeUser } = user;
-  return { user: safeUser, ...tokens, isNewAccount };
-}
-
-/**
- * Verifies OTP and registers a new patient account.
- */
-async function verifyOtpRegister({ name, email, password, phone, city, otp, verifyTarget }) {
-  const target = otpService.normalizeIdentifier(verifyTarget || phone || email);
-  const normalizedEmail = otpService.normalizeIdentifier(email);
-  const normalizedPhone = otpService.normalizeIdentifier(phone);
-  if (!target || (target !== normalizedEmail && target !== normalizedPhone)) {
-    throw new ApiError(
-      400,
-      'OTP_TARGET_MISMATCH',
-      'The OTP must be verified against the email address or phone number being registered.'
-    );
-  }
-  await otpService.verifyOtp({ identifier: target, purpose: 'register', otp });
-
-  // Complete normal registration
-  return register({ name, email, password, phone, city });
-}
-
-/**
- * Resets user password using verified OTP.
- */
-async function resetPasswordWithOtp({ identifier, otp, newPassword }) {
-  const norm = otpService.normalizeIdentifier(identifier);
-  await otpService.verifyOtp({ identifier: norm, purpose: 'forgot_password', otp });
-
-  const user = await findUserByIdentifier(norm);
-  if (!user) {
-    throw new ApiError(404, 'ACCOUNT_NOT_FOUND', 'No account found with this email or phone.');
-  }
-  if (user.status === 'disabled') {
-    throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
-  }
-
-  const passwordHash = await bcrypt.hash(newPassword, env.bcryptSaltRounds);
-  await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-
-  await tokenService.revokeAllForUser(user.id);
-
-  await activityLogService.log({
-    actorUserId: user.id,
-    actorRole: user.role,
-    actionType: 'auth.password_reset_otp',
-    targetEntityType: 'user',
-    targetEntityId: user.id,
-    description: 'Password reset via OTP verification',
-  });
-
-  return { success: true, message: 'Password has been reset successfully. Please log in with your new password.' };
+async function verifyRegistrationEmailOtp({ email, otp }) {
+  return otpService.verifyOtp({ email: normalizeEmail(email), otp });
 }
 
 module.exports = {
@@ -690,10 +525,7 @@ module.exports = {
   getMe,
   forgotPassword,
   resetPassword,
-  findUserByIdentifier,
   normalizePhone,
-  sendAuthOtp,
-  verifyOtpLogin,
-  verifyOtpRegister,
-  resetPasswordWithOtp,
+  sendRegistrationEmailOtp,
+  verifyRegistrationEmailOtp,
 };

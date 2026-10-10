@@ -140,6 +140,7 @@ const registerDoctor = [
     .isLength({ min: 8, max: 72 })
     .matches(PASSWORD_RE)
     .withMessage('password must include at least one letter and one number.'),
+  body('emailOtp').trim().notEmpty().withMessage('Email verification code is required.').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Enter the 6-digit code sent to your email.'),
   body('phone').trim().notEmpty().withMessage('phone is required.').matches(PHONE_RE).withMessage('enter a valid 10-digit mobile number.'),
   body('city').optional({ values: 'falsy' }).trim().isLength({ max: 100 }),
   body('specializationId').notEmpty().withMessage('specializationId is required.').isUUID(),

@@ -24,6 +24,7 @@
 const crypto = require('crypto');
 const prisma = require('../../config/db');
 const env = require('../../config/env');
+const logger = require('../../config/logger');
 const ApiError = require('../../utils/ApiError');
 const activityLogService = require('../../services/activityLogService');
 const paymentsService = require('./payments.service');
@@ -395,7 +396,7 @@ async function verifyAndRecordPayment(body, requester) {
   // guards — 'online' mode, Razorpay's payment id as the transaction reference — via the shared
   // recordOnlinePayment helper below (also used by the webhook reconciliation path, so both ways
   // a payment can land in our system go through the exact same recording/cache-busting logic).
-  const row = await recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount);
+  const row = await recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount, razorpayOrderId);
 
   // Lazy require to avoid a load cycle, matching payments.service.js#createPayment's own pattern.
   const appointmentsService = require('../appointments/appointments.service');
@@ -465,15 +466,17 @@ async function verifyAndRecordPayment(body, requester) {
  * @param {{id:string, role:string}} requester
  * @param {string} razorpayPaymentId
  * @param {number} chargedAmount
+ * @param {string|null} razorpayOrderId
  */
-async function recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount) {
+async function recordOnlinePayment(appointmentId, requester, razorpayPaymentId, chargedAmount, razorpayOrderId = null) {
   const row = await paymentsService.createPaymentForAppointment(
     appointmentId,
     requester,
     'online',
     razorpayPaymentId,
     null, // payerUpiId — not applicable to this gateway flow (see payments.service.js's new param)
-    chargedAmount
+    chargedAmount,
+    razorpayOrderId
   );
 
   await activityLogService.log({
@@ -593,7 +596,7 @@ async function reconcilePendingPaymentsFromWebhook(rawBody, signatureHeader) {
   const requester = { id: notes.patientUserId, role: 'patient' };
 
   try {
-    const row = await recordOnlinePayment(notes.appointmentId, requester, razorpayPaymentId, chargedAmount);
+    const row = await recordOnlinePayment(notes.appointmentId, requester, razorpayPaymentId, chargedAmount, razorpayOrderId);
     return row && row.autoRefunded ? { handled: true, autoRefunded: true, paymentId: row.id } : { handled: true };
   } catch (err) {
     if (err instanceof ApiError && err.statusCode === 409) {
@@ -674,26 +677,7 @@ async function handleRefundWebhookEvent(event) {
       return { handled: true, alreadyProcessed: true };
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.refund.update({
-        where: { id: refund.id },
-        data: {
-          razorpayRefundId,
-          status: 'processed',
-          updatedAt: new Date(),
-        },
-      });
-
-      await tx.appointment.update({
-        where: { id: refund.appointmentId },
-        data: { paymentStatus: 'refunded' },
-      });
-
-      await tx.payment.updateMany({
-        where: { appointmentId: refund.appointmentId, transactionRef: refund.razorpayPaymentId },
-        data: { status: 'refunded' },
-      });
-    });
+    await finalizeProcessedRefund(refund, razorpayRefundId);
 
     await activityLogService.log({
       actionType: 'payment.refund_processed',
@@ -730,6 +714,100 @@ async function handleRefundWebhookEvent(event) {
 }
 
 const RAZORPAY_REFUNDS_URL = 'https://api.razorpay.com/v1/payments';
+const REFUND_PROCESSING_LEASE_MS = 5 * 60 * 1000;
+
+async function markRefundFailed(refundId, failureReason) {
+  await prisma.refund.update({
+    where: { id: refundId },
+    data: { status: 'failed', failureReason, updatedAt: new Date() },
+  });
+}
+
+async function finalizeProcessedRefund(refund, razorpayRefundId) {
+  await prisma.$transaction(async (tx) => {
+    await tx.refund.update({
+      where: { id: refund.id },
+      data: { razorpayRefundId, status: 'processed', failureReason: null, updatedAt: new Date() },
+    });
+    await tx.payment.updateMany({
+      where: { id: refund.paymentId },
+      data: { status: 'refunded' },
+    });
+
+    // A duplicate late payment must not flip the valid original payment/appointment to refunded.
+    const remainingPaidPayments = await tx.payment.count({
+      where: { appointmentId: refund.appointmentId, status: 'paid', id: { not: refund.paymentId } },
+    });
+    if (remainingPaidPayments === 0) {
+      await tx.appointment.update({
+        where: { id: refund.appointmentId },
+        data: { paymentStatus: 'refunded' },
+      });
+    }
+    await paymentHoldService.markHoldRefundedTx(tx, refund.appointmentId);
+  });
+}
+
+async function saveGatewayRefundState(refund, gatewayRefund) {
+  const gatewayStatus = gatewayRefund.status === 'processed' ? 'processed' : 'pending';
+  if (gatewayStatus === 'processed') {
+    await finalizeProcessedRefund(refund, gatewayRefund.id);
+  } else {
+    await prisma.refund.update({
+      where: { id: refund.id },
+      data: { razorpayRefundId: gatewayRefund.id, status: 'pending', failureReason: null, updatedAt: new Date() },
+    });
+  }
+  return { success: true, status: gatewayStatus, razorpayRefundId: gatewayRefund.id };
+}
+
+async function findExistingGatewayRefund(paymentId, refundId) {
+  let response;
+  try {
+    response = await fetch(`${RAZORPAY_REFUNDS_URL}/${encodeURIComponent(paymentId)}/refunds?count=100`, {
+      headers: { Authorization: razorpayAuthHeader() },
+    });
+  } catch (_err) {
+    throw new ApiError(502, 'REFUND_RECONCILIATION_UNAVAILABLE', 'Could not safely reconcile the prior refund attempt.');
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || !Array.isArray(payload.items)) {
+    throw new ApiError(502, 'REFUND_RECONCILIATION_UNAVAILABLE', 'Could not safely reconcile the prior refund attempt.');
+  }
+  return payload.items.find((item) => item && item.notes && item.notes.refundId === refundId) || null;
+}
+
+async function claimRefundExecution(refundRecord) {
+  if (refundRecord.status === 'processed') {
+    return { claimed: false, result: { success: true, status: 'processed', razorpayRefundId: refundRecord.razorpayRefundId, alreadyProcessed: true } };
+  }
+  if (refundRecord.status === 'pending' && refundRecord.razorpayRefundId) {
+    return { claimed: false, result: { success: true, status: 'pending', razorpayRefundId: refundRecord.razorpayRefundId, inProgress: true } };
+  }
+
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - REFUND_PROCESSING_LEASE_MS);
+  const claim = await prisma.refund.updateMany({
+    where: {
+      id: refundRecord.id,
+      OR: [
+        { status: 'pending', razorpayRefundId: null },
+        { status: 'failed' },
+        { status: 'processing', updatedAt: { lte: staleBefore } },
+      ],
+    },
+    data: { status: 'processing', failureReason: null, updatedAt: now },
+  });
+  if (claim.count === 1) {
+    return { claimed: true, needsReconciliation: refundRecord.status !== 'pending' };
+  }
+
+  const latest = await prisma.refund.findUnique({ where: { id: refundRecord.id } });
+  if (latest && latest.status === 'processed') {
+    return { claimed: false, result: { success: true, status: 'processed', razorpayRefundId: latest.razorpayRefundId, alreadyProcessed: true } };
+  }
+  return { claimed: false, result: { success: true, status: latest?.status || 'processing', razorpayRefundId: latest?.razorpayRefundId || null, inProgress: true } };
+}
 
 /**
  * Initiates an online refund with Razorpay.
@@ -744,9 +822,9 @@ async function processRefund({ refundId, paymentId, amount, appointmentId, reaso
     throw new ApiError(404, 'REFUND_NOT_FOUND', 'Refund record not found.');
   }
 
-  // Idempotency: if already processed, do not call Razorpay again
-  if (refundRecord.status === 'processed') {
-    return { success: true, status: 'processed', razorpayRefundId: refundRecord.razorpayRefundId, alreadyProcessed: true };
+  const claim = await claimRefundExecution(refundRecord);
+  if (!claim.claimed) {
+    return claim.result;
   }
 
   // Sandbox / mock mode check:
@@ -756,42 +834,26 @@ async function processRefund({ refundId, paymentId, amount, appointmentId, reaso
 
   if (isMockPayment || (isGatewayMissing && process.env.NODE_ENV === 'test')) {
     const mockRefundId = 'rfnd_mock_' + crypto.randomBytes(8).toString('hex');
-    await prisma.$transaction(async (tx) => {
-      await tx.refund.update({
-        where: { id: refundId },
-        data: {
-          razorpayRefundId: mockRefundId,
-          status: 'processed',
-          updatedAt: new Date(),
-        },
-      });
-      await tx.appointment.update({
-        where: { id: appointmentId },
-        data: { paymentStatus: 'refunded' },
-      });
-      await tx.payment.updateMany({
-        where: { appointmentId, transactionRef: paymentId },
-        data: { status: 'refunded' },
-      });
-    });
-
-    return { success: true, status: 'processed', razorpayRefundId: mockRefundId };
+    return saveGatewayRefundState(refundRecord, { id: mockRefundId, status: 'processed' });
   }
 
   if (isGatewayMissing) {
-    await prisma.refund.update({
-      where: { id: refundId },
-      data: {
-        status: 'failed',
-        failureReason: 'PAYMENT_GATEWAY_NOT_CONFIGURED: Online payments/refunds not configured on this server.',
-      },
-    });
+    await markRefundFailed(refundId, 'PAYMENT_GATEWAY_NOT_CONFIGURED: Online payments/refunds not configured on this server.');
     return { success: false, status: 'failed', error: 'Payment gateway not configured' };
   }
 
   const amountPaise = Math.round(Number(amount) * 100);
 
   try {
+    // A retry after a network failure or an abandoned worker lease first adopts a matching gateway
+    // refund (by our immutable refundId note) instead of issuing money a second time.
+    if (claim.needsReconciliation) {
+      const existingGatewayRefund = await findExistingGatewayRefund(paymentId, refundId);
+      if (existingGatewayRefund) {
+        return saveGatewayRefundState(refundRecord, existingGatewayRefund);
+      }
+    }
+
     const response = await fetch(`${RAZORPAY_REFUNDS_URL}/${encodeURIComponent(paymentId)}/refund`, {
       method: 'POST',
       headers: {
@@ -812,50 +874,13 @@ async function processRefund({ refundId, paymentId, amount, appointmentId, reaso
 
     if (!response.ok || !payload || !payload.id) {
       const errorMsg = (payload && payload.error && payload.error.description) || `Gateway returned HTTP ${response.status}`;
-      await prisma.refund.update({
-        where: { id: refundId },
-        data: {
-          status: 'failed',
-          failureReason: errorMsg,
-          updatedAt: new Date(),
-        },
-      });
+      await markRefundFailed(refundId, errorMsg);
       return { success: false, status: 'failed', error: errorMsg };
     }
 
-    const rzpStatus = payload.status === 'processed' ? 'processed' : 'pending';
-    await prisma.$transaction(async (tx) => {
-      await tx.refund.update({
-        where: { id: refundId },
-        data: {
-          razorpayRefundId: payload.id,
-          status: rzpStatus,
-          updatedAt: new Date(),
-        },
-      });
-
-      if (rzpStatus === 'processed') {
-        await tx.appointment.update({
-          where: { id: appointmentId },
-          data: { paymentStatus: 'refunded' },
-        });
-        await tx.payment.updateMany({
-          where: { appointmentId, transactionRef: paymentId },
-          data: { status: 'refunded' },
-        });
-      }
-    });
-
-    return { success: true, status: rzpStatus, razorpayRefundId: payload.id };
+    return saveGatewayRefundState(refundRecord, payload);
   } catch (netErr) {
-    await prisma.refund.update({
-      where: { id: refundId },
-      data: {
-        status: 'failed',
-        failureReason: `Network error: ${netErr.message}`,
-        updatedAt: new Date(),
-      },
-    });
+    await markRefundFailed(refundId, `Network error: ${netErr.message}`);
     return { success: false, status: 'failed', error: netErr.message };
   }
 }

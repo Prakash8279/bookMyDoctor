@@ -29,6 +29,7 @@ const register = [
     .withMessage('Password must be between 8 and 72 characters.')
     .matches(PASSWORD_RE)
     .withMessage('Password must include at least one letter and one number.'),
+  body('emailOtp').trim().notEmpty().withMessage('Email verification code is required.').isLength({ min: 6, max: 6 }).isNumeric().withMessage('Enter the 6-digit code sent to your email.'),
   // COMPLETENESS FIX (this same request) — was `.optional({values:'falsy'})`; the "Create
   // account" form always renders phone as a required field, so the backend now actually enforces
   // that instead of silently accepting its absence.
@@ -82,46 +83,8 @@ const resetPassword = [
   body('newPassword').notEmpty().withMessage('newPassword is required.').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
 ];
 
-const sendOtp = [
-  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
-  body('purpose')
-    .trim()
-    .notEmpty()
-    .withMessage('purpose is required.')
-    .isIn(['login', 'register', 'forgot_password'])
-    .withMessage('purpose must be login, register, or forgot_password.'),
-  body('channel')
-    .optional()
-    .trim()
-    .isIn(['email', 'sms'])
-    .withMessage('channel must be email or sms.'),
-];
-
-const verifyOtpLogin = [
-  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
-  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
-];
-
-const verifyOtpRegister = [
-  ...register,
-  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
-  body('verifyTarget')
-    .optional({ values: 'falsy' })
-    .trim()
-    .isLength({ min: 3, max: 255 })
-    .withMessage('verifyTarget must be the email address or phone number being registered.'),
-];
-
-const resetPasswordOtp = [
-  body('identifier').trim().notEmpty().withMessage('Email or phone number is required.'),
-  body('otp').trim().notEmpty().withMessage('OTP is required.').isLength({ min: 4, max: 8 }).withMessage('OTP must be between 4 and 8 digits.'),
-  body('newPassword')
-    .notEmpty()
-    .withMessage('newPassword is required.')
-    .isLength({ min: 8, max: 72 })
-    .withMessage('Password must be between 8 and 72 characters.')
-    .matches(PASSWORD_RE)
-    .withMessage('Password must include at least one letter and one number.'),
+const sendRegistrationEmailOtp = [
+  body('email').trim().notEmpty().withMessage('Email is required.').isEmail().withMessage('A valid email is required.').isLength({ max: 255 }),
 ];
 
 module.exports = {
@@ -132,8 +95,5 @@ module.exports = {
   refresh,
   forgotPassword,
   resetPassword,
-  sendOtp,
-  verifyOtpLogin,
-  verifyOtpRegister,
-  resetPasswordOtp,
+  sendRegistrationEmailOtp,
 };

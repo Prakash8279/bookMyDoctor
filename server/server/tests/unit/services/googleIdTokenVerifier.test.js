@@ -110,6 +110,14 @@ test('rejects a token whose email is not verified (GOOGLE_EMAIL_NOT_VERIFIED)', 
   ).rejects.toMatchObject({ statusCode: 401, code: 'GOOGLE_EMAIL_NOT_VERIFIED' });
 });
 
+test('rejects a token without a stable Google subject (INVALID_GOOGLE_TOKEN)', async () => {
+  mockJwksResponse();
+
+  await expect(
+    verifyGoogleIdToken(signToken({ sub: '' }), AUDIENCE)
+  ).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_GOOGLE_TOKEN' });
+});
+
 test('force-refetches the JWKS once when the token\'s kid is unknown, and succeeds if the fresh set has it', async () => {
   // First fetch returns an unrelated key; the token's real key only shows up on the SECOND
   // fetch — simulates Google having rotated keys since our last cache fill.

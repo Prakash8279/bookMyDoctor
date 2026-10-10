@@ -279,7 +279,10 @@ class ApiClient {
         ...(extraFields ?? {}),
         'file': await MultipartFile.fromFile(
           filePath,
-          filename: filePath.split('/').last,
+          // ImagePicker returns POSIX paths on Android/iOS, while desktop and
+          // Windows test paths use backslashes. Sending the complete Windows
+          // path as a filename is both incorrect and leaks local path details.
+          filename: filePath.split(RegExp(r'[\\/]+')).last,
           contentType: MediaType(parts.first, parts.length > 1 ? parts[1] : 'octet-stream'),
         ),
       });

@@ -669,7 +669,7 @@ model Refund {
   amount            Decimal      @db.Decimal(10, 2)
   razorpayPaymentId String       @map("razorpay_payment_id")
   razorpayRefundId  String?      @unique @map("razorpay_refund_id")
-  status            String       @default("pending") // "pending" | "processed" | "failed"
+  status            String       @default("pending") // "pending" | "processing" | "processed" | "failed"
   failureReason     String?      @map("failure_reason")
   idempotencyKey    String       @unique @map("idempotency_key")
   createdAt         DateTime     @default(now()) @map("created_at")

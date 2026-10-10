@@ -3,15 +3,15 @@
 Flutter app for all 4 roles (Patient, Doctor, Receptionist, Admin/Superadmin), talking to the
 SAME backend and database as the web app (`server/`) — no separate backend for mobile.
 
-**Build status: all 7 phases done.** Every role has its full feature set wired to the real
-backend — login/register, and all the role-specific screens listed below.
+**Feature status:** all role portals use the same backend as the website. The
+public mobile experience also includes doctor/clinic search, emergency care,
+legal/support pages, and a doctor/clinic onboarding page with demo requests.
 
 ## Prerequisites
 
-This code was written without a Flutter SDK available (the environment it was built in has no
-Flutter/Dart and no access to pub.dev) — it has NOT been run through `flutter analyze` or built
-yet. It was checked by hand (brace/import balance, known-mistake greps) as a substitute, but real
-verification needs your machine's actual Flutter SDK:
+Run the checks below on the release machine before publishing. Android support
+is included in this project; iOS support needs to be added separately if you
+plan to publish on the App Store.
 
 1. Install the Flutter SDK if you haven't already: https://docs.flutter.dev/get-started/install
 2. Make sure the backend is running (Terminal 1: `npm run dev` in `server/`, Terminal 2:
@@ -25,10 +25,39 @@ flutter pub get
 flutter run
 ```
 
-If `flutter pub get` or `flutter run` shows any error, copy the FULL error output and send it
-back — since this was written without being able to compile it, some small fix may be needed
-(a typo, an import, a package version) and it's a quick turnaround to fix once we can see the
-actual compiler error.
+For a production check, also run:
+
+```
+flutter test
+flutter analyze
+flutter build appbundle --release --dart-define=API_BASE_URL=https://api.bookmydoctors.me
+```
+
+Release builds require `android/key.properties` and the configured upload
+keystore. The build deliberately fails if they are missing, so a Play Store
+artifact can never be signed with a debug key by mistake.
+
+## Google sign-in setup
+
+The website and app both use the same Google **Web application** client ID;
+the backend verifies that ID token before creating a session. The client ID in
+`lib/core/google_auth_config.dart` already matches the web and backend setup.
+
+For Google sign-in on Android to open successfully, complete this one-time
+Google Cloud Console setup in the same OAuth project:
+
+1. Create an **Android** OAuth client for package name `com.bookmydoctor24.app`.
+2. Add the SHA-1 certificate for the debug app and the release/upload app. Get
+   the values with `cd android; .\\gradlew signingReport` (use both variants).
+3. Keep the existing **Web application** OAuth client. Do not paste an Android
+   client ID into `google_auth_config.dart`; `serverClientId` must remain the
+   Web client ID so the backend can verify the returned token.
+4. Test a debug build on a physical Android phone, then test a signed release
+   build before publishing.
+
+If the Google account chooser closes immediately or shows configuration error
+10/`DEVELOPER_ERROR`, the package name or SHA-1 in Google Cloud is missing or
+does not match the installed app's signing certificate.
 
 ### Ways to see it
 

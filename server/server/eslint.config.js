@@ -33,6 +33,10 @@ const nodeGlobals = {
   clearInterval: 'readonly',
   setImmediate: 'readonly',
   queueMicrotask: 'readonly',
+  fetch: 'readonly',
+  AbortController: 'readonly',
+  URL: 'readonly',
+  URLSearchParams: 'readonly',
 };
 
 // Jest globals, for tests/**/*.js only — see jest.config.js (testMatch: tests/**/*.test.js).

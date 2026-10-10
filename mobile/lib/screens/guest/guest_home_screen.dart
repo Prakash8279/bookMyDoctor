@@ -11,10 +11,15 @@ import '../auth/register_screen.dart';
 import '../patient/book_appointment_screen.dart';
 import '../patient/doctor_detail_screen.dart';
 import '../shared/contact_support_screen.dart';
+import '../shared/about_screen.dart';
+import '../shared/blog_screen.dart';
 import '../shared/legal_policies_screen.dart';
 import '../shared/privacy_screen.dart';
 import '../shared/terms_screen.dart';
+import 'clinic_search_screen.dart';
+import 'guest_emergency_screen.dart';
 import 'guest_doctor_search_screen.dart';
+import 'provider_landing_screen.dart';
 
 /// Public landing screen — 100% parity with web's PatientLanding (PublicLanding.jsx)
 /// and SiteHeader / SiteFooter:
@@ -255,6 +260,14 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                       Navigator.of(context).pop();
                       _goSearch();
                     }),
+                    _drawerItem(icon: Icons.local_hospital_outlined, label: 'Find a clinic', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClinicSearchScreen()));
+                    }),
+                    _drawerItem(icon: Icons.emergency_outlined, label: 'Emergency care', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const GuestEmergencyScreen()));
+                    }),
                     _drawerItem(icon: Icons.category_outlined, label: 'Specialties', onTap: () {
                       Navigator.of(context).pop();
                       _scrollToSection(_specializationsKey, fallback: () => _goSearch());
@@ -262,6 +275,18 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                     _drawerItem(icon: Icons.route_outlined, label: 'How it works', onTap: () {
                       Navigator.of(context).pop();
                       _scrollToSection(_stepsKey);
+                    }),
+                    _drawerItem(icon: Icons.groups_outlined, label: 'For doctors & clinics', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProviderLandingScreen()));
+                    }),
+                    _drawerItem(icon: Icons.info_outline, label: 'About', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AboutScreen()));
+                    }),
+                    _drawerItem(icon: Icons.article_outlined, label: 'Blog', onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BlogScreen()));
                     }),
                     _drawerItem(icon: Icons.mail_outline, label: 'Contact', onTap: () {
                       Navigator.of(context).pop();
@@ -512,45 +537,21 @@ class _HeroSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Eyebrow matching web's .eyebrow
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryLight.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.shield_outlined, size: 15, color: AppColors.primary),
-                      SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          'BookADoctors • Verified Doctors & Live OPD Queue',
-                          style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-
-                // Hero H1 matching web: "Book Doctor Appointments Online with BookADoctors."
+                // Hero H1: "Care without the waiting room."
                 const Text.rich(
                   TextSpan(
                     children: [
-                      TextSpan(text: 'Book Doctor Appointments Online with ', style: TextStyle(color: AppColors.textPrimary)),
-                      TextSpan(text: 'BookADoctors.', style: TextStyle(color: AppColors.primary)),
+                      TextSpan(text: 'Care without the ', style: TextStyle(color: AppColors.textPrimary)),
+                      TextSpan(text: 'waiting room.', style: TextStyle(color: AppColors.primary)),
                     ],
                   ),
                   style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: -0.8),
                 ),
                 const SizedBox(height: AppSpacing.sm),
 
-                // Hero Lead matching web
+                // Hero Lead
                 const Text(
-                  'Find top verified doctors near you, book clinic appointments instantly, and track live clinic queue tokens from home.',
+                  'Find verified doctors, reserve your clinic slot, and follow your live queue token from home.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 14.5, height: 1.5),
                 ),
                 const SizedBox(height: AppSpacing.md),

@@ -22,12 +22,14 @@ jest.mock('../../../src/config/db', () => ({
   payment: {
     findFirst: jest.fn(),
     updateMany: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
   },
   refund: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     count: jest.fn(),
     findMany: jest.fn(),
   },
@@ -37,6 +39,9 @@ jest.mock('../../../src/config/db', () => ({
   },
   bookingRules: {
     findUnique: jest.fn(),
+  },
+  paymentHold: {
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
   },
   platformCharges: {
     findUnique: jest.fn().mockResolvedValue({ commissionPercent: 10 }),
@@ -231,7 +236,7 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
     );
     expect(prisma.payment.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { appointmentId: 'appt-1', transactionRef: 'pay_sample_123' },
+        where: { id: 'pay-1' },
         data: { status: 'refunded' },
       })
     );
@@ -299,6 +304,26 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
     });
 
     expect(res.alreadyProcessed).toBe(true);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('a concurrent refund worker observes an active processing lease and never calls Razorpay again', async () => {
+    prisma.refund.findUnique.mockResolvedValue({
+      id: 'rfnd-processing-1',
+      status: 'processing',
+      updatedAt: new Date(),
+      razorpayRefundId: null,
+    });
+    prisma.refund.updateMany.mockResolvedValue({ count: 0 });
+
+    const result = await razorpayService.processRefund({
+      refundId: 'rfnd-processing-1',
+      paymentId: 'pay_processing_1',
+      amount: 500,
+      appointmentId: 'appt-processing-1',
+    });
+
+    expect(result.inProgress).toBe(true);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
