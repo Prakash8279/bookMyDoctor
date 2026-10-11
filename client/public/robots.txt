@@ -1,4 +1,4 @@
-# robots.txt for https://bookmydoctors.me
+# robots.txt for https://bookadoctors.com
 User-agent: *
 Allow: /
 
@@ -15,4 +15,4 @@ Disallow: /reset-password
 Disallow: /delete-account
 
 # Sitemap location
-Sitemap: https://bookmydoctors.me/sitemap.xml
+Sitemap: https://bookadoctors.com/sitemap.xml
