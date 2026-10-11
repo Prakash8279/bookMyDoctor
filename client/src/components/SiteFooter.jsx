@@ -39,9 +39,9 @@ export function SiteFooter() {
             </svg>
           </a>
           <a
-            href="https://www.instagram.com/bookmy.doctors?stkn=MWJrMTNvNjg3MW8wbg=="
+            href="https://www.instagram.com/bookadoctors?dlrf=MWJrMTNvNjg3MW8wbg=="
             target="_blank"
-            rel="noopener noreferrer"
+            rel="me noopener noreferrer"
             title="Follow on Instagram"
             aria-label="BookADoctors Instagram"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] text-white transition-transform hover:scale-110"
@@ -53,9 +53,9 @@ export function SiteFooter() {
             </svg>
           </a>
           <a
-            href="https://www.facebook.com/share/1DsGYTZR4w/"
+            href="https://www.facebook.com/share/1LqoRuqfcM/"
             target="_blank"
-            rel="noopener noreferrer"
+            rel="me noopener noreferrer"
             title="Follow on Facebook"
             aria-label="BookADoctors Facebook"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1877F2] text-white transition-transform hover:scale-110"
