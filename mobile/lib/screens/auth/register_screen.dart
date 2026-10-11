@@ -25,8 +25,8 @@ final RegExp _namePattern = RegExp(r"^[A-Za-z][A-Za-z .'-]{1,149}$");
 /// doctor-only field set (specialization/qualification/registration
 /// number/experience/consultation fee) shown only for the doctor path.
 ///
-/// Patient path posts to POST /auth/register via [AuthProvider.register]
-/// (instant, active account). Doctor path posts directly to POST
+/// Both paths first verify a six-digit code delivered to the supplied email. Patient registration
+/// then posts to POST /auth/register via [AuthProvider.register]. Doctor path posts directly to POST
 /// /doctors/register (see doctors.controller.js#registerDoctor) — the
 /// backend hard-codes doctorProfile.status:'pending' regardless of what's
 /// sent, so a self-registered doctor lands in the same admin-verification
@@ -52,6 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _cityController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+  final _emailOtpController = TextEditingController();
 
   // Doctor-only fields (client/src/pages/PublicPages.jsx#Register's `doctorForm`) —
   // only read/validated when _accountType == 'doctor'.
@@ -66,6 +67,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String _accountType = 'patient';
   bool _obscure = true;
   bool _submitting = false;
+  bool _emailVerificationSent = false;
+  bool _sendingEmailOtp = false;
   // GOOGLE SIGN-IN FEATURE — separate loading flag, same reasoning as login_screen.dart.
   bool _googleSubmitting = false;
   String? _error;
@@ -87,6 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _cityController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
+    _emailOtpController.dispose();
     _qualificationController.dispose();
     _registrationNumberController.dispose();
     _experienceYearsController.dispose();
@@ -129,6 +133,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _error = 'Passwords do not match.');
       return;
     }
+    if (!_emailVerificationSent) {
+      setState(() {
+        _sendingEmailOtp = true;
+        _error = null;
+      });
+      final sent = await context.read<AuthProvider>().sendRegistrationEmailOtp(_emailController.text.trim());
+      if (!mounted) return;
+      setState(() {
+        _sendingEmailOtp = false;
+        _emailVerificationSent = sent;
+        if (!sent) _error = context.read<AuthProvider>().lastError;
+      });
+      return;
+    }
+    if (!RegExp(r'^\d{6}$').hasMatch(_emailOtpController.text.trim())) {
+      setState(() => _error = 'Enter the 6-digit code sent to your email.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -147,6 +169,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       password: _passwordController.text,
+      emailOtp: _emailOtpController.text.trim(),
       // Mandatory now (this screen's own validator gates _submit before this ever runs) — see
       // the MANDATORY-FIELDS FIX note above.
       phone: _phoneController.text.trim(),
@@ -170,6 +193,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'name': _nameController.text.trim(),
         'email': _emailController.text.trim(),
         'password': _passwordController.text,
+        'emailOtp': _emailOtpController.text.trim(),
         'phone': _phoneController.text.trim(),
         if (_cityController.text.trim().isNotEmpty) 'city': _cityController.text.trim(),
         'specializationId': _specializationId,
@@ -278,7 +302,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Text(
                       isDoctor
                           ? 'Your account will be reviewed by an admin before you appear in patient search — you can sign in right away to check your status.'
-                          : 'Registration creates a patient account, active immediately.',
+                          : 'Verify your email to activate your patient account.',
                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                     ),
                     const SizedBox(height: AppSpacing.lg),
@@ -299,6 +323,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _emailController,
+                      enabled: !_emailVerificationSent,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(labelText: 'Email address'),
                       validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
@@ -345,6 +370,37 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: const InputDecoration(labelText: 'Confirm password'),
                       validator: (v) => (v == null || v.isEmpty) ? 'Confirm your password' : null,
                     ),
+                    if (_emailVerificationSent) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _emailOtpController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: const InputDecoration(
+                          labelText: 'Email verification code',
+                          hintText: 'Enter the 6-digit code',
+                        ),
+                        validator: (v) {
+                          if (!_emailVerificationSent) return null;
+                          if (!RegExp(r'^\\d{6}$').hasMatch((v ?? '').trim())) {
+                            return 'Enter the 6-digit code sent to your email';
+                          }
+                          return null;
+                        },
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _sendingEmailOtp
+                              ? null
+                              : () => setState(() {
+                                    _emailVerificationSent = false;
+                                    _emailOtpController.clear();
+                                  }),
+                          child: const Text('Change email or request a new code'),
+                        ),
+                      ),
+                    ],
                     if (isDoctor) ...[
                       const SizedBox(height: AppSpacing.lg),
                       const Text('Professional details', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -413,9 +469,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ],
                     const SizedBox(height: AppSpacing.lg),
                     PrimaryButton(
-                      label: isDoctor ? 'Submit for verification' : 'Create account',
-                      onPressed: _submit,
-                      loading: _submitting,
+                      label: _sendingEmailOtp
+                          ? 'Sending code…'
+                          : _emailVerificationSent
+                              ? 'Verify email & create account'
+                              : 'Send email verification code',
+                      onPressed: (_submitting || _sendingEmailOtp) ? null : _submit,
+                      loading: _submitting || _sendingEmailOtp,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     const Row(children: [

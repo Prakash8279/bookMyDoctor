@@ -79,4 +79,20 @@ describe('emailService.sendEmail', () => {
 
     jest.dontMock('../../../src/config/logger');
   });
+
+  test('refuses production verification codes when only the console log provider is configured', async () => {
+    process.env.EMAIL_PROVIDER = 'log';
+    jest.resetModules();
+    jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
+    jest.doMock('../../../src/config/env', () => ({ ...jest.requireActual('../../../src/config/env'), isProduction: true }));
+    const isolatedLogger = require('../../../src/config/logger');
+    const { sendVerificationEmail } = require('../../../src/services/emailService');
+
+    await expect(sendVerificationEmail({ to: 'user@example.com', subject: 'Code', text: '123456' }))
+      .rejects.toThrow('Production email delivery is not configured.');
+    expect(isolatedLogger.error).toHaveBeenCalledWith(expect.stringContaining('Production email delivery is not configured'));
+
+    jest.dontMock('../../../src/config/logger');
+    jest.dontMock('../../../src/config/env');
+  });
 });

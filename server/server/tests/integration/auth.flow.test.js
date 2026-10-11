@@ -36,6 +36,10 @@ jest.mock('../../src/jobs/bookingQueue', () => ({
   bookingQueue: { add: jest.fn() },
   QUEUE_NAME: 'appointment-booking',
 }));
+jest.mock('../../src/services/otpService', () => ({
+  sendOtp: jest.fn().mockResolvedValue({ success: true }),
+  verifyOtp: jest.fn().mockResolvedValue({ valid: true }),
+}));
 
 const request = require('supertest');
 const prisma = require('../../src/config/db');
@@ -145,6 +149,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       password: PASSWORD,
       phone: '9876543210',
       city: 'Pune',
+      emailOtp: '123456',
     });
 
     expect(registerRes.status).toBe(201);
@@ -192,6 +197,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       email: 'ravi@example.com',
       password: PASSWORD,
       phone: '9876543211',
+      emailOtp: '123456',
     });
 
     const res = await request(app).post('/auth/login').send({
@@ -205,7 +211,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
   });
 
   test('registering a duplicate email returns 409 EMAIL_ALREADY_EXISTS', async () => {
-    const payload = { name: 'Meera Nair', email: 'meera@example.com', password: PASSWORD, phone: '9876543212' };
+    const payload = { name: 'Meera Nair', email: 'meera@example.com', password: PASSWORD, phone: '9876543212', emailOtp: '123456' };
 
     const first = await request(app).post('/auth/register').send(payload);
     expect(first.status).toBe(201);
@@ -244,6 +250,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       email: 'rotation-user@example.com',
       password: PASSWORD,
       phone: '9876543216',
+      emailOtp: '123456',
     });
     expect(registerRes.status).toBe(201);
     const originalRefreshToken = registerRes.body.data.refreshToken;
@@ -284,7 +291,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       const res = await request(app)
         .post('/auth/register')
         .set('X-Client-Platform', 'web')
-        .send({ name: 'Web User', email: 'web-user@example.com', password: PASSWORD, phone: '9876543213' });
+        .send({ name: 'Web User', email: 'web-user@example.com', password: PASSWORD, phone: '9876543213', emailOtp: '123456' });
 
       expect(res.status).toBe(201);
       expect(typeof res.body.data.accessToken).toBe('string');
@@ -300,7 +307,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
     test('a mobile-style caller (no X-Client-Platform header) is completely unaffected — refreshToken still in the body, no cookie set', async () => {
       const res = await request(app)
         .post('/auth/register')
-        .send({ name: 'Mobile User', email: 'mobile-user@example.com', password: PASSWORD, phone: '9876543214' });
+        .send({ name: 'Mobile User', email: 'mobile-user@example.com', password: PASSWORD, phone: '9876543214', emailOtp: '123456' });
 
       expect(res.status).toBe(201);
       expect(typeof res.body.data.refreshToken).toBe('string');
@@ -313,7 +320,7 @@ describe('Auth flow: POST /auth/register -> POST /auth/login -> GET /auth/me', (
       const registerRes = await agent
         .post('/auth/register')
         .set('X-Client-Platform', 'web')
-        .send({ name: 'Cookie Flow User', email: 'cookie-flow@example.com', password: PASSWORD, phone: '9876543215' });
+        .send({ name: 'Cookie Flow User', email: 'cookie-flow@example.com', password: PASSWORD, phone: '9876543215', emailOtp: '123456' });
       expect(registerRes.status).toBe(201);
       const firstCookie = (registerRes.headers['set-cookie'] || []).find((c) => c.startsWith('refreshToken='));
       expect(firstCookie).toBeDefined();

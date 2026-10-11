@@ -65,13 +65,17 @@ const smtpProvider = {
       return logProvider.send({ to, subject, text });
     }
 
-    const senderEmail = process.env.EMAIL_USER || 'bookmydoctor24@gmail.com';
-    const fromAddress = process.env.EMAIL_FROM || `"BookMyDoctor" <${senderEmail}>`;
+    // All authentication email (registration code and password reset) uses the dedicated
+    // verification mailbox. In production EMAIL_USER must be the SMTP/SES credential allowed
+    // to send as this address (or as a verified domain identity).
+    const senderEmail = process.env.EMAIL_USER || 'verification@bookadoctors.com';
+    const fromAddress = process.env.EMAIL_FROM || `"BookADoctors Verification" <${senderEmail}>`;
+    const replyTo = process.env.EMAIL_REPLY_TO || senderEmail;
 
     const info = await transporter.sendMail({
       from: fromAddress,
       to,
-      replyTo: fromAddress,
+      replyTo,
       subject,
       text,
       html: html || text,
@@ -104,6 +108,11 @@ function resolveProvider() {
   return PROVIDERS[key] || logProvider;
 }
 
+function hasLiveEmailTransport() {
+  const provider = (process.env.EMAIL_PROVIDER || 'log').trim().toLowerCase();
+  return (provider === 'smtp' || provider === 'gmail') && Boolean(getTransporter());
+}
+
 /**
  * Best-effort, never throws — email delivery (real or placeholder) is always a side effect.
  * @param {{to?:string|null, subject:string, text:string, html?:string}} message
@@ -117,4 +126,24 @@ async function sendEmail({ to, subject, text, html }) {
   }
 }
 
-module.exports = { sendEmail };
+/**
+ * Strict delivery for authentication codes. Unlike general notification email, an OTP cannot
+ * claim success when production is still using the console-only provider: that would make a
+ * new account impossible to verify. Development may use the log provider intentionally.
+ */
+async function sendVerificationEmail({ to, subject, text, html }) {
+  if (!to) throw new Error('A recipient email address is required.');
+  if (env.isProduction && !hasLiveEmailTransport()) {
+    logger.error('[email:verification] Production email delivery is not configured. Set EMAIL_PROVIDER=smtp or gmail with valid SMTP credentials.');
+    throw new Error('Production email delivery is not configured.');
+  }
+
+  try {
+    return await resolveProvider().send({ to, subject, text, html });
+  } catch (err) {
+    logger.warn(`[email:verification] delivery failed: ${err.message}`);
+    throw err;
+  }
+}
+
+module.exports = { sendEmail, sendVerificationEmail };

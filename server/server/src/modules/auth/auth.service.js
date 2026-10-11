@@ -385,16 +385,9 @@ async function getMe(userId) {
  * same class of leak login() avoids via constant-time password comparison (see DUMMY_PASSWORD_HASH
  * above), just via response content instead of timing.
  *
- * Delivery: COMPLETENESS FIX (audit Priority 4 — "no email/SMS provider anywhere ... needs your
- * decision on a provider before this can be fully closed"). This codebase never had a real
- * SES/SendGrid/Twilio client, and per this round's explicit product decision it still doesn't —
- * a vendor is deliberately not being picked yet ("decide nahi karna abhi"). What changed: the
- * reset link now goes through emailService.js's provider-agnostic sendEmail() (and smsService.js
- * if a phone is on file) instead of a raw logger.info call — those already-existing abstractions
- * log today (visible in server logs for local/dev/staging use, same practical behavior as
- * before) but can be pointed at a real provider later with zero changes to this function. The
- * raw token itself still never enters the in-app notification below (a notification row is far
- * less protected than a one-time email/SMS) — only the emailed/texted link carries it.
+ * Delivery is email only. The reset link goes through emailService.js, so no phone number is
+ * used for authentication or password recovery. The raw token never enters the in-app
+ * notification below; only the email carries it.
  * @param {{email:string}} input
  */
 async function forgotPassword({ email }) {
@@ -407,23 +400,17 @@ async function forgotPassword({ email }) {
 
   // Skip token issuance entirely for a disabled account too — same enumeration-avoidance logic
   // login() applies (see the status check there): don't do anything that would let a caller
-  // infer "this email belongs to a disabled account" from a side effect (an emailed/texted link,
+  // infer "this email belongs to a disabled account" from a side effect (an emailed link,
   // a notification) even though the outward HTTP response is identical either way.
   if (user && user.status !== 'disabled') {
     const resetToken = tokenService.signResetToken(user.id, user.passwordHash || '');
     const resetLink = `${env.clientOrigin}/reset-password?token=${resetToken}`;
 
-    await Promise.all([
-      emailService.sendEmail({
-        to: normalizedEmail,
-        subject: 'Reset your BookMyDoctor24 password',
-        text: `We received a request to reset your password. Use this link to choose a new one: ${resetLink}\n\nIf you didn't request this, you can safely ignore this message.`,
-      }),
-      smsService.sendSms({
-        to: user.phone,
-        message: `BookMyDoctor24: reset your password using this link: ${resetLink}`,
-      }),
-    ]);
+    await emailService.sendEmail({
+      to: normalizedEmail,
+      subject: 'Reset your BookADoctors password',
+      text: `We received a request to reset your password. Use this link to choose a new one: ${resetLink}\n\nIf you didn't request this, you can safely ignore this message.`,
+    });
 
     try {
       await notifyUserInApp(user.id, {
@@ -432,7 +419,7 @@ async function forgotPassword({ email }) {
         type: 'security',
       });
     } catch (err) {
-      // Best-effort only: the emailed/texted link above is the actual delivery mechanism right
+      // Best-effort only: the emailed link above is the actual delivery mechanism right
       // now, so a failure to write the in-app notification must never turn a password-reset
       // *request* into a 500 for the caller.
       logger.warn(`[auth] failed to create in-app password-reset notification for user ${user.id}: ${err.message}`);

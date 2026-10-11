@@ -1,31 +1,23 @@
-/**
- * Unit tests for services/otpService.js
- */
+/** Unit tests for registration email verification codes. */
 const mockRedis = {
   store: new Map(),
   get: jest.fn(async (key) => mockRedis.store.get(key) || null),
-  setex: jest.fn(async (key, ttl, val) => {
-    mockRedis.store.set(key, val);
-  }),
+  setex: jest.fn(async (key, _ttl, value) => { mockRedis.store.set(key, value); }),
   ttl: jest.fn(async () => 50),
   incr: jest.fn(async (key) => {
-    const curr = parseInt(mockRedis.store.get(key) || '0', 10) + 1;
-    mockRedis.store.set(key, String(curr));
-    return curr;
+    const next = Number(mockRedis.store.get(key) || 0) + 1;
+    mockRedis.store.set(key, String(next));
+    return next;
   }),
-  del: jest.fn(async (key) => {
-    mockRedis.store.delete(key);
-  }),
+  del: jest.fn(async (key) => { mockRedis.store.delete(key); }),
 };
 
 jest.mock('../../../src/config/redis', () => mockRedis);
 jest.mock('../../../src/config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
-jest.mock('../../../src/services/emailService', () => ({ sendEmail: jest.fn() }));
-jest.mock('../../../src/services/smsService', () => ({ sendSms: jest.fn() }));
+jest.mock('../../../src/services/emailService', () => ({ sendVerificationEmail: jest.fn() }));
 
 const otpService = require('../../../src/services/otpService');
 const emailService = require('../../../src/services/emailService');
-const smsService = require('../../../src/services/smsService');
 
 beforeEach(() => {
   mockRedis.store.clear();
@@ -33,77 +25,43 @@ beforeEach(() => {
 });
 
 describe('otpService', () => {
-  describe('normalizeIdentifier', () => {
-    test('normalizes email addresses to lowercase trimmed', () => {
-      expect(otpService.normalizeIdentifier('  Test@EXAMPLE.com  ')).toBe('test@example.com');
-    });
-
-    test('extracts 10-digit Indian phone number from various formats', () => {
-      expect(otpService.normalizeIdentifier('+91 98765 43210')).toBe('9876543210');
-      expect(otpService.normalizeIdentifier('09876543210')).toBe('9876543210');
-      expect(otpService.normalizeIdentifier('9876543210')).toBe('9876543210');
-    });
+  test('normalizes an email address', () => {
+    expect(otpService.normalizeEmail('  Test@EXAMPLE.com  ')).toBe('test@example.com');
   });
 
-  describe('sendOtp and verifyOtp', () => {
-    test('sends email OTP when identifier contains @', async () => {
-      const res = await otpService.sendOtp({
-        identifier: 'patient@example.com',
-        purpose: 'login',
-      });
+  test('sends and verifies an email-only registration OTP', async () => {
+    const result = await otpService.sendOtp({ email: 'patient@example.com' });
 
-      expect(res.success).toBe(true);
-      expect(res.channel).toBe('email');
-      expect(emailService.sendEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: 'patient@example.com' })
-      );
+    expect(result.success).toBe(true);
+    expect(result.email).toBe('patient@example.com');
+    expect(emailService.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'patient@example.com' }));
 
-      // Verify OTP succeeds with correct OTP
-      const verifyRes = await otpService.verifyOtp({
-        identifier: 'patient@example.com',
-        purpose: 'login',
-        otp: res.devOtp,
-      });
-      expect(verifyRes.valid).toBe(true);
-    });
+    await expect(otpService.verifyOtp({ email: 'patient@example.com', otp: result.devOtp }))
+      .resolves.toMatchObject({ valid: true });
+  });
 
-    test('sends SMS OTP for phone numbers', async () => {
-      const res = await otpService.sendOtp({
-        identifier: '9876543210',
-        purpose: 'register',
-      });
+  test('rejects a phone number because authentication codes are never sent by SMS', async () => {
+    await expect(otpService.sendOtp({ email: '9876543210' }))
+      .rejects.toThrow('A valid email address is required.');
+  });
 
-      expect(res.success).toBe(true);
-      expect(res.channel).toBe('sms');
-      expect(smsService.sendSms).toHaveBeenCalledWith(
-        expect.objectContaining({ to: '9876543210' })
-      );
-    });
+  test('applies a cooldown per registration email', async () => {
+    mockRedis.store.set('otp:cooldown:register:test@example.com', '1');
 
-    test('throws 429 when cooldown is active', async () => {
-      mockRedis.store.set('otp:cooldown:login:test@example.com', '1');
+    await expect(otpService.sendOtp({ email: 'test@example.com' })).rejects.toThrow('Please wait');
+  });
 
-      await expect(
-        otpService.sendOtp({
-          identifier: 'test@example.com',
-          purpose: 'login',
-        })
-      ).rejects.toThrow('Please wait');
-    });
+  test('counts incorrect OTP attempts', async () => {
+    await otpService.sendOtp({ email: 'test@example.com' });
 
-    test('rejects incorrect OTP and counts attempts', async () => {
-      const res = await otpService.sendOtp({
-        identifier: 'test@example.com',
-        purpose: 'login',
-      });
+    await expect(otpService.verifyOtp({ email: 'test@example.com', otp: '000000' }))
+      .rejects.toThrow('Incorrect OTP');
+  });
 
-      await expect(
-        otpService.verifyOtp({
-          identifier: 'test@example.com',
-          purpose: 'login',
-          otp: '000000',
-        })
-      ).rejects.toThrow('Incorrect OTP');
-    });
+  test('does not claim an OTP was sent when verification email delivery fails', async () => {
+    emailService.sendVerificationEmail.mockRejectedValueOnce(new Error('SMTP unavailable'));
+
+    await expect(otpService.sendOtp({ email: 'patient@example.com' }))
+      .rejects.toThrow('Email verification is temporarily unavailable.');
   });
 });

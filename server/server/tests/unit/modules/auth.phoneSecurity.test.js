@@ -27,15 +27,8 @@ jest.mock('../../../src/utils/idGenerators', () => ({
   nextPatientNumber: jest.fn().mockResolvedValue(101),
 }));
 
-jest.mock('../../../src/services/otpService', () => ({
-  normalizeIdentifier: jest.fn((id) => (id.includes('@') ? id.toLowerCase().trim() : id.replace(/\D/g, '').slice(-10))),
-  sendOtp: jest.fn().mockResolvedValue({ success: true, message: 'OTP sent' }),
-  verifyOtp: jest.fn().mockResolvedValue({ valid: true }),
-}));
-
 const prisma = require('../../../src/config/db');
 const authService = require('../../../src/modules/auth/auth.service');
-const ApiError = require('../../../src/utils/ApiError');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -44,7 +37,7 @@ beforeEach(() => {
   prisma.user.findUnique.mockResolvedValue(null);
 });
 
-describe('Phone Normalization & Security Suite', () => {
+describe('Phone Normalization & Registration Security Suite', () => {
   describe('normalizePhone helper', () => {
     test('normalizes 10-digit Indian phone numbers', () => {
       expect(authService.normalizePhone('9876543210')).toBe('9876543210');
@@ -154,48 +147,4 @@ describe('Phone Normalization & Security Suite', () => {
     });
   });
 
-  describe('Account Takeover / Ambiguous Phone Login Protection (Phase 1)', () => {
-    test('refuses OTP login if multiple accounts exist for the same phone (account hijacking attempt)', async () => {
-      // Legacy duplicate accounts exist for this phone number
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-1', name: 'User 1', email: 'u1@example.com', phone: '09876543210', role: 'patient', status: 'active' },
-        { id: 'user-2', name: 'User 2', email: 'u2@example.com', phone: '9876543210', role: 'patient', status: 'active' },
-      ]);
-
-      await expect(
-        authService.verifyOtpLogin({
-          identifier: '9876543210',
-          otp: '123456',
-        })
-      ).rejects.toThrow('Multiple accounts are associated with this mobile number. Please log in with your email address or contact support.');
-    });
-
-    test('logs in correctly when exactly one account matches the phone', async () => {
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'user-1', name: 'User 1', email: 'u1@example.com', phone: '9876543210', role: 'patient', status: 'active' },
-      ]);
-
-      const res = await authService.verifyOtpLogin({
-        identifier: '9876543210',
-        otp: '123456',
-      });
-
-      expect(res.user.id).toBe('user-1');
-      expect(res.accessToken).toBe('acc_tok');
-    });
-
-    test('sendAuthOtp for registration rejects when multiple duplicate accounts already exist for the phone', async () => {
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'u1', email: 'u1@example.com', phone: '9876543210' },
-        { id: 'u2', email: 'u2@example.com', phone: '09876543210' },
-      ]);
-
-      await expect(
-        authService.sendAuthOtp({
-          identifier: '9876543210',
-          purpose: 'register',
-        })
-      ).rejects.toThrow('An account with this email/phone already exists.');
-    });
-  });
 });

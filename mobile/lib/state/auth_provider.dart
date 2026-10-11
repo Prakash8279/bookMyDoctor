@@ -103,6 +103,7 @@ class AuthProvider extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
+    required String emailOtp,
     String? phone,
     String? city,
   }) async {
@@ -112,6 +113,7 @@ class AuthProvider extends ChangeNotifier {
         'name': name,
         'email': email,
         'password': password,
+        'emailOtp': emailOtp,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
         if (city != null && city.isNotEmpty) 'city': city,
       });
@@ -121,6 +123,19 @@ class AuthProvider extends ChangeNotifier {
       user = AppUser.fromJson(data['user'] as Map<String, dynamic>);
       await _loadMe();
       status = AuthStatus.loggedIn;
+      notifyListeners();
+      return true;
+    } catch (err) {
+      lastError = err.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> sendRegistrationEmailOtp(String email) async {
+    lastError = null;
+    try {
+      await _api.post('/auth/register/email-otp', body: {'email': email});
       notifyListeners();
       return true;
     } catch (err) {

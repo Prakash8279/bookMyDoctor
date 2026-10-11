@@ -46,7 +46,7 @@ async function sendOtp({ email }) {
   }
 
   // Idempotent OTP on resend: If an active OTP is already in Redis for this target and purpose,
-  // reuse it so that in-flight emails or SMS don't become invalidated if the user clicks resend!
+  // reuse it so that an in-flight email does not become invalidated if the user clicks resend.
   let otp = await redis.get(otpKey);
   if (!otp) {
     otp = generateOtp();
@@ -59,10 +59,11 @@ async function sendOtp({ email }) {
 
   logger.info(`[otpService] Dispatched registration OTP to=${normalized}`);
 
-  await emailService.sendEmail({
+  try {
+    await emailService.sendVerificationEmail({
       to: normalized,
-      subject: `BookMyDoctor verification code: ${otp}`,
-      text: `Hello,\n\nYour BookMyDoctor email verification code is: ${otp}\n\nThis code is valid for 5 minutes.\n\nSecurity Notice: For your security, never share this code with anyone. BookMyDoctor staff will never ask for your verification code.\n\nIf you did not request this verification, no further action is required and you can safely disregard this email.\n\nThis message was sent to ${normalized}.\n© 2026 BookMyDoctor. All rights reserved.`,
+      subject: `BookADoctors verification code: ${otp}`,
+      text: `Hello,\n\nYour BookADoctors email verification code is: ${otp}\n\nThis code is valid for 5 minutes.\n\nSecurity Notice: For your security, never share this code with anyone. BookADoctors staff will never ask for your verification code.\n\nIf you did not request this verification, no further action is required and you can safely disregard this email.\n\nThis message was sent to ${normalized}.\n© 2026 BookADoctors. All rights reserved.`,
       html: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -73,7 +74,7 @@ async function sendOtp({ email }) {
 <body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155;">
   <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 28px;">
     <div style="font-size: 20px; font-weight: bold; color: #0284c7; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
-      BookMyDoctor
+      BookADoctors
     </div>
     <h2 style="font-size: 18px; margin: 0 0 12px; color: #0f172a;">Verification Code</h2>
     <p style="font-size: 14px; margin: 0 0 16px; line-height: 1.5;">
@@ -86,19 +87,23 @@ async function sendOtp({ email }) {
       Valid for 5 minutes.
     </p>
     <p style="font-size: 13px; color: #64748b; margin: 0 0 20px;">
-      Security Notice: Do not share this code with anyone. BookMyDoctor staff will never ask for your code.
+      Security Notice: Do not share this code with anyone. BookADoctors staff will never ask for your code.
     </p>
     <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
     <p style="font-size: 11px; color: #94a3b8; margin: 0 0 4px; line-height: 1.4;">
-      This email was sent to ${normalized} regarding your BookMyDoctor account.
+      This email was sent to ${normalized} regarding your BookADoctors account.
     </p>
     <p style="font-size: 11px; color: #94a3b8; margin: 0;">
-      © 2026 BookMyDoctor Healthcare Services. All rights reserved.
+      © 2026 BookADoctors Healthcare Services. All rights reserved.
     </p>
   </div>
 </body>
 </html>`,
     });
+  } catch (err) {
+    logger.warn(`[otpService] Registration email delivery failed: ${err.message}`);
+    throw new ApiError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Email verification is temporarily unavailable. Please try again later.');
+  }
 
   return {
     success: true,

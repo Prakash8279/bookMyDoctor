@@ -44,6 +44,7 @@ const authInFlightGuard = createInFlightGuard({
  *       Always creates a `patient` role account regardless of what the request body contains —
  *       role is hard-coded server-side (see auth.service.js#register) even though `role` is
  *       accepted in the body and validated to only ever be the literal string "patient".
+ *       The email must first be verified with the six-digit code from `/auth/register/email-otp`.
  *       Rate-limited by IP (authLimiter) same as /auth/login, for brute-force/abuse protection.
  *     operationId: authRegister
  *     security: []
@@ -53,12 +54,13 @@ const authInFlightGuard = createInFlightGuard({
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, email, password]
+ *             required: [name, email, password, phone, emailOtp]
  *             properties:
  *               name: { type: string, maxLength: 150, example: 'Asha Rao' }
  *               email: { type: string, format: email, maxLength: 255, example: 'asha@example.com' }
  *               password: { type: string, minLength: 8, maxLength: 72, format: password }
- *               phone: { type: string, maxLength: 20, nullable: true, example: '9876543210' }
+ *               emailOtp: { type: string, pattern: '^\\d{6}$', description: 'One-time code delivered to the supplied email.' }
+ *               phone: { type: string, example: '9876543210' }
  *               city: { type: string, maxLength: 100, nullable: true, example: 'Pune' }
  *     responses:
  *       201:
@@ -270,6 +272,32 @@ router.post('/reset-password', authLimiter, validation.resetPassword, validateRe
 
 // Email verification is deliberately limited to registration. Passwordless SMS/email OTP login
 // and phone-based password resets were removed: sign-in is email+password or Google only.
+/**
+ * @openapi
+ * /auth/register/email-otp:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Send a six-digit email verification code for a new account.
+ *     description: This endpoint never sends SMS or makes phone calls. The returned code must be supplied to the patient or doctor registration endpoint within five minutes.
+ *     operationId: authSendRegistrationEmailOtp
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       200:
+ *         description: Verification code dispatched to the email address.
+ *       409:
+ *         description: An account with this email already exists.
+ *       429:
+ *         description: The email verification cooldown or request rate limit is active.
+ */
 router.post('/register/email-otp', authLimiter, validation.sendRegistrationEmailOtp, validateRequest, controller.sendRegistrationEmailOtp);
 
 // Requires a currently-valid access token (revokes the caller's own refresh token).

@@ -335,7 +335,9 @@ describe('Login', () => {
 
 describe('Register', () => {
   it('registers a new patient and navigates to the patient dashboard', async () => {
-    apiClient.post.mockImplementation((url) => (url === '/auth/register' ? Promise.resolve({ accessToken: 'tok', refreshToken: 'ref' }) : Promise.resolve({})))
+    apiClient.post.mockImplementation((url) => (
+      url === '/auth/register' ? Promise.resolve({ accessToken: 'tok', refreshToken: 'ref' }) : Promise.resolve({})
+    ))
     apiClient.get.mockImplementation((url) => (url === '/me' ? Promise.resolve({ id: 'u1', name: 'New Patient', role: 'patient' }) : Promise.resolve([])))
     renderWithLocation(<Register />)
     fireEvent.change(screen.getByPlaceholderText('Enter your full name'), { target: { value: 'New Patient' } })
@@ -343,9 +345,12 @@ describe('Register', () => {
     fireEvent.change(screen.getByPlaceholderText('you@example.com'), { target: { value: 'new@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Create password'), { target: { value: 'password1' } })
     fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password1' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send email verification code' }))
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/auth/register/email-otp', { email: 'new@example.com' }))
+    fireEvent.change(screen.getByLabelText('Email verification code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Verify email & create account' }))
     await waitFor(() => expect(screen.getByTestId('location-probe').dataset.pathname).toBe('/patient/dashboard'))
-    expect(apiClient.post).toHaveBeenCalledWith('/auth/register', expect.objectContaining({ email: 'new@example.com', role: 'patient' }))
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/register', expect.objectContaining({ email: 'new@example.com', emailOtp: '123456', role: 'patient' }))
   })
 
   it('blocks submission with a client-side error when passwords do not match', () => {
@@ -355,7 +360,7 @@ describe('Register', () => {
     fireEvent.change(screen.getByPlaceholderText('you@example.com'), { target: { value: 'new@example.com' } })
     fireEvent.change(screen.getByPlaceholderText('Create password'), { target: { value: 'password1' } })
     fireEvent.change(screen.getByPlaceholderText('Confirm password'), { target: { value: 'password2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send email verification code' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Passwords do not match.')
     expect(apiClient.post).not.toHaveBeenCalled()
   })
@@ -385,11 +390,15 @@ describe('Register', () => {
     fireEvent.change(screen.getByPlaceholderText('Medical council registration no.'), { target: { value: 'REG-12345' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. 5'), { target: { value: '6' } })
     fireEvent.change(screen.getByPlaceholderText('e.g. 500'), { target: { value: '600' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Submit for verification' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send email verification code' }))
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/auth/register/email-otp', { email: 'doc@example.com' }))
+    fireEvent.change(screen.getByLabelText('Email verification code'), { target: { value: '123456' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Verify email & create account' }))
 
     await waitFor(() => expect(screen.getByTestId('location-probe').dataset.pathname).toBe('/doctor/dashboard'))
     expect(apiClient.post).toHaveBeenCalledWith('/doctors/register', expect.objectContaining({
       email: 'doc@example.com',
+      emailOtp: '123456',
       specializationId: 'spec-1',
       qualification: 'MBBS',
       registrationNumber: 'REG-12345',
