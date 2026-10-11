@@ -28,9 +28,9 @@ docker compose build --no-cache client
 docker compose up -d client
 
 echo "=========================================="
-echo " 6. Restarting nginx..."
+echo " 6. Restarting backend & nginx..."
 echo "=========================================="
-docker compose restart nginx
+docker compose restart server nginx
 
 echo "=========================================="
 echo " Done! All services updated and running."
