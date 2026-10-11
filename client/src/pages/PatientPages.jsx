@@ -500,14 +500,14 @@ export function Booking({ data }) {
           </button>
 
           {/* Selected Doctor Summary Card */}
-          <div className="rounded-card border border-border bg-white p-5 shadow-card flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-primary-dark text-white font-bold text-lg uppercase shadow-sm">
+          <div className="rounded-card border border-border bg-white p-4 sm:p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+              <span className="grid h-12 w-12 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-full bg-primary-dark text-white font-bold text-base sm:text-lg uppercase shadow-sm">
                 {(doctor.name || '').split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'}
               </span>
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-bold text-lg text-ink font-sans">
+                  <h3 className="font-bold text-base sm:text-lg text-ink font-sans truncate">
                     Booking with {doctor.name}
                   </h3>
                   {doctor.rating ? (
@@ -516,19 +516,19 @@ export function Booking({ data }) {
                     </span>
                   ) : null}
                 </div>
-                <p className="text-xs text-muted font-medium mt-0.5">
+                <p className="text-xs text-muted font-medium mt-0.5 truncate">
                   {doctor.specialization?.name || 'General practice'}
                   {doctor.experienceYears ? ` · ${doctor.experienceYears} yrs experience` : ''}
                 </p>
-                <p className="text-xs text-ink font-semibold mt-1 flex items-center gap-1.5">
+                <p className="text-xs text-ink font-semibold mt-1 flex items-center gap-1.5 truncate">
                   <span className="text-primary-dark">🏥</span>
-                  <span className="text-muted font-normal">Clinic: {primaryClinic?.name || 'Clinic not assigned'}</span>
+                  <span className="text-muted font-normal truncate">Clinic: {primaryClinic?.name || 'Clinic not assigned'}</span>
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="text-right">
+            <div className="flex items-center justify-between sm:justify-end gap-3 pt-3 sm:pt-0 border-t sm:border-t-0 border-border/60">
+              <div className="text-left sm:text-right">
                 <span className="text-[11px] text-muted block">Consultation</span>
                 <span className="text-base font-bold text-primary-dark font-sans">₹{previewConsultation}/visit</span>
               </div>
@@ -651,7 +651,7 @@ export function Booking({ data }) {
               </div>
             )}
 
-            <Button type="submit" className="mt-5" disabled={confirming}>
+            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={confirming}>
               {confirming ? 'Confirming…' : 'Confirm booking'}
             </Button>
           </form>

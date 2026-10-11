@@ -516,7 +516,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       for (final d in filtered)
                         DropdownMenuItem(
                           value: d,
-                          child: Text('${d.name}${d.specialization != null ? " · ${d.specialization!.name}" : ""}'),
+                          child: Text(
+                            '${d.name}${d.specialization != null ? " · ${d.specialization!.name}" : ""}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                     ],
                     onChanged: (d) => setState(() {
@@ -570,7 +573,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   items: [
                     const DropdownMenuItem(value: 'self', child: Text('Myself')),
                     for (final f in _familyMembers)
-                      DropdownMenuItem(value: f.id, child: Text('${f.name} · ${f.relation}')),
+                      DropdownMenuItem(
+                        value: f.id,
+                        child: Text(
+                          '${f.name} · ${f.relation}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                   ],
                   onChanged: (v) => setState(() => _patientChoice = v),
                 ),

@@ -180,9 +180,9 @@ export function DoctorCard({ doctor }) {
       <p className="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>{queueOpen ? 'Today queue open' : 'Not accepting bookings today'}</p>
     </div>
     {doctor.emergencyAvailable && <p className="mt-2 text-sm font-semibold text-error">Emergency available</p>}
-    <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
       <div><span className="block text-xs text-muted">Consultation</span><strong className="text-lg">₹{Number(doctor.consultationFee) || 0}</strong></div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 shrink-0">
         <Link className="touch-target inline-flex items-center rounded-button border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface" to={`/doctors/${doctor.id}`}>View profile</Link>
         <Link className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3 text-sm font-semibold text-white hover:bg-charcoal" to={`/doctors/${doctor.id}`}>Book now</Link>
       </div>
@@ -634,82 +634,12 @@ export function Register() {
 }
 
 export function ForgotPassword() {
-  const [resetMethod, setResetMethod] = useState('link') // 'link' | 'otp'
+  // Password recovery is email-link only; SMS and call OTP are intentionally not supported.
   const [identifier, setIdentifier] = useState('')
-  const [otpCode, setOtpCode] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpSending, setOtpSending] = useState(false)
-  const [otpCooldown, setOtpCooldown] = useState(0)
   const [sentLink, setSentLink] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const navigate = useNavigate()
   const forgotPassword = useAppStore((state) => state.forgotPassword)
-  const sendOtp = useAppStore((state) => state.sendOtp)
-  const resetPasswordWithOtp = useAppStore((state) => state.resetPasswordWithOtp)
-
-  useEffect(() => {
-    let timer
-    if (otpCooldown > 0) {
-      timer = setInterval(() => setOtpCooldown((prev) => prev - 1), 1000)
-    }
-    return () => clearInterval(timer)
-  }, [otpCooldown])
-
-  const handleSendOtp = async (event) => {
-    if (event) event.preventDefault()
-    if (!identifier.trim()) {
-      setError('Please enter your email or 10-digit mobile number.')
-      return
-    }
-    setOtpSending(true)
-    setError('')
-    try {
-      const res = await sendOtp({ identifier: identifier.trim(), purpose: 'forgot_password' })
-      setOtpSent(true)
-      const data = res?.data || res
-      setOtpCooldown(data?.cooldownSeconds || 30)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setOtpSending(false)
-    }
-  }
-
-  const handleResetWithOtp = async (event) => {
-    event.preventDefault()
-    if (!otpCode.trim()) {
-      setError('Please enter the 6-digit OTP code.')
-      return
-    }
-    if (!newPassword || newPassword.length < 8) {
-      setError('Password must be at least 8 characters long.')
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-    setSubmitting(true)
-    setError('')
-    try {
-      await resetPasswordWithOtp({
-        identifier: identifier.trim(),
-        otp: otpCode.trim(),
-        newPassword,
-      })
-      navigate('/login', {
-        replace: true,
-        state: { message: 'Password has been reset successfully! Please sign in with your new password.' },
-      })
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const handleSendLink = async (event) => {
     event.preventDefault()
@@ -738,7 +668,7 @@ export function ForgotPassword() {
             <span><strong>BookADoctors</strong></span>
           </Link>
           <h1>Healthcare that moves with you.</h1>
-          <p>Reset access to your account securely via OTP or email.</p>
+          <p>Reset access to your account securely by email.</p>
         </div>
         <small>BookADoctors · India</small>
       </section>
@@ -746,133 +676,29 @@ export function ForgotPassword() {
       <section className="auth-form-panel">
         <div className="auth-box">
           <h2>Reset your password</h2>
-          <p>Choose your preferred way to regain access to your account.</p>
-
-          {/* Reset Method Tabs */}
-          <div className="grid grid-cols-2 gap-2 my-4 p-1 bg-surface-muted rounded-button border border-border">
-            <button
-              type="button"
-              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${resetMethod === 'otp' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
-              onClick={() => { setResetMethod('otp'); setError(''); }}
-            >
-              Instant OTP (SMS / Email)
-            </button>
-            <button
-              type="button"
-              className={`py-1.5 text-xs font-semibold rounded-[6px] transition-all ${resetMethod === 'link' ? 'bg-white dark:bg-slate-800 text-foreground shadow-sm' : 'text-muted hover:text-foreground'}`}
-              onClick={() => { setResetMethod('link'); setError(''); }}
-            >
-              Email Link
-            </button>
-          </div>
+          <p>We'll send a secure reset link to your email address.</p>
 
           {error && <p role="alert" className="form-message error">{error}</p>}
 
-          {resetMethod === 'otp' ? (
-            <form onSubmit={otpSent ? handleResetWithOtp : handleSendOtp} className="space-y-4">
-              <label className="form-field">
-                <div className="flex justify-between items-center mb-1">
-                  <span>Email address or Mobile number</span>
-                  {otpSent && (
-                    <button
-                      type="button"
-                      className="text-xs text-primary-dark underline hover:no-underline font-semibold"
-                      onClick={() => { setOtpSent(false); setOtpCode(''); setError(''); }}
-                    >
-                      Change
-                    </button>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="you@example.com or 9876543210"
-                    value={identifier}
-                    disabled={otpSent}
-                    onChange={(e) => setIdentifier(e.target.value)}
-                  />
-                  {otpSent && (
-                    <button
-                      type="button"
-                      className="px-3 py-1.5 text-xs font-semibold rounded-button border border-border bg-surface hover:bg-surface-muted disabled:opacity-50 whitespace-nowrap"
-                      disabled={otpCooldown > 0 || otpSending}
-                      onClick={handleSendOtp}
-                    >
-                      {otpSending ? 'Sending…' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : 'Resend OTP'}
-                    </button>
-                  )}
-                </div>
+          {sentLink ? (
+            <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">
+              If an account exists for <strong>{identifier}</strong>, reset instructions have been sent. Check your inbox (and server logs in local/dev) for the reset link.
+            </div>
+          ) : (
+            <form className="mt-4 space-y-4" onSubmit={handleSendLink}>
+              <label className="form-field">Account email
+                <input
+                  type="email"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
               </label>
-
-              {otpSent && (
-                <>
-                  <label className="form-field">6-digit Verification Code (OTP)
-                    <input
-                      type="text"
-                      required
-                      maxLength={8}
-                      placeholder="Enter 6-digit OTP code"
-                      value={otpCode}
-                      onChange={(e) => setOtpCode(e.target.value)}
-                    />
-                  </label>
-
-                  <label className="form-field">New Password
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      placeholder="At least 8 characters"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
-                  </label>
-
-                  <label className="form-field">Confirm New Password
-                    <input
-                      type="password"
-                      required
-                      minLength={8}
-                      placeholder="Re-enter password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                    />
-                  </label>
-                </>
-              )}
-
-              <button
-                type="submit"
-                className="btn btn-primary w-full"
-                disabled={submitting || otpSending}
-              >
-                {otpSending ? 'Sending OTP…' : submitting ? 'Resetting password…' : otpSent ? 'Reset & Save Password' : 'Send Verification OTP'}
+              <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
+                {submitting ? 'Sending…' : 'Send reset link'}
               </button>
             </form>
-          ) : (
-            <>
-              {sentLink ? (
-                <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">
-                  If an account exists for <strong>{identifier}</strong>, reset instructions have been sent. Check your inbox (and server logs in local/dev) for the reset link.
-                </div>
-              ) : (
-                <form className="mt-4 space-y-4" onSubmit={handleSendLink}>
-                  <label className="form-field">Account email
-                    <input
-                      type="email"
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                    />
-                  </label>
-                  <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
-                    {submitting ? 'Sending…' : 'Send reset link'}
-                  </button>
-                </form>
-              )}
-            </>
           )}
 
           <div className="auth-switch">
