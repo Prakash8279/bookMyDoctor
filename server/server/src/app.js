@@ -63,17 +63,7 @@ app.use(
   })
 );
 
-// 2. Force HTTPS in production (skip OPTIONS preflight and check x-forwarded-proto).
-if (env.isProduction) {
-  app.use((req, res, next) => {
-    if (req.method === 'OPTIONS') return next();
-    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
-    if (proto === 'https' || req.secure) return next();
-    return res.redirect(301, `https://${req.headers.host}${req.originalUrl}`);
-  });
-}
-
-// 2.5. Security headers. crossOriginResourcePolicy is relaxed to 'cross-origin' because
+// 2. Security headers. crossOriginResourcePolicy is relaxed to 'cross-origin' because
 // /uploads files — public ones (profile photos, clinic QR codes) via express.static below, and
 // private ones (doctor verification documents) via the authenticated route just above it — must
 // be loadable by the frontend running on a different origin/port.
