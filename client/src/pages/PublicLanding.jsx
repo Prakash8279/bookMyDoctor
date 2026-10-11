@@ -386,11 +386,27 @@ export function PatientLanding() {
 
           <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
             <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
-              <span>Is BookADoctors also known as BookMyDoctors, BookMyDoc, or BookADoctor?</span>
+              <span>Is BookADoctors also known as BookMyDoctors, BookMyDocr, BookMyDoc, or BookADoctor?</span>
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>
             <p className="mt-3 text-muted text-sm leading-relaxed">
-              Yes! BookADoctors (commonly searched online as bookadoctors, bookadoctor, bookmydoctors, bookmydoctor, BookMyDoc, or book a doctor) is the official healthcare booking portal at bookmydoctors.me for finding verified doctors, booking appointments, and tracking live clinic queues.
+              Yes! BookADoctors (commonly searched online as <strong>bookadoctors</strong>, <strong>bookadoctor</strong>, <strong>bookmydocr</strong>, <strong>bookmydocrs</strong>, <strong>bookmydoctors</strong>, <strong>bookmydoctor</strong>, <strong>BookMyDoc</strong>, or <strong>book a doctor</strong>) is the official healthcare booking portal at <a href="https://bookadoctors.com" className="text-primary-dark font-medium underline">bookadoctors.com</a> for finding verified doctors, booking appointments, and tracking live clinic queues.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>Where can I find BookADoctors on Facebook &amp; Instagram?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              Stay connected with us for doctor updates, health tips, and clinic schedules on our official social media channels:
+              <br className="my-2" />
+              • <strong>Facebook:</strong> <a href="https://www.facebook.com/share/1LqoRuqfcM/" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">BookADoctors on Facebook</a>
+              <br />
+              • <strong>Instagram:</strong> <a href="https://www.instagram.com/bookadoctors?dlrf=MWJrMTNvNjg3MW8wbg==" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">@bookadoctors on Instagram</a>
+              <br />
+              • <strong>WhatsApp Support:</strong> <a href="https://wa.me/917323074966" target="_blank" rel="noopener noreferrer" className="text-primary-dark font-medium underline">+91 73230 74966</a>
             </p>
           </details>
         </div>
