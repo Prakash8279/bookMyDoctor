@@ -402,9 +402,9 @@ export function PatientLanding() {
             <p className="mt-3 text-muted text-sm leading-relaxed">
               Stay connected with us for doctor updates, health tips, and clinic schedules on our official social media channels:
               <br className="my-2" />
-              • <strong>Facebook:</strong> <a href="https://www.facebook.com/share/1LqoRuqfcM/" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">BookADoctors on Facebook</a>
+              • <strong>Facebook:</strong> <a href="https://www.facebook.com/BookADoctors" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">BookADoctors on Facebook</a>
               <br />
-              • <strong>Instagram:</strong> <a href="https://www.instagram.com/bookadoctors?dlrf=MWJrMTNvNjg3MW8wbg==" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">@bookadoctors on Instagram</a>
+              • <strong>Instagram:</strong> <a href="https://www.instagram.com/bookadoctors/" target="_blank" rel="me noopener noreferrer" className="text-primary-dark font-medium underline">@bookadoctors on Instagram</a>
               <br />
               • <strong>WhatsApp Support:</strong> <a href="https://wa.me/917323074966" target="_blank" rel="noopener noreferrer" className="text-primary-dark font-medium underline">+91 73230 74966</a>
             </p>

@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/RoleGuard'
 import { SiteFooter } from './components/SiteFooter'
+import { SeoMeta } from './components/SeoMeta'
 import { LoadingSkeleton } from './components/LoadingSkeleton'
 import { PortalLayout } from './layouts/PortalLayout'
 import { getTokens } from './lib/apiClient'
@@ -171,7 +172,7 @@ export default function App() {
   // first navigation to each — <Suspense> here shows the same splash used
   // for the initial bulk load above while that chunk downloads, instead of
   // the route panel flashing blank.
-  return <Suspense fallback={<div className="grid min-h-screen place-items-center bg-surface p-6"><div className="w-full max-w-md"><LoadingSkeleton rows={5} /></div></div>}>
+  return <><SeoMeta /><Suspense fallback={<div className="grid min-h-screen place-items-center bg-surface p-6"><div className="w-full max-w-md"><LoadingSkeleton rows={5} /></div></div>}>
   <Routes>
     <Route path="/" element={publicPage(<PatientLanding />)} />
     <Route path="/for-doctors" element={publicPage(<ProviderLanding />)} />
@@ -321,7 +322,7 @@ export default function App() {
     </Route>
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
-  </Suspense>
+  </Suspense></>
 }
 
 

@@ -39,7 +39,7 @@ export function SiteFooter() {
             </svg>
           </a>
           <a
-            href="https://www.instagram.com/bookadoctors?dlrf=MWJrMTNvNjg3MW8wbg=="
+            href="https://www.instagram.com/bookadoctors/"
             target="_blank"
             rel="me noopener noreferrer"
             title="Follow on Instagram"
@@ -53,7 +53,7 @@ export function SiteFooter() {
             </svg>
           </a>
           <a
-            href="https://www.facebook.com/share/1LqoRuqfcM/"
+            href="https://www.facebook.com/BookADoctors"
             target="_blank"
             rel="me noopener noreferrer"
             title="Follow on Facebook"
