@@ -28,7 +28,7 @@
  */
 jest.mock('../../../src/config/db', () => {
   const prismaMock = {
-    user: { findUnique: jest.fn(), create: jest.fn(), count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), count: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     clinic: { findUnique: jest.fn() },
     doctorClinic: { findUnique: jest.fn(), findMany: jest.fn() },
     receptionistProfile: { create: jest.fn(), update: jest.fn() },
@@ -49,6 +49,11 @@ const receptionistsService = require('../../../src/modules/receptionists/recepti
 const ADMIN = { id: 'admin-1', role: 'admin' };
 const OWNER_DOCTOR = { id: 'doc-owner', role: 'doctor' };
 const NON_OWNER_DOCTOR = { id: 'doc-other', role: 'doctor' };
+
+beforeEach(() => {
+  prisma.user.findFirst.mockReset();
+  prisma.user.findFirst.mockResolvedValue(null);
+});
 
 function receptionistRow(overrides = {}) {
   return {

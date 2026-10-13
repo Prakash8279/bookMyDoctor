@@ -40,6 +40,12 @@ const redis = require('../config/redis');
 const logger = require('../config/logger');
 
 const SCAN_COUNT = 200;
+// Prevent a cache stampede inside one API process: when several requests miss the same Redis
+// key at once, only the first one is allowed to run the underlying Prisma query. Every other
+// request awaits that same promise. Redis remains the cross-process cache; this map only lives
+// for the duration of an in-flight miss and never retains response data after it settles.
+const inFlightMisses = new Map();
+let invalidationEpoch = 0;
 
 /**
  * Cache-aside read: return the cached value for `key` if present, otherwise call `fetchFn()`,
@@ -65,17 +71,36 @@ async function getOrSet(key, ttlSeconds, fetchFn) {
     logger.error(`[cacheService] GET "${key}" failed, falling back to source: ${err.message}`);
   }
 
-  const value = await fetchFn();
+  const existingMiss = inFlightMisses.get(key);
+  if (existingMiss) return existingMiss;
+
+  const fetchEpoch = invalidationEpoch;
+  const missPromise = (async () => {
+    const value = await fetchFn();
+
+    // If any mutation invalidated caches while this read was running, do not repopulate Redis
+    // with the pre-mutation snapshot. The current caller may still receive the response it
+    // started before the mutation, but every later caller will perform a fresh read.
+    if (fetchEpoch === invalidationEpoch) {
+      try {
+        await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+      } catch (err) {
+        // Caching the result failed (Redis down, value not serializable, etc.) — the caller still
+        // gets a correct, fresh value; we just failed to speed up the NEXT call.
+        logger.error(`[cacheService] SET "${key}" failed (continuing uncached): ${err.message}`);
+      }
+    }
+
+    return value;
+  })();
+
+  inFlightMisses.set(key, missPromise);
 
   try {
-    await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
-  } catch (err) {
-    // Caching the result failed (Redis down, value not serializable, etc.) — the caller still
-    // gets a correct, fresh value; we just failed to speed up the NEXT call.
-    logger.error(`[cacheService] SET "${key}" failed (continuing uncached): ${err.message}`);
+    return await missPromise;
+  } finally {
+    if (inFlightMisses.get(key) === missPromise) inFlightMisses.delete(key);
   }
-
-  return value;
 }
 
 /**
@@ -119,6 +144,11 @@ async function delPattern(pattern) {
  */
 async function invalidate(keyOrPattern) {
   if (!keyOrPattern) return;
+  // A mutation must not let a request arriving one tick later join a pre-mutation read that is
+  // still in flight. Clearing promises is cheap (this map is normally tiny) and the epoch check
+  // above also prevents those old reads from writing stale data back into Redis.
+  invalidationEpoch += 1;
+  inFlightMisses.clear();
   if (keyOrPattern.includes('*')) {
     await delPattern(keyOrPattern);
   } else {

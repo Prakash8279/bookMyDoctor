@@ -20,6 +20,7 @@ const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { ADMIN_ROLES } = require('../../utils/roles');
+const { normalizeEmail, normalizePhone, getPhoneSearchVariants } = require('../../utils/identityNormalization');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -42,10 +43,6 @@ const RECEPTIONIST_SELECT = {
 
 function isAdmin(actor) {
   return !!actor && ADMIN_ROLES.includes(actor.role);
-}
-
-function normalizeEmail(email) {
-  return String(email).trim().toLowerCase();
 }
 
 function shape(row) {
@@ -113,12 +110,22 @@ async function assertOwnsClinic(clinicId, actor) {
 async function createReceptionist(input, actor) {
   const { name, email, password, phone, clinicId } = input;
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
 
   const clinic = await assertClinicUsableForReceptionist(clinicId, actor);
 
   const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
   if (existingUser) {
     throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
+  }
+  if (normalizedPhone) {
+    const existingPhone = await prisma.user.findFirst({
+      where: { OR: getPhoneSearchVariants(normalizedPhone) },
+      select: { id: true },
+    });
+    if (existingPhone) {
+      throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+    }
   }
 
   const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
@@ -132,7 +139,7 @@ async function createReceptionist(input, actor) {
           email: normalizedEmail,
           passwordHash,
           role: 'receptionist',
-          phone: phone ? phone.trim() : null,
+          phone: normalizedPhone,
           status: 'active',
         },
         select: { id: true },
@@ -146,6 +153,10 @@ async function createReceptionist(input, actor) {
     });
   } catch (err) {
     if (err.code === 'P2002') {
+      const target = err.meta && Array.isArray(err.meta.target) ? err.meta.target : [];
+      if (target.includes('phone') || (err.message && err.message.toLowerCase().includes('phone'))) {
+        throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+      }
       throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
     }
     throw err;

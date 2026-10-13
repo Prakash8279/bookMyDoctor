@@ -108,7 +108,44 @@ const apiClient = axios.create({
   headers: { 'X-Client-Platform': 'web' },
 })
 
+// Browser-side single-flight for identical GETs. A route transition, React StrictMode remount,
+// or two widgets asking for the same resource at the same moment now shares one HTTP request
+// instead of sending duplicates. This is deliberately NOT a response cache: the entry is removed
+// as soon as the request settles, so later reads still follow each endpoint's normal freshness
+// rules (and the backend's scoped Redis cache).
+const inFlightGets = new Map()
+const rawGet = apiClient.get.bind(apiClient)
+
+function stableParamsKey(params = {}) {
+  return JSON.stringify(
+    Object.keys(params)
+      .sort()
+      .map((key) => [key, params[key]])
+  )
+}
+
+apiClient.get = (url, config = {}) => {
+  // Requests with an AbortSignal have caller-specific cancellation semantics and must remain
+  // independent; sharing one promise would let one component's cancellation affect another.
+  if (config.signal) return rawGet(url, config)
+
+  const key = `${url}|${stableParamsKey(config.params)}`
+  const existing = inFlightGets.get(key)
+  if (existing) return existing
+
+  const request = rawGet(url, config).finally(() => {
+    if (inFlightGets.get(key) === request) inFlightGets.delete(key)
+  })
+  inFlightGets.set(key, request)
+  return request
+}
+
 apiClient.interceptors.request.use((config) => {
+  if ((config.method || 'get').toLowerCase() !== 'get') {
+    // A mutation can change any resource represented by an in-flight read. Do not let a GET
+    // started after this mutation join an older pre-mutation promise.
+    inFlightGets.clear()
+  }
   if (tokens && tokens.accessToken) {
     config.headers = config.headers || {}
     config.headers.Authorization = `Bearer ${tokens.accessToken}`

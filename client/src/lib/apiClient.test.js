@@ -120,6 +120,42 @@ describe('apiClient — request interceptor', () => {
   })
 })
 
+describe('apiClient — identical GET single-flight', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    mockInstance = createMockAxiosInstance()
+    localStorage.clear()
+  })
+
+  it('shares one HTTP request between concurrent identical GET calls', async () => {
+    let resolveGet
+    const rawGet = mockInstance.get
+    rawGet.mockReturnValueOnce(new Promise((resolve) => { resolveGet = resolve }))
+    const apiClient = (await import('./apiClient')).default
+
+    const first = apiClient.get('/doctors', { params: { page: 1, city: 'meerut' } })
+    const second = apiClient.get('/doctors', { params: { city: 'meerut', page: 1 } })
+
+    expect(rawGet).toHaveBeenCalledTimes(1)
+    resolveGet([{ id: 'doctor-1' }])
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      [{ id: 'doctor-1' }],
+      [{ id: 'doctor-1' }],
+    ])
+  })
+
+  it('does not retain settled GET responses as a client-side cache', async () => {
+    const rawGet = mockInstance.get
+    rawGet.mockResolvedValue([{ id: 'doctor-1' }])
+    const apiClient = (await import('./apiClient')).default
+
+    await apiClient.get('/doctors')
+    await apiClient.get('/doctors')
+
+    expect(rawGet).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('apiClient — response success interceptor', () => {
   let successHandler
 

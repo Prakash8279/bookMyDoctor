@@ -17,6 +17,7 @@ const { pickPresentFields } = require('../../utils/pickPresentFields');
 const { ADMIN_ROLES } = require('../../utils/roles');
 const idGenerators = require('../../utils/idGenerators');
 const encryptionService = require('../../services/encryptionService');
+const { normalizeEmail, normalizePhone, getPhoneSearchVariants } = require('../../utils/identityNormalization');
 
 // Public directory data — output is role-invariant (no masking), so list keys need only the
 // query params. TTL 60s: staleness here is low-stakes (a doctor bio/rating going stale for a
@@ -214,10 +215,6 @@ function buildSchedule(hoursRows, primaryClinicId) {
     scheduleSummary = `${schedule.length} day${schedule.length === 1 ? '' : 's'}/week`;
   }
   return { schedule, scheduleSummary };
-}
-
-function normalizeEmail(email) {
-  return String(email).trim().toLowerCase();
 }
 
 /**
@@ -528,18 +525,25 @@ async function createDoctor(input, actor = null) {
   } = input;
 
   const normalizedEmail = normalizeEmail(email);
+  const normalizedPhone = normalizePhone(phone);
 
   // Email-uniqueness check, specialization-existence check, and password hashing are all
   // independent of one another — run concurrently instead of three steps in series. bcrypt's
   // hash runs off the main thread (libuv threadpool), so it overlaps cleanly with the two DB
   // round-trips rather than adding its ~100ms+ cost on top of them.
-  const [existingUser, specialization, passwordHash] = await Promise.all([
+  const [existingUser, existingPhone, specialization, passwordHash] = await Promise.all([
     prisma.user.findUnique({ where: { email: normalizedEmail }, select: { id: true } }),
+    normalizedPhone
+      ? prisma.user.findFirst({ where: { OR: getPhoneSearchVariants(normalizedPhone) }, select: { id: true } })
+      : null,
     prisma.specialization.findUnique({ where: { id: specializationId }, select: { id: true } }),
     bcrypt.hash(password, env.bcryptSaltRounds),
   ]);
   if (existingUser) {
     throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
+  }
+  if (existingPhone) {
+    throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
   }
   if (!specialization) {
     throw new ApiError(400, 'SPECIALIZATION_NOT_FOUND', 'The selected specialization does not exist.');
@@ -556,7 +560,7 @@ async function createDoctor(input, actor = null) {
           email: normalizedEmail,
           passwordHash,
           role: 'doctor',
-          phone: phone ? phone.trim() : null,
+          phone: normalizedPhone,
           city: city ? city.trim() : null,
           status: 'active',
         },
@@ -593,6 +597,10 @@ async function createDoctor(input, actor = null) {
     });
   } catch (err) {
     if (err.code === 'P2002') {
+      const target = err.meta && Array.isArray(err.meta.target) ? err.meta.target : [];
+      if (target.includes('phone') || (err.message && err.message.toLowerCase().includes('phone'))) {
+        throw new ApiError(409, 'PHONE_ALREADY_EXISTS', 'An account with this mobile number already exists.');
+      }
       throw new ApiError(409, 'EMAIL_ALREADY_EXISTS', 'An account with this email already exists.');
     }
     throw err;

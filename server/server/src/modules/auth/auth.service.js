@@ -15,6 +15,7 @@ const activityLogService = require('../../services/activityLogService');
 const emailService = require('../../services/emailService');
 const logger = require('../../config/logger');
 const idGenerators = require('../../utils/idGenerators');
+const { normalizeEmail, normalizePhone, getPhoneSearchVariants } = require('../../utils/identityNormalization');
 const { verifyGoogleIdToken } = require('../../services/googleIdTokenVerifier');
 const otpService = require('../../services/otpService');
 
@@ -41,29 +42,6 @@ const USER_SUMMARY_SELECT = {
 // whether or not the account exists, so response timing can't be used to distinguish
 // "no such email" from "wrong password" (see D9 in the phase plan).
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), env.bcryptSaltRounds);
-
-function normalizeEmail(email) {
-  return String(email).trim().toLowerCase();
-}
-
-function normalizePhone(phone) {
-  if (!phone || typeof phone !== 'string') return null;
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return null;
-  return digits.length >= 10 ? digits.slice(-10) : digits;
-}
-
-function getPhoneSearchVariants(phone) {
-  const norm = normalizePhone(phone);
-  if (!norm) return [];
-  return [
-    { phone: norm },
-    { phone: `+91${norm}` },
-    { phone: `+91 ${norm}` },
-    { phone: `0${norm}` },
-    { phone: `91${norm}` },
-  ];
-}
 
 /**
  * Creates a bare-bones in-app notification for a single user. Writes the Notification +
