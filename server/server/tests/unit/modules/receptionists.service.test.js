@@ -41,6 +41,7 @@ jest.mock('../../../src/services/cacheService', () => ({
   getOrSet: jest.fn((key, ttl, fetchFn) => fetchFn()),
   invalidate: jest.fn(),
 }));
+jest.mock('../../../src/utils/idGenerators', () => ({ nextReceptionistNumber: jest.fn().mockResolvedValue(9) }));
 
 const prisma = require('../../../src/config/db');
 const activityLogService = require('../../../src/services/activityLogService');
@@ -64,7 +65,7 @@ function receptionistRow(overrides = {}) {
     phone: '9000000000',
     status: 'active',
     createdAt: new Date('2026-01-01'),
-    receptionistProfile: { clinicId: 'clinic-1', since: new Date('2026-01-01'), clinic: { id: 'clinic-1', name: 'City Clinic' } },
+    receptionistProfile: { receptionistNumber: 9, clinicId: 'clinic-1', since: new Date('2026-01-01'), clinic: { id: 'clinic-1', name: 'City Clinic' } },
     ...overrides,
   };
 }

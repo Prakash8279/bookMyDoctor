@@ -154,7 +154,7 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(a.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    child: Text(a.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
                                   ),
                                   StatusBadge(status: a.status),
                                 ],
@@ -167,8 +167,8 @@ class _ReceptionistAppointmentsScreenState extends State<ReceptionistAppointment
                               Text('Booking ID: #${_shortId(a.id)}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                               const SizedBox(height: 4),
                               Text('${a.appointmentDate} · ${a.appointmentTime}', style: const TextStyle(color: AppColors.textSecondary)),
-                              if (a.doctor?.name != null)
-                                Text('Dr. ${a.doctor!.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              if (a.doctor != null)
+                                Text(a.doctor!.displayName, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                               // BUG FIX (mobile parity audit): web's AppointmentTable (StaffPages.jsx)
                               // shows Clinic and Fee/Due columns — this card never rendered either
                               // even though both were already parsed onto the Appointment/Fees models.

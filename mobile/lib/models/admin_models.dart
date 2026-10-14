@@ -37,6 +37,7 @@ class FamilyMember {
 
 class ReceptionistRow {
   final String id;
+  final int? receptionistNumber;
   final String name;
   final String email;
   final String? phone;
@@ -48,6 +49,7 @@ class ReceptionistRow {
 
   ReceptionistRow({
     required this.id,
+    this.receptionistNumber,
     required this.name,
     required this.email,
     this.phone,
@@ -60,6 +62,7 @@ class ReceptionistRow {
 
   factory ReceptionistRow.fromJson(Map<String, dynamic> json) => ReceptionistRow(
         id: asString(json['id']),
+        receptionistNumber: json['receptionistNumber'] == null ? null : asInt(json['receptionistNumber']),
         name: asString(json['name']),
         email: asString(json['email']),
         phone: json['phone'] as String?,
@@ -76,6 +79,7 @@ class ReceptionistRow {
 // — there was no mobile model or screen for it at all. See admin_patients_screen.dart.
 class PatientDirectoryItem {
   final String id;
+  final int? patientNumber;
   final String name;
   final String? email;
   final String? phone;
@@ -96,6 +100,7 @@ class PatientDirectoryItem {
 
   PatientDirectoryItem({
     required this.id,
+    this.patientNumber,
     required this.name,
     this.email,
     this.phone,
@@ -111,6 +116,7 @@ class PatientDirectoryItem {
 
   factory PatientDirectoryItem.fromJson(Map<String, dynamic> json) => PatientDirectoryItem(
         id: asString(json['id']),
+        patientNumber: json['patientNumber'] == null ? null : asInt(json['patientNumber']),
         name: asString(json['name']),
         email: json['email'] as String?,
         phone: json['phone'] as String?,
@@ -121,6 +127,8 @@ class PatientDirectoryItem {
         dateOfBirth: json['dateOfBirth'] as String?,
         bloodGroup: json['bloodGroup'] as String?,
       );
+
+  String get displayName => patientNumber == null ? name : 'DCP$patientNumber · $name';
 
   bool get hasHealthNotes =>
       (medicalHistory != null && medicalHistory!.trim().isNotEmpty) ||
@@ -140,6 +148,7 @@ class PatientDirectoryItem {
 
   PatientDirectoryItem mergedWithHealthNotes({String? medicalHistory, String? emergencyContact}) => PatientDirectoryItem(
         id: id,
+        patientNumber: patientNumber,
         name: name,
         email: email,
         phone: phone,

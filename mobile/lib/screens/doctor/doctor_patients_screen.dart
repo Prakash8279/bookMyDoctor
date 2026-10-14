@@ -7,6 +7,7 @@ import '../../widgets/common_widgets.dart';
 
 class _PatientRow {
   final String id;
+  final int? patientNumber;
   final String? name;
   final String? phone;
   final String? gender;
@@ -19,6 +20,7 @@ class _PatientRow {
 
   _PatientRow({
     required this.id,
+    this.patientNumber,
     this.name,
     this.phone,
     this.gender,
@@ -106,6 +108,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
         if (existing == null) {
           map[patient.id] = _PatientRow(
             id: patient.id,
+            patientNumber: patient.patientNumber,
             name: patient.name,
             phone: patient.phone,
             gender: patient.gender,
@@ -194,7 +197,7 @@ class _DoctorPatientsScreenState extends State<DoctorPatientsScreen> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(patient.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                                    child: Text(patient.patientNumber == null ? (patient.name ?? 'Patient') : 'DCP${patient.patientNumber} · ${patient.name ?? "Patient"}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                                   ),
                                   StatusBadge(status: patient.lastStatus),
                                 ],

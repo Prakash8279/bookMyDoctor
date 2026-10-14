@@ -10,18 +10,27 @@ import 'core_models.dart';
 
 class NamedRef {
   final String id;
+  final int? patientNumber;
+  final int? doctorNumber;
   final String? name;
   final String? relation;
   final String? address;
   final String? phone;
-  NamedRef({required this.id, this.name, this.relation, this.address, this.phone});
+  NamedRef({required this.id, this.patientNumber, this.doctorNumber, this.name, this.relation, this.address, this.phone});
   factory NamedRef.fromJson(Map<String, dynamic>? json) => NamedRef(
         id: json == null ? '' : asString(json['id']),
+        patientNumber: json?['patientNumber'] == null ? null : asInt(json?['patientNumber']),
+        doctorNumber: json?['doctorNumber'] == null ? null : asInt(json?['doctorNumber']),
         name: json?['name'] as String?,
         relation: json?['relation'] as String?,
         address: json?['address'] as String?,
         phone: json?['phone'] as String?,
       );
+
+  String get patientDisplayName =>
+      patientNumber == null ? (name ?? 'Patient') : 'DCP$patientNumber · ${name ?? 'Patient'}';
+  String get doctorDisplayName =>
+      doctorNumber == null ? (name ?? 'Doctor') : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
 }
 
 class Fees {
@@ -87,6 +96,7 @@ class Fees {
 /// AppointmentTable handling in client/src/pages/StaffPages.jsx.
 class PatientRef {
   final String id;
+  final int? patientNumber;
   final String? name;
   final String? phone;
   final String? gender;
@@ -97,6 +107,7 @@ class PatientRef {
 
   PatientRef({
     required this.id,
+    this.patientNumber,
     this.name,
     this.phone,
     this.gender,
@@ -110,6 +121,7 @@ class PatientRef {
     if (json == null) return PatientRef(id: '');
     return PatientRef(
       id: asString(json['id']),
+      patientNumber: json['patientNumber'] == null ? null : asInt(json['patientNumber']),
       name: json['name'] as String?,
       phone: json['phone'] as String?,
       gender: json['gender'] as String?,
@@ -119,6 +131,9 @@ class PatientRef {
       emergencyContact: json['emergencyContact'] as String?,
     );
   }
+
+  String get displayName =>
+      patientNumber == null ? (name ?? 'Patient') : 'DCP$patientNumber · ${name ?? 'Patient'}';
 
   /// Age computed from dateOfBirth — null whenever dateOfBirth wasn't sent (receptionist/patient
   /// callers never receive it at all). Mirrors the web app's ageFromDob() in StaffPages.jsx.
@@ -167,14 +182,16 @@ class PatientRef {
 
 class DoctorRef {
   final String id;
+  final int? doctorNumber;
   final String? name;
   final String? photoUrl;
   final Specialization? specialization;
-  DoctorRef({required this.id, this.name, this.photoUrl, this.specialization});
+  DoctorRef({required this.id, this.doctorNumber, this.name, this.photoUrl, this.specialization});
   factory DoctorRef.fromJson(Map<String, dynamic>? json) {
     if (json == null) return DoctorRef(id: '');
     return DoctorRef(
       id: asString(json['id']),
+      doctorNumber: json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
       name: json['name'] as String?,
       photoUrl: json['photoUrl'] as String?,
       specialization: json['specialization'] == null
@@ -182,6 +199,9 @@ class DoctorRef {
           : Specialization.fromJson(json['specialization'] as Map<String, dynamic>),
     );
   }
+
+  String get displayName =>
+      doctorNumber == null ? (name ?? 'Doctor') : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
 }
 
 class Appointment {

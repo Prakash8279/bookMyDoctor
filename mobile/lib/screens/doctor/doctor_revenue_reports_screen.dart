@@ -364,7 +364,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
                   ...filtered.map((p) => Card(
                         margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                         child: ListTile(
-                          title: Text(p.patient?.name ?? 'Patient'),
+                          title: Text(p.patient?.patientDisplayName ?? 'Patient'),
                           subtitle: Row(
                             children: [
                               Flexible(

@@ -6,7 +6,7 @@ import { Select } from '../components/Select'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { StatusPill } from '../components/StatusPill'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate, sequenceId, shortId } from '../lib/format'
+import { formatDate, sequenceId, shortId, stableId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { usePolling } from '../hooks/usePolling'
@@ -200,7 +200,9 @@ export function PortalAppointments({ data, role = 'patient' }) {
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+        { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
         { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
+        { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
         { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || item.familyMember?.name || '—' },
         { key: 'clinicName', label: 'Clinic', render: (item) => item.clinic?.name || '—' },
         { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
@@ -220,7 +222,9 @@ export function PortalAppointments({ data, role = 'patient' }) {
       { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
       { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
       { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+      { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
       { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
+      { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
       { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || item.familyMember?.name || '—' },
       { key: 'clinicName', label: 'Clinic', render: (item) => item.clinic?.name || '—' },
       { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },

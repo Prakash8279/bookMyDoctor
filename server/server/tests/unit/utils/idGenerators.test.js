@@ -14,7 +14,7 @@
 jest.mock('../../../src/config/db', () => ({ $queryRaw: jest.fn() }));
 
 const prisma = require('../../../src/config/db');
-const { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber } = require('../../../src/utils/idGenerators');
+const { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber, nextReceptionistNumber } = require('../../../src/utils/idGenerators');
 
 describe('idGenerators.nextReceiptNumber', () => {
   test('pads a small sequence value out to 8 digits with the CDR- prefix', async () => {
@@ -57,6 +57,7 @@ describe('idGenerators.nextPatientNumber / nextDoctorNumber / nextClinicNumber',
     ['nextPatientNumber', nextPatientNumber, 'patient_number_seq'],
     ['nextDoctorNumber', nextDoctorNumber, 'doctor_number_seq'],
     ['nextClinicNumber', nextClinicNumber, 'clinic_number_seq'],
+    ['nextReceptionistNumber', nextReceptionistNumber, 'receptionist_number_seq'],
   ])('%s returns a plain Number (unformatted, unpadded) drawn from %s', async (_name, fn, seqName) => {
     prisma.$queryRaw.mockResolvedValue([{ value: 7n }]);
 
@@ -72,6 +73,7 @@ describe('idGenerators.nextPatientNumber / nextDoctorNumber / nextClinicNumber',
     ['nextPatientNumber', nextPatientNumber],
     ['nextDoctorNumber', nextDoctorNumber],
     ['nextClinicNumber', nextClinicNumber],
+    ['nextReceptionistNumber', nextReceptionistNumber],
   ])('%s converts a BigInt sequence value to a real Number, not a string or BigInt', async (_name, fn) => {
     prisma.$queryRaw.mockResolvedValue([{ value: 123456789n }]);
 

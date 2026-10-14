@@ -348,7 +348,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                        Text(item.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                                         Text(
                                           // COMPLETENESS FIX (mobile parity audit round 2, doctor
                                           // panel): web's dashboard "Recent live records" table

@@ -8,7 +8,7 @@ import { StatCard } from '../components/StatCard'
 import { StatusPill } from '../components/StatusPill'
 import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
 import { useAppStore } from '../store/useAppStore'
-import { formatDate, sequenceId, shortId } from '../lib/format'
+import { formatDate, sequenceId, shortId, stableId } from '../lib/format'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePolling } from '../hooks/usePolling'
@@ -17,6 +17,8 @@ import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/rece
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
+
+const nameWithStableId = (name, number, prefix) => number == null ? (name || '—') : `${stableId(number, prefix)} · ${name || '—'}`
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
 
 const Page = ({ title, subtitle, children, action, kicker }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
@@ -980,7 +982,7 @@ export function PatientAppointments({ data, history = false }) {
   // 'partial', otherwise the full online-payment total), not the always-full `fee`, so the
   // slip's "Total amount" row reconciles with Paid + Due exactly like the table does.
   const viewSlip = ({ appointment, displayFee, paid, due }) =>
-    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee: displayFee, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—' }))
+    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee: displayFee, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—', patientNumber: appointment.patient?.patientNumber ?? currentUser.patientNumber }))
   // COLUMN-CLARITY FIX (user request: "feec column ka matlab clear kro" — the "Fee" column shows
   // the FULL fee as if paid entirely online (consultationFee + platform convenience/emergency
   // charge + GST — see utils/minBookingAmount.js's worked example), which is deliberately MORE
@@ -1177,9 +1179,9 @@ export function Payments({ data }) {
     return {
       ...payment,
       appointment,
-      doctorName: payment.doctor?.name || appointment?.doctor?.name || '—',
+      doctorName: nameWithStableId(payment.doctor?.name || appointment?.doctor?.name, payment.doctor?.doctorNumber ?? appointment?.doctor?.doctorNumber, 'DCD'),
       clinicName: payment.clinic?.name || appointment?.clinic?.name || '—',
-      patientName: payment.patient?.name || currentUser.name || '—',
+      patientName: nameWithStableId(payment.patient?.name || currentUser.name, payment.patient?.patientNumber ?? appointment?.patient?.patientNumber ?? currentUser.patientNumber, 'DCP'),
       amount: Number(payment.fees?.amount ?? 0),
       transactionId: payment.transactionRef || '—',
     }

@@ -86,7 +86,7 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
                 return Card(
                   child: ExpansionTile(
                     title: Text(r.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('${r.patient?.name ?? "Patient"}${r.type != null ? " · ${r.type}" : ""}'),
+                    subtitle: Text('${r.patient?.patientDisplayName ?? "Patient"}${r.type != null ? " · ${r.type}" : ""}'),
                     childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
                     children: [
                       if (r.notes != null) Align(alignment: Alignment.centerLeft, child: Text('Notes: ${r.notes}')),

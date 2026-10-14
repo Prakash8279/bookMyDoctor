@@ -278,6 +278,7 @@ class ClinicSummary {
 /// GET /doctors and GET /doctors/:id row shape.
 class DoctorDirectoryItem {
   final String id;
+  final int? doctorNumber;
   final String name;
   final String? photoUrl;
   final String? city;
@@ -316,6 +317,7 @@ class DoctorDirectoryItem {
 
   DoctorDirectoryItem({
     required this.id,
+    this.doctorNumber,
     required this.name,
     this.photoUrl,
     this.city,
@@ -342,8 +344,11 @@ class DoctorDirectoryItem {
     this.createdAt,
   });
 
+  String get displayName => doctorNumber == null ? name : 'DCD$doctorNumber · $name';
+
   factory DoctorDirectoryItem.fromJson(Map<String, dynamic> json) => DoctorDirectoryItem(
         id: asString(json['id']),
+        doctorNumber: json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
         name: asString(json['name']),
         photoUrl: json['photoUrl'] as String?,
         city: json['city'] as String?,

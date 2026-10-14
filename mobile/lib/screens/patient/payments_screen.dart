@@ -178,7 +178,7 @@ class PatientPaymentsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        p.doctor?.name ?? p.clinic?.name ?? 'Consultation Payment',
+                        p.doctor?.doctorDisplayName ?? p.clinic?.name ?? 'Consultation Payment',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                       ),
                       if (p.clinic?.name != null && p.doctor?.name != null)
@@ -526,10 +526,10 @@ This is a digitally generated clinic payment receipt.
             _buildSection(
               title: 'Practitioner & Clinic',
               rows: [
-                MapEntry('Doctor', payment.doctor?.name ?? '—'),
+                MapEntry('Doctor', payment.doctor?.doctorDisplayName ?? '—'),
                 MapEntry('Clinic', payment.clinic?.name ?? '—'),
                 if (payment.patient?.name != null)
-                  MapEntry('Patient', payment.patient!.name!),
+                  MapEntry('Patient', payment.patient!.patientDisplayName),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),

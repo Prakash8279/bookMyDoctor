@@ -335,6 +335,9 @@ model DoctorProfile {
 model ReceptionistProfile {
   userId   String    @id @map("user_id")
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Permanent human-facing receptionist identity, assigned once at account creation and shown
+  // everywhere as "DCR<N>". It never changes with list sorting, filtering, or pagination.
+  receptionistNumber Int? @unique @map("receptionist_number")
   // ADDITIVE, FLAGGED CHANGE (Directory & Reference Data phase, see receptionists.service.js
   // header comment for full rationale): DATABASE_SCHEMA.md §2 says clinic assignment for
   // receptionists "lives in `clinic_staff` below" but that table was never actually defined

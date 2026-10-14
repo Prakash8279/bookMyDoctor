@@ -178,7 +178,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${_appointment.doctor?.name ?? "Doctor"} · ${_appointment.appointmentDate}',
+                        '${_appointment.doctor?.displayName ?? "Doctor"} · ${_appointment.appointmentDate}',
                         style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: AppSpacing.lg),
@@ -260,7 +260,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${_appointment.doctor?.name ?? "—"} · ${_appointment.appointmentDate}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text('${_appointment.doctor?.displayName ?? "—"} · ${_appointment.appointmentDate}', style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: AppSpacing.xs),
                           const Text(
                             'Your token number will be issued as soon as payment is received.',

@@ -450,7 +450,7 @@ class _AdminAppointmentsScreenState extends State<AdminAppointmentsScreen> {
                             const SizedBox(height: 8),
                             // Patient name
                             Text(
-                              a.patient?.name ?? a.familyMember?.name ?? 'Patient',
+                              a.patient?.displayName ?? a.familyMember?.name ?? 'Patient',
                               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
                             ),
                             const SizedBox(height: 3),
@@ -475,7 +475,7 @@ class _AdminAppointmentsScreenState extends State<AdminAppointmentsScreen> {
                                   Expanded(
                                     child: Text(
                                       [
-                                        if (a.doctor?.name != null) 'Dr. ${a.doctor!.name}',
+                                        if (a.doctor != null) a.doctor!.displayName,
                                         if (a.clinic?.name != null) a.clinic!.name!,
                                       ].join(' · '),
                                       style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),

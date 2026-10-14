@@ -205,7 +205,7 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
                         // this field already but never displayed it.
                         'Registered: ${_formatDate(p.registeredAt)}',
                       ].join(' · ');
-                      final seqId = 'DCP${(i + 1).toString().padLeft(2, '0')}';
+                      final seqId = p.patientNumber == null ? 'DCP—' : 'DCP${p.patientNumber}';
                       final busy = _busyId == p.id;
                       return Card(
                         child: ListTile(

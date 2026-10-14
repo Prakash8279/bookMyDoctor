@@ -283,7 +283,7 @@ class _ReceptionistDashboardScreenState extends State<ReceptionistDashboardScree
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                        Text(item.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                                         Text(
                                           timeStr.isNotEmpty ? timeStr : 'Today',
                                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),

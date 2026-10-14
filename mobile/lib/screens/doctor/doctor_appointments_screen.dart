@@ -180,7 +180,7 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(a.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    child: Text(a.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
                                   ),
                                   StatusBadge(status: a.status),
                                 ],

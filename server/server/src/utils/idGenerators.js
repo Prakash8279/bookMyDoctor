@@ -55,4 +55,10 @@ async function nextClinicNumber(client = prisma) {
   return Number(rows[0].value);
 }
 
-module.exports = { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber };
+/** Draws the permanent receptionist number stored on ReceptionistProfile. */
+async function nextReceptionistNumber(client = prisma) {
+  const rows = await client.$queryRaw`SELECT nextval('receptionist_number_seq') AS value`;
+  return Number(rows[0].value);
+}
+
+module.exports = { nextReceiptNumber, nextPatientNumber, nextDoctorNumber, nextClinicNumber, nextReceptionistNumber };

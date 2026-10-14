@@ -104,6 +104,7 @@ const QUEUE_SELECT = {
         select: {
           id: true,
           name: true,
+          patientNumber: true,
           phone: true,
           patientProfile: {
             select: { dateOfBirth: true, gender: true, bloodGroup: true, emergencyContact: true, medicalHistory: true },
@@ -135,7 +136,7 @@ function shapeQueueToken(row) {
  */
 function shapeQueuePatientRef(patientRow, role) {
   if (!patientRow) return null;
-  const base = { id: patientRow.id, name: patientRow.name };
+  const base = { id: patientRow.id, name: patientRow.name, patientNumber: patientRow.patientNumber ?? null };
   if (role === 'doctor') {
     const pp = patientRow.patientProfile || {};
     return {

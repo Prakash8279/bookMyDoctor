@@ -96,7 +96,7 @@ class _AdminReceptionistsScreenState extends State<AdminReceptionistsScreen> {
                       final r = rows[i];
                       return Card(
                         child: ListTile(
-                          title: Text(r.name),
+                          title: Text('${r.receptionistNumber == null ? "DCR—" : "DCR${r.receptionistNumber}"} · ${r.name}'),
                           subtitle: Text('${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,

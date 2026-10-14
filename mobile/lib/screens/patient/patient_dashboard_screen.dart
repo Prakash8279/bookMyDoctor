@@ -349,7 +349,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              appt.doctor?.name ?? 'Doctor',
+                                              appt.doctor?.displayName ?? 'Doctor',
                                               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
                                             ),
                                             const SizedBox(height: 2),
@@ -423,7 +423,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         Text(
-                          nextUpcoming.doctor?.name ?? 'Doctor',
+                          nextUpcoming.doctor?.displayName ?? 'Doctor',
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                         ),
                         const SizedBox(height: 2),

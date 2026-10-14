@@ -41,16 +41,16 @@ const MEDICAL_RECORD_SELECT = {
   carePlan: true,
   createdAt: true,
   appointment: { select: { id: true } },
-  doctor: { select: { id: true, name: true } },
-  patient: { select: { id: true, name: true } },
+  doctor: { select: { id: true, name: true, doctorProfile: { select: { doctorNumber: true } } } },
+  patient: { select: { id: true, name: true, patientNumber: true } },
 };
 
 function shapeMedicalRecord(row) {
   return {
     id: row.id,
     appointment: row.appointment ? { id: row.appointment.id } : null,
-    doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name } : null,
-    patient: row.patient ? { id: row.patient.id, name: row.patient.name } : null,
+    doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name, doctorNumber: row.doctor.doctorProfile?.doctorNumber ?? null } : null,
+    patient: row.patient ? { id: row.patient.id, name: row.patient.name, patientNumber: row.patient.patientNumber ?? null } : null,
     title: row.title,
     type: row.type,
     notes: row.notes,

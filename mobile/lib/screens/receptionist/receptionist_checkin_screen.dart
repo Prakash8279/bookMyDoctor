@@ -109,7 +109,7 @@ class _CheckinRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Dr. ${appointment.doctor?.name ?? "—"}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                Text(appointment.doctor?.displayName ?? 'Doctor', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                 const SizedBox(height: 2),
                 Text(
                   '${appointment.appointmentTime.isNotEmpty ? appointment.appointmentTime : "—"} · Token: ${appointment.tokenNumber ?? "—"}',

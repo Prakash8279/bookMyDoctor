@@ -163,7 +163,7 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(t.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
                   // Phone + clinical vitals — queue.service.js#shapeQueuePatientRef
                   // only ever sends these to a doctor caller (never receptionist).
                   if (t.patient?.phone != null || t.patient?.vitalsSummary != null)

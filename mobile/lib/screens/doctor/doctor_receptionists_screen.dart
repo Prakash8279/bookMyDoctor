@@ -103,7 +103,7 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
                 final r = rows[i];
                 return Card(
                   child: ListTile(
-                    title: Text(r.name),
+                    title: Text('${r.receptionistNumber == null ? "DCR—" : "DCR${r.receptionistNumber}"} · ${r.name}'),
                     // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's
                     // receptionist table has a "Since" (joined-date) column (FeaturePages.jsx's
                     // DoctorStaff DataTable) — was missing here.

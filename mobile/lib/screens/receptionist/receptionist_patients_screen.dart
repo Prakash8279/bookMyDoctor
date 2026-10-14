@@ -7,12 +7,14 @@ import '../../widgets/common_widgets.dart';
 
 class _PatientRow {
   final String id;
+  final int? patientNumber;
   final String? name;
   final String? phone;
   int visits;
 
   _PatientRow({
     required this.id,
+    this.patientNumber,
     this.name,
     this.phone,
     required this.visits,
@@ -84,6 +86,7 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
       if (existing == null) {
         map[patient.id] = _PatientRow(
           id: patient.id,
+          patientNumber: patient.patientNumber,
           name: patient.name,
           phone: patient.phone,
           visits: 1,
@@ -161,7 +164,7 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(patient.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            Text(patient.patientNumber == null ? (patient.name ?? 'Patient') : 'DCP${patient.patientNumber} · ${patient.name ?? "Patient"}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                             const SizedBox(height: 4),
                             Text(patient.phone ?? '—', style: const TextStyle(color: AppColors.textSecondary)),
                             const SizedBox(height: AppSpacing.sm),

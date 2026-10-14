@@ -155,7 +155,7 @@ class _ReviewCardState extends State<_ReviewCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(a.doctor?.name ?? 'Doctor', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            Text(a.doctor?.displayName ?? 'Doctor', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             if (a.doctor?.specialization != null)
               Text(a.doctor!.specialization!.name, style: const TextStyle(color: AppColors.textSecondary)),
             const SizedBox(height: AppSpacing.sm),

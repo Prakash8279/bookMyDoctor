@@ -11,7 +11,7 @@ import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
 import { theme } from '../lib/theme'
 import { doctorCharge, isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useAppStore } from '../store/useAppStore'
-import { sequenceId, shortId } from '../lib/format'
+import { sequenceId, shortId, stableId } from '../lib/format'
 import { buildCsv, downloadCsv } from '../lib/csv'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { buildStaffReceiptPdfBlob } from '../lib/receiptPdf'
@@ -74,6 +74,7 @@ const derivePatients = (appointments = []) => {
     const entry = map.get(item.patient.id) || {
       id: item.patient.id,
       name: item.patient.name,
+      patientNumber: item.patient.patientNumber ?? null,
       // Present only when the backend actually sent them (doctor/admin caller) — see
       // appointments.service.js#shapePatientRef. Taken from whichever appointment row this
       // patient last appeared in, since they're stable per-patient, not per-visit.
@@ -153,7 +154,9 @@ const AppointmentTable = ({ data }) => {
         { key: 'tokenNumber', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'appointmentDate', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'appointmentTime', label: 'Time', render: (item) => item.appointmentTime || '—' },
+        { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
         { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
+        { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
         { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || item.familyMember?.name || 'Patient' },
         // Phone: sent for both doctor and receptionist (front-desk needs it to call a patient
         // in / confirm a booking) — absent (renders '—') for any role the backend doesn't mask
@@ -858,6 +861,7 @@ export function PatientHistory({ data }) {
   return <Page title="Patient history">
     <div className="mb-4 max-w-md"><FormField label="Search patient" placeholder="Name or mobile number" value={search} onChange={(event) => setSearch(event.target.value)} /></div>
     <DataTable loading={loading} error={loadError} onRetry={load} rows={filteredPatients} columns={[
+      { key: 'patientNumber', label: 'Patient ID', render: (item) => stableId(item.patientNumber, 'DCP') },
       { key: 'name', label: 'Patient' },
       { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },
       { key: 'vitals', label: 'Patient info', render: (item) => patientVitals(item) },
@@ -1192,6 +1196,8 @@ export function CashPayment({ data }) {
         // shortId() format already used on the Appointments table above and the patient's own
         // Payments table.
         { key: 'bookingId', label: 'Booking ID', render: (item) => item.bookingId ? shortId(item.bookingId) : '—' },
+        { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
+        { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
         { key: 'date', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' },
         { key: 'description', label: 'Appointment', render: (item) => item.doctor?.name || item.patient?.name || '—' },
         { key: 'clinicAmount', label: 'Doctor charge', render: (item) => `₹${item.clinicAmount}` },

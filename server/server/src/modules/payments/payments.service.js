@@ -96,12 +96,12 @@ const PAYMENT_SELECT = {
   status: true,
   createdAt: true,
   appointment: { select: { id: true } },
-  patient: { select: { id: true, name: true } },
+  patient: { select: { id: true, name: true, patientNumber: true } },
   // doctorProfile.minBookingAdvanceAmount added (EXACT PAYMENT-ROW-BREAKDOWN FIX — see
   // shapePaymentFees's own header comment) — needed to tell which of the three real payment
   // shapes (full / online minimum advance / clinic-collected remainder) a row is, so its fee
   // breakdown can be resolved exactly instead of trusting the verbatim-copied columns.
-  doctor: { select: { id: true, name: true, doctorProfile: { select: { minBookingAdvanceAmount: true } } } },
+  doctor: { select: { id: true, name: true, doctorProfile: { select: { doctorNumber: true, minBookingAdvanceAmount: true } } } },
   // address/phone added (COMPLETENESS FIX — proper receipt/slip generation needs the clinic's
   // address on the printed document; previously only id/name were selected here).
   clinic: { select: { id: true, name: true, address: true, phone: true } },
@@ -187,8 +187,8 @@ function shapePayment(row, role, commissionPercent) {
     id: row.id,
     receiptNumber: row.receiptNumber,
     appointment: row.appointment ? { id: row.appointment.id } : null,
-    patient: row.patient ? { id: row.patient.id, name: row.patient.name } : null,
-    doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name } : null,
+    patient: row.patient ? { id: row.patient.id, name: row.patient.name, patientNumber: row.patient.patientNumber ?? null } : null,
+    doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name, doctorNumber: row.doctor.doctorProfile?.doctorNumber ?? null } : null,
     clinic: row.clinic ? { id: row.clinic.id, name: row.clinic.name, address: row.clinic.address, phone: row.clinic.phone } : null,
     mode: row.mode,
     transactionRef: row.transactionRef,

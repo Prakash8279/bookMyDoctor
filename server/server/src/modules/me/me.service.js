@@ -17,6 +17,7 @@ const encryptionService = require('../../services/encryptionService');
 
 const BASE_SELECT = {
   id: true,
+  patientNumber: true,
   name: true,
   email: true,
   phone: true,

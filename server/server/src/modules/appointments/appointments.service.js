@@ -35,6 +35,7 @@ const {
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
 const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('../payments/paymentHold.service');
+const { nextPatientNumber } = require('../../utils/idGenerators');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
 // live booking state; see cacheService.js header for the general caching contract.
@@ -129,6 +130,7 @@ const APPOINTMENT_SELECT = {
     select: {
       id: true,
       name: true,
+      patientNumber: true,
       phone: true,
       patientProfile: {
         select: { dateOfBirth: true, gender: true, bloodGroup: true, emergencyContact: true, medicalHistory: true },
@@ -144,7 +146,7 @@ const APPOINTMENT_SELECT = {
       // minBookingAdvanceAmount added (MIN-BOOKING-AMOUNT FIX) — shapeFees needs the doctor's own
       // configured minimum to compute the patient-facing minBookingAmount figure; see
       // utils/minBookingAmount.js. Never surfaced raw to a non-admin — only the derived total is.
-      doctorProfile: { select: { specialization: { select: { id: true, name: true } }, minBookingAdvanceAmount: true } },
+      doctorProfile: { select: { doctorNumber: true, specialization: { select: { id: true, name: true } }, minBookingAdvanceAmount: true } },
     },
   },
   // address/phone added (COMPLETENESS FIX — proper receipt/slip generation needs the clinic's
@@ -313,7 +315,7 @@ function shapeFees(row, role, commissionPercent) {
 function shapePatientRef(patientRow, role) {
   if (!patientRow) return null;
 
-  const base = { id: patientRow.id, name: patientRow.name };
+  const base = { id: patientRow.id, name: patientRow.name, patientNumber: patientRow.patientNumber ?? null };
 
   if (role === 'doctor' || ADMIN_ROLES.includes(role)) {
     const pp = patientRow.patientProfile || {};
@@ -347,6 +349,7 @@ function shapeAppointment(row, role, commissionPercent) {
       ? {
           id: row.doctor.id,
           name: row.doctor.name,
+          doctorNumber: row.doctor.doctorProfile?.doctorNumber ?? null,
           photoUrl: row.doctor.photoUrl,
           specialization:
             row.doctor.doctorProfile && row.doctor.doctorProfile.specialization
@@ -582,12 +585,14 @@ async function findOrCreateWalkInPatient({ name, phone, email }, requestedByUser
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'walkin-phone:' + normalizedPhone}))`;
       const raceCheck = await tx.user.findFirst({ where: { role: 'patient', phone: normalizedPhone }, select: { id: true } });
       if (raceCheck) return raceCheck;
+      const patientNumber = await nextPatientNumber(tx);
       const user = await tx.user.create({
         data: {
           name: String(name).trim(),
           email: normalizedEmail,
           passwordHash,
           role: 'patient',
+          patientNumber,
           phone: normalizedPhone,
           status: 'active',
         },

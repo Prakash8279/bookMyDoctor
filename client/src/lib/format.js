@@ -85,7 +85,7 @@ export function sequenceId(index, prefix = 'DC') {
  * migration backfills every existing row), but a formatter must never crash a table render over
  * one bad value.
  * @param {number|string|null|undefined} number - the stored patientNumber/doctorNumber/clinicNumber
- * @param {string} prefix - 'DCP' | 'DCD' | 'DCC' (no default: callers must be explicit about which)
+ * @param {string} prefix - 'DCP' | 'DCD' | 'DCR' | 'DCC' (no default: callers must be explicit about which)
  * @returns {string}
  */
 export function stableId(number, prefix) {

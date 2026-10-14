@@ -61,7 +61,7 @@ class DoctorPaymentsScreen extends StatelessWidget {
                 final p = payments[i];
                 return Card(
                   child: ListTile(
-                    title: Text(p.patient?.name ?? 'Patient'),
+                    title: Text(p.patient?.patientDisplayName ?? 'Patient'),
                     // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's payments
                     // table (embedded in AdminPages.jsx#RevenueReports, doctorOnly branch) also
                     // shows the Booking ID (shortId of the appointment) and an "At booking"/

@@ -923,7 +923,7 @@ export function ManageReceptionists({ data }) {
       error={listError}
       onRetry={load}
       rows={(data.receptionists || [])}
-      columns={[{ key: 'name', label: 'Name' }, { key: 'clinicName', label: 'Assigned clinic', render: (item) => item.clinicName || '—' }, { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]}
+      columns={[{ key: 'receptionistNumber', label: 'ID', render: (item) => stableId(item.receptionistNumber, 'DCR') }, { key: 'name', label: 'Name' }, { key: 'clinicName', label: 'Assigned clinic', render: (item) => item.clinicName || '—' }, { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]}
     />
   </Page>
 }

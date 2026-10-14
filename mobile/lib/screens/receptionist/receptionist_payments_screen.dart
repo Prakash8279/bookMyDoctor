@@ -131,13 +131,13 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
                 return Card(
                   child: ListTile(
                     onTap: () => showPaymentReceiptSheet(context, p),
-                    title: Text(p.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    title: Text(p.patient?.patientDisplayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 2),
                         Text(
-                          'Dr. ${p.doctor?.name ?? "—"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
+                          '${p.doctor?.doctorDisplayName ?? "Doctor"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
                         ),
                         // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's
                         // payments table has a dedicated "Booking ID" column (StaffPages.jsx's

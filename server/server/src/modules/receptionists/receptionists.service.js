@@ -21,6 +21,7 @@ const cacheService = require('../../services/cacheService');
 const { parsePagination, buildPaginationMeta } = require('../../utils/pagination');
 const { ADMIN_ROLES } = require('../../utils/roles');
 const { normalizeEmail, normalizePhone, getPhoneSearchVariants } = require('../../utils/identityNormalization');
+const { nextReceptionistNumber } = require('../../utils/idGenerators');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -34,6 +35,7 @@ const RECEPTIONIST_SELECT = {
   createdAt: true,
   receptionistProfile: {
     select: {
+      receptionistNumber: true,
       clinicId: true,
       since: true,
       clinic: { select: { id: true, name: true } },
@@ -54,6 +56,7 @@ function shape(row) {
     phone: row.phone,
     status: row.status,
     createdAt: row.createdAt,
+    receptionistNumber: rp ? rp.receptionistNumber : null,
     clinicId: rp ? rp.clinicId : null,
     clinicName: rp && rp.clinic ? rp.clinic.name : null,
     since: rp ? rp.since : null,
@@ -133,6 +136,7 @@ async function createReceptionist(input, actor) {
   let created;
   try {
     created = await prisma.$transaction(async (tx) => {
+      const receptionistNumber = await nextReceptionistNumber(tx);
       const user = await tx.user.create({
         data: {
           name: name.trim(),
@@ -146,7 +150,7 @@ async function createReceptionist(input, actor) {
       });
 
       await tx.receptionistProfile.create({
-        data: { userId: user.id, clinicId, since: new Date() },
+        data: { userId: user.id, clinicId, since: new Date(), receptionistNumber },
       });
 
       return user;

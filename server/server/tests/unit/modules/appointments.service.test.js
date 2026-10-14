@@ -115,6 +115,7 @@ jest.mock('../../../src/jobs/bookingQueue', () => ({
 jest.mock('../../../src/services/commissionLookupService', () => ({
   loadCommissionPercentIfAdmin: jest.fn(),
 }));
+jest.mock('../../../src/utils/idGenerators', () => ({ nextPatientNumber: jest.fn().mockResolvedValue(23) }));
 
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../../src/config/db');
@@ -171,6 +172,7 @@ function fullAppointmentRow(overrides = {}) {
     patient: {
       id: PATIENT_ID,
       name: 'Pat Patient',
+      patientNumber: 17,
       phone: '9000000000',
       patientProfile: {
         dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
@@ -443,6 +445,7 @@ describe('appointmentsService.getAppointmentById — patient data masking by rol
     expect(result.patient).toEqual({
       id: PATIENT_ID,
       name: 'Pat Patient',
+      patientNumber: 17,
       phone: '9000000000',
       dateOfBirth: '1990-01-01',
       gender: 'female',
@@ -459,7 +462,7 @@ describe('appointmentsService.getAppointmentById — patient data masking by rol
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: 'recep-1', role: 'receptionist' });
 
-    expect(result.patient).toEqual({ id: PATIENT_ID, name: 'Pat Patient', phone: '9000000000' });
+    expect(result.patient).toEqual({ id: PATIENT_ID, name: 'Pat Patient', patientNumber: 17, phone: '9000000000' });
     expect(result.patient.medicalHistory).toBeUndefined();
     expect(result.patient.dateOfBirth).toBeUndefined();
   });
@@ -470,7 +473,7 @@ describe('appointmentsService.getAppointmentById — patient data masking by rol
 
     const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
 
-    expect(result.patient).toEqual({ id: PATIENT_ID, name: 'Pat Patient' });
+    expect(result.patient).toEqual({ id: PATIENT_ID, name: 'Pat Patient', patientNumber: 17 });
   });
 });
 

@@ -106,7 +106,7 @@ class _ReceptionistEmergencyScreenState extends State<ReceptionistEmergencyScree
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(tokens[i].patient?.name ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                          Text(tokens[i].patient?.displayName ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
                                           const SizedBox(height: 2),
                                           Text('Ahead in queue: ${tokens[i].patientsAhead}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                                         ],

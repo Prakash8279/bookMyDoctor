@@ -401,7 +401,7 @@ class _AppointmentCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        appointment.doctor?.name ?? 'Doctor',
+                        appointment.doctor?.displayName ?? 'Doctor',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                       ),
                       if (appointment.doctor?.specialization != null)

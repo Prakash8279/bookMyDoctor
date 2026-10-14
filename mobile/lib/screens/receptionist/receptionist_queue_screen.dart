@@ -151,7 +151,7 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.patient?.name ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(t.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
                   // Front-desk data only — queue.service.js#shapeQueuePatientRef
                   // never sends clinical fields to a receptionist caller, only phone.
                   if (t.patient?.phone != null)

@@ -227,24 +227,22 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     final accountStatus = d.accountStatus ?? 'active';
     final doctorStatus = d.doctorStatus ?? 'verified';
     final isPending = doctorStatus == 'pending';
-    final seqId = index != null ? 'DCD${(index + 1).toString().padLeft(2, '0')}' : null;
+    final seqId = d.doctorNumber == null ? 'DCD—' : 'DCD${d.doctorNumber}';
 
     return Card(
       child: ListTile(
         title: Row(
           children: [
-            if (seqId != null) ...[
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: AppColors.border),
               ),
-              const SizedBox(width: 8),
-            ],
+              child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
+            ),
+            const SizedBox(width: 8),
             Expanded(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w700))),
             StatusBadge(status: doctorStatus),
           ],

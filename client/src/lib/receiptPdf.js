@@ -135,17 +135,18 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
  * included since the appointments.service.js#APPOINTMENT_INCLUDE fix that added them for exactly
  * this purpose).
  */
-export function buildBookingSlipSections({ appointment, fee, paid, due, patientName }) {
+export function buildBookingSlipSections({ appointment, fee, paid, due, patientName, patientNumber }) {
   return {
     title: 'BookADoctors',
     subtitle: 'Booking Slip',
     meta: [`Booking ID: ${shortId(appointment.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', patientName]] },
+      { heading: 'Patient', rows: [['Name', patientName], ['Patient ID', patientNumber != null ? `DCP${patientNumber}` : undefined]] },
       {
         heading: 'Doctor',
         rows: [
           ['Name', appointment.doctor?.name],
+          ['Doctor ID', appointment.doctor?.doctorNumber != null ? `DCD${appointment.doctor.doctorNumber}` : undefined],
           ['Specialization', appointment.doctor?.specialization?.name],
         ],
       },
@@ -206,8 +207,8 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
  * this in an in-page preview and lets the browser's object URL double as the download link's href.
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
-export async function buildBookingSlipPdfBlob({ appointment, fee, paid, due, patientName }) {
-  const doc = await renderReceiptDocument(buildBookingSlipSections({ appointment, fee, paid, due, patientName }))
+export async function buildBookingSlipPdfBlob({ appointment, fee, paid, due, patientName, patientNumber }) {
+  const doc = await renderReceiptDocument(buildBookingSlipSections({ appointment, fee, paid, due, patientName, patientNumber }))
   return { blob: doc.toBlob(), filename: `booking-slip-${shortId(appointment.id)}.pdf` }
 }
 
@@ -303,11 +304,12 @@ export function buildPatientReceiptSections(item) {
     subtitle: 'Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', item.patientName]] },
+      { heading: 'Patient', rows: [['Name', item.patientName], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
       {
         heading: 'Doctor',
         rows: [
           ['Name', item.doctorName],
+          ['Doctor ID', item.doctor?.doctorNumber != null ? `DCD${item.doctor.doctorNumber}` : undefined],
           ['Specialization', appointment?.doctor?.specialization?.name],
         ],
       },
@@ -364,11 +366,12 @@ export function buildStaffReceiptSections(item) {
     subtitle: 'Clinic Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', item.patient?.name]] },
+      { heading: 'Patient', rows: [['Name', item.patient?.name], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
       {
         heading: 'Doctor',
         rows: [
           ['Name', item.doctor?.name],
+          ['Doctor ID', item.doctor?.doctorNumber != null ? `DCD${item.doctor.doctorNumber}` : undefined],
           ['Specialization', appointment?.doctor?.specialization?.name],
         ],
       },
