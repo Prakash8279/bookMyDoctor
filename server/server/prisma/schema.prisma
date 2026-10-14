@@ -316,7 +316,7 @@ model DoctorProfile {
   // "DCD<N>". Same rationale as User.patientNumber above: never derived from list
   // position/index, so it never changes across searches, sorts, or pagination. See
   // prisma/migrations/20260919130000_add_patient_doctor_clinic_numbers.
-  doctorNumber Int? @unique @map("doctor_number")
+  doctorNumber Int @unique @default(dbgenerated("nextval('doctor_number_seq'::regclass)")) @map("doctor_number")
 
   @@index([specializationId])
   @@index([status])
@@ -337,7 +337,7 @@ model ReceptionistProfile {
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Permanent human-facing receptionist identity, assigned once at account creation and shown
   // everywhere as "DCR<N>". It never changes with list sorting, filtering, or pagination.
-  receptionistNumber Int? @unique @map("receptionist_number")
+  receptionistNumber Int @unique @default(dbgenerated("nextval('receptionist_number_seq'::regclass)")) @map("receptionist_number")
   // ADDITIVE, FLAGGED CHANGE (Directory & Reference Data phase, see receptionists.service.js
   // header comment for full rationale): DATABASE_SCHEMA.md §2 says clinic assignment for
   // receptionists "lives in `clinic_staff` below" but that table was never actually defined
