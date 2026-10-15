@@ -55,7 +55,7 @@ export function PatientLanding() {
       <div className="hero-orb hero-orb-two"></div>
       <div className="container hero-grid">
         <div className="hero-copy">
-          <h1>Care without the <span>waiting room.</span></h1>
+          <h1><span>BookADoctors:</span> Care without the waiting room.</h1>
           <p className="hero-lead">Find verified doctors, reserve your clinic slot, and follow your live queue token from home.</p>
 
           <form className="hero-search" onSubmit={handleSearch}>
@@ -386,11 +386,11 @@ export function PatientLanding() {
 
           <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
             <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
-              <span>Is BookADoctors also known as BookMyDoctors, BookMyDocr, BookMyDoc, or BookADoctor?</span>
+              <span>Can I find BookADoctors using its earlier or commonly searched names?</span>
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>
             <p className="mt-3 text-muted text-sm leading-relaxed">
-              Yes! BookADoctors (commonly searched online as <strong>bookadoctors</strong>, <strong>bookadoctor</strong>, <strong>bookmydocr</strong>, <strong>bookmydocrs</strong>, <strong>bookmydoctors</strong>, <strong>bookmydoctor</strong>, <strong>BookMyDoc</strong>, or <strong>book a doctor</strong>) is the official healthcare booking portal at <a href="https://bookadoctors.com" className="text-primary-dark font-medium underline">bookadoctors.com</a> for finding verified doctors, booking appointments, and tracking live clinic queues.
+              Yes. Searches for <strong>BookADoctor</strong>, <strong>BookMyDoctors</strong>, <strong>BookMyDoctor</strong>, <strong>BookMyDoc</strong>, <strong>BookMyDocr</strong>, <strong>bookmydocr</strong>, or <strong>bookmydocrs</strong> can refer to the BookADoctors healthcare appointment platform. The official website is <a href="https://bookadoctors.com" className="text-primary-dark font-medium underline">bookadoctors.com</a>.
             </p>
           </details>
 
