@@ -1,7 +1,7 @@
 /**
  * Redis-backed OTP generation, rate limiting, and verification service.
- * Supports email OTP for account registration only. Login uses email/password or Google, and
- * password reset uses its emailed reset link.
+ * Supports email OTP for account registration and password reset. Login remains
+ * email/password or Google; phone numbers are never an authentication channel.
  */
 const crypto = require('crypto');
 const redis = require('../config/redis');
@@ -9,6 +9,7 @@ const env = require('../config/env');
 const logger = require('../config/logger');
 const ApiError = require('../utils/ApiError');
 const emailService = require('./emailService');
+const { authOtpTemplate } = require('./emailTemplates');
 
 const OTP_TTL_SECONDS = 300; // 5 minutes
 const COOLDOWN_SECONDS = env.isProduction ? 30 : 10;
@@ -29,14 +30,15 @@ function generateOtp() {
  * Dispatches a registration OTP to an email address.
  * @param {{ email: string }} param0
  */
-async function sendOtp({ email }) {
+async function sendOtp({ email, purpose = 'registration' }) {
   const normalized = normalizeEmail(email);
   if (!normalized || !normalized.includes('@')) {
     throw new ApiError(400, 'INVALID_EMAIL', 'A valid email address is required.');
   }
-  const otpKey = `otp:register:${normalized}`;
-  const cooldownKey = `otp:cooldown:register:${normalized}`;
-  const attemptsKey = `otp:attempts:register:${normalized}`;
+  const purposeKey = purpose === 'password-reset' ? 'password-reset' : 'register';
+  const otpKey = `otp:${purposeKey}:${normalized}`;
+  const cooldownKey = `otp:cooldown:${purposeKey}:${normalized}`;
+  const attemptsKey = `otp:attempts:${purposeKey}:${normalized}`;
 
   // Cooldown check (prevent spamming user / provider)
   const inCooldown = await redis.get(cooldownKey);
@@ -57,51 +59,16 @@ async function sendOtp({ email }) {
   // Set fresh cooldown
   await redis.setex(cooldownKey, COOLDOWN_SECONDS, '1');
 
-  logger.info(`[otpService] Dispatched registration OTP to=${normalized}`);
+  logger.info(`[otpService] Dispatched ${purposeKey} OTP to=${normalized}`);
 
   try {
+    const template = authOtpTemplate({ email: normalized, otp, purpose });
     await emailService.sendVerificationEmail({
       to: normalized,
-      subject: `BookADoctors verification code: ${otp}`,
-      text: `Hello,\n\nYour BookADoctors email verification code is: ${otp}\n\nThis code is valid for 5 minutes.\n\nSecurity Notice: For your security, never share this code with anyone. BookADoctors staff will never ask for your verification code.\n\nIf you did not request this verification, no further action is required and you can safely disregard this email.\n\nThis message was sent to ${normalized}.\n© 2026 BookADoctors. All rights reserved.`,
-      html: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Verification Code</title>
-</head>
-<body style="margin: 0; padding: 24px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #334155;">
-  <div style="max-width: 500px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; padding: 28px;">
-    <div style="font-size: 20px; font-weight: bold; color: #0284c7; margin-bottom: 20px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">
-      BookADoctors
-    </div>
-    <h2 style="font-size: 18px; margin: 0 0 12px; color: #0f172a;">Verification Code</h2>
-    <p style="font-size: 14px; margin: 0 0 16px; line-height: 1.5;">
-      Hello, here is your one-time verification code to verify your email address:
-    </p>
-    <div style="text-align: center; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin: 20px 0;">
-      <span style="font-family: monospace; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #0284c7;">${otp}</span>
-    </div>
-    <p style="font-size: 13px; color: #64748b; margin: 0 0 8px;">
-      Valid for 5 minutes.
-    </p>
-    <p style="font-size: 13px; color: #64748b; margin: 0 0 20px;">
-      Security Notice: Do not share this code with anyone. BookADoctors staff will never ask for your code.
-    </p>
-    <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
-    <p style="font-size: 11px; color: #94a3b8; margin: 0 0 4px; line-height: 1.4;">
-      This email was sent to ${normalized} regarding your BookADoctors account.
-    </p>
-    <p style="font-size: 11px; color: #94a3b8; margin: 0;">
-      © 2026 BookADoctors Healthcare Services. All rights reserved.
-    </p>
-  </div>
-</body>
-</html>`,
+      ...template,
     });
   } catch (err) {
-    logger.warn(`[otpService] Registration email delivery failed: ${err.message}`);
+    logger.warn(`[otpService] ${purposeKey} email delivery failed: ${err.message}`);
     throw new ApiError(503, 'EMAIL_DELIVERY_UNAVAILABLE', 'Email verification is temporarily unavailable. Please try again later.');
   }
 
@@ -120,7 +87,7 @@ async function sendOtp({ email }) {
  *
  * @param {{ email: string, otp: string }} param0
  */
-async function verifyOtp({ email, otp }) {
+async function verifyOtp({ email, otp, purpose = 'registration' }) {
   const normalized = normalizeEmail(email);
   // Strip non-digits and spaces from the OTP input
   const cleanOtp = String(otp || '').trim().replace(/\D/g, '');
@@ -129,8 +96,9 @@ async function verifyOtp({ email, otp }) {
     throw new ApiError(400, 'INVALID_INPUT', 'Email and a valid numeric verification code are required.');
   }
 
-  const otpKey = `otp:register:${normalized}`;
-  const attemptsKey = `otp:attempts:register:${normalized}`;
+  const purposeKey = purpose === 'password-reset' ? 'password-reset' : 'register';
+  const otpKey = `otp:${purposeKey}:${normalized}`;
+  const attemptsKey = `otp:attempts:${purposeKey}:${normalized}`;
 
   const storedOtp = await redis.get(otpKey);
   if (!storedOtp) {

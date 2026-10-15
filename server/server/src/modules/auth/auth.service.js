@@ -12,7 +12,6 @@ const env = require('../../config/env');
 const ApiError = require('../../utils/ApiError');
 const tokenService = require('../../services/tokenService');
 const activityLogService = require('../../services/activityLogService');
-const emailService = require('../../services/emailService');
 const logger = require('../../config/logger');
 const idGenerators = require('../../utils/idGenerators');
 const { normalizeEmail, normalizePhone, getPhoneSearchVariants } = require('../../utils/identityNormalization');
@@ -363,9 +362,8 @@ async function getMe(userId) {
  * same class of leak login() avoids via constant-time password comparison (see DUMMY_PASSWORD_HASH
  * above), just via response content instead of timing.
  *
- * Delivery is email only. The reset link goes through emailService.js, so no phone number is
- * used for authentication or password recovery. The raw token never enters the in-app
- * notification below; only the email carries it.
+ * Delivery is email only. A six-digit code is stored in Redis with a five-minute lifetime;
+ * no phone number is used for authentication or password recovery.
  * @param {{email:string}} input
  */
 async function forgotPassword({ email }) {
@@ -381,14 +379,13 @@ async function forgotPassword({ email }) {
   // infer "this email belongs to a disabled account" from a side effect (an emailed link,
   // a notification) even though the outward HTTP response is identical either way.
   if (user && user.status !== 'disabled') {
-    const resetToken = tokenService.signResetToken(user.id, user.passwordHash || '');
-    const resetLink = `${env.clientOrigin}/reset-password?token=${resetToken}`;
-
-    await emailService.sendEmail({
-      to: normalizedEmail,
-      subject: 'Reset your BookADoctors password',
-      text: `We received a request to reset your password. Use this link to choose a new one: ${resetLink}\n\nIf you didn't request this, you can safely ignore this message.`,
-    });
+    try {
+      await otpService.sendOtp({ email: normalizedEmail, purpose: 'password-reset' });
+    } catch (err) {
+      // Preserve the endpoint's anti-enumeration contract. A caller must receive the same
+      // outward response for an unknown address, a disabled account, and a delivery failure.
+      logger.warn(`[auth] password-reset OTP delivery failed: ${err.message}`);
+    }
 
     try {
       await notifyUserInApp(user.id, {
@@ -415,33 +412,41 @@ async function forgotPassword({ email }) {
 }
 
 /**
- * Completes a password reset: verifies the token (tokenService throws its own generic
- * ApiError for any invalid/expired/wrong-purpose token), hashes+stores the new password with
+ * Completes a password reset: verifies either the new email OTP flow or a still-valid legacy
+ * reset-link token, hashes+stores the new password with
  * the same bcrypt helper/salt-rounds convention as register()/login(), and revokes every
  * existing refresh token for the user — mirroring me.service.js#changePassword, since a
  * password reset is exactly the situation (forgotten/compromised credential) where an attacker
  * might already be holding a live session that must not survive the reset.
- * @param {{token:string, newPassword:string}} input
+ * @param {{token?:string, email?:string, emailOtp?:string, newPassword:string}} input
  */
-async function resetPassword({ token, newPassword }) {
-  const userId = tokenService.verifyResetToken(token);
+async function resetPassword({ token, email, emailOtp, newPassword }) {
+  let user;
+  if (token) {
+    const userId = tokenService.verifyResetToken(token);
+    user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, status: true, passwordHash: true },
+    });
+  } else {
+    const normalizedEmail = normalizeEmail(email);
+    await otpService.verifyOtp({ email: normalizedEmail, otp: emailOtp, purpose: 'password-reset' });
+    user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, role: true, status: true, passwordHash: true },
+    });
+  }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, status: true, passwordHash: true },
-  });
-  // Same generic error as an invalid token itself — the account could have been deleted since
-  // the link was issued; that's not information a caller holding a mere token should get either.
   if (!user) {
-    throw new ApiError(400, 'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.');
+    throw new ApiError(400, 'INVALID_RESET_CODE', 'This password reset code is invalid or has expired.');
   }
   if (user.status === 'disabled') {
     throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
   }
 
-  // Bind the reset link to the credential version that existed when it was issued. Once any
-  // reset succeeds, the password hash changes and every copy/replay of that link becomes invalid.
-  tokenService.verifyResetToken(token, user.passwordHash || '');
+  // Legacy emailed links remain valid until their original short expiry. OTP-based resets do
+  // not need a JWT credential-version check because the code is one-time and consumed above.
+  if (token) tokenService.verifyResetToken(token, user.passwordHash || '');
 
   const passwordHash = await bcrypt.hash(newPassword, env.bcryptSaltRounds);
   const updated = await prisma.user.updateMany({
@@ -449,7 +454,7 @@ async function resetPassword({ token, newPassword }) {
     data: { passwordHash },
   });
   if (updated.count !== 1) {
-    throw new ApiError(400, 'INVALID_RESET_TOKEN', 'This password reset link is invalid or has expired.');
+    throw new ApiError(400, 'INVALID_RESET_CODE', 'This password reset code is invalid or has expired.');
   }
 
   await tokenService.revokeAllForUser(user.id);
@@ -460,7 +465,7 @@ async function resetPassword({ token, newPassword }) {
     actionType: 'auth.password_reset',
     targetEntityType: 'user',
     targetEntityId: user.id,
-    description: 'Password reset via forgot-password flow',
+    description: token ? 'Password reset via legacy email link' : 'Password reset via email OTP',
   });
 }
 

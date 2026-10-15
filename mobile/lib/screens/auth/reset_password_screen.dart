@@ -6,13 +6,12 @@ import '../../routing/app_router.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 
-/// COMPLETENESS FIX (audit Priority 3 #2 — mobile parity), paired with ForgotPasswordScreen. The
-/// web app reads the reset token from a `?token=` query param on a link the backend emails/logs
-/// (see auth.service.js#forgotPassword and PublicPages.jsx#ResetPassword) — mobile has no
-/// universal-links/deep-linking set up in this pass, so the token is a field the user pastes in
-/// themselves from that same link/email, same idea as a mobile OTP-entry screen.
+/// Email-only password recovery, paired with [ForgotPasswordScreen]. The same six-digit OTP
+/// contract is used by web and mobile; no SMS or phone verification is involved.
 class ResetPasswordScreen extends StatefulWidget {
-  const ResetPasswordScreen({super.key});
+  final String initialEmail;
+
+  const ResetPasswordScreen({super.key, this.initialEmail = ''});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -20,7 +19,8 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _tokenController = TextEditingController();
+  late final TextEditingController _emailController;
+  final _otpController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
   bool _obscure = true;
@@ -29,8 +29,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail);
+  }
+
+  @override
   void dispose() {
-    _tokenController.dispose();
+    _emailController.dispose();
+    _otpController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -44,7 +51,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
     try {
       await ApiClient.instance.post('/auth/reset-password', body: {
-        'token': _tokenController.text.trim(),
+        'email': _emailController.text.trim(),
+        'emailOtp': _otpController.text.trim(),
         'newPassword': _passwordController.text,
       });
       if (!mounted) return;
@@ -95,7 +103,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           const Text(
-                            'Paste the reset code from your email, then choose a new password.',
+                            'Enter the 6-digit code from your email, then choose a new password.',
                             style: TextStyle(color: AppColors.textSecondary),
                           ),
                           const SizedBox(height: AppSpacing.lg),
@@ -104,9 +112,21 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             const SizedBox(height: AppSpacing.md),
                           ],
                           TextFormField(
-                            controller: _tokenController,
-                            decoration: const InputDecoration(labelText: 'Reset code'),
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the reset code from your email' : null,
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(labelText: 'Account email'),
+                            validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          TextFormField(
+                            controller: _otpController,
+                            keyboardType: TextInputType.number,
+                            autofillHints: const [AutofillHints.oneTimeCode],
+                            maxLength: 6,
+                            decoration: const InputDecoration(labelText: '6-digit reset code', counterText: ''),
+                            validator: (v) => RegExp(r'^\d{6}$').hasMatch(v?.trim() ?? '')
+                                ? null
+                                : 'Enter the 6-digit code from your email',
                           ),
                           const SizedBox(height: AppSpacing.md),
                           TextFormField(

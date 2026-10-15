@@ -58,12 +58,12 @@ const me = asyncHandler(async (req, res) => {
 const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
   await authService.forgotPassword({ email });
-  return success(res, null, { message: 'If an account exists for that email, a password reset link has been sent.' });
+  return success(res, null, { message: 'If an account exists for that email, a password reset code has been sent.' });
 });
 
 const resetPassword = asyncHandler(async (req, res) => {
-  const { token, newPassword } = req.body;
-  await authService.resetPassword({ token, newPassword });
+  const { token, email, emailOtp, newPassword } = req.body;
+  await authService.resetPassword({ token, email, emailOtp, newPassword });
   return success(res, null, { message: 'Your password has been reset. Please log in with your new password.' });
 });
 

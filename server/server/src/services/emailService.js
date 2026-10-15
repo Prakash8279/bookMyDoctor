@@ -1,24 +1,9 @@
 /**
  * Provider-agnostic email delivery abstraction.
  *
- * COMPLETENESS FIX (audit Priority 4 — "no email/SMS/push provider anywhere ... needs your
- * decision on a provider (SES/SendGrid/Twilio) before either can be fully closed"). Explicit
- * product decision this round: do NOT pick a vendor yet ("Abhi decide nahi karna — code
- * placeholder-ready rakho"). So this deliberately does NOT wire up SES/SendGrid/Postmark/etc.,
- * and never asks for API keys. Instead it gives every caller (auth.service.js#forgotPassword,
- * notifications.service.js's system-event dispatch, ...) one stable `sendEmail()` call that
- * already works today — it logs, so nothing about the send is silently lost — and can be pointed
- * at a real provider later without touching any call site.
- *
- * To wire a real provider later (once one is chosen):
- *   1. Add a new provider object below implementing the same shape as `logProvider`:
- *        const sesProvider = { name: 'ses', async send({ to, subject, text, html }) { ... } }
- *   2. Register it in PROVIDERS: PROVIDERS.ses = sesProvider.
- *   3. Set EMAIL_PROVIDER=ses in the environment (config/env.js has no entry for this on
- *      purpose — reading process.env directly here keeps this file the single place that knows
- *      about "email provider selection" until a real one is chosen).
- * No other file in this codebase needs to change — every call site already calls sendEmail()
- * with the same {to, subject, text, html} shape regardless of which provider answers it.
+ * Production uses the existing bookadoctors.com mailbox over SMTP, so registration and password
+ * recovery codes do not require a separate transactional-email API subscription. Development can
+ * use the log provider; production verification deliberately fails closed if SMTP is absent.
  */
 const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
@@ -65,12 +50,11 @@ const smtpProvider = {
       return logProvider.send({ to, subject, text });
     }
 
-    // All authentication email (registration code and password reset) uses the dedicated
-    // verification mailbox. In production EMAIL_USER must be the SMTP/SES credential allowed
-    // to send as this address (or as a verified domain identity).
-    const senderEmail = process.env.EMAIL_USER || 'verification@bookadoctors.com';
-    const fromAddress = process.env.EMAIL_FROM || `"BookADoctors Verification" <${senderEmail}>`;
-    const replyTo = process.env.EMAIL_REPLY_TO || senderEmail;
+    // EMAIL_USER is the authenticated mailbox. EMAIL_FROM may be an approved same-domain alias;
+    // the mailbox provider decides whether that alias is accepted, rejected, or rewritten.
+    const senderEmail = process.env.EMAIL_USER || 'noreply@bookadoctors.com';
+    const fromAddress = process.env.EMAIL_FROM || `"BookADoctors" <${senderEmail}>`;
+    const replyTo = process.env.EMAIL_REPLY_TO || 'support@bookadoctors.com';
 
     const info = await transporter.sendMail({
       from: fromAddress,

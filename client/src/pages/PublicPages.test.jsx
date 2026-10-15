@@ -431,8 +431,8 @@ describe('ForgotPassword', () => {
   it('shows a generic confirmation after a successful submission, regardless of whether the account exists', async () => {
     renderWithLocation(<ForgotPassword />)
     fireEvent.change(screen.getByLabelText('Account email'), { target: { value: 'someone@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-    expect(await screen.findByText(/reset instructions have been sent/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset code' }))
+    expect(await screen.findByText(/a reset code has been sent/i)).toBeInTheDocument()
     expect(apiClient.post).toHaveBeenCalledWith('/auth/forgot-password', { email: 'someone@example.com' })
   })
 
@@ -440,7 +440,7 @@ describe('ForgotPassword', () => {
     apiClient.post.mockImplementation(() => Promise.reject(new Error('Too many requests. Try again later.')))
     renderWithLocation(<ForgotPassword />)
     fireEvent.change(screen.getByLabelText('Account email'), { target: { value: 'someone@example.com' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset code' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests. Try again later.')
   })
 })

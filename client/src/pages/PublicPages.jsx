@@ -634,21 +634,41 @@ export function Register() {
 }
 
 export function ForgotPassword() {
-  // Password recovery is email-link only; SMS and call OTP are intentionally not supported.
   const [identifier, setIdentifier] = useState('')
-  const [sentLink, setSentLink] = useState(false)
+  const [codeSent, setCodeSent] = useState(false)
+  const [emailOtp, setEmailOtp] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const forgotPassword = useAppStore((state) => state.forgotPassword)
+  const resetPassword = useAppStore((state) => state.resetPassword)
+  const navigate = useNavigate()
 
-  const handleSendLink = async (event) => {
+  const handleSendCode = async (event) => {
     event.preventDefault()
     if (!identifier.trim()) return
     setSubmitting(true)
     setError('')
     try {
       await forgotPassword(identifier.trim())
-      setSentLink(true)
+      setCodeSent(true)
+    } catch (submitError) {
+      setError(submitError.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleReset = async (event) => {
+    event.preventDefault()
+    setError('')
+    if (!/^\d{6}$/.test(emailOtp)) { setError('Enter the 6-digit code sent to your email.'); return }
+    if (password !== confirm) { setError('Passwords do not match.'); return }
+    setSubmitting(true)
+    try {
+      await resetPassword({ email: identifier.trim(), emailOtp }, password)
+      navigate('/login', { replace: true, state: { message: 'Your password has been reset. Please sign in with your new password.' } })
     } catch (submitError) {
       setError(submitError.message)
     } finally {
@@ -676,16 +696,29 @@ export function ForgotPassword() {
       <section className="auth-form-panel">
         <div className="auth-box">
           <h2>Reset your password</h2>
-          <p>We'll send a secure reset link to your email address.</p>
+          <p>We'll send a secure 6-digit reset code to your email address.</p>
 
           {error && <p role="alert" className="form-message error">{error}</p>}
 
-          {sentLink ? (
-            <div className="mt-6 rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">
-              If an account exists for <strong>{identifier}</strong>, reset instructions have been sent. Check your inbox (and server logs in local/dev) for the reset link.
-            </div>
+          {codeSent ? (
+            <form className="mt-4 space-y-4" onSubmit={handleReset}>
+              <div className="rounded-button border border-success/30 bg-success/10 p-4 text-sm text-success">
+                If an account exists for <strong>{identifier}</strong>, a reset code has been sent. Check your inbox and spam folder.
+              </div>
+              <label className="form-field">6-digit reset code
+                <input inputMode="numeric" autoComplete="one-time-code" value={emailOtp} onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6-digit code" required />
+              </label>
+              <label className="form-field">New password
+                <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} minLength="8" placeholder="At least 8 characters" required />
+              </label>
+              <label className="form-field">Confirm new password
+                <input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength="8" placeholder="Repeat new password" required />
+              </label>
+              <button className="btn btn-primary w-full" type="submit" disabled={submitting}>{submitting ? 'Resetting…' : 'Reset password'}</button>
+              <button className="btn btn-secondary w-full" type="button" disabled={submitting} onClick={handleSendCode}>Resend code</button>
+            </form>
           ) : (
-            <form className="mt-4 space-y-4" onSubmit={handleSendLink}>
+            <form className="mt-4 space-y-4" onSubmit={handleSendCode}>
               <label className="form-field">Account email
                 <input
                   type="email"
@@ -696,7 +729,7 @@ export function ForgotPassword() {
                 />
               </label>
               <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
-                {submitting ? 'Sending…' : 'Send reset link'}
+                {submitting ? 'Sending…' : 'Send reset code'}
               </button>
             </form>
           )}

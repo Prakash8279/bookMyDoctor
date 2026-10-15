@@ -73,7 +73,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   const Icon(Icons.lock_reset_rounded, color: AppColors.primary, size: 48),
                   const SizedBox(height: AppSpacing.md),
                   const Text(
-                    'We will email you a secure link to choose a new password.',
+                    'We will email you a 6-digit code to choose a new password.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.textSecondary),
                   ),
@@ -87,14 +87,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
                       ),
                       child: Text(
-                        'If an account exists for ${_emailController.text.trim()}, reset instructions have been sent. Check your inbox for the reset link and reset code.',
+                        'If an account exists for ${_emailController.text.trim()}, a 6-digit password reset code has been sent. The code expires in 5 minutes.',
                         style: const TextStyle(color: AppColors.success),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     PrimaryButton(
                       label: 'I have a reset code',
-                      onPressed: () => Navigator.of(context).pushNamed(Routes.resetPassword),
+                      onPressed: () => Navigator.of(context).pushNamed(
+                        Routes.resetPassword,
+                        arguments: _emailController.text.trim(),
+                      ),
                     ),
                   ] else
                     Form(
@@ -113,7 +116,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                             validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
                           ),
                           const SizedBox(height: AppSpacing.lg),
-                          PrimaryButton(label: 'Send reset link', onPressed: _submit, loading: _submitting),
+                          PrimaryButton(label: 'Send reset code', onPressed: _submit, loading: _submitting),
                         ],
                       ),
                     ),

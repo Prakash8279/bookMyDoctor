@@ -265,13 +265,13 @@ router.post('/google', authLimiter, validation.googleAuth, validateRequest, cont
 
 // Public — same authLimiter as login/register: forgot-password lets a caller trigger a lookup
 // by email (a coarse enumeration/spam surface) and reset-password lets a caller brute-force a
-// token (a credential-guessing surface functionally like login), so both get the same
+// OTP (a credential-guessing surface functionally like login), so both get the same
 // brute-force protection as the rest of this module rather than only the global defaultLimiter.
 router.post('/forgot-password', authLimiter, validation.forgotPassword, validateRequest, controller.forgotPassword);
 router.post('/reset-password', authLimiter, validation.resetPassword, validateRequest, controller.resetPassword);
 
-// Email verification is deliberately limited to registration. Passwordless SMS/email OTP login
-// and phone-based password resets were removed: sign-in is email+password or Google only.
+// Email OTP is used for registration and password recovery only. Passwordless SMS/email OTP
+// login and phone-based password resets remain disabled: sign-in is email+password or Google.
 /**
  * @openapi
  * /auth/register/email-otp:

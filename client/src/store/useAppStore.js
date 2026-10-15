@@ -262,11 +262,13 @@ export const useAppStore = create(
         return await apiClient.post('/auth/register/email-otp', { email })
       },
 
-      // POST /auth/reset-password verifies the short-lived token from the emailed/logged reset
-      // link and sets the new password server-side; throws (like changePassword) on an
-      // invalid/expired token so the call site can show an inline error.
-      resetPassword: async (token, newPassword) => {
-        await apiClient.post('/auth/reset-password', { token, newPassword })
+      // Password reset normally uses the six-digit code emailed to the account. The object form
+      // is {email,emailOtp}; a string remains supported for already-issued legacy reset links.
+      resetPassword: async (credential, newPassword) => {
+        const payload = typeof credential === 'string'
+          ? { token: credential, newPassword }
+          : { ...credential, newPassword }
+        await apiClient.post('/auth/reset-password', payload)
         return true
       },
 

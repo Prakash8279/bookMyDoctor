@@ -40,6 +40,21 @@ describe('otpService', () => {
       .resolves.toMatchObject({ valid: true });
   });
 
+  test('uses an isolated key and branded template for password-reset OTPs', async () => {
+    const result = await otpService.sendOtp({ email: 'patient@example.com', purpose: 'password-reset' });
+
+    expect(mockRedis.store.has('otp:password-reset:patient@example.com')).toBe(true);
+    expect(mockRedis.store.has('otp:register:patient@example.com')).toBe(false);
+    expect(emailService.sendVerificationEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'patient@example.com',
+      subject: expect.stringContaining('password reset code'),
+      html: expect.stringContaining('Password reset code'),
+    }));
+
+    await expect(otpService.verifyOtp({ email: 'patient@example.com', otp: result.devOtp, purpose: 'password-reset' }))
+      .resolves.toMatchObject({ valid: true });
+  });
+
   test('rejects a phone number because authentication codes are never sent by SMS', async () => {
     await expect(otpService.sendOtp({ email: '9876543210' }))
       .rejects.toThrow('A valid email address is required.');

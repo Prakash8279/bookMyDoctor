@@ -146,6 +146,13 @@ describe('forgotPassword / resetPassword', () => {
     await expect(useAppStore.getState().resetPassword('tok123', 'newpass')).resolves.toBe(true)
     expect(apiClient.post).toHaveBeenCalledWith('/auth/reset-password', { token: 'tok123', newPassword: 'newpass' })
   })
+
+  it('resetPassword(): posts email OTP credentials for the current recovery flow', async () => {
+    apiClient.post.mockResolvedValue({})
+    const credential = { email: 'a@b.com', emailOtp: '123456' }
+    await expect(useAppStore.getState().resetPassword(credential, 'newpass1')).resolves.toBe(true)
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/reset-password', { ...credential, newPassword: 'newpass1' })
+  })
 })
 
 describe('logout', () => {

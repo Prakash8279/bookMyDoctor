@@ -77,10 +77,19 @@ const forgotPassword = [
 ];
 
 const resetPassword = [
-  body('token').notEmpty().withMessage('token is required.').isString(),
+  body('token').optional({ values: 'falsy' }).isString(),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('A valid email is required.').isLength({ max: 255 }),
+  body('emailOtp').optional({ values: 'falsy' }).trim().isLength({ min: 6, max: 6 }).isNumeric().withMessage('Enter the 6-digit code sent to your email.'),
   // Same bounds as register's password field — this is the same bcrypt-hashed credential,
   // just arriving via the reset flow instead of registration.
-  body('newPassword').notEmpty().withMessage('newPassword is required.').isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.'),
+  body('newPassword')
+    .notEmpty().withMessage('newPassword is required.')
+    .isLength({ min: 8, max: 72 }).withMessage('Password must be between 8 and 72 characters.')
+    .matches(PASSWORD_RE).withMessage('Password must include at least one letter and one number.'),
+  body().custom((_value, { req }) => {
+    if (req.body.token || (req.body.email && req.body.emailOtp)) return true;
+    throw new Error('Provide either a reset token or email with its 6-digit reset code.');
+  }),
 ];
 
 const sendRegistrationEmailOtp = [
