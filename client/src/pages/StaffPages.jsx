@@ -594,7 +594,7 @@ export function DoctorProfileEdit({ data }) {
     try { await logout() } catch { /* local logout remains best-effort */ }
     navigate('/login', { replace: true })
   }
-  return <Page title="My profile" subtitle="Update qualifications, expertise, fees, photo, and biography.">
+  return <Page title="My profile" subtitle="Update qualifications, expertise, fees, photo, and biography." action={<PortalThemePreference compact />}>
     {profile.status && profile.status !== 'verified' && (
       <p role="alert" className="mb-4 max-w-3xl rounded-button border border-gold/40 bg-gold/10 px-3 py-2 text-sm font-semibold text-gold-dark">
         {profile.status === 'disabled'
@@ -696,7 +696,6 @@ export function DoctorProfileEdit({ data }) {
       {passwordError && <p role="alert" className="mt-3 text-sm font-semibold text-error">{passwordError}</p>}
       {passwordSaved && <p role="status" className="mt-3 text-sm font-semibold text-success">Password changed successfully. Redirecting to sign in…</p>}
     </form>
-    <PortalThemePreference className="mt-5 max-w-3xl" />
     <div className="mt-5 max-w-3xl rounded-card border border-error/30 bg-white p-5 shadow-card"><h2 className="text-lg">Account actions</h2><p className="mt-1 text-sm text-muted">Sign out from this device.</p><button type="button" onClick={signOut} className="mt-4 touch-target rounded-button bg-error px-4 py-2.5 text-sm font-semibold text-white">Sign out</button></div>
   </Page>
 }

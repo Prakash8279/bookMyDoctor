@@ -524,7 +524,7 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
     try { await logout() } catch { /* logout is best-effort locally regardless of server outcome */ }
     navigate('/login', { replace: true })
   }
-  return <Page title="My profile" subtitle="Manage personal, contact, and account security information."><div className="grid max-w-4xl gap-6 lg:grid-cols-[1.2fr_.8fr]">
+  return <Page title="My profile" subtitle="Manage personal, contact, and account security information." action={<PortalThemePreference compact />}><div className="grid max-w-4xl gap-6 lg:grid-cols-[1.2fr_.8fr]">
     <form onSubmit={save} className="rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="text-lg">{role === 'patient' ? 'Account information' : 'Profile details'}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -543,7 +543,6 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
       {saved && <p role="status" className="mt-3 text-sm font-semibold text-success">Profile changes saved.</p>}
     </form>
     <div className="space-y-6">
-      <PortalThemePreference />
       <form onSubmit={updatePassword} className="rounded-card border border-border bg-white p-5 shadow-card">
         <h2 className="text-lg">Change password</h2>
         <p className="mt-1 text-sm text-muted">Use your current password to set a new one. You'll need to sign in again afterwards.</p>
