@@ -4,7 +4,7 @@ import brandLogoUrl from '../assets/brand-logo.png'
 export function SiteFooter() {
   return <footer className="site-footer">
     <div className="container footer-grid">
-      <div>
+      <div className="footer-brand-column">
         <Link to="/" className="brand brand-light">
           {/* BUG FIX ("galat logo use kiye ho"): real app logo, not the generic Lucide
               heart-pulse stock icon this used to be — see lib/brandLogo.js for the same fix on
@@ -24,7 +24,7 @@ export function SiteFooter() {
           <a href="tel:+917323074966" className="hover:underline">+91 7323074966</a>
         </div>
         {/* Social & WhatsApp Buttons */}
-        <div className="mt-4 flex items-center gap-3">
+        <div className="footer-socials mt-4 flex items-center gap-3">
           <a
             href="https://wa.me/917323074966?text=Hi%20BookADoctors%2C%20I%20would%20like%20to%20inquire%20about%20doctor%20appointments."
             target="_blank"
@@ -67,14 +67,14 @@ export function SiteFooter() {
         </div>
       </div>
 
-      <div>
+      <div className="footer-link-column">
         <h3>Patients</h3>
         <Link to="/search">Find a doctor</Link>
         <Link to="/patient/appointments">My appointments</Link>
         <Link to="/patient/queue">Live queue</Link>
       </div>
 
-      <div>
+      <div className="footer-link-column">
         <h3>Professionals</h3>
         <Link to="/register?role=doctor">Join as a doctor</Link>
         <Link to="/doctor/dashboard">Doctor portal</Link>
@@ -82,7 +82,7 @@ export function SiteFooter() {
         <Link to="/admin/dashboard">Admin portal</Link>
       </div>
 
-      <div>
+      <div className="footer-contact-column">
         <h3>Contact</h3>
         <div className="contact-line">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-map-pin"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>

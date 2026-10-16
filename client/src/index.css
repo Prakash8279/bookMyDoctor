@@ -298,6 +298,67 @@ section[aria-label='Live queue status'] .bg-charcoal { animation: dc-queue-pulse
   }
 }
 
+/* The desktop footer has generous spacing. On phones, retain every link but
+   use the screen width efficiently instead of stacking four tall columns. */
+@media (max-width: 520px) {
+  body .site-footer {
+    padding: 30px 0 14px;
+  }
+  .site-footer .footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 18px;
+    row-gap: 24px;
+  }
+  .site-footer .footer-grid > div {
+    grid-column: auto !important;
+    gap: 7px;
+    min-width: 0;
+  }
+  .site-footer .footer-brand-column,
+  .site-footer .footer-contact-column {
+    grid-column: 1 / -1 !important;
+  }
+  .site-footer .brand {
+    font-size: 17px;
+  }
+  .site-footer .brand-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .site-footer .footer-copy {
+    max-width: none;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .site-footer .contact-line {
+    font-size: 11px;
+  }
+  .site-footer .footer-socials {
+    gap: 9px;
+    margin-top: 7px;
+  }
+  .site-footer .footer-socials > a {
+    width: 32px;
+    height: 32px;
+  }
+  .site-footer .footer-grid h3 {
+    margin: 0 0 3px;
+    font-size: 13px;
+  }
+  .site-footer .footer-link-column > a,
+  .site-footer .footer-contact-column > a {
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .site-footer .footer-bottom {
+    gap: 9px;
+    margin-top: 24px;
+    padding-top: 14px;
+    font-size: 10px;
+    line-height: 1.55;
+  }
+}
+
 /* Mobile: show a "Back to home" link at the very top of auth pages, above
    the "Welcome back" / "Create your account" form, instead of leaving it
    buried inside the hero panel further down the stacked layout. */
