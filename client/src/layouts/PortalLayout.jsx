@@ -27,8 +27,8 @@ export function PortalLayout({ role, onLogout }) {
   return <div className={`min-h-screen bg-surface ${compactPortal ? 'lg:flex' : 'md:flex'}`}>
     {compactPortal ? <div className="hidden lg:block">{sidebar}</div> : sidebar}
     <div className="min-w-0 flex-1">
-      <PortalHeader role={displayRole} showMenu={!compactPortal} onMenu={() => setOpen(true)} onLogout={onLogout} />
-      <main className={`portal-content mx-auto max-w-7xl p-4 sm:p-6 ${compactPortal ? 'pb-24 sm:pb-24 lg:pb-6' : ''}`}><Outlet /></main>
+      <PortalHeader role={displayRole} showMenu={!compactPortal} onMenu={() => setOpen(true)} />
+      <main className={`portal-content mx-auto max-w-7xl p-4 sm:p-6 ${compactPortal ? 'portal-content--with-bottom-nav' : ''}`}><Outlet /></main>
     </div>
     {compactPortal && <PortalBottomNav role={displayRole} />}
   </div>

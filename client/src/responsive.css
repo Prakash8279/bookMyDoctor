@@ -232,3 +232,11 @@ label,
     grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
   }
 }
+
+/* The legacy .portal-content padding rule is loaded after Tailwind utilities,
+   so pb-* classes could not reserve space for the fixed mobile bottom nav. */
+@media (max-width: 1023px) {
+  .portal-content.portal-content--with-bottom-nav {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom)) !important;
+  }
+}

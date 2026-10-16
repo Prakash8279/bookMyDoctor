@@ -253,26 +253,13 @@ describe('PortalHeader', () => {
     expect(img).toHaveAttribute('src', 'https://example.com/a.jpg')
   })
 
-  it('toggles the theme and persists it to localStorage', () => {
+  it('keeps theme controls out of the portal header', () => {
     render(
       <MemoryRouter>
         <PortalHeader role="patient" onMenu={() => {}} />
       </MemoryRouter>
     )
-    const toggle = screen.getByRole('button', { name: 'Switch to dark theme' })
-    fireEvent.click(toggle)
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-    expect(localStorage.getItem('dc-theme')).toBe('dark')
-    expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeInTheDocument()
-  })
-
-  it('initializes dark mode from the document attribute already set', () => {
-    document.documentElement.setAttribute('data-theme', 'dark')
-    render(
-      <MemoryRouter>
-        <PortalHeader role="patient" onMenu={() => {}} />
-      </MemoryRouter>
-    )
-    expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Switch to .* theme/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out from account' })).not.toBeInTheDocument()
   })
 })

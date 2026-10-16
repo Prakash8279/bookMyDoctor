@@ -49,6 +49,7 @@ describe('PortalLayout', () => {
     expect(container.querySelector('aside').parentElement).toHaveClass('hidden', 'lg:block')
     expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Doctor bottom navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('main')).toHaveClass('portal-content--with-bottom-nav')
     expect(screen.getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/doctor/schedule')
   })
 
@@ -84,15 +85,12 @@ describe('PortalLayout', () => {
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1))
   })
 
-  it('shows a persistent mobile sign-out action for compact portals', async () => {
-    const onLogout = vi.fn().mockResolvedValue()
+  it('keeps theme and sign-out actions out of the compact portal header', () => {
     useAppStore.setState({ currentUser: { role: 'doctor', name: 'Dr. Rao' } })
-    renderLayout('doctor', onLogout)
-
-    const mobileSignOut = screen.getByRole('button', { name: 'Sign out from account' })
-    expect(mobileSignOut).toHaveClass('lg:hidden')
-    fireEvent.click(mobileSignOut)
-    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1))
+    renderLayout('doctor')
+    expect(screen.queryByRole('button', { name: 'Sign out from account' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Switch to .* theme/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open profile' })).toHaveAttribute('href', '/doctor/profile')
   })
 
   it('hides the patient sidebar on mobile while preserving the original desktop sidebar', () => {

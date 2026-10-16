@@ -6,6 +6,7 @@ import { Select } from '../components/Select'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { StatusPill } from '../components/StatusPill'
 import { useAppStore } from '../store/useAppStore'
+import { PortalThemePreference } from '../components/PortalThemePreference'
 import { formatDate, sequenceId, shortId, stableId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
@@ -542,6 +543,7 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
       {saved && <p role="status" className="mt-3 text-sm font-semibold text-success">Profile changes saved.</p>}
     </form>
     <div className="space-y-6">
+      <PortalThemePreference />
       <form onSubmit={updatePassword} className="rounded-card border border-border bg-white p-5 shadow-card">
         <h2 className="text-lg">Change password</h2>
         <p className="mt-1 text-sm text-muted">Use your current password to set a new one. You'll need to sign in again afterwards.</p>

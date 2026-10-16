@@ -38,6 +38,7 @@ const initialStoreState = useAppStore.getState()
 
 beforeEach(() => {
   localStorage.clear()
+  document.documentElement.removeAttribute('data-theme')
   useAppStore.setState(initialStoreState, true)
   vi.clearAllMocks()
   getTokens.mockReturnValue(null)
@@ -49,6 +50,7 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear()
+  document.documentElement.removeAttribute('data-theme')
 })
 
 function renderConnected(Component, extraProps = {}) {
@@ -248,6 +250,17 @@ describe('ContactInbox', () => {
 })
 
 describe('PortalProfile', () => {
+  it('moves the theme preference into My profile', () => {
+    setCurrentUser({ id: 'p1', name: 'Asha Mehta', profile: {} })
+    renderConnected(PortalProfile, { role: 'patient' })
+
+    const toggle = screen.getByRole('button', { name: 'Switch to dark theme' })
+    fireEvent.click(toggle)
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(localStorage.getItem('dc-theme')).toBe('dark')
+    expect(screen.getByRole('button', { name: 'Switch to light theme' })).toBeInTheDocument()
+  })
+
   it('saves profile field edits via PATCH /me', async () => {
     setCurrentUser({ id: 'p1', name: 'Asha Mehta', email: 'asha@example.com', phone: '', city: '', profile: {} })
     apiClient.patch.mockResolvedValue({ id: 'p1', name: 'Asha Mehta K.', profile: {} })
