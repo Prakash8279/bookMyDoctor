@@ -197,11 +197,11 @@ docker compose up --build
 
 | Role | Email | Password | Permissions |
 |---|---|---|---|
-| **Superadmin** | `superadmin@bookmydoctor.com` | `SuperAdmin@123` | Full root access, fee configuration, system override |
-| **Admin** | `admin@bookmydoctor.com` | `Admin@123` | Doctor verification, clinic approvals, dispute handling |
-| **Doctor** | `doctor.sharma@bookmydoctor.com` | `Doctor@123` | OPD schedules, patient consultation, EMR write |
-| **Receptionist**| `receptionist.central@bookmydoctor.com`| `Recep@123` | Desk tokens, walk-in registration, cash billing |
-| **Patient** | `patient.rahul@bookmydoctor.com` | `Patient@123` | Doctor booking, queue monitoring, record viewing |
+| **Superadmin** | `superadmin@connectdoctor.test` | `Super#DC2026!Test` | Full root access, fee configuration, system override |
+| **Admin** | `admin@connectdoctor.test` | `Admin#DC2026!Test` | Doctor verification, clinic approvals, dispute handling |
+| **Doctor** | `doctor@connectdoctor.test` | `Doctor#DC2026!Test` | OPD schedules, patient consultation, EMR write |
+| **Receptionist**| `receptionist@connectdoctor.test`| `Reception#DC2026!Test` | Desk tokens, walk-in registration, cash billing |
+| **Patient** | `patient@connectdoctor.test` | `Patient#DC2026!Test` | Doctor booking, queue monitoring, record viewing |
 
 ---
 

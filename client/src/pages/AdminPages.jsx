@@ -1403,7 +1403,7 @@ export function PlatformSettings() {
     <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
       <div className="space-y-4">
         <FormField label="Platform name" name="platformName" defaultValue={systemSettings?.platformName || 'BookADoctors'} required />
-        <FormField label="Support email" name="supportEmail" type="email" defaultValue={systemSettings?.supportEmail || ''} />
+        <FormField label="Support email" name="supportEmail" type="email" defaultValue={systemSettings?.supportEmail || 'support@bookadoctors.com'} />
         <FormField label="Support phone" name="supportPhone" defaultValue={systemSettings?.supportPhone || ''} />
         <label className="flex min-h-11 items-center justify-between gap-3 text-sm font-medium">Maintenance mode <input name="maintenanceMode" type="checkbox" defaultChecked={Boolean(systemSettings?.maintenanceMode)} /></label>
         <ErrorNote>{formError}</ErrorNote>

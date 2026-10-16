@@ -105,9 +105,9 @@ class PrivacyScreen extends StatelessWidget {
     [
       '12. Contact & grievance officer',
       'Questions about this policy, or requests about your information, can be sent through the Contact screen, '
-          'or to bookmydoctors@gmail.com. As required under Indian IT Rules for a grievance-redressal contact '
-          'point: Grievance Officer — [FILL: name], [FILL: designation], [FILL: email/phone], [FILL: registered '
-          'address]. We aim to acknowledge grievances promptly and resolve them within the timeframe required by '
+          'or to support@bookadoctors.com. As required under Indian IT Rules for a grievance-redressal contact '
+          'point: Grievance Officer contact — support@bookadoctors.com. We aim to acknowledge grievances promptly '
+          'and resolve them within the timeframe required by '
           'applicable law.',
     ],
   ];

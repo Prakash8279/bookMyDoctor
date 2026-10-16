@@ -144,7 +144,7 @@ Every configuration option available across `server/server/.env.example` is docu
 |---|:---:|---|---|
 | `NODE_ENV` | Yes | `production` | Enables production optimizations, disables stack trace leaks |
 | `PORT` | Yes | `4000` | Port on which the Express HTTP server listens |
-| `CLIENT_ORIGIN` | Yes | `https://bookmydoctor.com` | Strict CORS allowlist; must match frontend domain |
+| `CLIENT_ORIGIN` | Yes | `https://bookadoctors.com` | Strict CORS allowlist; must match frontend domain |
 | `BUSINESS_TIME_ZONE` | Yes | `Asia/Kolkata` | Standard operational timezone for OPD slots & reports |
 | `TRUST_PROXY_HOPS` | Yes | `1` | Exact reverse proxy count for reliable `req.ip` extraction |
 | `DATABASE_URL` | Yes | `postgresql://user:pass@host:5432/db` | PostgreSQL connection string |

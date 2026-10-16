@@ -175,7 +175,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Prefer email? Send the same details to bookmydoctors@gmail.com with the subject '
+                  'Prefer email? Send the same details to support@bookadoctors.com with the subject '
                   '"Account & data deletion request".',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
@@ -184,10 +184,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   child: TextButton(
                     onPressed: () => launchUrl(Uri(
                       scheme: 'mailto',
-                      path: 'bookmydoctors@gmail.com',
+                      path: 'support@bookadoctors.com',
                       query: 'subject=${Uri.encodeComponent('Account & data deletion request')}',
                     )),
-                    child: const Text('Email bookmydoctors@gmail.com'),
+                    child: const Text('Email support@bookadoctors.com'),
                   ),
                 ),
               ],

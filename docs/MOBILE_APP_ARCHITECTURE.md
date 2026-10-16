@@ -129,7 +129,7 @@ Connecting a mobile app to a local development backend requires distinct URL han
 | **Android Emulator** | `10.0.2.2:4000` | Points to host machine's `localhost:4000` |
 | **iOS Simulator** | `localhost:4000` | Shares localhost networking directly with macOS |
 | **Physical Device (Wi-Fi)**| `192.168.x.x:4000`| Machine's local network LAN IP address |
-| **Staging / Production** | `https://api.bookmydoctor.com` | Deployed domain |
+| **Staging / Production** | `https://bookadoctors.com/api` | Deployed domain |
 
 `api_config.dart` dynamically detects the runtime platform (Android vs iOS) and selects the appropriate default host, with an override option via `--dart-define=API_URL=...`.
 

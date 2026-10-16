@@ -126,11 +126,11 @@ All 5 seeded accounts use the password standard `RoleName@123`:
 
 | Role | Email | Password | Access Scope |
 |---|---|---|---|
-| **Superadmin** | `superadmin@bookmydoctor.com` | `SuperAdmin@123` | Root system access, platform settings, overrides |
-| **Admin** | `admin@bookmydoctor.com` | `Admin@123` | Doctor verification, clinic approval, dispute resolution |
-| **Doctor** | `doctor.sharma@bookmydoctor.com` | `Doctor@123` | OPD schedules, live patient calling, EMR writes |
-| **Receptionist**| `receptionist.central@bookmydoctor.com`| `Recep@123` | Front-desk queue, walk-in tokens, cash billing |
-| **Patient** | `patient.rahul@bookmydoctor.com` | `Patient@123` | Doctor discovery, booking, live queue, EMR records |
+| **Superadmin** | `superadmin@connectdoctor.test` | `Super#DC2026!Test` | Root system access, platform settings, overrides |
+| **Admin** | `admin@connectdoctor.test` | `Admin#DC2026!Test` | Doctor verification, clinic approval, dispute resolution |
+| **Doctor** | `doctor@connectdoctor.test` | `Doctor#DC2026!Test` | OPD schedules, live patient calling, EMR writes |
+| **Receptionist**| `receptionist@connectdoctor.test`| `Reception#DC2026!Test` | Front-desk queue, walk-in tokens, cash billing |
+| **Patient** | `patient@connectdoctor.test` | `Patient#DC2026!Test` | Doctor discovery, booking, live queue, EMR records |
 
 ---
 

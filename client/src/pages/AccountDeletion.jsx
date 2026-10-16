@@ -118,8 +118,8 @@ export function AccountDeletion() {
 
           <p className="mt-8 border-t border-border pt-4 text-sm text-muted">
             Prefer email? Send the same details to{' '}
-            <a href="mailto:bookmydoctors@gmail.com" className="font-semibold text-primary-dark underline">
-              bookmydoctors@gmail.com
+            <a href="mailto:support@bookadoctors.com" className="font-semibold text-primary-dark underline">
+              support@bookadoctors.com
             </a>{' '}
             with the subject "Account & data deletion request". See our{' '}
             <a href="/privacy" className="font-semibold text-primary-dark underline">

@@ -104,7 +104,7 @@ describe('PublicContent', () => {
   it('renders the Contact page with support details and submits the contact form for real', async () => {
     render(<MemoryRouter><PublicContent kind="contact" /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'Contact BookADoctors' })).toBeInTheDocument()
-    expect(screen.getByText('bookmydoctors@gmail.com')).toBeInTheDocument()
+    expect(screen.getByText('contact@bookadoctors.com')).toBeInTheDocument()
 
     // Every field here is `required`, so FormField appends a " *" to the visible label text.
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Rahul V' } })

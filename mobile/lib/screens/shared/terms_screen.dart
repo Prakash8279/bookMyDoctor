@@ -59,7 +59,7 @@ class TermsScreen extends StatelessWidget {
     ],
     [
       '8. Contact',
-      'Questions about these terms can be sent through the Contact page, or to bookmydoctors@gmail.com.',
+      'Questions about these terms can be sent through the Contact page, or to support@bookadoctors.com.',
     ],
   ];
 

@@ -425,7 +425,9 @@ class _SettingsForm extends StatefulWidget {
 
 class _SettingsFormState extends State<_SettingsForm> {
   late final _nameCtrl = TextEditingController(text: widget.initial.platformName);
-  late final _emailCtrl = TextEditingController(text: widget.initial.supportEmail ?? '');
+  late final _emailCtrl = TextEditingController(
+    text: widget.initial.supportEmail ?? 'support@bookadoctors.com',
+  );
   late final _phoneCtrl = TextEditingController(text: widget.initial.supportPhone ?? '');
   late bool _maintenance = widget.initial.maintenanceMode;
   bool _submitting = false;

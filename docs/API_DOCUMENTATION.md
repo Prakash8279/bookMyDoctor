@@ -9,7 +9,7 @@ This document serves as the complete, authoritative REST API reference for **Boo
 ### Base URL
 - **Local Development:** `http://localhost:4000`
 - **Docker Compose:** `http://localhost:4000`
-- **Production API:** `https://api.bookmydoctor.com` (served via Nginx reverse proxy)
+- **Production API:** `https://bookadoctors.com/api` (served via Nginx reverse proxy)
 
 ### Interactive Swagger UI
 In non-production environments (`NODE_ENV !== 'production'`), interactive documentation is available at:

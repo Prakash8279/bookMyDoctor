@@ -37,7 +37,7 @@ describe('SiteFooter', () => {
     renderFooter()
     expect(screen.getByText('India')).toBeInTheDocument()
     expect(screen.getByText('Support available 9 AM–8 PM')).toBeInTheDocument()
-    expect(screen.getByText('bookmydoctors@gmail.com')).toBeInTheDocument()
+    expect(screen.getByText('contact@bookadoctors.com')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Contact support' })).toHaveAttribute('href', '/contact')
   })
 

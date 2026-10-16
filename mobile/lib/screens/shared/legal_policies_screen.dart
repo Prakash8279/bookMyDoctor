@@ -151,7 +151,7 @@ const kPrivacySections = <List<String>>[
   ],
   [
     '12. Contact & grievance officer',
-    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to bookmydoctors@gmail.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — bookmydoctors@gmail.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
+    'Questions about this policy, or requests about your information, can be sent through our Contact page, or to support@bookadoctors.com. As required under Indian IT Rules for a grievance-redressal contact point: Grievance Officer contact — support@bookadoctors.com. We aim to acknowledge grievances promptly and resolve them within the timeframe required by applicable law.',
   ],
 ];
 
@@ -196,7 +196,7 @@ const kTermsSections = <List<String>>[
   ],
   [
     '10. Contact',
-    'Questions about these terms can be sent through the Contact page, or to bookmydoctors@gmail.com.',
+    'Questions about these terms can be sent through the Contact page, or to support@bookadoctors.com.',
   ],
 ];
 

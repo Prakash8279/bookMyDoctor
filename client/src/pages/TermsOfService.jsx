@@ -26,7 +26,7 @@ const SECTIONS = [
   ['7. Limitation of liability', 'BookADoctors acts as a technology platform connecting patients with independent doctors and clinics. To the maximum extent permitted by applicable law, BookADoctors is not liable for the medical care, advice, diagnosis, or treatment provided by any doctor or clinic listed on the platform, or for any loss arising from a doctor or clinic\'s own scheduling, cancellation, or refund decisions.'],
   ['8. Changes to these terms', 'These terms may be updated as the platform changes. Continued use of BookADoctors after an update means you accept the revised terms.'],
   ['9. Governing law', 'These terms are governed by the laws of India, without regard to its conflict-of-law principles.'],
-  ['10. Contact', 'Questions about these terms can be sent through the Contact page, or to bookmydoctors@gmail.com.'],
+  ['10. Contact', 'Questions about these terms can be sent through the Contact page, or to support@bookadoctors.com.'],
 ]
 
 export function TermsOfService() {

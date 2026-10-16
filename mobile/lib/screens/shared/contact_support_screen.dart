@@ -138,7 +138,7 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
                 children: [
                   Text('Send your query and our team will route it to the right specialist.', style: TextStyle(color: AppColors.textSecondary)),
                   SizedBox(height: AppSpacing.sm),
-                  _ContactRow(label: 'Email', value: 'bookmydoctors@gmail.com'),
+                  _ContactRow(label: 'Email', value: 'contact@bookadoctors.com'),
                   _ContactRow(label: 'Support hours', value: 'Monday–Saturday, 9 AM–8 PM'),
                   _ContactRow(label: 'Service region', value: 'India'),
                   _ContactRow(

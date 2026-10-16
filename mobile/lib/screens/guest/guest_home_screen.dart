@@ -1887,7 +1887,7 @@ class _SiteFooter extends StatelessWidget {
             children: [
               Icon(Icons.mail_outline, size: 16, color: Color(0xFFB5B5B5)),
               SizedBox(width: 8),
-              Text('bookmydoctors@gmail.com', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
+              Text('contact@bookadoctors.com', style: TextStyle(color: Color(0xFFB5B5B5), fontSize: 13)),
             ],
           ),
           const Divider(color: Color(0xFF222222), height: 40),
