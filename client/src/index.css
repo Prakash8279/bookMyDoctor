@@ -298,64 +298,98 @@ section[aria-label='Live queue status'] .bg-charcoal { animation: dc-queue-pulse
   }
 }
 
-/* The desktop footer has generous spacing. On phones, retain every link but
-   use the screen width efficiently instead of stacking four tall columns. */
-@media (max-width: 520px) {
-  body .site-footer {
-    padding: 30px 0 14px;
+/* Compact public footer for phones and small tablets. High-specificity scoped
+   selectors intentionally beat the legacy responsive footer rules loaded
+   after this file. */
+@media (max-width: 780px) {
+  body footer.site-footer {
+    padding: 28px 0 14px;
   }
-  .site-footer .footer-grid {
+  footer.site-footer .footer-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 18px;
-    row-gap: 24px;
+    column-gap: 24px;
+    row-gap: 22px;
   }
-  .site-footer .footer-grid > div {
+  footer.site-footer .footer-grid > div {
     grid-column: auto !important;
     gap: 7px;
     min-width: 0;
   }
-  .site-footer .footer-brand-column,
-  .site-footer .footer-contact-column {
+  footer.site-footer .footer-grid > .footer-brand-column,
+  footer.site-footer .footer-grid > .footer-contact-column {
     grid-column: 1 / -1 !important;
   }
-  .site-footer .brand {
+  footer.site-footer .footer-brand-column {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 16px;
+    row-gap: 8px;
+  }
+  footer.site-footer .footer-brand-column > .brand,
+  footer.site-footer .footer-brand-column > .footer-copy,
+  footer.site-footer .footer-brand-column > .footer-socials {
+    grid-column: 1 / -1;
+  }
+  footer.site-footer .brand {
     font-size: 17px;
   }
-  .site-footer .brand-mark {
+  footer.site-footer .brand-mark {
     width: 36px;
     height: 36px;
   }
-  .site-footer .footer-copy {
-    max-width: none;
+  footer.site-footer .footer-copy {
+    max-width: 440px;
     font-size: 12px;
     line-height: 1.55;
   }
-  .site-footer .contact-line {
+  footer.site-footer .contact-line {
+    min-width: 0;
     font-size: 11px;
   }
-  .site-footer .footer-socials {
+  footer.site-footer .footer-socials {
     gap: 9px;
-    margin-top: 7px;
+    margin-top: 3px;
   }
-  .site-footer .footer-socials > a {
+  footer.site-footer .footer-socials > a {
     width: 32px;
     height: 32px;
   }
-  .site-footer .footer-grid h3 {
+  footer.site-footer .footer-grid h3 {
     margin: 0 0 3px;
     font-size: 13px;
   }
-  .site-footer .footer-link-column > a,
-  .site-footer .footer-contact-column > a {
+  footer.site-footer .footer-link-column > a,
+  footer.site-footer .footer-contact-column > a {
     font-size: 12px;
     line-height: 1.35;
   }
-  .site-footer .footer-bottom {
-    gap: 9px;
-    margin-top: 24px;
-    padding-top: 14px;
+  footer.site-footer .footer-contact-column {
+    display: grid;
+    grid-template-columns: minmax(0, .65fr) minmax(0, 1.35fr);
+    column-gap: 18px;
+    row-gap: 8px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  footer.site-footer .footer-contact-column > h3,
+  footer.site-footer .footer-contact-column > .footer-support {
+    grid-column: 1 / -1;
+  }
+  footer.site-footer .footer-bottom {
+    gap: 8px;
+    margin-top: 22px;
+    padding-top: 13px;
     font-size: 10px;
     line-height: 1.55;
+  }
+}
+
+@media (max-width: 390px) {
+  footer.site-footer .footer-brand-column > .contact-line {
+    grid-column: 1 / -1;
+  }
+  footer.site-footer .footer-grid {
+    column-gap: 16px;
   }
 }
 

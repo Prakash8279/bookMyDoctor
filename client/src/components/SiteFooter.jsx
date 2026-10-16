@@ -79,7 +79,6 @@ export function SiteFooter() {
         <Link to="/register?role=doctor">Join as a doctor</Link>
         <Link to="/doctor/dashboard">Doctor portal</Link>
         <Link to="/receptionist/dashboard">Reception portal</Link>
-        <Link to="/admin/dashboard">Admin portal</Link>
       </div>
 
       <div className="footer-contact-column">

@@ -30,7 +30,7 @@ describe('SiteFooter', () => {
     expect(screen.getByRole('link', { name: 'Join as a doctor' })).toHaveAttribute('href', '/register?role=doctor')
     expect(screen.getByRole('link', { name: 'Doctor portal' })).toHaveAttribute('href', '/doctor/dashboard')
     expect(screen.getByRole('link', { name: 'Reception portal' })).toHaveAttribute('href', '/receptionist/dashboard')
-    expect(screen.getByRole('link', { name: 'Admin portal' })).toHaveAttribute('href', '/admin/dashboard')
+    expect(screen.queryByRole('link', { name: 'Admin portal' })).not.toBeInTheDocument()
   })
 
   it('renders contact details and a support link', () => {
