@@ -14,7 +14,7 @@ const FOOTER_NAV = {
 function PortalBottomNav({ role }) {
   const items = FOOTER_NAV[role] || []
   const roleLabel = role === 'receptionist' ? 'Receptionist' : role.charAt(0).toUpperCase() + role.slice(1)
-  return <nav aria-label={`${roleLabel} bottom navigation`} className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-white/95 shadow-[0_-4px_16px_rgba(35,30,28,0.08)] backdrop-blur lg:hidden [padding-bottom:env(safe-area-inset-bottom)]">{items.map(([label, path, icon]) => <NavLink key={path} end={path.endsWith('/dashboard')} to={path} className={({ isActive }) => `flex min-h-[62px] min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-semibold transition ${isActive ? 'text-primary-dark' : 'text-muted'}`}><PatientNavIcon name={icon} /><span className="max-w-full truncate">{label}</span></NavLink>)}</nav>
+  return <nav aria-label={`${roleLabel} bottom navigation`} className="portal-bottom-nav fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border shadow-[0_-4px_16px_rgba(35,30,28,0.08)] backdrop-blur lg:hidden [padding-bottom:env(safe-area-inset-bottom)]">{items.map(([label, path, icon]) => <NavLink key={path} end={path.endsWith('/dashboard')} to={path} className={({ isActive }) => `flex min-h-[62px] min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-semibold transition ${isActive ? 'text-primary-dark' : 'text-muted'}`}><PatientNavIcon name={icon} /><span className="max-w-full truncate">{label}</span></NavLink>)}</nav>
 }
 
 export function PortalLayout({ role, onLogout }) {

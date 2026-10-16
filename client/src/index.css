@@ -273,6 +273,23 @@ section[aria-label='Live queue status'] .bg-charcoal { animation: dc-queue-pulse
   border-color: #444 !important;
 }
 
+/* Mobile portal navigation must follow the selected theme. Using a dedicated
+   class avoids leaving a translucent light Tailwind background in dark mode. */
+.portal-bottom-nav {
+  background: rgba(255, 255, 255, 0.95);
+}
+[data-theme=dark] .portal-bottom-nav {
+  background: rgba(14, 14, 14, 0.96);
+  border-color: #303030 !important;
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.42);
+}
+[data-theme=dark] .portal-bottom-nav .text-muted {
+  color: #a8a8a8 !important;
+}
+[data-theme=dark] .portal-bottom-nav .text-primary-dark {
+  color: #fff !important;
+}
+
 /* Mobile: show a "Back to home" link at the very top of auth pages, above
    the "Welcome back" / "Create your account" form, instead of leaving it
    buried inside the hero panel further down the stacked layout. */
