@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bar, Line } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from 'chart.js'
@@ -17,6 +17,7 @@ import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { buildStaffReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
+import { PatientNavIcon } from '../components/PatientNavIcon'
 ChartJS.register(ArcElement, BarElement, CategoryScale, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip)
 
 // BUG FIX (found live: a doctor saving an invalid IFSC code in the bank-details form below saw
@@ -34,11 +35,42 @@ function firstErrorMessage(err, fallback) {
   return fieldMessage || err?.message || fallback
 }
 
-const Page = ({ title, subtitle, children, action, kicker }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
+const Page = ({ title, subtitle, children, action, kicker, headingClassName = '' }) => <section><div className={`page-heading mb-5 flex flex-wrap items-end justify-between gap-3 ${headingClassName}`}><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'dark' ? 'bg-charcoal text-white' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
 // Reusable inline error slot — matches the pattern already established in
 // AdminPages.jsx (ErrorNote) so error display is consistent across the app.
 const ErrorNote = ({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
+
+const STAFF_SERVICES = {
+  doctor: [
+    ['Queue management', '/doctor/queue', 'ticket-check'], ['Appointments', '/doctor/appointments', 'calendar-days'], ['Consultation & EMR', '/doctor/emr', 'file-heart'], ['Analytics', '/doctor/analytics', 'chart-no-axes-combined'], ['Patient reviews', '/doctor/reviews', 'message-square-warning'],
+    ['Notifications', '/doctor/notifications', 'bell'], ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'],
+    ['Reports', '/doctor/reports', 'file-text'], ['My profile', '/doctor/profile', 'user-round'],
+  ],
+  receptionist: [
+    ['Walk-in registration', '/receptionist/walk-in', 'user-round'], ['Queue monitor', '/receptionist/queue', 'ticket-check'], ['Check-in', '/receptionist/check-in', 'clipboard-list'], ['Appointments', '/receptionist/appointments', 'calendar-days'], ['Doctor availability', '/receptionist/availability', 'clock3'], ['Payments', '/receptionist/payments', 'wallet-cards'],
+    ['Patients', '/receptionist/patients', 'users-round'], ['Notifications', '/receptionist/notifications', 'bell'], ['Reports', '/receptionist/reports', 'chart-no-axes-combined'], ['My profile', '/receptionist/profile', 'user-round'],
+  ],
+}
+
+function StaffServiceGrid({ role }) {
+  const [policiesOpen, setPoliciesOpen] = useState(false)
+  const tileClass = 'group flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-1.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-ink transition'
+  const iconClass = 'grid h-10 w-10 place-items-center rounded-[12px] border border-border bg-white text-primary-dark shadow-card transition group-hover:-translate-y-0.5 group-hover:border-primary-dark'
+  return <section aria-label={`${role === 'doctor' ? 'Doctor' : 'Receptionist'} services`} className="mb-6 lg:hidden">
+    <div className="patient-service-grid grid gap-x-1 gap-y-4">
+      {(STAFF_SERVICES[role] || []).map(([label, path, icon]) => <Link key={path} to={path} className={tileClass}><span aria-hidden="true" className={iconClass}><PatientNavIcon name={icon} /></span><span className="max-w-full [overflow-wrap:anywhere]">{label}</span></Link>)}
+      <button type="button" className={tileClass} aria-expanded={policiesOpen} aria-controls={`${role}-help-links`} onClick={() => setPoliciesOpen((value) => !value)}><span aria-hidden="true" className={iconClass}><PatientNavIcon name="file-text" /></span><span className="max-w-full [overflow-wrap:anywhere]">Help &amp; policies</span></button>
+    </div>
+    {policiesOpen && <div id={`${role}-help-links`} className="mt-3 grid gap-2 rounded-button border border-border bg-white p-3 shadow-card" aria-label="Help and policy links">
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/privacy">Privacy Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/terms">Terms &amp; Conditions <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/cancellation-refund-policy">Cancellation &amp; Refund Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/account-deletion">Account Deletion <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/contact">Contact Us <span aria-hidden="true">›</span></Link>
+    </div>}
+  </section>
+}
 // Age from a "YYYY-MM-DD" dateOfBirth — only ever present on `item.patient` when the backend
 // has decided the caller (treating doctor / admin) is allowed to see it; absent entirely for a
 // receptionist caller, so this simply never runs for them.
@@ -55,6 +87,9 @@ const ageFromDob = (dob) => {
 // Compact "gender · age · blood group" summary — each part only renders if the backend actually
 // sent it, so this degrades gracefully to '—' for a receptionist (whose patient object never
 // carries these clinical fields at all — see appointments.service.js#shapePatientRef).
+// oxlint-disable-next-line react/only-export-components -- shared pure formatter used by AdminPages
+// oxlint-disable-next-line react/only-export-components -- shared pure formatter used by AdminPages
+// oxlint-disable-next-line react/only-export-components -- shared pure formatter used by AdminPages
 export const patientVitals = (patient) => {
   if (!patient) return '—'
   const parts = []
@@ -102,12 +137,12 @@ const AppointmentTable = ({ data }) => {
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     setLoadError('')
     return fetchAppointments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load appointments.'))).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [fetchAppointments])
+  }, [fetchAppointments])
+  useEffect(() => { load() }, [load])
 
   const changeStatus = async (id, status) => {
     setBusyId(id)
@@ -250,7 +285,9 @@ export function DoctorDashboard({ data }) {
     status: item.status || 'upcoming',
   }))
   const firstName = (currentUser?.name || 'Doctor').replace(/^dr\.?\s+/i, '').split(' ')[0]
-  return <Page kicker="Production database" title={`Welcome, ${firstName}.`} subtitle="Your authenticated workspace is connected to live records." action={<Link to="/doctor/queue" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2 text-sm font-semibold text-white hover:bg-charcoal">Open OPD console</Link>}>
+  return <Page kicker="Production database" title={`Welcome, ${firstName}.`} subtitle="Your authenticated workspace is connected to live records." headingClassName="hidden lg:flex" action={<Link to="/doctor/queue" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2 text-sm font-semibold text-white hover:bg-charcoal">Open OPD console</Link>}>
+    <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {firstName}.</h1>
+    <StaffServiceGrid role="doctor" />
     <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-button border border-border bg-white px-4 py-3 text-sm">
       <span><span className={`mr-2 inline-block h-2.5 w-2.5 rounded-full ${onDuty ? 'bg-success' : 'bg-muted'}`} />{onDuty ? 'Patients can currently find and book you.' : 'You are hidden from new patient bookings.'}</span>
       <Button tone="secondary" className="py-1.5 px-3 text-xs" disabled={dutyBusy || !currentUser} onClick={toggleDuty}>{dutyBusy ? 'Saving…' : onDuty ? 'Go off duty' : 'Go on duty'}</Button>
@@ -292,12 +329,12 @@ export function QueueManagement({ data, receptionist = false }) {
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
 
-  const loadQueue = () => {
+  const loadQueue = useCallback(() => {
     setLoading(true)
     setLoadError('')
     return fetchQueue({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.'))).finally(() => setLoading(false))
-  }
-  useEffect(() => { loadQueue() }, [fetchQueue])
+  }, [fetchQueue])
+  useEffect(() => { loadQueue() }, [loadQueue])
 
   // `GET /queue` is already scoped server-side (doctor sees only their own
   // tokens, receptionist only their clinic's) — no client-side doctor filter
@@ -387,6 +424,9 @@ export function DoctorProfileEdit({ data }) {
   const [bankSaved, setBankSaved] = useState(false)
   const [bankError, setBankError] = useState('')
   const [savingBank, setSavingBank] = useState(false)
+  const [bookingPaymentPolicy, setBookingPaymentPolicy] = useState(
+    profile.bookingPaymentPolicy || (Number(profile.minBookingAdvanceAmount) > 0 ? 'minimum_or_full' : 'full')
+  )
   const updateDoctorProfile = useAppStore((state) => state.updateDoctorProfile)
   const uploadPhoto = useAppStore((state) => state.uploadPhoto)
   const uploadVerificationDocument = useAppStore((state) => state.uploadVerificationDocument)
@@ -409,11 +449,13 @@ export function DoctorProfileEdit({ data }) {
         registrationNumber: values.registrationNumber,
         experienceYears: Number(values.experience) || 0,
         consultationFee: Number(values.fee) || 0,
-        emergencyFee: Number(values.emergencyFee) || 0,
         languages: String(values.languages || '').split(',').map((item) => item.trim()).filter(Boolean),
         bio: values.bio,
         emergencyAvailable: values.emergencyAvailable === 'on',
-        minBookingAdvanceAmount: values.minBookingAmount ? Number(values.minBookingAmount) : null,
+        bookingPaymentPolicy: values.bookingPaymentPolicy,
+        minBookingAdvanceAmount: values.bookingPaymentPolicy === 'minimum_or_full' && values.minBookingAmount
+          ? Number(values.minBookingAmount)
+          : null,
       })
       setSaved(true)
     } catch (err) {
@@ -567,11 +609,25 @@ export function DoctorProfileEdit({ data }) {
         <FormField label="Registration number" name="registrationNumber" defaultValue={profile.registrationNumber || ''} />
         <FormField label="Experience (years)" name="experience" type="number" defaultValue={profile.experienceYears || 0} min="0" />
         <FormField label="Consultation fee" name="fee" type="number" defaultValue={profile.consultationFee || 0} min="0" />
-        <FormField label="Emergency fee" name="emergencyFee" type="number" defaultValue={profile.emergencyFee || 0} min="0" />
-        <div>
-          <FormField label="Minimum booking amount (optional)" name="minBookingAmount" type="number" min="0" placeholder="No minimum-pay option" defaultValue={profile.minBookingAdvanceAmount ?? ''} />
-          <p className="mt-1 text-xs text-muted">Online payment is now mandatory before a patient gets a token. Set this to let patients pay just this much at booking time instead of the full fee — the rest is collected at the clinic. Leave blank to only offer full payment. Cannot exceed the consultation fee.</p>
+        <div className="sm:col-span-2">
+          <label className="block text-sm font-medium text-ink" htmlFor="booking-payment-policy">Booking payment rule</label>
+          <select id="booking-payment-policy" name="bookingPaymentPolicy" value={bookingPaymentPolicy} onChange={(event) => setBookingPaymentPolicy(event.target.value)} className="mt-1 min-h-11 w-full rounded-button border border-border bg-white px-3 text-sm outline-none focus:border-primary-dark">
+            <option value="platform_only">₹0 doctor advance — platform charge only</option>
+            <option value="minimum_or_full">Minimum or full — patient chooses</option>
+            <option value="full">Full payment only</option>
+          </select>
+          <p className="mt-1 text-xs text-muted">
+            {bookingPaymentPolicy === 'platform_only'
+              ? 'Patient pays only the platform charge online. Your consultation fee is collected at the clinic.'
+              : bookingPaymentPolicy === 'minimum_or_full'
+              ? 'Patient can choose the minimum amount or the full amount. Platform charge applies to both.'
+              : 'Patient sees only the full-payment option. Platform charge is included.'}
+          </p>
         </div>
+        {bookingPaymentPolicy === 'minimum_or_full' && <div>
+          <FormField label="Minimum booking amount" name="minBookingAmount" type="number" min="0.01" step="0.01" required placeholder="Enter minimum amount" defaultValue={profile.minBookingAdvanceAmount ?? ''} />
+          <p className="mt-1 text-xs text-muted">Must be greater than ₹0 and cannot exceed the consultation fee.</p>
+        </div>}
         <FormField label="Languages (comma separated)" name="languages" defaultValue={(profile.languages || []).join(', ')} />
         <div className="sm:col-span-2"><FormField label="Professional biography" name="bio" type="textarea" defaultValue={profile.bio || ''} /></div>
         <label className="flex min-h-11 items-center gap-2 text-sm font-medium sm:col-span-2"><input type="checkbox" name="emergencyAvailable" defaultChecked={profile.emergencyAvailable} /> Available for emergency care</label>
@@ -850,8 +906,8 @@ export function PatientHistory({ data }) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
-  const load = () => { setLoading(true); setLoadError(''); return fetchAppointments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load patient history.'))).finally(() => setLoading(false)) }
-  useEffect(() => { load() }, [fetchAppointments])
+  const load = useCallback(() => { setLoading(true); setLoadError(''); return fetchAppointments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load patient history.'))).finally(() => setLoading(false)) }, [fetchAppointments])
+  useEffect(() => { load() }, [load])
   // §6.7 — no `/patients` endpoint exists; derive a distinct patient list
   // from already-fetched appointments instead (reduced view: no city, since
   // the real appointment's nested `patient` only carries {id, name}).
@@ -883,16 +939,33 @@ export function PatientHistory({ data }) {
 
 const lineData = (analytics, label, values) => ({ labels: analytics.labels, datasets: [{ label, data: values, borderColor: theme.primary, backgroundColor: `${theme.primary}26`, tension: .35, fill: true }] })
 export function Analytics({ data, admin = false, embedded = false }) {
-  const a = data.analytics
-  // §6.3 — no time-series/analytics endpoint exists anywhere in the API;
-  // `data.analytics` stays permanently null. Show a clear "not available"
-  // state instead of crashing on `a.labels`.
-  if (!a) {
-    const notice = <EmptyState title="Analytics not available" message="The current API has no time-series analytics endpoint yet." />
-    return embedded ? notice : <Page title={admin ? 'Platform analytics' : 'Practice analytics'} subtitle="Not available in this version of the API.">{notice}</Page>
-  }
+  const a = useMemo(() => {
+    if (data.analytics) return data.analytics
+    const days = Array.from({ length: 7 }, (_, offset) => {
+      const date = new Date()
+      date.setHours(0, 0, 0, 0)
+      date.setDate(date.getDate() - (6 - offset))
+      return date
+    })
+    const key = (value) => {
+      const date = new Date(value)
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10)
+    }
+    const appointments = data.appointments || []
+    const payments = data.payments || []
+    return {
+      labels: days.map((date) => date.toLocaleDateString('en-IN', { weekday: 'short' })),
+      appointments: days.map((date) => appointments.filter((item) => key(item.appointmentDate || item.createdAt) === key(date)).length),
+      revenue: days.map((date) => payments.filter((item) => key(item.createdAt) === key(date) && String(item.status).toLowerCase() === 'paid').reduce((sum, item) => sum + Number(item.reportAmount ?? item.amount ?? 0), 0)),
+      total: appointments.length,
+      completed: appointments.filter((item) => item.status === 'completed').length,
+      cancelled: appointments.filter((item) => item.status === 'cancelled').length,
+    }
+  }, [data.analytics, data.appointments, data.payments])
+  const completionRate = a.total ? Math.round((a.completed / a.total) * 100) : 0
   const charts = <div className="grid gap-5 lg:grid-cols-2"><div className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-4 text-lg">Appointments</h2><Line data={lineData(a, 'Appointments', a.appointments)} options={{ responsive: true }} /></div><div className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-4 text-lg">Revenue</h2><Bar data={{ labels: a.labels, datasets: [{ label: 'Revenue (₹)', data: a.revenue, backgroundColor: theme.teal, borderRadius: 6 }] }} /></div></div>
-  return embedded ? charts : <Page title={admin ? 'Platform analytics' : 'Practice analytics'} subtitle={admin ? 'See platform-wide trends, completion rate, and workload.' : 'See appointment trends, completion rate, and workload.'}>{charts}</Page>
+  const content = <><div className="mb-5 grid gap-3 sm:grid-cols-3"><StatCard label="APPOINTMENTS" value={a.total} icon="📅" /><StatCard label="COMPLETION RATE" value={`${completionRate}%`} icon="✓" /><StatCard label="CANCELLED" value={a.cancelled} icon="×" /></div>{charts}</>
+  return embedded ? content : <Page title={admin ? 'Platform analytics' : 'Practice analytics'} subtitle={admin ? 'Live trends derived from platform appointments and payments.' : 'Your last seven days of appointments, completion, and revenue.'}>{content}</Page>
 }
 
 export function ReceptionDashboard({ data }) {
@@ -921,7 +994,9 @@ export function ReceptionDashboard({ data }) {
     status: item.status || 'upcoming',
   }))
   const firstName = (currentUser?.name || 'Reception').split(' ')[0]
-  return <Page kicker="Production database" title={`Welcome, ${firstName}.`} subtitle="Your authenticated workspace is connected to live records." action={<Link to="/receptionist/walk-in" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2 text-sm font-semibold text-white hover:bg-charcoal">Register walk-in</Link>}>
+  return <Page kicker="Production database" title={`Welcome, ${firstName}.`} subtitle="Your authenticated workspace is connected to live records." headingClassName="hidden lg:flex" action={<Link to="/receptionist/walk-in" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2 text-sm font-semibold text-white hover:bg-charcoal">Register walk-in</Link>}>
+    <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {firstName}.</h1>
+    <StaffServiceGrid role="receptionist" />
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="TODAY'S PATIENTS" value={todaysPatients} icon="👥" to="/receptionist/patients" />
       <StatCard label="CONSULTATIONS DONE" value={consultationsDone} icon="✓" to="/receptionist/appointments" />
@@ -1074,8 +1149,8 @@ export function CashPayment({ data }) {
   // showed up here on its own. Refetch appointments after a successful save so the just-paid one
   // drops out of `unpaidAppointments` below immediately, instead of waiting for next login/reload.
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
-  const load = () => { setLoading(true); setLoadError(''); return fetchPayments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load payments.'))).finally(() => setLoading(false)) }
-  useEffect(() => { load() }, [fetchPayments])
+  const load = useCallback(() => { setLoading(true); setLoadError(''); return fetchPayments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load payments.'))).finally(() => setLoading(false)) }, [fetchPayments])
+  useEffect(() => { load() }, [load])
 
   const unpaidAppointments = (data.appointments || []).filter((item) => item.paymentStatus !== 'paid')
   const appointmentLabel = (item) => `${shortId(item.id)} · ${item.patient?.name || 'Patient'} · ₹${item.fees?.consultationFee ?? 0}`
@@ -1133,7 +1208,6 @@ export function CashPayment({ data }) {
         patientUserId: appointment?.patient?.id,
         doctorUserId: appointment?.doctor?.id,
         clinicId: appointment?.clinic?.id,
-        isEmergency: appointment?.isEmergency || false,
         mode: (values.method || 'cash').toLowerCase(),
         transactionRef: values.transaction || undefined,
         // COMPLETENESS ADD (request: "utr no aaye upi id aaye ushke pad use show ho", clarified

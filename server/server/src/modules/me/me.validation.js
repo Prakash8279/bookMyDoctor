@@ -45,6 +45,10 @@ const patchMe = [
   // Must not exceed consultationFee — enforced in me.service.js#updateMe, since that needs the
   // (possibly-not-being-updated) existing consultationFee value too.
   body('minBookingAdvanceAmount').optional(OPT_NULLABLE).isFloat({ min: 0, max: 99999999.99 }).withMessage('minBookingAdvanceAmount must be a number between 0 and 99999999.99.').toFloat(),
+  body('bookingPaymentPolicy')
+    .optional()
+    .isIn(['platform_only', 'minimum_or_full', 'full'])
+    .withMessage('bookingPaymentPolicy must be "platform_only", "minimum_or_full", or "full".'),
   body('languages').optional(OPT_NULLABLE).isArray().withMessage('languages must be an array of strings.'),
   body('languages.*').optional().isString().isLength({ max: 50 }).withMessage('Each language must be a string of at most 50 characters.'),
   body('bio').optional(OPT_NULLABLE).isString().isLength({ max: 2000 }),

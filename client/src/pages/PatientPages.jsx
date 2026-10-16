@@ -17,12 +17,47 @@ import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/rece
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
+import { PatientNavIcon } from '../components/PatientNavIcon'
 
 const nameWithStableId = (name, number, prefix) => number == null ? (name || '—') : `${stableId(number, prefix)} · ${name || '—'}`
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
 
-const Page = ({ title, subtitle, children, action, kicker }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
+const Page = ({ title, subtitle, children, action, kicker, headingClassName = '' }) => <section><div className={`page-heading mb-5 flex flex-wrap items-end justify-between gap-3 ${headingClassName}`}><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal disabled:cursor-not-allowed disabled:opacity-60 ${className}`} {...props}>{children}</button>
+
+const PATIENT_SERVICES = [
+  ['Book appointment', '/patient/book', 'calendar-days'],
+  ['Quick clinic booking', '/patient/quick-book', 'activity'],
+  ['My appointments', '/patient/appointments', 'clipboard-list'],
+  ['Queue tracker', '/patient/queue', 'ticket-check'],
+  ['Medical records', '/patient/records', 'file-heart'],
+  ['Payments', '/patient/payments', 'credit-card'],
+  ['Family members', '/patient/family', 'users-round'],
+  ['Help & complaints', '/patient/complaints', 'message-square-warning'],
+  ['Notifications', '/patient/notifications', 'bell'],
+  ['My profile', '/patient/profile', 'user-round'],
+]
+
+function PatientServiceGrid() {
+  const [policiesOpen, setPoliciesOpen] = useState(false)
+  const tileClass = 'group flex min-h-[76px] min-w-0 flex-col items-center justify-start gap-1.5 px-0.5 py-1 text-center text-[11px] font-medium leading-tight text-ink transition'
+  const iconClass = 'grid h-10 w-10 place-items-center rounded-[12px] border border-border bg-white text-primary-dark shadow-card transition group-hover:-translate-y-0.5 group-hover:border-primary-dark'
+
+  return <section aria-labelledby="patient-services-title" className="mb-6 lg:hidden">
+    <h2 id="patient-services-title" className="sr-only">Patient services</h2>
+    <div className="patient-service-grid grid gap-x-1 gap-y-4">
+      {PATIENT_SERVICES.map(([label, path, icon]) => <Link key={path} to={path} className={tileClass}><span aria-hidden="true" className={iconClass}><PatientNavIcon name={icon} /></span><span className="max-w-full [overflow-wrap:anywhere]">{label}</span></Link>)}
+      <button type="button" className={tileClass} aria-expanded={policiesOpen} aria-controls="patient-help-links" onClick={() => setPoliciesOpen((open) => !open)}><span aria-hidden="true" className={iconClass}><PatientNavIcon name="file-text" /></span><span className="max-w-full [overflow-wrap:anywhere]">Help &amp; policies</span></button>
+    </div>
+    {policiesOpen && <div id="patient-help-links" className="mt-3 grid gap-2 rounded-button border border-border bg-white p-3 shadow-card" aria-label="Help and policy links">
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/privacy">Privacy Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/terms">Terms &amp; Conditions <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/cancellation-refund-policy">Cancellation &amp; Refund Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/account-deletion">Account Deletion <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/contact">Contact Us <span aria-hidden="true">›</span></Link>
+    </div>}
+  </section>
+}
 
 export function PatientDashboard({ data }) {
   const currentUser = useAppStore((state) => state.currentUser) || { name: 'Patient', city: '' }
@@ -58,12 +93,16 @@ export function PatientDashboard({ data }) {
       kicker="Production database"
       title={`Welcome, ${(currentUser.name || 'Patient').split(' ')[0]}.`}
       subtitle="Your authenticated workspace is connected to live records."
+      headingClassName="hidden lg:flex"
       action={
         <Link className="touch-target inline-flex items-center justify-center rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal" to="/patient/book">
           Book appointment
         </Link>
       }
     >
+      <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {(currentUser.name || 'Patient').split(' ')[0]}.</h1>
+      <PatientServiceGrid />
+
       {/* Metric Cards Grid */}
       <div className="grid gap-3 sm:grid-cols-3">
         <Link to="/patient/booking-history" className="block"><StatCard label="TOTAL APPOINTMENTS" value={userAppointments.length} icon="#" /></Link>
@@ -174,6 +213,7 @@ export function Booking({ data }) {
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const createAppointment = useAppStore((state) => state.createAppointment)
+  const fetchAppointmentAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
   const bookingQueueInfo = useAppStore((state) => state.bookingQueueInfo)
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
   const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
@@ -189,7 +229,7 @@ export function Booking({ data }) {
     if (qDoctor !== doctorId) {
       setDoctorId(qDoctor)
     }
-  }, [params])
+  }, [params, doctorId])
 
   const selectDoctorAndProceed = (id) => {
     setDoctorId(id)
@@ -210,22 +250,26 @@ export function Booking({ data }) {
   // doctor's next free slot on that date server-side. What the patient actually cares about is
   // their queue/token number, not a clock time.
   const [date, setDate] = useState(params.get('date') || todayStr())
-  // Controlled (was an uncontrolled defaultChecked input) so the price preview below can react to
-  // it live — platform charge and emergency fee are mutually exclusive (see
-  // appointments.service.js#runBookingJob), so the preview needs to know the current checked
-  // state, not just what it started as.
-  const [isEmergency, setIsEmergency] = useState(params.get('emergency') === '1')
+  const [availability, setAvailability] = useState({})
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    setAvailabilityLoading(true)
+    fetchAppointmentAvailability({ date })
+      .then((rows) => {
+        if (cancelled) return
+        setAvailability(Object.fromEntries((rows || []).map((row) => [`${row.doctorUserId}:${row.clinicId}`, row])))
+      })
+      .catch(() => { if (!cancelled) setAvailability({}) })
+      .finally(() => { if (!cancelled) setAvailabilityLoading(false) })
+    return () => { cancelled = true }
+  }, [date, fetchAppointmentAvailability])
   // Doctor filter panel: allows searching by doctor or clinic name, filtering by city/specialization,
   // and sorting by clinic name, doctor name, rating, fee, or join date (default).
   const emptyDoctorFilters = { name: '', city: '', area: '', specialization: '', clinic: '', fee: '', maxFee: '', experience: '', rating: '', today: false, activeClinic: false, emergency: false, sort: '' }
   const [doctorFilters, setDoctorFilters] = useState(emptyDoctorFilters)
   const [appliedDoctorFilters, setAppliedDoctorFilters] = useState(emptyDoctorFilters)
   const updateDoctorFilter = (key) => (event) => setDoctorFilters((current) => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }))
-  const doctorAreaOptions = useMemo(() => {
-    const selectedCity = (data.cities || []).find((item) => item.name === doctorFilters.city)
-    const scoped = selectedCity ? (data.areas || []).filter((area) => area.cityId === selectedCity.id) : (data.areas || [])
-    return scoped.map((area) => area.name)
-  }, [(data.cities || []), (data.areas || []), doctorFilters.city])
   const filteredDoctors = useMemo(() => {
     const result = (data.doctors || []).filter((item) => {
       const specializationName = item.specialization?.name || ''
@@ -298,7 +342,6 @@ export function Booking({ data }) {
         clinicId: primaryClinic?.id,
         appointmentDate: values.date,
         reason: values.reason || '',
-        isEmergency,
         familyMemberId: familyMember?.id,
       })
       setBooked(appointment)
@@ -341,7 +384,7 @@ export function Booking({ data }) {
         currency: order.currency,
         order_id: order.orderId,
         name: 'BookADoctors',
-        description: `Consultation with ${doctor?.name || booked.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : ''}`,
+        description: `Consultation with ${doctor?.name || booked.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : paymentOption === 'platform_only' ? ' · Platform charge' : ''}`,
         prefill: { name: currentUser.name || '', email: currentUser.email || '', contact: currentUser.phone || '' },
         theme: { color: '#ad5d3b' },
         modal: { ondismiss: () => setPayingNow(false) },
@@ -402,6 +445,8 @@ export function Booking({ data }) {
     // that exact same figure (razorpay.service.js#createOrder), so what's shown here always
     // matches what's actually charged.
     const minAmount = Number(booked.fees?.minBookingAmount) || 0
+    const bookingPaymentPolicy = booked.fees?.bookingPaymentPolicy || (minAmount > 0 ? 'minimum_or_full' : 'full')
+    const platformOnlyAmount = Number(booked.fees?.platformOnlyBookingAmount) || 0
     // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna chahiye")
     // — this used to be computed here as totalAmount - minAmount, which double-subtracted the
     // platform charge/GST that are already fully settled by the online minimum payment. The
@@ -420,14 +465,19 @@ export function Booking({ data }) {
           <p className="mt-2 text-sm text-muted">{doctor?.name || '—'} · {booked.appointmentDate}</p>
           <p className="mt-2 text-sm text-muted">Your token number will be issued as soon as payment is received.</p>
           <div className="mt-5 space-y-3">
-            <div className="rounded-button bg-surface p-4">
+            {bookingPaymentPolicy !== 'platform_only' && <div className="rounded-button bg-surface p-4">
               <div className="flex items-center justify-between"><span className="text-sm font-medium">Full consultation amount</span><strong className="text-lg">₹{totalAmount}</strong></div>
               <Button className="mt-3 w-full" onClick={() => payNow('full')} disabled={payingNow}>{payingNow ? 'Opening payment…' : `Pay ₹${totalAmount} now`}</Button>
-            </div>
-            {minAmount > 0 && <div className="rounded-button bg-surface p-4">
+            </div>}
+            {bookingPaymentPolicy === 'minimum_or_full' && minAmount > 0 && <div className="rounded-button bg-surface p-4">
               <div className="flex items-center justify-between"><span className="text-sm font-medium">Minimum booking amount</span><strong className="text-lg">₹{minAmount}</strong></div>
               <p className="mt-1 text-xs text-muted">Remaining ₹{minRemainder} to be paid at the clinic.</p>
               <Button className="mt-3 w-full" onClick={() => payNow('minimum')} disabled={payingNow}>{payingNow ? 'Opening payment…' : `Pay ₹${minAmount} now`}</Button>
+            </div>}
+            {bookingPaymentPolicy === 'platform_only' && <div className="rounded-button bg-surface p-4">
+              <div className="flex items-center justify-between"><span className="text-sm font-medium">Platform charge only</span><strong className="text-lg">₹{platformOnlyAmount}</strong></div>
+              <p className="mt-1 text-xs text-muted">No doctor advance is charged online. Consultation fee is payable at the clinic.</p>
+              <Button className="mt-3 w-full" onClick={() => payNow('platform_only')} disabled={payingNow}>{payingNow ? 'Opening payment…' : `Pay ₹${platformOnlyAmount} now`}</Button>
             </div>}
           </div>
           {paymentError && <p role="alert" className="mt-3 text-sm text-error">{paymentError}</p>}
@@ -437,11 +487,8 @@ export function Booking({ data }) {
     return <Page title="Appointment booked" subtitle="Your booking has been confirmed."><div className="max-w-xl rounded-card border border-success/30 bg-white p-6 shadow-card"><p className="text-4xl text-success">✓</p><h2 className="mt-3 text-2xl">Booking confirmed</h2><p className="mt-2 text-sm text-muted">{booked.doctor?.name || doctor?.name || '—'} · {booked.appointmentDate}</p><p className="mt-4 text-3xl font-bold text-primary-dark">Token #{booked.tokenNumber ?? '—'}</p><p className="mt-1 text-sm text-muted">You'll be seen in this order after check-in — track live queue status under My Appointments.</p><div className="mt-5 rounded-button bg-surface p-4"><div className="flex items-center justify-between"><span className="text-sm font-medium">Consultation amount</span><strong className="text-lg">₹{totalAmount}</strong></div>{booked.paymentStatus === 'paid' ? <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-success">✓ Paid online</p> : booked.paymentStatus === 'partial' ? <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-success">✓ Booking amount paid online — balance due at the clinic</p> : <p className="mt-3 text-xs text-muted">No online payment was required for this booking.</p>}</div><Link className="btn-primary mt-6 inline-flex" to="/patient/appointments">View my appointments</Link></div></Page>
   }
   const previewConsultation = Number(doctor?.consultationFee) || 0
-  // MUTUAL-EXCLUSIVITY FIX (superadmin request): the platform charge and the emergency charge
-  // never stack on a real booking (see appointments.service.js#runBookingJob) — this preview
-  // shows 0 platform charge the moment "Emergency booking" is checked, since the emergency fee
-  // (shown next to that checkbox) applies instead.
-  const previewConvenience = isEmergency || platformCharges?.applyConvenienceFee === false ? 0 : Number(platformCharges?.patientConvenienceFee) || 0
+  const previewConvenience = platformCharges?.applyConvenienceFee === false ? 0 : Number(platformCharges?.patientConvenienceFee) || 0
+  const previewPaymentPolicy = doctor?.bookingPaymentPolicy || (Number(doctor?.minBookingAdvanceAmount) > 0 ? 'minimum_or_full' : 'full')
   const sortOptions = [
     'Default',
     'Clinic Name (A to Z)',
@@ -603,6 +650,10 @@ export function Booking({ data }) {
                 min={date && date < todayStr() ? date : todayStr()}
                 onChange={(event) => setDate(event.target.value)}
               />
+              {primaryClinic && (() => {
+                const slots = availability[`${doctor.id}:${primaryClinic.id}`]
+                return <div className="sm:col-span-2 rounded-button border border-border bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Slot availability for {date}</p>{availabilityLoading ? <p className="mt-2 text-sm text-muted">Checking slots…</p> : slots ? <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div><strong className="block text-lg text-ink">{slots.totalSlots}</strong><span className="text-xs text-muted">Total</span></div><div><strong className="block text-lg text-success">{slots.availableSlots}</strong><span className="text-xs text-muted">Available</span></div><div><strong className="block text-lg text-primary-dark">{slots.bookedSlots}</strong><span className="text-xs text-muted">Booked</span></div></div> : <p className="mt-2 text-sm text-muted">No OPD slots configured for this date.</p>}</div>
+              })()}
               <div className="sm:col-span-2">
                 <FormField
                   label="Reason for visit"
@@ -611,33 +662,22 @@ export function Booking({ data }) {
                   placeholder="Symptoms or follow-up details"
                 />
               </div>
-              <label className="flex min-h-11 items-center justify-between gap-3 rounded-button bg-surface px-3 text-sm font-medium sm:col-span-2">
-                Emergency booking
-                <input
-                  name="isEmergency"
-                  type="checkbox"
-                  checked={isEmergency}
-                  onChange={(event) => setIsEmergency(event.target.checked)}
-                />
-                {platformCharges?.applyEmergencyFee !== false && (
-                  <span className="ml-auto text-xs text-muted">+₹{Number(platformCharges?.emergencyFee) || 0}</span>
-                )}
-              </label>
             </div>
 
             <div className="mt-5 rounded-button bg-primary-light p-4 text-sm">
+              {previewPaymentPolicy === 'platform_only' && <p className="mb-2 font-semibold text-primary-dark">Pay online now: platform charge only. Doctor fee is payable at the clinic.</p>}
               <div className="flex justify-between">
-                <span>Consultation</span>
+                <span>{previewPaymentPolicy === 'platform_only' ? 'Consultation (pay at clinic)' : 'Consultation'}</span>
                 <strong>₹{previewConsultation}</strong>
               </div>
               <div className="mt-1 flex justify-between">
                 <span>Platform charge</span>
                 <strong>₹{previewConvenience}</strong>
               </div>
-              <div className="mt-1 flex justify-between">
+              {previewPaymentPolicy !== 'platform_only' && <div className="mt-1 flex justify-between">
                 <span>Transaction charge</span>
                 <strong>{Number(platformCharges?.gstPercent) || 0}%</strong>
-              </div>
+              </div>}
             </div>
 
             {error && <p role="alert" className="mt-4 text-sm text-error">{error}</p>}
@@ -733,7 +773,7 @@ export function Booking({ data }) {
               checked={doctorFilters.emergency}
               onChange={updateDoctorFilter('emergency')}
             />
-            24/7 emergency
+            Emergency available
           </label>
           <button
             type="button"
@@ -772,6 +812,7 @@ export function Booking({ data }) {
               const itemClinic = item.clinics?.[0]
               const clinicName = itemClinic?.name || 'Clinic not assigned'
               const clinicLocation = [itemClinic?.area, itemClinic?.city || item.city].filter(Boolean).join(', ')
+              const itemAvailability = itemClinic ? availability[`${item.id}:${itemClinic.id}`] : null
 
               return (
                 <article
@@ -821,10 +862,11 @@ export function Booking({ data }) {
                       </div>
                       {item.emergencyAvailable && (
                         <span className="rounded bg-error/10 px-2 py-0.5 text-[11px] font-semibold text-error">
-                          ⚡ 24/7
+                          Emergency available
                         </span>
                       )}
                     </div>
+                    <div className="mt-3 grid grid-cols-3 gap-1 rounded-button border border-border bg-white p-2 text-center"><div><strong className="block text-sm">{itemAvailability?.totalSlots ?? '—'}</strong><span className="text-[10px] text-muted">Total</span></div><div><strong className="block text-sm text-success">{itemAvailability?.availableSlots ?? '—'}</strong><span className="text-[10px] text-muted">Available</span></div><div><strong className="block text-sm text-primary-dark">{itemAvailability?.bookedSlots ?? '—'}</strong><span className="text-[10px] text-muted">Booked</span></div></div>
                   </div>
 
                   <div className="mt-4 pt-3 border-t border-border/60">
@@ -868,7 +910,7 @@ export function PatientAppointments({ data, history = false }) {
   // patient left the one-shot post-booking screen — see hooks/useRazorpayPayment.js's header
   // comment for the full failure scenario. This list now offers "Resume payment"/"Cancel" for
   // any pending_payment row it renders.
-  const { payNow, payingId, paymentError, setPaymentError } = useRazorpayPayment()
+  const { payNow, payingId, paymentError } = useRazorpayPayment()
   const [cancelError, setCancelError] = useState('')
   const { deletingId: cancellingId, remove: cancelPendingBooking } = useDeleteWithConfirm({
     deleteFn: (appointment) => cancelAppointment(appointment.id),
@@ -1283,7 +1325,7 @@ export function Notifications({ data }) {
     </dl>{!item.readAt && <div className="mt-3 flex justify-end border-t border-border pt-3"><button type="button" className="touch-target text-xs font-semibold text-primary-dark" onClick={() => handleMarkRead(item.id)}>Mark read</button></div>}</li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[850px] w-full text-left text-sm"><thead className="bg-surface text-xs uppercase tracking-wide text-muted"><tr>{['ID', 'Date', 'Title', 'Message', 'Type', 'Status', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading}>{heading}</th>)}</tr></thead><tbody>{(data.notifications || []).map((item, index) => <tr className={`border-t border-border align-top ${!item.readAt ? 'bg-primary-light/20' : ''}`} key={item.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{formatDate(item.createdAt)}</td><td className="px-3 py-4 font-semibold">{item.title || 'Notification'}</td><td className="max-w-80 px-3 py-4">{item.body || '—'}</td><td className="px-3 py-4">{item.type || 'system'}</td><td className="px-3 py-4"><StatusPill status={item.readAt ? 'read' : 'unread'} /></td><td className="px-3 py-4">{!item.readAt && <button type="button" className="touch-target text-xs font-semibold text-primary-dark" onClick={() => handleMarkRead(item.id)}>Mark read</button>}</td></tr>)}</tbody></table></div>}{!(data.notifications || []).length && <p className="p-8 text-center text-sm text-muted">No notifications yet.</p>}</section>
   </Page>
 }
-export function PatientSettings({ data }) {
+export function PatientSettings({ data: _data }) {
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')

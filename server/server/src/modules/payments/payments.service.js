@@ -95,7 +95,7 @@ const PAYMENT_SELECT = {
   payerUpiId: true,
   status: true,
   createdAt: true,
-  appointment: { select: { id: true } },
+  appointment: { select: { id: true, bookingPaymentPolicy: true } },
   patient: { select: { id: true, name: true, patientNumber: true } },
   // doctorProfile.minBookingAdvanceAmount added (EXACT PAYMENT-ROW-BREAKDOWN FIX — see
   // shapePaymentFees's own header comment) — needed to tell which of the three real payment
@@ -138,6 +138,7 @@ function shapePaymentFees(row, role, commissionPercent) {
     emergencyFee: row.emergencyFee,
     gstAmount: row.gstAmount,
     minBookingAdvanceAmount: row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null,
+    bookingPaymentPolicy: row.appointment?.bookingPaymentPolicy,
     amount: row.amount,
   });
 
@@ -678,7 +679,7 @@ async function createStandalonePayment(body, requester, mode, transactionRef, pa
       select: {
         id: true,
         status: true,
-        doctorProfile: { select: { status: true, consultationFee: true, emergencyAvailable: true } },
+        doctorProfile: { select: { status: true, consultationFee: true } },
       },
     }),
     prisma.platformCharges.findUnique({ where: { id: 1 } }),
@@ -695,10 +696,6 @@ async function createStandalonePayment(body, requester, mode, transactionRef, pa
   // the doctor must actually be linked to that clinic. Admin/superadmin may pass any clinicId
   // (validated to exist) or omit it entirely.
   let clinicId = null;
-  // Only meaningful when a clinic is actually in play (clinicId gets set below) — a standalone
-  // payment with no clinic at all only gates emergency eligibility on the doctor's own flag,
-  // matching there being no clinic-level emergency policy to consult.
-  let clinicEmergencyAvailable = true;
   if (requester.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
       where: { userId: requester.id },
@@ -716,45 +713,28 @@ async function createStandalonePayment(body, requester, mode, transactionRef, pa
     if (!link) {
       throw new ApiError(400, 'DOCTOR_NOT_AT_CLINIC', 'This doctor is not linked to your clinic.');
     }
-
-    const clinic = await prisma.clinic.findUnique({ where: { id: clinicId }, select: { emergencyAvailable: true } });
-    clinicEmergencyAvailable = Boolean(clinic && clinic.emergencyAvailable);
   } else if (body.clinicId) {
     const clinic = await prisma.clinic.findUnique({
       where: { id: body.clinicId },
-      select: { id: true, emergencyAvailable: true },
+      select: { id: true },
     });
     if (!clinic) {
       throw new ApiError(404, 'CLINIC_NOT_FOUND', 'Clinic not found.');
     }
     clinicId = clinic.id;
-    clinicEmergencyAvailable = Boolean(clinic.emergencyAvailable);
   }
 
   if (!platformCharges) {
     throw new ApiError(500, 'PLATFORM_CHARGES_NOT_CONFIGURED', 'Platform charges are not configured.');
   }
 
-  // Fee computation (server-side, ALWAYS — rule 7), reusing the exact formula already
-  // implemented in appointments.service.js#runBookingJob.
-  const isEmergency = body.isEmergency === true;
-
-  // Mirrors appointments.service.js#runBookingJob's explicit emergency-eligibility gate — a
-  // receptionist/admin cannot add emergencyFee for a doctor who doesn't offer emergency
-  // consultations, or (when a clinic is in play) a clinic not marked emergency-capable.
-  if (isEmergency && (!doctor.doctorProfile.emergencyAvailable || !clinicEmergencyAvailable)) {
-    throw new ApiError(400, 'EMERGENCY_NOT_AVAILABLE', 'Emergency booking is not available for this doctor/clinic.');
-  }
-
+  // Fee computation is server-side (rule 7). Emergency is availability information only, so it
+  // never changes a payment or adds a surcharge.
   const consultationFee = doctor.doctorProfile.consultationFee;
-  // MUTUAL-EXCLUSIVITY FIX (superadmin request, mirrors appointments.service.js#runBookingJob):
-  // the platform charge and the emergency charge never stack — an emergency booking pays the
-  // emergency surcharge INSTEAD OF the platform charge, not both.
-  const convenienceFee = !isEmergency && platformCharges.applyConvenienceFee
+  const convenienceFee = platformCharges.applyConvenienceFee
     ? platformCharges.patientConvenienceFee
     : new Prisma.Decimal(0);
-  const emergencyFee =
-    isEmergency && platformCharges.applyEmergencyFee ? platformCharges.emergencyFee : new Prisma.Decimal(0);
+  const emergencyFee = new Prisma.Decimal(0);
   const subtotal = consultationFee.plus(convenienceFee).plus(emergencyFee);
   // GST FIX (superadmin request, mirrors appointments.service.js#runBookingJob): this function
   // records a payment a receptionist/admin typed in for money collected in person at the clinic

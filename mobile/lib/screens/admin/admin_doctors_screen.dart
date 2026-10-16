@@ -337,7 +337,6 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
   final _registrationCtrl = TextEditingController();
   final _experienceCtrl = TextEditingController();
   final _feeCtrl = TextEditingController();
-  final _emergencyFeeCtrl = TextEditingController();
   final _bioCtrl = TextEditingController();
   Specialization? _selectedSpecialization;
   Future<List<Specialization>>? _specializationsFuture;
@@ -374,7 +373,6 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
       _registrationCtrl,
       _experienceCtrl,
       _feeCtrl,
-      _emergencyFeeCtrl,
       _bioCtrl,
     ]) {
       c.dispose();
@@ -412,7 +410,6 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
         if (_registrationCtrl.text.trim().isNotEmpty) 'registrationNumber': _registrationCtrl.text.trim(),
         if (int.tryParse(_experienceCtrl.text.trim()) != null) 'experienceYears': int.parse(_experienceCtrl.text.trim()),
         'consultationFee': fee,
-        if (double.tryParse(_emergencyFeeCtrl.text.trim()) != null) 'emergencyFee': double.parse(_emergencyFeeCtrl.text.trim()),
         if (_bioCtrl.text.trim().isNotEmpty) 'bio': _bioCtrl.text.trim(),
         'verifyImmediately': _verifyImmediately,
       });
@@ -479,12 +476,6 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          TextField(
-            controller: _emergencyFeeCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Emergency fee (optional)'),
           ),
           const SizedBox(height: AppSpacing.md),
           TextField(controller: _bioCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Bio (optional)')),

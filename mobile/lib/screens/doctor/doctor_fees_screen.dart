@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 
 /// Doctor fee management — maps to web DoctorFees page in FeaturePages.jsx.
-/// Saves consultation & emergency fees via PATCH /doctors/:id (same as profile update).
+/// Saves the standard consultation fee via PATCH /doctors/:id.
 class DoctorFeesScreen extends StatefulWidget {
   const DoctorFeesScreen({super.key});
 
@@ -17,7 +17,6 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
   bool _loading = true;
   String? _loadError;
   final _consultationController = TextEditingController();
-  final _emergencyController = TextEditingController();
   bool _saving = false;
   String? _saveError;
   bool _saved = false;
@@ -33,10 +32,8 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
       final res = await ApiClient.instance.get('/auth/me');
       final profile = res.data?['profile'] as Map<String, dynamic>?;
       final consultation = profile?['consultationFee'];
-      final emergency = profile?['emergencyFee'];
       if (mounted) {
         _consultationController.text = consultation?.toString() ?? '';
-        _emergencyController.text = emergency?.toString() ?? '';
       }
     } catch (e) {
       if (mounted) setState(() => _loadError = e.toString());
@@ -47,7 +44,6 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
 
   Future<void> _save() async {
     final consultation = double.tryParse(_consultationController.text.trim()) ?? 0;
-    final emergency = double.tryParse(_emergencyController.text.trim()) ?? 0;
     setState(() {
       _saving = true;
       _saveError = null;
@@ -56,7 +52,6 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
     try {
       await ApiClient.instance.patch('/doctors/me', body: {
         'consultationFee': consultation,
-        'emergencyFee': emergency,
       });
       if (mounted) setState(() => _saved = true);
     } catch (e) {
@@ -69,7 +64,6 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
   @override
   void dispose() {
     _consultationController.dispose();
-    _emergencyController.dispose();
     super.dispose();
   }
 
@@ -82,7 +76,7 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
         children: [
           const PageHeader(
             title: 'Fee management',
-            subtitle: 'Set your consultation and emergency consultation fees.',
+            subtitle: 'Set your consultation fee.',
           ),
           const SizedBox(height: AppSpacing.md),
           if (_loading)
@@ -101,15 +95,6 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Consultation fee (₹)',
-                        prefixText: '₹ ',
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    TextField(
-                      controller: _emergencyController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Emergency consultation fee (₹)',
                         prefixText: '₹ ',
                       ),
                     ),

@@ -33,6 +33,20 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('link', { name: 'Doctors' })).not.toBeInTheDocument()
   })
 
+  it('shows the patient help and policies links on demand', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar role="patient" open onClose={() => {}} onLogout={() => {}} />
+      </MemoryRouter>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Help & Policies' }))
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'Terms & Conditions' })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: 'Cancellation & Refund' })).toHaveAttribute('href', '/cancellation-refund-policy')
+    expect(screen.getByRole('link', { name: 'Account Deletion' })).toHaveAttribute('href', '/account-deletion')
+    expect(screen.getByRole('link', { name: 'Contact Us' })).toHaveAttribute('href', '/contact')
+  })
+
   it('shows the role label, portal suffix, and a fallback display name when no user is loaded', () => {
     render(
       <MemoryRouter>
@@ -194,6 +208,15 @@ describe('PortalHeader', () => {
       </MemoryRouter>
     )
     expect(screen.getByRole('link', { name: 'Open profile' })).toHaveAttribute('href', '/doctor/profile')
+  })
+
+  it('links the mobile patient brand to the public homepage', () => {
+    render(
+      <MemoryRouter>
+        <PortalHeader role="patient" showMenu={false} onMenu={() => {}} />
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('link', { name: 'BookADoctors public home' })).toHaveAttribute('href', '/')
   })
 
   it('links to the super-admin profile page for the superadmin role', () => {

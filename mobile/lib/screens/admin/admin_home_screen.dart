@@ -16,13 +16,14 @@ import 'admin_platform_settings_screen.dart';
 import 'admin_receptionists_screen.dart';
 import 'admin_reviews_screen.dart';
 import 'admin_revenue_reports_screen.dart';
+import 'admin_payment_operations_screen.dart';
 import 'super_admin_dashboard_screen.dart';
 import 'super_admin_entities_screen.dart';
 
 /// Admin/Superadmin portal shell — 100% exact parity with the web application
 /// (client/src/components/Sidebar.jsx lines 42 & 56).
 ///
-/// For Admin (16 items):
+/// For Admin (17 items):
 /// 1. Dashboard (/admin/dashboard)
 /// 2. Doctors (/admin/doctors)
 /// 3. Patients (/admin/patients)
@@ -32,20 +33,22 @@ import 'super_admin_entities_screen.dart';
 /// 7. Specializations (/admin/specializations)
 /// 8. Appointments (/admin/appointments)
 /// 9. Revenue (/admin/revenue)
-/// 10. Review moderation (/admin/reviews)
-/// 11. Complaints (/admin/complaints)
-/// 12. Contact inbox (/admin/contacts)
-/// 13. Notifications (/admin/notifications)
-/// 14. Activity logs (/admin/activity-logs)
-/// 15. Settings (/admin/settings)
-/// 16. My profile (/admin/profile)
+/// 10. Refunds & reconciliation (/admin/payment-operations)
+/// 11. Review moderation (/admin/reviews)
+/// 12. Complaints (/admin/complaints)
+/// 13. Contact inbox (/admin/contacts)
+/// 14. Notifications (/admin/notifications)
+/// 15. Activity logs (/admin/activity-logs)
+/// 16. Settings (/admin/settings)
+/// 17. My profile (/admin/profile)
 ///
-/// For Super Admin (21 items):
-/// [Super Admin workspace - 10 items]
+/// For Super Admin (22 items):
+/// [Super Admin workspace - 11 items]
 /// 1. Control center (/super-admin/dashboard)
 /// 2. People & clinics (/super-admin/entities)
 /// 3. Payments & revenue (/super-admin/revenue)
-/// 4. Platform charges (/super-admin/charges)
+/// 4. Refunds & reconciliation (/super-admin/payment-operations)
+/// 5. Platform charges (/super-admin/charges)
 /// 5. Cities & service areas (/super-admin/cities)
 /// 6. Clinic tenants (/super-admin/tenants)
 /// 7. Security & activity (/super-admin/security)
@@ -78,6 +81,7 @@ class AdminHomeScreen extends StatelessWidget {
           RoleNavItem(icon: Icons.speed, label: 'Control center', builder: _buildControlCenter),
           RoleNavItem(icon: Icons.groups_outlined, label: 'People & clinics', builder: _buildEntities),
           RoleNavItem(icon: Icons.currency_rupee, label: 'Payments & revenue', builder: _buildRevenue),
+          RoleNavItem(icon: Icons.currency_exchange, label: 'Refunds & reconciliation', builder: _buildPaymentOperations),
           RoleNavItem(icon: Icons.percent_outlined, label: 'Platform charges', builder: _buildCharges),
           RoleNavItem(icon: Icons.map_outlined, label: 'Cities & service areas', builder: _buildCities),
           RoleNavItem(icon: Icons.apartment_outlined, label: 'Clinic tenants', builder: _buildClinicTenants),
@@ -119,6 +123,7 @@ class AdminHomeScreen extends StatelessWidget {
         RoleNavItem(icon: Icons.category_outlined, label: 'Specializations', builder: _buildSpecializations),
         RoleNavItem(icon: Icons.event_note_outlined, label: 'Appointments', builder: _buildAppointments),
         RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Revenue', builder: _buildRevenue),
+        RoleNavItem(icon: Icons.currency_exchange, label: 'Refunds & reconciliation', builder: _buildPaymentOperations),
         RoleNavItem(icon: Icons.star_outline, label: 'Review moderation', builder: _buildReviews),
         RoleNavItem(icon: Icons.report_problem_outlined, label: 'Complaints', builder: _buildComplaints),
         RoleNavItem(icon: Icons.mail_outline, label: 'Contact inbox', builder: _buildContact),
@@ -150,6 +155,7 @@ Widget _buildCities(BuildContext context) => const AdminGeographyScreen(focusSpe
 Widget _buildSpecializations(BuildContext context) => const AdminGeographyScreen(focusSpecializations: true);
 Widget _buildAppointments(BuildContext context) => const AdminAppointmentsScreen();
 Widget _buildRevenue(BuildContext context) => const AdminRevenueReportsScreen();
+Widget _buildPaymentOperations(BuildContext context) => const AdminPaymentOperationsScreen();
 Widget _buildReviews(BuildContext context) => const AdminReviewsScreen();
 Widget _buildComplaints(BuildContext context) => const AdminComplaintsScreen();
 Widget _buildContact(BuildContext context) => const AdminContactScreen();

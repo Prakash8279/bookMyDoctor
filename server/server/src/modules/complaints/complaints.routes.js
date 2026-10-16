@@ -15,11 +15,7 @@ const controller = require('./complaints.controller');
 
 const READ_ROLES = ['patient', 'admin', 'superadmin'];
 
-// POST / (file a new complaint) and GET /:id (single complaint) removed (backend-cleanup audit —
-// user request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
-// web or mobile screen, for any role, ever files a complaint (the web store's addComplaint action
-// had zero call sites) or fetches a single complaint by id — admin's inbox only lists (GET /) and
-// responds (PATCH /:id).
+router.post('/', authenticate, authorize('patient'), validation.createComplaint, validateRequest, controller.createComplaint);
 router.get('/', authenticate, authorize(...READ_ROLES), validation.listComplaints, validateRequest, controller.listComplaints);
 
 router.patch(

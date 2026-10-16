@@ -35,12 +35,33 @@ describe('PortalLayout', () => {
   })
 
   it('shows the sidebar collapsed by default and opens it via the header menu button', () => {
-    const { container } = renderLayout('doctor')
+    const { container } = renderLayout('admin')
     const aside = container.querySelector('aside')
     expect(aside).toHaveClass('-translate-x-full')
     fireEvent.click(screen.getByRole('button', { name: 'Open navigation' }))
     expect(aside).toHaveClass('translate-x-0')
     expect(screen.getByRole('button', { name: 'Close navigation' })).toBeInTheDocument()
+  })
+
+  it('uses the compact mobile layout for doctor while retaining the desktop sidebar', () => {
+    useAppStore.setState({ currentUser: { role: 'doctor', name: 'Dr. Rao' } })
+    const { container } = renderLayout('doctor')
+    expect(container.querySelector('aside').parentElement).toHaveClass('hidden', 'lg:block')
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Doctor bottom navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/doctor/schedule')
+  })
+
+  it('uses the compact mobile layout for receptionist while retaining the desktop sidebar', () => {
+    useAppStore.setState({ currentUser: { role: 'receptionist', name: 'Meera' } })
+    const { container } = render(
+      <MemoryRouter initialEntries={['/receptionist/dashboard']}>
+        <Routes><Route path="/receptionist/dashboard" element={<PortalLayout role="receptionist" onLogout={() => {}} />}><Route index element={<div>Reception Content</div>} /></Route></Routes>
+      </MemoryRouter>
+    )
+    expect(container.querySelector('aside').parentElement).toHaveClass('hidden', 'lg:block')
+    expect(screen.getByRole('navigation', { name: 'Receptionist bottom navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Walk-in' })).toHaveAttribute('href', '/receptionist/walk-in')
   })
 
   it('overrides the passed-in role with superadmin when the signed-in user is a superadmin', () => {
@@ -61,5 +82,37 @@ describe('PortalLayout', () => {
     renderLayout('doctor', onLogout)
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
     await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1))
+  })
+
+  it('shows a persistent mobile sign-out action for compact portals', async () => {
+    const onLogout = vi.fn().mockResolvedValue()
+    useAppStore.setState({ currentUser: { role: 'doctor', name: 'Dr. Rao' } })
+    renderLayout('doctor', onLogout)
+
+    const mobileSignOut = screen.getByRole('button', { name: 'Sign out from account' })
+    expect(mobileSignOut).toHaveClass('lg:hidden')
+    fireEvent.click(mobileSignOut)
+    await waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1))
+  })
+
+  it('hides the patient sidebar on mobile while preserving the original desktop sidebar', () => {
+    useAppStore.setState({ currentUser: { role: 'patient', name: 'Asha Mehta' } })
+    const { container } = render(
+      <MemoryRouter initialEntries={['/patient/dashboard']}>
+        <Routes>
+          <Route path="/patient/dashboard" element={<PortalLayout role="patient" onLogout={() => {}} />}>
+            <Route index element={<div>Patient Content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    )
+    const aside = container.querySelector('aside')
+    expect(aside).toBeInTheDocument()
+    expect(aside.parentElement).toHaveClass('hidden', 'lg:block')
+    expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Patient bottom navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/patient/dashboard')
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/patient/profile')
+    expect(screen.getByRole('link', { name: 'Book appointment' })).toHaveAttribute('href', '/patient/book')
   })
 })

@@ -1,0 +1,234 @@
+/*
+ * Final responsive safety layer.
+ *
+ * This file is intentionally loaded after both Tailwind and the legacy/reference stylesheet.
+ * It keeps shared public and portal UI usable on small phones without page-specific overrides.
+ */
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+main,
+main > *,
+section,
+article,
+form,
+.portal-content,
+.portal-content > * {
+  min-width: 0;
+}
+
+/* CSS Grid items default to min-width:auto. A text field or file picker can
+   therefore force a nominally one-column mobile grid wider than its card,
+   leaving the control's right border clipped by the viewport. Keep every
+   portal grid/form child shrinkable; individual data tables remain scrollable
+   through their existing .data-scroll wrapper. */
+.portal-content .grid > *,
+.portal-content form > *,
+.portal-content label {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.portal-content :is(input, select, textarea) {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.portal-content input:is([type='checkbox'], [type='radio']) {
+  width: auto;
+}
+
+/* Long IDs, e-mail addresses and URLs should wrap instead of widening a card/page. */
+p,
+li,
+dd,
+td,
+th,
+label,
+.portal-content a,
+.portal-content span {
+  overflow-wrap: anywhere;
+}
+
+/* Keep overlays inside the visible viewport, including when the mobile keyboard is open. */
+.app-modal-panel {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 767px) {
+  /* A 16px control font prevents iOS Safari from zooming the whole page on focus. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .portal-content {
+    width: 100%;
+    padding: 1rem 0.75rem 1.5rem !important;
+  }
+
+  .page-heading {
+    align-items: stretch !important;
+    flex-direction: column;
+    gap: 0.875rem !important;
+  }
+
+  .page-heading > *,
+  .page-heading__action,
+  .page-heading__action > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .page-heading__action {
+    width: 100%;
+  }
+
+  .page-heading__action > :is(button, a) {
+    flex: 1 1 auto;
+  }
+
+  .page-heading__action :is(input, select) {
+    width: 100%;
+  }
+
+  /* Common cards are deliberately tighter on phones, preserving useful content width. */
+  .portal-content :is(.p-6, .p-5) {
+    padding: 1rem;
+  }
+
+  .portal-content :is(.grid-cols-2, .grid-cols-3) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-content :is(.flex.items-center.justify-between, .flex.items-end.justify-between) {
+    flex-wrap: wrap;
+  }
+
+  .portal-content .data-scroll {
+    margin-inline: -0.25rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .app-modal-backdrop {
+    padding: 0;
+  }
+
+  .app-modal-panel {
+    width: 100%;
+    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top)));
+    border-radius: 1rem 1rem 0 0;
+    padding: 1rem;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .pdf-preview-panel {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 0.75rem;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .pdf-preview-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pdf-preview-actions {
+    width: 100%;
+  }
+
+  .pdf-preview-actions > a {
+    flex: 1 1 auto;
+  }
+
+  /* Public pages: comfortable edge gutters and controls that remain tappable. */
+  .container {
+    width: min(100% - 1.5rem, 1180px);
+  }
+
+  .btn,
+  .btn-primary,
+  button,
+  [role='button'] {
+    min-height: 44px;
+  }
+
+  .doctor-card-footer,
+  .card-actions,
+  .split-heading,
+  .doctor-cta-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .card-actions > *,
+  .doctor-card-footer .btn,
+  .doctor-cta-card .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .portal-content {
+    padding-inline: 0.625rem !important;
+  }
+
+  .portal-content h1 {
+    font-size: 1.5rem !important;
+    line-height: 1.2;
+  }
+
+  .portal-content h2 {
+    line-height: 1.25;
+  }
+
+  .app-modal-panel {
+    padding-inline: 0.875rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .portal-content {
+    padding: 1.25rem !important;
+  }
+}
+
+/* Patient dashboard uses an IRCTC-style compact service launcher. Keep this
+   intentional tile grid out of the generic mobile form/card stacking rules. */
+.patient-service-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+@media (min-width: 640px) {
+  .patient-service-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .patient-service-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  }
+}

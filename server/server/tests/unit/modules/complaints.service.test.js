@@ -7,16 +7,13 @@
  *   - updateComplaint requires at least one recognized field in the body, else a clean 400
  *     VALIDATION_ERROR instead of a no-op write.
  *
- * createComplaint and getComplaintById (and their tests) were removed along with the code they
- * tested (backend-cleanup audit — user request: "website frontend me nahi hai but backend bna
- * hua hai to backend se hata do"): no web/mobile screen, for any role, ever files a complaint or
- * fetches a single one by id.
+ * createComplaint always derives raisedByUserId from the authenticated patient.
  *
  * config/db is mocked (no real Postgres in this sandbox); activityLogService/cacheService are
  * mocked to isolate this module's own branching from their internals.
  */
 jest.mock('../../../src/config/db', () => ({
-  complaint: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+  complaint: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
 }));
 jest.mock('../../../src/services/activityLogService', () => ({ log: jest.fn() }));
 jest.mock('../../../src/services/cacheService', () => ({
@@ -44,6 +41,21 @@ function complaintRow(overrides = {}) {
     ...overrides,
   };
 }
+
+describe('complaintsService.createComplaint', () => {
+  test('creates an open complaint owned by the authenticated patient and invalidates list caches', async () => {
+    const cacheService = require('../../../src/services/cacheService');
+    prisma.complaint.create.mockResolvedValue(complaintRow());
+
+    const result = await complaintsService.createComplaint({ subject: 'Billing issue', description: 'A detailed billing problem.' }, PATIENT);
+
+    expect(prisma.complaint.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ raisedByUserId: PATIENT.id, status: 'open' }),
+    }));
+    expect(result.subject).toBe('Billing issue');
+    expect(cacheService.invalidate).toHaveBeenCalledWith(`cache:complaints:list:patient:${PATIENT.id}:*`);
+  });
+});
 
 describe('complaintsService.updateComplaint', () => {
   test('404 when the complaint does not exist', async () => {

@@ -9,7 +9,7 @@
 // `return apiClient(original)`) and carries `.post`/`.get`/`.interceptors`, mirroring the real
 // shape closely enough to capture and directly invoke the request/response interceptor callbacks
 // apiClient.js registers at module load, without a real HTTP layer.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 function createMockAxiosInstance() {
   const fn = vi.fn()

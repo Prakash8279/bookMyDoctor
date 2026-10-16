@@ -121,18 +121,29 @@ export function SiteHeader() {
             <span>{dark ? 'Light' : 'Dark'}</span>
           </button>
 
-          <button
-            type="button"
-            className="md:hidden touch-target grid h-10 w-10 place-items-center rounded-button border border-border bg-white text-ink hover:bg-surface"
-            aria-label="Toggle navigation"
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-menu"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg>
-            )}
-          </button>
+          {authRole ? (
+            <Link
+              to={roleHome(authRole)}
+              className="md:hidden touch-target grid h-10 w-10 overflow-hidden place-items-center rounded-full border border-primary/20 bg-primary-light text-xs font-bold uppercase text-primary-dark shadow-sm"
+              aria-label="Open dashboard"
+              title={`${profileName} dashboard`}
+            >
+              {currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${profileName} profile`} className="h-full w-full object-cover" /> : profileInitials}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="md:hidden touch-target grid h-10 w-10 place-items-center rounded-button border border-border bg-white text-ink hover:bg-surface"
+              aria-label="Toggle navigation"
+              onClick={() => setMobileOpen(!mobileOpen)}
+            >
+              {mobileOpen ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-menu"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -196,13 +207,15 @@ export function SearchResults({ data }) {
   const queryKey = params.toString()
   const [filters, setFilters] = useState(() => parseSearchFilters(queryKey))
   const [appliedFilters, setAppliedFilters] = useState(() => parseSearchFilters(queryKey))
+  const cities = useMemo(() => data.cities || [], [data.cities])
+  const areas = useMemo(() => data.areas || [], [data.areas])
   useEffect(() => { const next = parseSearchFilters(queryKey); setFilters(next); setAppliedFilters(next) }, [queryKey])
   const update = (key) => (event) => setFilters((current) => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }))
   const areaOptions = useMemo(() => {
-    const selectedCity = (data.cities || []).find((item) => item.name === filters.city)
-    const scoped = selectedCity ? (data.areas || []).filter((area) => area.cityId === selectedCity.id) : (data.areas || [])
+    const selectedCity = cities.find((item) => item.name === filters.city)
+    const scoped = selectedCity ? areas.filter((area) => area.cityId === selectedCity.id) : areas
     return scoped.map((area) => area.name)
-  }, [(data.cities || []), (data.areas || []), filters.city])
+  }, [cities, areas, filters.city])
   const doctors = useMemo(() => {
     const result = (data.doctors || []).filter((doctor) => {
       const specializationName = doctor.specialization?.name || ''
@@ -288,7 +301,7 @@ export function DoctorProfile({ data }) {
   const clinicAddress = clinic?.address || [primaryClinic?.area, primaryClinic?.city || doctor.city].filter(Boolean).join(', ') || 'Clinic address not added'
   return <><SiteHeader /><section className="bg-charcoal px-4 py-8 text-white sm:px-6"><div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-6"><div className="flex items-start gap-4"><div className="grid h-16 w-16 shrink-0 place-items-center rounded-card bg-white text-xl font-semibold uppercase text-primary-dark">{doctor.name.split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'}</div><div><p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-white/70"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg> Verified practitioner</p><h1 className="mt-1 text-3xl text-white">{doctor.name}</h1><p className="mt-1 text-lg text-white/70">{doctor.qualification || doctor.specialization?.name || 'General practice'}</p><p className="mt-2 flex items-center gap-1.5 text-sm text-white/60"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>{primaryClinic?.name || 'Clinic not added'}{clinicAddress ? `, ${clinicAddress}` : ''}</p>{doctor.emergencyAvailable && <div className="mt-3"><Badge tone="error">Emergency available</Badge></div>}</div></div><div className="text-left sm:text-right"><strong className="text-4xl font-sans text-white">{doctor.rating || 0}</strong><p className="mt-1 flex items-center gap-1 text-sm text-gold sm:justify-end">★ Patient rating</p><p className="mt-1 text-xs text-white/60">{doctor.reviewCount || reviews.length || 0} verified review(s)</p></div></div></section><main className="mx-auto max-w-6xl px-4 py-8 sm:px-6"><div className="grid gap-5 lg:grid-cols-[1fr_360px]"><div className="space-y-5"><article className="rounded-card border border-border bg-white p-6 shadow-card"><h2 className="text-xl">About {doctor.name}</h2><p className="mt-2 leading-7 text-muted">{doctor.bio || 'No description added yet.'}</p><div className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-3"><div><span className="block text-sm text-muted">Experience</span><strong>{doctor.experienceYears || 0} years</strong></div><div><span className="block text-sm text-muted">Languages</span><strong>{doctor.languages?.length ? doctor.languages.join(', ') : 'Not added yet'}</strong></div><div><span className="block text-sm text-muted">Availability</span><strong>{doctor.scheduleSummary || (doctor.onlineBooking === false ? 'Not accepting online bookings' : 'Schedule not added')}</strong></div></div></article><article className="rounded-card border border-border bg-white p-6 shadow-card"><div className="flex items-center justify-between gap-3"><h2 className="text-xl">Clinic information</h2>{primaryClinic && <Link className="text-sm font-semibold text-primary-dark" to={`/clinics?clinic=${encodeURIComponent(primaryClinic.name)}`}>View clinic team</Link>}</div><h3 className="mt-4 text-lg">{primaryClinic?.name || 'Clinic not added'}</h3><p className="mt-1 text-sm text-muted">{clinicAddress}</p>{clinic?.phone && <p className="mt-1 text-sm text-muted">{clinic.phone}</p>}<div className="mt-5 space-y-2">{schedule.length ? schedule.slice(0, 7).map((slot, index) => <div className="flex items-center justify-between gap-3 rounded-button bg-surface px-3 py-2 text-sm" key={`${slot.day || 'slot'}-${index}`}><span className="text-muted">{slot.day || 'OPD schedule'}</span><strong>{slot.hours || slot.time || slot}</strong></div>) : <p className="text-sm text-muted">Weekly OPD schedule not added yet.</p>}</div></article><article className="rounded-card border border-border bg-white p-6 shadow-card"><h2 className="text-xl">Patient reviews</h2><div className="mt-4 flex items-center gap-3"><strong className="text-xl">{doctor.rating || 0} / 5</strong><span className="text-sm text-muted">{reviews.length || doctor.reviewCount || 0} verified review(s)</span></div>{reviews.length ? <div className="mt-4 space-y-3">{reviews.slice(0, 3).map((review) => <div className="rounded-button bg-surface p-4" key={review.id}><div className="flex items-center justify-between gap-2"><strong>{review.patient?.name || 'Verified patient'}</strong><span className="text-sm">★★★★★ · Verified appointment</span></div><p className="mt-2 text-sm text-muted">{review.text || 'No written comment.'}</p></div>)}</div> : <p className="mt-3 text-sm text-muted">Reviews will appear after completed appointments.</p>}</article></div><aside className="space-y-4"><div className="rounded-card border border-border bg-white p-6 shadow-card"><p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-primary-dark"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg> Book clinic appointment</p><p className="mt-2 text-3xl font-sans">₹{Number(doctor.consultationFee) || 0}</p><p className="mt-2 text-sm text-muted">{minAdvance > 0 ? <><strong>₹{minAdvance} online advance</strong> confirms the booking — the remaining fee is payable at the clinic.</> : <>Online payment of the <strong>full consultation fee</strong> confirms the booking.</>}</p><p className="mt-3 text-sm leading-6 text-muted">Your visit time and queue token are assigned from the doctor's OPD schedule.</p><Link className="btn-primary mt-5 w-full" to={`/patient/book?doctorId=${doctor.id}${primaryClinic ? `&clinicId=${primaryClinic.id}` : ''}`}>Continue to booking</Link></div><PatientLiveQueuePreview appointment={appointment} /></aside></div></main></>
 }
-export function EmergencyPage({ data }) { const doctors = (data.doctors || []).filter((doctor) => doctor.emergencyAvailable); return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><Badge tone="error">Emergency care</Badge><h1 className="mt-3 text-3xl">Doctors and clinics available now</h1>{doctors.length ? <div className="mt-5 grid gap-4">{doctors.map((doctor) => <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={doctor.id}><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl">{doctor.name}</h2><p className="text-sm text-muted">{doctor.specialization?.name || 'General practice'} · {doctor.clinics?.[0]?.name || 'Clinic not added'}</p></div><Badge tone="error">Available now</Badge></div><div className="mt-4 grid grid-cols-2 gap-3"><a className="touch-target flex items-center justify-center rounded-button border border-error text-sm font-semibold text-error" href="tel:+912240001111">Call clinic</a><Link className="btn-primary" to="/patient/emergency">Book now</Link></div></article>)}</div> : <div className="mt-5"><EmptyState title="No emergency doctors available right now" message="Emergency-ready doctors will appear here when marked available." /></div>}</main></> }
+export function EmergencyPage({ data }) { const doctors = (data.doctors || []).filter((doctor) => doctor.emergencyAvailable); return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><Badge tone="error">Emergency availability</Badge><h1 className="mt-3 text-3xl">Doctors available for emergency care</h1><p className="mt-2 text-sm text-muted">This page only shows availability. Contact the clinic directly for urgent care.</p>{doctors.length ? <div className="mt-5 grid gap-4">{doctors.map((doctor) => { const clinic = doctor.clinics?.[0]; return <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={doctor.id}><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl">{doctor.name}</h2><p className="text-sm text-muted">{doctor.specialization?.name || 'General practice'} · {clinic?.name || 'Clinic not added'}</p></div><Badge tone="error">Emergency available</Badge></div>{clinic?.phone && <a className="mt-4 inline-flex touch-target items-center justify-center rounded-button border border-error px-4 text-sm font-semibold text-error" href={`tel:${clinic.phone.replace(/\s/g, '')}`}>Call clinic</a>}</article> })}</div> : <div className="mt-5"><EmptyState title="No emergency doctors available right now" message="Emergency-ready doctors will appear here when marked available." /></div>}</main></> }
 export function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -299,7 +312,7 @@ export function Login() {
   const location = useLocation()
   const login = useAppStore((state) => state.login)
   const loginWithGoogle = useAppStore((state) => state.loginWithGoogle)
-  const [notice, setNotice] = useState(location.state?.message || '')
+  const [notice] = useState(location.state?.message || '')
 
   const handleLogin = async (e) => {
     e.preventDefault()

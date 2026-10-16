@@ -20,41 +20,58 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (kicker != null) ...[
-                  Text(
-                    kicker!.toUpperCase(),
-                    style: const TextStyle(
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stackAction = action != null && constraints.maxWidth < 520;
+        final heading = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (kicker != null) ...[
+              Text(
+                kicker!.toUpperCase(),
+                style: const TextStyle(
+                  color: AppColors.primaryDark,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  letterSpacing: 1.1,
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(subtitle!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                ],
-              ],
+              ),
+              const SizedBox(height: 4),
+            ],
+            Text(
+              title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
             ),
-          ),
-          if (action != null) action!,
-        ],
-      ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 4),
+              Text(subtitle!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+            ],
+          ],
+        );
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          child: stackAction
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    heading,
+                    const SizedBox(height: AppSpacing.sm),
+                    Align(alignment: Alignment.centerLeft, child: action!),
+                  ],
+                )
+              : Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(child: heading),
+                    if (action != null) ...[
+                      const SizedBox(width: AppSpacing.sm),
+                      Flexible(child: action!),
+                    ],
+                  ],
+                ),
+        );
+      },
     );
   }
 }
@@ -227,7 +244,9 @@ class PrimaryButton extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
-                  Text(label),
+                  Flexible(
+                    child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                  ),
                 ],
               ),
       ),
@@ -253,16 +272,33 @@ class SectionCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title != null) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title!,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                    ),
-                  ),
-                  if (trailing != null) trailing!,
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (trailing != null && constraints.maxWidth < 420) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(title!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        const SizedBox(height: AppSpacing.xs),
+                        Align(alignment: Alignment.centerLeft, child: trailing!),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title!,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                      ),
+                      if (trailing != null) ...[
+                        const SizedBox(width: AppSpacing.sm),
+                        Flexible(child: trailing!),
+                      ],
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: AppSpacing.sm),
             ],

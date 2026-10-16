@@ -362,46 +362,4 @@ router.post('/logout', authenticate, validation.logout, validateRequest, control
 // app.js), and the refresh token's own rotation/reuse detection in tokenService.
 router.post('/refresh', refreshLimiter, validation.refresh, validateRequest, controller.refresh);
 
-/**
- * @openapi
- * /auth/me:
- *   get:
- *     tags: [Auth]
- *     summary: Cheap "who am I" / session check for the current access token.
- *     description: >
- *       Base User columns only (id/name/email/role/phone/city/photoUrl/status/createdAt) —
- *       never passwordHash. For the fuller role-profile-joined view, see GET /me in the me
- *       module instead; this endpoint exists purely to let a client validate its current access
- *       token cheaply.
- *     operationId: authMe
- *     security: [{ bearerAuth: [] }]
- *     responses:
- *       200:
- *         description: The authenticated user's basic identity/session info.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success: { type: boolean, example: true }
- *                 data:
- *                   type: object
- *                   properties:
- *                     id: { type: string, format: uuid }
- *                     name: { type: string }
- *                     email: { type: string, format: email }
- *                     role: { type: string, enum: [patient, doctor, receptionist, admin, superadmin] }
- *                     phone: { type: string, nullable: true }
- *                     city: { type: string, nullable: true }
- *                     photoUrl: { type: string, nullable: true }
- *                     status: { type: string, example: 'active' }
- *                     createdAt: { type: string, format: date-time }
- *       401:
- *         description: Missing/invalid/expired access token.
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ApiError' }
- */
-router.get('/me', authenticate, controller.me);
-
 module.exports = router;

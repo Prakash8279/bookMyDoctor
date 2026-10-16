@@ -4,7 +4,7 @@
 // (src/lib/apiClient.js) is mocked, everything else (React Router, the real Zustand store) runs
 // for real.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -85,7 +85,7 @@ const doctor = {
   rating: 4.7,
   consultationFee: 700,
   onlineBooking: true,
-  clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic', area: 'Andheri', city: 'Mumbai' }],
+  clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic', area: 'Andheri', city: 'Mumbai', phone: '+91 22 4000 1111' }],
 }
 
 describe('SiteHeader', () => {
@@ -101,8 +101,10 @@ describe('SiteHeader', () => {
     render(<MemoryRouter><SiteHeader /></MemoryRouter>)
     const profileLink = screen.getByLabelText('Open profile')
     expect(profileLink).toHaveAttribute('href', '/patient/profile')
-    expect(screen.getByText('AM')).toBeInTheDocument()
+    expect(screen.getAllByText('AM')).toHaveLength(2)
     expect(screen.getByText('Asha Mehta')).toBeInTheDocument()
+    expect(screen.getByLabelText('Open dashboard')).toHaveAttribute('href', '/patient/dashboard')
+    expect(screen.queryByLabelText('Toggle navigation')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument()
   })
 
@@ -260,13 +262,14 @@ describe('DoctorProfile', () => {
 })
 
 describe('EmergencyPage', () => {
-  it('lists only emergency-available doctors with a call and booking action', () => {
+  it('lists only emergency-available doctors as a read-only availability directory', () => {
     const data = { doctors: [{ ...doctor, emergencyAvailable: true }, { ...doctor, id: 'doc-2', name: 'Dr. Vikram Shah', emergencyAvailable: false }] }
     render(<MemoryRouter><EmergencyPage data={data} /></MemoryRouter>)
     expect(screen.getByText('Dr. Asha Rao')).toBeInTheDocument()
     expect(screen.queryByText('Dr. Vikram Shah')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Call clinic' })).toHaveAttribute('href', 'tel:+912240001111')
-    expect(screen.getByRole('link', { name: 'Book now' })).toHaveAttribute('href', '/patient/emergency')
+    expect(screen.getByText('Emergency available')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Book now' })).not.toBeInTheDocument()
   })
 
   it('shows an empty state when no doctor is emergency-available', () => {

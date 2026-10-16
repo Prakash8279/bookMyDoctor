@@ -6,6 +6,19 @@
  */
 const { body, param, query } = require('express-validator');
 
+const createComplaint = [
+  body('subject')
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 160 })
+    .withMessage('subject must be between 3 and 160 characters.'),
+  body('description')
+    .isString()
+    .trim()
+    .isLength({ min: 10, max: 5000 })
+    .withMessage('description must be between 10 and 5000 characters.'),
+];
+
 // `.optional()` with no options only skips a chain when the field is `undefined` — so an
 // explicit JSON `null` still reaches `.custom()` below and fails it, producing a clean per-field
 // 422 message, and `.bail()` stops the chain there so the type-specific validator after it
@@ -42,4 +55,4 @@ const listComplaints = [
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
-module.exports = { updateComplaint, listComplaints };
+module.exports = { createComplaint, updateComplaint, listComplaints };

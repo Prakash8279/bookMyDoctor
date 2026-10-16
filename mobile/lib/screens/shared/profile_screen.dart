@@ -92,7 +92,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _qualificationController = TextEditingController();
   final _bioController = TextEditingController();
   final _feeController = TextEditingController();
-  final _emergencyFeeController = TextEditingController();
   final _languagesController = TextEditingController();
   // COMPLETENESS FIX (mobile parity — web's DoctorProfileEdit had these but this shared screen
   // didn't): registration number, years of experience, specialization, minimum booking amount,
@@ -101,6 +100,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _registrationNumberController = TextEditingController();
   final _experienceController = TextEditingController();
   final _minBookingAmountController = TextEditingController();
+  String _bookingPaymentPolicy = 'full';
   String? _specializationId;
   bool _emergencyAvailable = false;
   List<Specialization> _specializations = [];
@@ -142,11 +142,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _qualificationController.text = profile?.qualification ?? '';
     _bioController.text = profile?.bio ?? '';
     _feeController.text = profile?.consultationFee?.toStringAsFixed(0) ?? '';
-    _emergencyFeeController.text = profile?.emergencyFee?.toStringAsFixed(0) ?? '';
     _languagesController.text = profile?.languages?.join(', ') ?? '';
     _registrationNumberController.text = profile?.registrationNumber ?? '';
     _experienceController.text = profile?.experienceYears?.toString() ?? '';
     _minBookingAmountController.text = profile?.minBookingAdvanceAmount?.toStringAsFixed(0) ?? '';
+    _bookingPaymentPolicy = profile?.bookingPaymentPolicy ??
+        ((profile?.minBookingAdvanceAmount ?? 0) > 0 ? 'minimum_or_full' : 'full');
     _specializationId = profile?.specializationId;
     _emergencyAvailable = profile?.emergencyAvailable ?? false;
     if (user?.role == 'doctor') _loadSpecializations();
@@ -189,7 +190,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _qualificationController.dispose();
     _bioController.dispose();
     _feeController.dispose();
-    _emergencyFeeController.dispose();
     _languagesController.dispose();
     _registrationNumberController.dispose();
     _experienceController.dispose();
@@ -242,17 +242,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'qualification': _qualificationController.text.trim(),
         'bio': _bioController.text.trim(),
         if (_feeController.text.trim().isNotEmpty) 'consultationFee': num.tryParse(_feeController.text.trim()),
-        if (_emergencyFeeController.text.trim().isNotEmpty)
-          'emergencyFee': num.tryParse(_emergencyFeeController.text.trim()),
         'languages': _languagesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
         if (_specializationId != null) 'specializationId': _specializationId,
         'registrationNumber': _registrationNumberController.text.trim(),
         if (_experienceController.text.trim().isNotEmpty)
           'experienceYears': int.tryParse(_experienceController.text.trim()),
-        // Empty clears it (offers no minimum-pay option) — mirrors the web form's placeholder
-        // "No minimum-pay option" behavior exactly.
-        'minBookingAdvanceAmount':
-            _minBookingAmountController.text.trim().isEmpty ? null : num.tryParse(_minBookingAmountController.text.trim()),
+        'bookingPaymentPolicy': _bookingPaymentPolicy,
+        'minBookingAdvanceAmount': _bookingPaymentPolicy == 'minimum_or_full' && _minBookingAmountController.text.trim().isNotEmpty
+            ? num.tryParse(_minBookingAmountController.text.trim())
+            : null,
         'emergencyAvailable': _emergencyAvailable,
       });
     } else {
@@ -616,28 +614,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             validator: _validateFee,
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _emergencyFeeController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Emergency fee (₹)'),
-                            validator: _validateFee,
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    TextFormField(
-                      controller: _minBookingAmountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Minimum booking amount (₹, optional)',
-                        helperText: 'Let patients pay just this much online; the rest is collected at the clinic. Leave blank for full payment only.',
-                        helperMaxLines: 3,
-                      ),
-                      validator: _validateFee,
+                    DropdownButtonFormField<String>(
+                      initialValue: _bookingPaymentPolicy,
+                      decoration: const InputDecoration(labelText: 'Booking payment rule'),
+                      items: const [
+                        DropdownMenuItem(value: 'platform_only', child: Text('₹0 doctor advance — platform charge only')),
+                        DropdownMenuItem(value: 'minimum_or_full', child: Text('Minimum or full — patient chooses')),
+                        DropdownMenuItem(value: 'full', child: Text('Full payment only')),
+                      ],
+                      onChanged: (value) => setState(() => _bookingPaymentPolicy = value ?? 'full'),
                     ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      _bookingPaymentPolicy == 'platform_only'
+                          ? 'Only the platform charge is paid online; consultation fee is collected at the clinic.'
+                          : _bookingPaymentPolicy == 'minimum_or_full'
+                              ? 'Patient can choose minimum or full payment. Platform charge applies to both.'
+                              : 'Only full payment is shown. Platform charge is included.',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                    if (_bookingPaymentPolicy == 'minimum_or_full') ...[
+                      const SizedBox(height: AppSpacing.md),
+                      TextFormField(
+                        controller: _minBookingAmountController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Minimum booking amount (₹)',
+                          helperText: 'Must be greater than ₹0 and cannot exceed the consultation fee.',
+                          helperMaxLines: 2,
+                        ),
+                        validator: (value) {
+                          final amount = num.tryParse(value ?? '');
+                          if (amount == null || amount <= 0) return 'Enter a minimum amount greater than ₹0';
+                          return _validateFee(value);
+                        },
+                      ),
+                    ],
                     const SizedBox(height: AppSpacing.md),
                     TextField(
                       controller: _languagesController,

@@ -107,7 +107,10 @@ describe('DoctorDashboard', () => {
     }
     renderConnected(DoctorDashboard, { data })
 
-    expect(screen.getByText('Welcome, Nikhil.')).toBeInTheDocument()
+    expect(screen.getAllByText('Welcome, Nikhil.')).toHaveLength(2)
+    expect(screen.getByRole('region', { name: 'Doctor services' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Queue management' })[0]).toHaveAttribute('href', '/doctor/queue')
+    expect(screen.getByRole('button', { name: 'Help & policies' })).toBeInTheDocument()
     // TODAY'S BOOKINGS counts non-completed appointments only (1 of the 2 seeded).
     const bookingsCard = screen.getByText("TODAY'S BOOKINGS").closest('a')
     expect(within(bookingsCard).getByText('1')).toBeInTheDocument()
@@ -242,7 +245,6 @@ describe('DoctorProfileEdit', () => {
     fireEvent.change(screen.getByLabelText('Specialization'), { target: { value: 'Cardiology' } })
     fireEvent.change(screen.getByLabelText(/Experience \(years\)/), { target: { value: '9' } })
     fireEvent.change(screen.getByLabelText(/Consultation fee/), { target: { value: '700' } })
-    fireEvent.change(screen.getByLabelText(/Emergency fee/), { target: { value: '900' } })
     fireEvent.change(screen.getByLabelText(/Languages/), { target: { value: 'English, Hindi ' } })
     fireEvent.click(screen.getByLabelText('Available for emergency care'))
     fireEvent.click(screen.getByRole('button', { name: /Save changes/i }))
@@ -253,7 +255,6 @@ describe('DoctorProfileEdit', () => {
       specializationId: 'spec-1',
       experienceYears: 9,
       consultationFee: 700,
-      emergencyFee: 900,
       languages: ['English', 'Hindi'],
       emergencyAvailable: true,
       minBookingAdvanceAmount: null,
@@ -623,10 +624,12 @@ describe('PatientHistory', () => {
 })
 
 describe('Analytics', () => {
-  it('shows a clear not-available state instead of crashing (no time-series endpoint exists)', () => {
+  it('derives useful analytics from the loaded appointment and payment data', () => {
     renderConnected(Analytics, {})
-    expect(screen.getByText('Analytics not available')).toBeInTheDocument()
-    expect(screen.getByText(/no time-series analytics endpoint yet/i)).toBeInTheDocument()
+    expect(screen.getByText('Practice analytics')).toBeInTheDocument()
+    expect(screen.getByText('APPOINTMENTS')).toBeInTheDocument()
+    expect(screen.getByText('COMPLETION RATE')).toBeInTheDocument()
+    expect(screen.getByText('Revenue')).toBeInTheDocument()
   })
 })
 
@@ -644,7 +647,9 @@ describe('ReceptionDashboard', () => {
         payments: [{ status: 'pending' }],
       },
     })
-    expect(screen.getByText('Welcome, Meera.')).toBeInTheDocument()
+    expect(screen.getAllByText('Welcome, Meera.')).toHaveLength(2)
+    expect(screen.getByRole('region', { name: 'Receptionist services' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Walk-in registration' })[0]).toHaveAttribute('href', '/receptionist/walk-in')
     expect(await screen.findByText('Dr. Kapoor')).toBeInTheDocument()
   })
 })
@@ -1095,7 +1100,7 @@ describe('StaffPages role gating (RoleGuard, via App)', () => {
   it('redirects a receptionist away from the doctor-only /doctor/queue route to their own dashboard', async () => {
     mockBootFor(RECEPTIONIST_USER)
     render(<MemoryRouter initialEntries={['/doctor/queue']}><App /></MemoryRouter>)
-    expect(await screen.findByText('Welcome, Meera.')).toBeInTheDocument()
+    expect(await screen.findAllByText('Welcome, Meera.')).toHaveLength(2)
     expect(screen.queryByText('Live OPD queue')).not.toBeInTheDocument()
   })
 })

@@ -88,6 +88,7 @@ const DOCTOR_PROFILE_BASE_SELECT = {
   // choice buttons need this on every doctor row that can be booked, not just the single-doctor
   // detail page.
   minBookingAdvanceAmount: true,
+  bookingPaymentPolicy: true,
   specialization: { select: { id: true, name: true, icon: true } },
   // Stable "DCD<N>" display number (see prisma/migrations/
   // 20260919130000_add_patient_doctor_clinic_numbers) — fetched here so both the public listDoctors
@@ -267,6 +268,7 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     consultationFee: dp.consultationFee ?? null,
     emergencyFee: dp.emergencyFee ?? null,
     minBookingAdvanceAmount: dp.minBookingAdvanceAmount ?? null,
+    bookingPaymentPolicy: dp.bookingPaymentPolicy || 'full',
     languages: dp.languages || [],
     rating: dp.rating,
     reviewCount: dp.reviewCount,

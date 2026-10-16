@@ -43,6 +43,15 @@ router.get(
   controller.getBookingStatus
 );
 
+router.get(
+  '/availability',
+  authenticate,
+  authorize(...ALL_ROLES),
+  validation.availability,
+  validateRequest,
+  controller.getAvailability
+);
+
 // ── B. Read + status transitions ─────────────────────────────────────────
 
 router.get('/', authenticate, authorize(...ALL_ROLES), validation.listAppointments, validateRequest, controller.listAppointments);

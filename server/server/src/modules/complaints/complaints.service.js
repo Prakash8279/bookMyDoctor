@@ -49,6 +49,29 @@ function shapeComplaint(row) {
   };
 }
 
+async function createComplaint(body, actor) {
+  const row = await prisma.complaint.create({
+    data: {
+      raisedByUserId: actor.id,
+      subject: body.subject,
+      description: body.description,
+      status: 'open',
+    },
+    select: COMPLAINT_SELECT,
+  });
+
+  await activityLogService.log({
+    actorUserId: actor.id,
+    actorRole: actor.role,
+    actionType: 'complaint.created',
+    targetEntityType: 'complaint',
+    targetEntityId: row.id,
+    description: 'Patient submitted a support complaint.',
+  });
+  await invalidateComplaintListCaches(actor.id);
+  return shapeComplaint(row);
+}
+
 /**
  * @param {string} id
  * @param {{status?:string, adminResponse?:string}} body - already shape-validated.
@@ -123,9 +146,4 @@ async function listComplaints({ status, page, pageSize }, requester) {
   });
 }
 
-// createComplaint (POST /) and getComplaintById (GET /:id) removed (backend-cleanup audit — user
-// request: "website frontend me nahi hai but backend bna hua hai to backend se hata do"): no
-// web/mobile screen, for any role, ever files a complaint or fetches a single one by id — see
-// complaints.routes.js's header comment.
-
-module.exports = { updateComplaint, listComplaints };
+module.exports = { createComplaint, updateComplaint, listComplaints };

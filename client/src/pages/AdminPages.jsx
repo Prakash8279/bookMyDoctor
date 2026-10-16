@@ -17,7 +17,7 @@ import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
-const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
+const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
 const ErrorNote =({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
 
@@ -410,7 +410,6 @@ export function DoctorVerification({ data }) {
           <dt className="text-muted">Registration no.</dt><dd className="font-medium text-ink">{viewingDoctor.registrationNumber || '—'}</dd>
           <dt className="text-muted">Experience</dt><dd className="font-medium text-ink">{viewingDoctor.experienceYears || 0} years</dd>
           <dt className="text-muted">Consultation fee</dt><dd className="font-medium text-ink">₹{viewingDoctor.consultationFee || 0}</dd>
-          <dt className="text-muted">Emergency fee</dt><dd className="font-medium text-ink">₹{viewingDoctor.emergencyFee || 0}</dd>
           <dt className="text-muted">Rating</dt><dd className="font-medium text-ink">{viewingDoctor.rating || 0} ({viewingDoctor.reviewCount || 0} reviews)</dd>
           <dt className="text-muted">Languages</dt><dd className="font-medium text-ink">{(viewingDoctor.languages || []).join(', ') || '—'}</dd>
           <dt className="text-muted">Clinics</dt><dd className="font-medium text-ink">{(viewingDoctor.clinics || []).map((c) => c.name).join(', ') || '—'}</dd>

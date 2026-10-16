@@ -15,19 +15,18 @@ import 'payment_required_screen.dart';
 
 /// Patient appointment booking screen — 100% parity with web's Booking component
 /// (client/src/pages/PatientPages.jsx §Booking):
-/// - Filters card with City, Specialization, 24/7 emergency toggle, and Apply/Clear actions
+/// - Filters card with City, Specialization, emergency-availability toggle, and Apply/Clear actions
 /// - Automatic matching doctors count and filtered doctor list
 /// - Booking form with Doctor, read-only auto-assigned Clinic, Patient (Myself / Family member),
-///   Date (default today), Reason for visit, and Emergency booking with platform surcharge badge
+///   Date (default today), reason for visit, and live slot availability
 /// - Live price breakdown preview (Consultation + Platform fee + GST transaction charge)
 /// - Asynchronous booking with live queue polling status
 /// - Full-page confirmed booking card (matching web's "Appointment booked") or routing to
 ///   PaymentRequiredScreen when prepayment is required
 class BookAppointmentScreen extends StatefulWidget {
   final DoctorDirectoryItem? preselectedDoctor;
-  final bool initialEmergency;
 
-  const BookAppointmentScreen({super.key, this.preselectedDoctor, this.initialEmergency = false});
+  const BookAppointmentScreen({super.key, this.preselectedDoctor});
 
   @override
   State<BookAppointmentScreen> createState() => _BookAppointmentScreenState();
@@ -56,7 +55,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   String? _patientChoice = 'self';
   DateTime _selectedDate = DateTime.now();
   final _reasonController = TextEditingController();
-  bool _isEmergency = false;
+  Map<String, dynamic>? _availability;
+  bool _availabilityLoading = false;
 
   // Booking outcome
   Appointment? _booked;
@@ -70,13 +70,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   void initState() {
     super.initState();
     _selectedDoctor = widget.preselectedDoctor;
-    _isEmergency = widget.initialEmergency;
-    _filterEmergency = widget.initialEmergency;
-    _appliedEmergency = widget.initialEmergency;
     if (_selectedDoctor != null && _selectedDoctor!.clinics.isNotEmpty) {
       _selectedClinic = _selectedDoctor!.clinics.first;
     }
-    _loadOptions();
+    _loadOptions().then((_) => _loadAvailability());
   }
 
   @override
@@ -201,7 +198,32 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       firstDate: now,
       lastDate: now.add(Duration(days: maxDays)),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+      await _loadAvailability();
+    }
+  }
+
+  Future<void> _loadAvailability() async {
+    final doctor = _selectedDoctor;
+    final clinic = _selectedClinic;
+    if (doctor == null || clinic == null) {
+      if (mounted) setState(() => _availability = null);
+      return;
+    }
+    setState(() => _availabilityLoading = true);
+    try {
+      final response = await ApiClient.instance.get('/appointments/availability', query: {
+        'date': DateFormat('yyyy-MM-dd').format(_selectedDate),
+        'doctorId': doctor.id,
+        'clinicId': clinic.id,
+      });
+      if (mounted) setState(() => _availability = response.list.isEmpty ? null : response.list.first);
+    } catch (_) {
+      if (mounted) setState(() => _availability = null);
+    } finally {
+      if (mounted) setState(() => _availabilityLoading = false);
+    }
   }
 
   bool get _canSubmit =>
@@ -223,7 +245,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         if (_selectedClinic != null) 'clinicId': _selectedClinic!.id,
         'appointmentDate': dateStr,
         if (_reasonController.text.trim().isNotEmpty) 'reason': _reasonController.text.trim(),
-        'isEmergency': _isEmergency,
         if (_patientChoice != null && _patientChoice != 'self') 'familyMemberId': _patientChoice,
       });
 
@@ -295,6 +316,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     return BookingStatus(jobId: jobId, status: 'timeout');
   }
 
+  Widget _slotCount(String label, dynamic value, {Color color = AppColors.textPrimary}) => Column(
+        children: [
+          Text('${value ?? 0}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     if (_loadingOptions) {
@@ -312,8 +340,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     // 2. Booking Form State (matches PatientPages.jsx lines 378-400)
     final filtered = _filteredDoctors;
     final consultationFee = _selectedDoctor?.consultationFee ?? 0.0;
-    final isEmergencyFee = _isEmergency || _platformCharges?.applyConvenienceFee == false;
-    final platformFee = isEmergencyFee ? 0.0 : (_platformCharges?.patientConvenienceFee ?? 0.0);
+    final platformFee = _platformCharges?.applyConvenienceFee == false ? 0.0 : (_platformCharges?.patientConvenienceFee ?? 0.0);
     final gstPercent = _platformCharges?.gstPercent ?? 0.0;
 
     return Scaffold(
@@ -427,7 +454,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             onChanged: (v) => setState(() => _filterEmergency = v ?? false),
                             activeColor: AppColors.primary,
                           ),
-                          const Text('24/7 emergency', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          const Text('Emergency available', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         ],
                       ),
                     ),
@@ -522,13 +549,36 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           ),
                         ),
                     ],
-                    onChanged: (d) => setState(() {
-                      _selectedDoctor = d;
-                      _selectedClinic = (d?.clinics.isNotEmpty == true) ? d!.clinics.first : null;
-                    }),
+                    onChanged: (d) {
+                      setState(() {
+                        _selectedDoctor = d;
+                        _selectedClinic = (d?.clinics.isNotEmpty == true) ? d!.clinics.first : null;
+                      });
+                      _loadAvailability();
+                    },
                   ),
                 ],
                 const SizedBox(height: AppSpacing.md),
+
+                if (_selectedDoctor != null && _selectedClinic != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                    child: _availabilityLoading
+                        ? const Text('Checking slots…', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary))
+                        : _availability == null
+                            ? const Text('No OPD slots configured for this date.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary))
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                children: [
+                                  _slotCount('Total', _availability!['totalSlots']),
+                                  _slotCount('Available', _availability!['availableSlots'], color: AppColors.success),
+                                  _slotCount('Booked', _availability!['bookedSlots'], color: AppColors.primary),
+                                ],
+                              ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
 
                 // 2. Clinic (Read-only, matching web)
                 const Text('Clinic', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
@@ -627,44 +677,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-
-                // 6. Emergency booking
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Emergency booking',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                        ),
-                      ),
-                      if (_platformCharges?.applyEmergencyFee != false)
-                        Container(
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '+₹${(_platformCharges?.emergencyFee ?? 0).toStringAsFixed(0)}',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary),
-                          ),
-                        ),
-                      Checkbox(
-                        value: _isEmergency,
-                        onChanged: (v) => setState(() => _isEmergency = v ?? false),
-                        activeColor: AppColors.primary,
-                      ),
-                    ],
-                  ),
-                ),
 
                 // 7. Live Price Preview Box (matches web PatientPages.jsx lines 399)
                 if (_selectedDoctor != null) ...[

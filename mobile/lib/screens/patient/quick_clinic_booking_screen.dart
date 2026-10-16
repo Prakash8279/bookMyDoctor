@@ -6,11 +6,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 import 'book_appointment_screen.dart';
 
-/// COMPLETENESS FIX (mobile parity — client/src/pages/FeaturePages.jsx#QuickClinicBooking had no
-/// mobile equivalent). The web version's "Scan clinic QR" option is itself only a placeholder —
-/// its own code comment says "Camera access is unavailable in this local browser demo" — so this
-/// mirrors only the real path: look a clinic up by its registered phone number, then book one of
-/// its doctors.
+/// Finds a clinic by its registered phone number, then lets the patient book one of its doctors.
 class QuickClinicBookingScreen extends StatefulWidget {
   const QuickClinicBookingScreen({super.key});
 
@@ -34,8 +30,9 @@ class _QuickClinicBookingScreenState extends State<QuickClinicBookingScreen> {
   String _digitsOnly(String value) => value.replaceAll(RegExp(r'\D'), '');
 
   Future<void> _lookup() async {
-    final query = _digitsOnly(_phoneController.text);
-    if (query.isEmpty) {
+    final phone = _phoneController.text.trim();
+    final query = _digitsOnly(phone);
+    if (phone.isEmpty) {
       setState(() => _error = 'Enter the clinic\'s registered phone number.');
       return;
     }
@@ -49,7 +46,7 @@ class _QuickClinicBookingScreenState extends State<QuickClinicBookingScreen> {
       final listRes = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
       Map<String, dynamic> match = const {};
       for (final row in listRes.list) {
-        if (_digitsOnly((row['phone'] as String?) ?? '').contains(query)) {
+        if (query.length >= 6 && _digitsOnly((row['phone'] as String?) ?? '').endsWith(query)) {
           match = row;
           break;
         }
@@ -104,40 +101,10 @@ class _QuickClinicBookingScreenState extends State<QuickClinicBookingScreen> {
           children: [
             const PageHeader(
               title: 'Quick clinic booking',
-              subtitle: 'Scan a clinic QR code or enter its registered phone number.',
+              subtitle: 'Find a clinic using its registered phone number.',
             ),
-            // Web shows this as two side-by-side panels — "Option 1 · Scan clinic QR" and
-            // "Option 2 · Clinic registered number" (FeaturePages.jsx#QuickClinicBooking) — mirrored
-            // here as two SectionCards (stacked on a phone's narrow width, same as web's own
-            // lg:grid-cols-2 falling back to one column below that breakpoint) instead of a single
-            // flat form with no visual sign a QR option exists at all.
             SectionCard(
-              title: 'Option 1 · Scan clinic QR',
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg, horizontal: AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(AppRadius.button),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: const Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.qr_code_2, size: 40, color: AppColors.textSecondary),
-                    SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Camera scanning isn\'t available in this app version — use the clinic\'s registered phone number below instead.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            SectionCard(
-              title: 'Option 2 · Clinic registered number',
+              title: 'Clinic registered number',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

@@ -108,6 +108,7 @@ function buildAppointmentRow(overrides = {}) {
     emergencyFee: 0,
     gstAmount: 93.6,
     doctorUserId: 'doctor-1',
+    bookingPaymentPolicy: 'minimum_or_full',
     ...overrides,
   };
 }
@@ -294,6 +295,23 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
       holdId: null,
       holdExpiresAt: null,
       holdDurationSeconds: 600,
+    });
+  });
+
+  test('"platform_only" orders only the platform charge and rejects full payment for that policy', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ bookingPaymentPolicy: 'platform_only' }));
+    global.fetch.mockResolvedValue(jsonResponse({ id: 'order_platform', amount: 2000, currency: 'INR' }));
+
+    await razorpayService.createOrder('appt-1', PATIENT, 'platform_only');
+
+    const body = JSON.parse(global.fetch.mock.calls[0][1].body);
+    expect(body.amount).toBe(2000);
+    expect(body.notes.paymentOption).toBe('platform_only');
+
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ bookingPaymentPolicy: 'platform_only' }));
+    await expect(razorpayService.createOrder('appt-1', PATIENT, 'full')).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'PAYMENT_OPTION_NOT_ALLOWED',
     });
   });
 

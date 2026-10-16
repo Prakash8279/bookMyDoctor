@@ -61,6 +61,9 @@ const DEFAULT_DATA_SHAPE = {
   appointments: [],
   records: [], // medical records (kept as `records` to match the mock's key)
   payments: [],
+  refunds: [],
+  reconciliation: [],
+  reconciliationKpi: null,
   patients: [], // admin's GET /admin/patients — added late (fetchPatients pre-dates this shape entry)
 
   // Staff/clinic operations
@@ -100,6 +103,9 @@ const PRIVATE_DATA_KEYS = [
   'appointments',
   'records',
   'payments',
+  'refunds',
+  'reconciliation',
+  'reconciliationKpi',
   // FIX (scalability/correctness audit): fetchPatients() writes here, but this key was missing
   // from both DEFAULT_DATA_SHAPE and this list — the one collection in the store that didn't
   // follow the "role-scoped data is wiped on logout" rule every other entry here follows. Low
@@ -157,8 +163,6 @@ const initialState = {
   // null otherwise (before booking starts, and once confirmed/failed/timed out).
   bookingQueueInfo: null,
 
-  // ---- local-only, no backend concept ----
-  drafts: {},
 }
 
 export const useAppStore = create(
@@ -383,11 +387,8 @@ export const useAppStore = create(
             // stayed null for their entire session (only doctor/admin/superadmin loaded it here —
             // GET /platform-charges is authenticate + any role, so a patient was always allowed to
             // call it, this was just missing from the list). PatientPages.jsx#Booking reads
-            // data.platformCharges directly for its Consultation/Convenience fee/Transaction
-            // charge price preview and the emergency-booking surcharge — with it null, every
-            // `Number(platformCharges?.x) || 0` fell back to 0, showing "Convenience fee ₹0",
-            // "Transaction charge 0%", and "+₹0" on Emergency booking regardless of the real
-            // configured values.
+            // data.platformCharges directly for its consultation/platform/transaction charge
+            // preview; without this fetch every value incorrectly fell back to zero.
             get().fetchPlatformCharges()
           )
         } else if (user.role === 'doctor') {
@@ -831,6 +832,7 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, appointments: rows } }))
         return rows
       },
+      fetchAppointmentAvailability: async (filters) => apiClient.get('/appointments/availability', { params: cleanParams(filters) }),
       getAppointment: async (id) => {
         const appointment = await apiClient.get(`/appointments/${id}`)
         set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
@@ -894,6 +896,21 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, payments: rows } }))
         return rows
       },
+      fetchRefunds: async (filters = {}) => {
+        const rows = await apiClient.get('/payments/refunds', { params: cleanParams(filters) })
+        set((state) => ({ data: { ...state.data, refunds: rows } }))
+        return rows
+      },
+      retryRefund: async (id) => {
+        const result = await apiClient.post(`/payments/refunds/${id}/retry`)
+        await Promise.all([get().fetchRefunds(), get().fetchReconciliation()])
+        return result
+      },
+      fetchReconciliation: async (filters = {}) => {
+        const rows = await apiClient.get('/payments/reconciliation', { params: cleanParams(filters) })
+        set((state) => ({ data: { ...state.data, reconciliation: rows, reconciliationKpi: rows.__kpi || null } }))
+        return rows
+      },
       // §6.2 — receptionist/admin/superadmin ONLY. A patient can never create
       // their own payment record; the Patient Payments page must stay
       // read-only.
@@ -902,10 +919,9 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, payments: [payment, ...(state.data.payments || [])] } }))
         return payment
       },
-      // Razorpay self-pay — payment is now MANDATORY before an online booking gets a token
-      // (PatientPages.jsx#Booking shows a `pending_payment` screen with two buttons: pay the
-      // full consultation amount, or pay just the doctor's configured minimum booking amount).
-      // Two-step flow: create an order for whichever `paymentOption` the patient picked, open
+      // Razorpay self-pay — the doctor controls whether the patient pays only the platform
+      // charge, chooses between minimum/full, or must pay the full consultation amount.
+      // Two-step flow: create an order for the allowed `paymentOption`, open
       // Razorpay Checkout with it, then verify the signature Checkout hands back before this is
       // ever treated as paid.
       createRazorpayOrder: async (appointmentId, paymentOption = 'full') =>
@@ -1014,9 +1030,11 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, complaints: rows } }))
         return rows
       },
-      // addComplaint (POST /complaints) removed — it had zero call sites on web/mobile, and the
-      // backend route it called was removed too (backend-cleanup audit — user request: "website
-      // frontend me nahi hai but backend bna hua hai to backend se hata do").
+      addComplaint: async (fields) => {
+        const complaint = await apiClient.post('/complaints', fields)
+        set((state) => ({ data: { ...state.data, complaints: [complaint, ...(state.data.complaints || [])] } }))
+        return complaint
+      },
       // Body field is `adminResponse`, not `response` (rename vs the mock).
       updateComplaint: async (id, fields) => {
         const complaint = await apiClient.patch(`/complaints/${id}`, fields)
@@ -1099,10 +1117,6 @@ export const useAppStore = create(
         return { id, status }
       },
 
-      // =====================================================================
-      // Local-only (no backend concept)
-      // =====================================================================
-      saveDraft: (key, values) => set((state) => ({ drafts: { ...state.drafts, [key]: values } })),
     }),
     {
       name: 'connect-app-session', // new key — deliberately distinct from the old mock's
@@ -1120,7 +1134,6 @@ export const useAppStore = create(
       partialize: (state) => ({
         currentUser: state.currentUser,
         isAuthenticated: state.isAuthenticated,
-        drafts: state.drafts,
       }),
     }
   )

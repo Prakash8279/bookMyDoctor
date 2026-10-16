@@ -59,12 +59,12 @@ export function useRazorpayPayment() {
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
             })
-            onUpdated && onUpdated(updated)
+            onUpdated?.(updated)
           } catch (verifyError) {
             try {
               const fresh = await getAppointment(appointment.id)
               if (fresh && fresh.status !== 'pending_payment') {
-                onUpdated && onUpdated(fresh)
+                onUpdated?.(fresh)
                 return
               }
             } catch {

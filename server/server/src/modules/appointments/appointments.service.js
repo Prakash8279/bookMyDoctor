@@ -117,6 +117,7 @@ const APPOINTMENT_SELECT = {
   totalAmount: true,
   paymentStatus: true,
   paymentMethod: true,
+  bookingPaymentPolicy: true,
   checkedInAt: true,
   notes: true,
   createdAt: true,
@@ -146,7 +147,7 @@ const APPOINTMENT_SELECT = {
       // minBookingAdvanceAmount added (MIN-BOOKING-AMOUNT FIX) — shapeFees needs the doctor's own
       // configured minimum to compute the patient-facing minBookingAmount figure; see
       // utils/minBookingAmount.js. Never surfaced raw to a non-admin — only the derived total is.
-      doctorProfile: { select: { doctorNumber: true, specialization: { select: { id: true, name: true } }, minBookingAdvanceAmount: true } },
+      doctorProfile: { select: { doctorNumber: true, specialization: { select: { id: true, name: true } }, minBookingAdvanceAmount: true, bookingPaymentPolicy: true } },
     },
   },
   // address/phone added (COMPLETENESS FIX — proper receipt/slip generation needs the clinic's
@@ -178,6 +179,92 @@ function generateSlotCandidates(startTime, endTime, slotMinutes) {
   const candidates = [];
   for (let t = start; t < end; t += step) candidates.push(toHHMM(t));
   return candidates;
+}
+
+/**
+ * Returns the real scheduled/booked/available slot totals for a date. Availability is scoped to
+ * each doctor-clinic assignment because OPD hours are stored at that level. For today, elapsed
+ * unbooked times are excluded from `availableSlots`; historical booked rows remain counted.
+ */
+async function getDoctorAvailability({ date, doctorId, clinicId }) {
+  const selectedDate = new Date(`${date}T00:00:00.000Z`);
+  const today = todayBusinessDateOnly();
+  if (selectedDate.getTime() < today.getTime()) {
+    throw new ApiError(400, 'INVALID_DATE', 'Availability can only be checked for today or a future date.');
+  }
+
+  const weekday = selectedDate.getUTCDay();
+  const links = await prisma.doctorClinic.findMany({
+    where: {
+      onlineBooking: true,
+      ...(doctorId ? { doctorUserId: doctorId } : {}),
+      ...(clinicId ? { clinicId } : {}),
+      doctor: { status: 'active', doctorProfile: { status: 'verified', onlineBooking: true } },
+      clinic: { approvalStatus: 'active' },
+    },
+    select: {
+      doctorUserId: true,
+      clinicId: true,
+      doctor: { select: { name: true, doctorProfile: { select: { emergencyAvailable: true } } } },
+      clinic: { select: { name: true } },
+    },
+  });
+  if (!links.length) return [];
+
+  const doctorIds = [...new Set(links.map((row) => row.doctorUserId))];
+  const clinicIds = [...new Set(links.map((row) => row.clinicId))];
+  const [hoursRows, closures, appointments] = await Promise.all([
+    prisma.doctorClinicHours.findMany({
+      where: { doctorUserId: { in: doctorIds }, clinicId: { in: clinicIds }, weekday, status: 'active' },
+    }),
+    prisma.doctorClinicClosure.findMany({
+      where: { doctorUserId: { in: doctorIds }, clinicId: { in: clinicIds }, closedDate: selectedDate },
+      select: { doctorUserId: true, clinicId: true },
+    }),
+    prisma.appointment.findMany({
+      where: {
+        doctorUserId: { in: doctorIds },
+        clinicId: { in: clinicIds },
+        appointmentDate: selectedDate,
+        status: { notIn: ['cancelled', 'no_show'] },
+      },
+      select: { doctorUserId: true, clinicId: true, appointmentTime: true },
+    }),
+  ]);
+
+  const keyOf = (doctorUserId, assignedClinicId) => `${doctorUserId}:${assignedClinicId}`;
+  const hoursByKey = new Map(hoursRows.map((row) => [keyOf(row.doctorUserId, row.clinicId), row]));
+  const closedKeys = new Set(closures.map((row) => keyOf(row.doctorUserId, row.clinicId)));
+  const bookedByKey = new Map();
+  for (const appointment of appointments) {
+    const key = keyOf(appointment.doctorUserId, appointment.clinicId);
+    if (!bookedByKey.has(key)) bookedByKey.set(key, new Set());
+    bookedByKey.get(key).add(appointment.appointmentTime);
+  }
+  const isToday = selectedDate.getTime() === today.getTime();
+  const now = isToday ? currentBusinessTimeHHMM() : null;
+
+  return links.map((link) => {
+    const key = keyOf(link.doctorUserId, link.clinicId);
+    const hours = hoursByKey.get(key);
+    const closed = closedKeys.has(key);
+    const candidates = !hours || closed ? [] : generateSlotCandidates(hours.startTime, hours.endTime, hours.slotMinutes);
+    const bookedTimes = bookedByKey.get(key) || new Set();
+    const bookedSlots = candidates.filter((time) => bookedTimes.has(time)).length;
+    const availableSlots = candidates.filter((time) => !bookedTimes.has(time) && (!isToday || time >= now)).length;
+    return {
+      doctorUserId: link.doctorUserId,
+      doctorName: link.doctor.name,
+      emergencyAvailable: link.doctor.doctorProfile?.emergencyAvailable === true,
+      clinicId: link.clinicId,
+      clinicName: link.clinic.name,
+      date,
+      totalSlots: candidates.length,
+      bookedSlots,
+      availableSlots,
+      closed,
+    };
+  });
 }
 
 /**
@@ -261,23 +348,30 @@ function shapeFees(row, role, commissionPercent) {
 
   // patient (their own booking, enforced by the visibility check upstream).
   const minBookingAdvanceAmount = row.doctor?.doctorProfile?.minBookingAdvanceAmount ?? null;
-  const minBookingAmount = computeMinBookingAmount({
-    consultationFee: row.consultationFee,
-    convenienceFee: row.convenienceFee,
-    emergencyFee: row.emergencyFee,
-    gstAmount: row.gstAmount,
-    minBookingAdvanceAmount,
-  });
-  const minBookingRemainder = computeMinBookingRemainder({
-    consultationFee: row.consultationFee,
-    minBookingAdvanceAmount,
-  });
+  const bookingPaymentPolicy = row.bookingPaymentPolicy || 'full';
+  const minBookingAmount = bookingPaymentPolicy === 'minimum_or_full'
+    ? computeMinBookingAmount({
+        consultationFee: row.consultationFee,
+        convenienceFee: row.convenienceFee,
+        emergencyFee: row.emergencyFee,
+        gstAmount: row.gstAmount,
+        minBookingAdvanceAmount,
+      })
+    : null;
+  const minBookingRemainder = bookingPaymentPolicy === 'minimum_or_full'
+    ? computeMinBookingRemainder({ consultationFee: row.consultationFee, minBookingAdvanceAmount })
+    : null;
   return {
     consultationFee: row.consultationFee,
     convenienceFee: row.convenienceFee,
     emergencyFee: row.emergencyFee,
     gstAmount: row.gstAmount,
     totalAmount: row.totalAmount,
+    bookingPaymentPolicy,
+    // In platform-only mode the doctor takes no advance online. The consultation fee remains due
+    // at the clinic; only the flat platform charge is collected to confirm the booking.
+    platformOnlyBookingAmount:
+      bookingPaymentPolicy === 'platform_only' ? row.convenienceFee : null,
     // MIN-BOOKING-AMOUNT FIX (superadmin request, with worked example: "platform charge 25 hai
     // and percentage 3 hai, doctor fee 400 hai ... minimum charge 100 rakha hai to
     // 100+25+100 ka 3%=128") — the doctor's own minimum fee (kept in full) + this booking's
@@ -446,7 +540,8 @@ async function enqueueBooking(body, requester) {
     appointmentDate: body.appointmentDate,
     appointmentTime: body.appointmentTime,
     reason: body.reason ? String(body.reason).trim() : null,
-    isEmergency: body.isEmergency === true,
+    // Emergency is an availability indicator on the doctor profile, not a booking type.
+    isEmergency: false,
     familyMemberId: isPatient ? body.familyMemberId || null : null,
     patientUserId: patientUserId || null,
     patientName: hasWalkInDetails ? String(body.patientName).trim() : null,
@@ -652,7 +747,6 @@ async function runBookingJob(payload) {
     appointmentDate: dateStr,
     appointmentTime: timeStr,
     reason,
-    isEmergency,
     familyMemberId,
     patientUserId: initialPatientUserId,
     patientName,
@@ -684,6 +778,7 @@ async function runBookingJob(payload) {
           emergencyAvailable: true,
           onlineBookingWindowStart: true,
           onlineBookingWindowEnd: true,
+          bookingPaymentPolicy: true,
           // Doctor-configured token-numbering rule — see schema.prisma's
           // DoctorProfile.tokenNumberingMode comment and the token-assignment block below for
           // exactly how 'alternate' changes the numbering. onlineTokenParity picks which parity
@@ -918,10 +1013,6 @@ async function runBookingJob(payload) {
     throw new ApiError(400, 'CLINIC_CLOSED_THAT_DATE', 'This doctor is not available at this clinic on the selected date.');
   }
 
-  if (isEmergency && (!doctorProfile.emergencyAvailable || !clinic.emergencyAvailable)) {
-    throw new ApiError(400, 'EMERGENCY_NOT_AVAILABLE', 'Emergency booking is not available for this doctor/clinic.');
-  }
-
   // ── Family member (patient-only — the literal fix for the family-member ownership leak) ─
   if (familyMemberId) {
     const fm = await prisma.familyMember.findUnique({ where: { id: familyMemberId }, select: { patientUserId: true } });
@@ -978,13 +1069,9 @@ async function runBookingJob(payload) {
   }
 
   const consultationFee = doctorProfile.consultationFee;
-  // MUTUAL-EXCLUSIVITY FIX (superadmin request): the platform charge and the emergency charge
-  // never stack — an emergency booking pays the emergency surcharge INSTEAD OF the platform
-  // charge, not both. So platform charge only applies when this is NOT an emergency booking.
   const convenienceFee =
-    !isEmergency && platformCharges.applyConvenienceFee ? platformCharges.patientConvenienceFee : new Prisma.Decimal(0);
-  const emergencyFeeAmount =
-    isEmergency && platformCharges.applyEmergencyFee ? platformCharges.emergencyFee : new Prisma.Decimal(0);
+    platformCharges.applyConvenienceFee ? platformCharges.patientConvenienceFee : new Prisma.Decimal(0);
+  const emergencyFeeAmount = new Prisma.Decimal(0);
   const subtotal = consultationFee.plus(convenienceFee).plus(emergencyFeeAmount);
   // GST FIX (superadmin request): GST is a tax on the amount actually paid ONLINE through the
   // website/app's payment gateway (Razorpay) — a walk-in booking (source === 'walk_in': a
@@ -998,11 +1085,14 @@ async function runBookingJob(payload) {
     : new Prisma.Decimal(0);
   const totalAmount = subtotal.plus(gstAmount).toDecimalPlaces(2);
 
-  // Payment-before-token: a PATIENT's own online booking with a non-zero fee is created
+  const bookingPaymentPolicy = doctorProfile.bookingPaymentPolicy || 'full';
+  const requiredOnlineAmount = bookingPaymentPolicy === 'platform_only' ? convenienceFee : totalAmount;
+
+  // Payment-before-token: a PATIENT's own online booking with a non-zero required online amount is created
   // "pending_payment" / the queue token "on_hold" — see AppointmentStatus's schema comment.
   // Walk-ins (a receptionist collects payment in person) and free (fee = 0) bookings are
   // unaffected, going straight to upcoming/waiting exactly as before this feature existed.
-  const requiresPrepayment = source === 'online' && totalAmount.greaterThan(0);
+  const requiresPrepayment = source === 'online' && requiredOnlineAmount.greaterThan(0);
 
   // ── Locked, transactional booking (concurrency — rule 10) ────────────
   // Auto-assign bookings (timeStr falsy) all share one coarser doctor+day lock key rather than
@@ -1135,7 +1225,7 @@ async function runBookingJob(payload) {
             appointmentDate: appointmentDateUTC,
             appointmentTime: resolvedTimeStr,
             reason: reason || null,
-            isEmergency: !!isEmergency,
+            isEmergency: false,
             status: requiresPrepayment ? 'pending_payment' : 'upcoming',
             source,
             tokenNumber,
@@ -1146,6 +1236,7 @@ async function runBookingJob(payload) {
             totalAmount,
             paymentStatus: 'pending',
             paymentMethod: paymentMethod || null,
+            bookingPaymentPolicy,
           },
           select: { id: true },
         });
@@ -1570,6 +1661,7 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
 module.exports = {
   enqueueBooking,
   getBookingStatus,
+  getDoctorAvailability,
   runBookingJob,
   listAppointments,
   getAppointmentById,

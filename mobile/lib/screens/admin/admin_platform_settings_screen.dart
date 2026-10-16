@@ -18,9 +18,9 @@ String _formatMoney(num value) {
 ///
 /// Handles:
 /// 1. Platform Charges (`/super-admin/charges` & `/admin/platform-fee`):
-///    - Global pricing rules (patient convenience fee, emergency fee, transaction charge %).
-///    - Switches: apply platform charge, apply emergency fee.
-///    - Live Example Patient Bill card with interactive emergency booking toggle and real-time math.
+///    - Global pricing rules (patient convenience fee and transaction charge %).
+///    - Switch to apply the platform charge.
+///    - Live Example Patient Bill card with real-time math.
 ///    - Full 6-field PUT payload preserving commission rate.
 /// 2. System Settings (`/admin/settings` & `/super-admin/settings`):
 ///    - Platform name, support email, support phone, maintenance mode.
@@ -141,13 +141,10 @@ class _ChargesForm extends StatefulWidget {
 
 class _ChargesFormState extends State<_ChargesForm> {
   late final _convenienceCtrl = TextEditingController(text: widget.initial.patientConvenienceFee.toString());
-  late final _emergencyCtrl = TextEditingController(text: widget.initial.emergencyFee.toString());
   late final _gstCtrl = TextEditingController(text: widget.initial.gstPercent.toString());
   late bool _applyConvenience = widget.initial.applyConvenienceFee;
-  late bool _applyEmergency = widget.initial.applyEmergencyFee;
 
   // Live bill preview state matching Web
-  bool _previewEmergency = false;
   bool _submitting = false;
   bool _saved = false;
   String? _error;
@@ -156,7 +153,6 @@ class _ChargesFormState extends State<_ChargesForm> {
   void initState() {
     super.initState();
     _convenienceCtrl.addListener(_onFieldChanged);
-    _emergencyCtrl.addListener(_onFieldChanged);
     _gstCtrl.addListener(_onFieldChanged);
   }
 
@@ -171,25 +167,18 @@ class _ChargesFormState extends State<_ChargesForm> {
   @override
   void dispose() {
     _convenienceCtrl.removeListener(_onFieldChanged);
-    _emergencyCtrl.removeListener(_onFieldChanged);
     _gstCtrl.removeListener(_onFieldChanged);
     _convenienceCtrl.dispose();
-    _emergencyCtrl.dispose();
     _gstCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final convenience = double.tryParse(_convenienceCtrl.text.trim());
-    final emergency = double.tryParse(_emergencyCtrl.text.trim());
     final gst = double.tryParse(_gstCtrl.text.trim());
 
     if (convenience == null || convenience < 0) {
       setState(() => _error = 'Enter a valid platform charge (₹0 or more)');
-      return;
-    }
-    if (emergency == null || emergency < 0) {
-      setState(() => _error = 'Enter a valid emergency booking fee (₹0 or more)');
       return;
     }
     if (gst == null || gst < 0 || gst > 100) {
@@ -209,10 +198,10 @@ class _ChargesFormState extends State<_ChargesForm> {
       await ApiClient.instance.put('/platform-charges', body: {
         'commissionPercent': widget.initial.commissionPercent ?? 10.0,
         'patientConvenienceFee': convenience,
-        'emergencyFee': emergency,
+        'emergencyFee': 0,
         'gstPercent': gst,
         'applyConvenienceFee': _applyConvenience,
-        'applyEmergencyFee': _applyEmergency,
+        'applyEmergencyFee': false,
       });
 
       if (mounted) {
@@ -232,12 +221,10 @@ class _ChargesFormState extends State<_ChargesForm> {
     // Live bill calculation matching Web's PlatformCharges.jsx:94-103
     const consultation = 900.0;
     final convenienceVal = double.tryParse(_convenienceCtrl.text.trim()) ?? 0.0;
-    final emergencyVal = double.tryParse(_emergencyCtrl.text.trim()) ?? 0.0;
     final gstRate = (double.tryParse(_gstCtrl.text.trim()) ?? 0.0) / 100.0;
 
-    final convenienceFee = (!_previewEmergency && _applyConvenience) ? convenienceVal : 0.0;
-    final emergencyFee = (_previewEmergency && _applyEmergency) ? emergencyVal : 0.0;
-    final subtotal = consultation + convenienceFee + emergencyFee;
+    final convenienceFee = _applyConvenience ? convenienceVal : 0.0;
+    final subtotal = consultation + convenienceFee;
     final gstAmount = subtotal * gstRate;
     final total = subtotal + gstAmount;
 
@@ -300,15 +287,6 @@ class _ChargesFormState extends State<_ChargesForm> {
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 TextField(
-                  controller: _emergencyCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Emergency booking fee (₹)',
-                    hintText: '50.00',
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                TextField(
                   controller: _gstCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
@@ -325,7 +303,7 @@ class _ChargesFormState extends State<_ChargesForm> {
                     borderRadius: BorderRadius.circular(AppRadius.button),
                   ),
                   child: const Text(
-                    'Transaction charge applies only to the portion of a doctor\'s fee paid online through the website — a walk-in payment collected in cash/card/UPI at the clinic counter is never charged it. Platform charge and emergency fee never stack on the same booking — an emergency booking pays the emergency fee instead of the platform charge.',
+                    'Transaction charge applies only to the portion of a doctor\'s fee paid online through the website — a walk-in payment collected in cash/card/UPI at the clinic counter is never charged it.',
                     style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
                   ),
                 ),
@@ -336,15 +314,6 @@ class _ChargesFormState extends State<_ChargesForm> {
                   value: _applyConvenience,
                   onChanged: (v) => setState(() {
                     _applyConvenience = v;
-                    _saved = false;
-                  }),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Apply emergency fee to urgent bookings', style: TextStyle(fontSize: 14)),
-                  value: _applyEmergency,
-                  onChanged: (v) => setState(() {
-                    _applyEmergency = v;
                     _saved = false;
                   }),
                 ),
@@ -399,35 +368,11 @@ class _ChargesFormState extends State<_ChargesForm> {
                 style: TextStyle(color: Colors.white60, fontSize: 12),
               ),
               const SizedBox(height: AppSpacing.sm),
-              InkWell(
-                onTap: () => setState(() => _previewEmergency = !_previewEmergency),
-                borderRadius: BorderRadius.circular(AppRadius.button),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Checkbox(
-                        value: _previewEmergency,
-                        onChanged: (v) => setState(() => _previewEmergency = v ?? false),
-                        activeColor: AppColors.primary,
-                        side: const BorderSide(color: Colors.white60),
-                      ),
-                      const Text(
-                        'This is an emergency booking',
-                        style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
               const Divider(color: Colors.white24),
               const SizedBox(height: AppSpacing.xs),
               _billRow('Consultation', _formatMoney(consultation)),
               const SizedBox(height: 8),
               _billRow('Platform charge', _formatMoney(convenienceFee)),
-              const SizedBox(height: 8),
-              _billRow('Emergency fee', _formatMoney(emergencyFee)),
               const SizedBox(height: 8),
               _billRow('Transaction charge (${_gstCtrl.text.trim()}%)', _formatMoney(gstAmount)),
               const SizedBox(height: AppSpacing.sm),

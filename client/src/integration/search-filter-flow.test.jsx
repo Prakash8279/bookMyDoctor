@@ -8,7 +8,7 @@
 // filters" is entirely real component + store-shaped-data logic, nothing about the filtering
 // itself is mocked.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({

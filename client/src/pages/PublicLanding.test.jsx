@@ -1,6 +1,6 @@
 // Unit tests for the marketing landing pages in PublicLanding.jsx.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({

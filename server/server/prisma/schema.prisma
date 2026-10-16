@@ -88,6 +88,15 @@ enum PaymentMode {
   online
 }
 
+enum BookingPaymentPolicy {
+  // Patient pays only the platform charge online; the doctor's consultation fee is due at clinic.
+  platform_only
+  // Patient may choose the doctor's minimum advance or the full amount.
+  minimum_or_full
+  // Patient must pay the full consultation total online.
+  full
+}
+
 enum QueueStatus {
   // Mirrors Appointment's `pending_payment` — a queue token for an online booking that still
   // needs payment starts here instead of `waiting`, so it never shows up in the live
@@ -248,6 +257,7 @@ model DoctorProfile {
   // configured one, so the patient's booking-payment screen only offers "pay full amount".
   // Business rule (enforced in me.service.js, not here): must never exceed consultationFee.
   minBookingAdvanceAmount Decimal?  @map("min_booking_advance_amount") @db.Decimal(10, 2)
+  bookingPaymentPolicy   BookingPaymentPolicy @default(full) @map("booking_payment_policy")
   languages            String[]     @default([])
   bio                  String?
   rating               Decimal      @default(0) @db.Decimal(3, 2)
@@ -521,6 +531,9 @@ model Appointment {
   totalAmount      Decimal            @default(0) @map("total_amount") @db.Decimal(10, 2)
   paymentStatus    PaymentStatus      @default(pending) @map("payment_status")
   paymentMethod    PaymentMode?       @map("payment_method")
+  // Snapshot of the doctor's payment rule at booking time, so later profile changes cannot alter
+  // the payment choices or amount for an already-created appointment.
+  bookingPaymentPolicy BookingPaymentPolicy @default(full) @map("booking_payment_policy")
   checkedInAt      DateTime?          @map("checked_in_at")
   notes            String?
   createdAt        DateTime           @default(now()) @map("created_at")

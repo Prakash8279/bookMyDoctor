@@ -52,6 +52,8 @@ class Fees {
   final double? due;
   final double? minBookingAmount;
   final double? minBookingRemainder;
+  final double? platformOnlyBookingAmount;
+  final String? bookingPaymentPolicy;
 
   Fees({
     this.consultationFee,
@@ -65,6 +67,8 @@ class Fees {
     this.due,
     this.minBookingAmount,
     this.minBookingRemainder,
+    this.platformOnlyBookingAmount,
+    this.bookingPaymentPolicy,
   });
 
   factory Fees.fromJson(Map<String, dynamic>? json) {
@@ -82,6 +86,8 @@ class Fees {
       due: d('due'),
       minBookingAmount: d('minBookingAmount'),
       minBookingRemainder: d('minBookingRemainder'),
+      platformOnlyBookingAmount: d('platformOnlyBookingAmount'),
+      bookingPaymentPolicy: json['bookingPaymentPolicy'] as String?,
     );
   }
 }

@@ -22,6 +22,11 @@ const getBookingStatus = asyncHandler(async (req, res) => {
   return success(res, result);
 });
 
+const getAvailability = asyncHandler(async (req, res) => {
+  const rows = await appointmentsService.getDoctorAvailability(req.query);
+  return success(res, rows);
+});
+
 const listAppointments = asyncHandler(async (req, res) => {
   // ADMIN FILTER FIX (user request: "ye filter apply karne ka option do admin super admin ko
   // city wise doctor name se v aur date se v") — cityId is the new one; date/doctorId were
@@ -51,6 +56,7 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
 module.exports = {
   createAppointment,
   getBookingStatus,
+  getAvailability,
   listAppointments,
   getAppointment,
   updateAppointmentStatus,

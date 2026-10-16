@@ -81,8 +81,8 @@ jest.mock('../../../src/config/db', () => ({
   receptionistProfile: { findUnique: jest.fn() },
   doctorClinic: { findMany: jest.fn(), findUnique: jest.fn() },
   clinic: { findUnique: jest.fn() },
-  doctorClinicHours: { findUnique: jest.fn() },
-  doctorClinicClosure: { findFirst: jest.fn() },
+  doctorClinicHours: { findUnique: jest.fn(), findMany: jest.fn() },
+  doctorClinicClosure: { findFirst: jest.fn(), findMany: jest.fn() },
   familyMember: { findUnique: jest.fn() },
   platformCharges: { findUnique: jest.fn() },
   bookingRules: { findUnique: jest.fn() },
@@ -165,6 +165,7 @@ function fullAppointmentRow(overrides = {}) {
     totalAmount: dec(613.6),
     paymentStatus: 'paid',
     paymentMethod: 'card',
+    bookingPaymentPolicy: 'full',
     checkedInAt: null,
     notes: null,
     createdAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -340,6 +341,8 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
       emergencyFee: dec(0),
       gstAmount: dec(93.6),
       totalAmount: dec(613.6),
+      bookingPaymentPolicy: 'full',
+      platformOnlyBookingAmount: null,
       minBookingAmount: null, // this fixture's doctor has no minBookingAdvanceAmount configured
       minBookingRemainder: null, // same fixture — no minBookingAdvanceAmount means no remainder either
     });
@@ -359,6 +362,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
     // Expected: 100 (minAdvance) + 20 (platformCharge) + 100*0.18 (18) = 138 — deliberately NOT 100.
     prisma.appointment.findUnique.mockResolvedValue(
       fullAppointmentRow({
+        bookingPaymentPolicy: 'minimum_or_full',
         doctor: {
           id: DOCTOR_ID,
           name: 'Dr. Asha',
@@ -389,6 +393,7 @@ describe('appointmentsService.getAppointmentById — fee masking by role (rule 8
     prisma.appointment.findUnique.mockResolvedValue(
       fullAppointmentRow({
         source: 'walk_in',
+        bookingPaymentPolicy: 'minimum_or_full',
         gstAmount: dec(0),
         doctor: {
           id: DOCTOR_ID,
@@ -680,6 +685,73 @@ describe('appointmentsService.enqueueBooking', () => {
     expect(payload.patientName).toBe('Walk In Guy');
     expect(payload.patientPhone).toBe('9999999999');
     expect(payload.patientEmail).toBe('Walk@Example.com');
+  });
+});
+
+describe('appointmentsService.getDoctorAvailability', () => {
+  test('returns total, booked, and available slot counts for each doctor-clinic schedule', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      doctor: { name: 'Dr. Asha Rao', doctorProfile: { emergencyAvailable: true } },
+      clinic: { name: 'Heart Care Clinic' },
+    }]);
+    prisma.doctorClinicHours.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      startTime: '09:00',
+      endTime: '10:00',
+      slotMinutes: 15,
+    }]);
+    prisma.doctorClinicClosure.findMany.mockResolvedValue([]);
+    prisma.appointment.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      appointmentTime: '09:15',
+    }]);
+
+    const result = await appointmentsService.getDoctorAvailability({
+      date: TOMORROW_STR,
+      doctorId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+    });
+
+    expect(result).toEqual([expect.objectContaining({
+      doctorUserId: DOCTOR_ID,
+      doctorName: 'Dr. Asha Rao',
+      clinicId: CLINIC_ID,
+      clinicName: 'Heart Care Clinic',
+      emergencyAvailable: true,
+      totalSlots: 4,
+      bookedSlots: 1,
+      availableSlots: 3,
+      closed: false,
+    })]);
+    expect(prisma.appointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { notIn: ['cancelled', 'no_show'] } }),
+    }));
+  });
+
+  test('returns zero slots when the doctor-clinic schedule is closed for the date', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      doctor: { name: 'Dr. Asha Rao', doctorProfile: { emergencyAvailable: false } },
+      clinic: { name: 'Heart Care Clinic' },
+    }]);
+    prisma.doctorClinicHours.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      startTime: '09:00',
+      endTime: '10:00',
+      slotMinutes: 15,
+    }]);
+    prisma.doctorClinicClosure.findMany.mockResolvedValue([{ doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID }]);
+    prisma.appointment.findMany.mockResolvedValue([]);
+
+    const [result] = await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR });
+
+    expect(result).toEqual(expect.objectContaining({ totalSlots: 0, bookedSlots: 0, availableSlots: 0, closed: true }));
   });
 });
 
@@ -1015,11 +1087,16 @@ describe('appointmentsService.runBookingJob', () => {
     });
   });
 
-  test('throws 400 EMERGENCY_NOT_AVAILABLE when the doctor or clinic doesn\'t support emergency booking', async () => {
+  test('does not treat a legacy isEmergency flag as a special booking type', async () => {
     mockUsers({ doctor: happyDoctor({ emergencyAvailable: false }) });
-    await expect(
-      appointmentsService.runBookingJob(basePayload({ isEmergency: true }))
-    ).rejects.toMatchObject({ statusCode: 400, code: 'EMERGENCY_NOT_AVAILABLE' });
+    await expect(appointmentsService.runBookingJob(basePayload({ isEmergency: true }))).resolves.toEqual({
+      appointmentId: 'appt-new',
+      tokenNumber: 1,
+    });
+
+    const data = tx.appointment.create.mock.calls[0][0].data;
+    expect(data.isEmergency).toBe(false);
+    expect(data.emergencyFee.toString()).toBe('0');
   });
 
   // ── Family member / patient / receptionist scoping ──────────────────
@@ -1059,28 +1136,40 @@ describe('appointmentsService.runBookingJob', () => {
   });
 
   // ── Fee computation (server-side, rule 7) + requiresPrepayment split ──
-  test('computes consultationFee + convenienceFee (+ emergencyFee) with GST on the subtotal, server-side', async () => {
-    await appointmentsService.runBookingJob(basePayload({ isEmergency: false }));
+  test('computes consultationFee + convenienceFee with GST on the subtotal, server-side', async () => {
+    await appointmentsService.runBookingJob(basePayload());
 
     const data = tx.appointment.create.mock.calls[0][0].data;
     expect(data.consultationFee.toString()).toBe('500');
     expect(data.convenienceFee.toString()).toBe('20');
-    expect(data.emergencyFee.toString()).toBe('0'); // not an emergency booking
+    expect(data.emergencyFee.toString()).toBe('0');
     expect(data.gstAmount.toString()).toBe('93.6'); // 18% of (500+20)
     expect(data.totalAmount.toString()).toBe('613.6');
   });
 
-  test('applies the platform emergencyFee surcharge (not the doctor\'s own emergencyFee) for an emergency booking, and the platform charge does NOT stack with it', async () => {
+  test('ignores a legacy emergency flag and never adds an emergency surcharge', async () => {
     await appointmentsService.runBookingJob(basePayload({ isEmergency: true }));
 
-    // MUTUAL-EXCLUSIVITY FIX (superadmin request): an emergency booking pays the emergency
-    // surcharge INSTEAD OF the platform (convenience) charge, never both — convenienceFee is 0
-    // here even though platformCharges.applyConvenienceFee is true in the mocked config.
     const data = tx.appointment.create.mock.calls[0][0].data;
-    expect(data.convenienceFee.toString()).toBe('0');
-    expect(data.emergencyFee.toString()).toBe('100');
-    expect(data.gstAmount.toString()).toBe('108'); // 18% of (500+0+100)
-    expect(data.totalAmount.toString()).toBe('708');
+    expect(data.isEmergency).toBe(false);
+    expect(data.convenienceFee.toString()).toBe('20');
+    expect(data.emergencyFee.toString()).toBe('0');
+    expect(data.gstAmount.toString()).toBe('93.6'); // 18% of (500+20)
+    expect(data.totalAmount.toString()).toBe('613.6');
+  });
+
+  test('snapshots platform-only policy and holds the booking for only the platform charge', async () => {
+    mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only' }) });
+
+    await appointmentsService.runBookingJob(basePayload());
+
+    const appointment = tx.appointment.create.mock.calls[0][0].data;
+    const queueToken = tx.queueToken.create.mock.calls[0][0].data;
+    expect(appointment.bookingPaymentPolicy).toBe('platform_only');
+    expect(appointment.status).toBe('pending_payment');
+    expect(appointment.consultationFee.toString()).toBe('500');
+    expect(appointment.convenienceFee.toString()).toBe('20');
+    expect(queueToken.status).toBe('on_hold');
   });
 
   test('an online booking with a non-zero total starts pending_payment/on_hold and skips the "booking confirmed" notifications', async () => {

@@ -132,7 +132,17 @@ describe('PatientDashboard', () => {
 
     renderConnected(PatientDashboard)
 
-    expect(screen.getByText('Welcome, Asha.')).toBeInTheDocument()
+    expect(screen.getAllByText('Welcome, Asha.')).toHaveLength(2)
+    expect(screen.getByRole('heading', { name: 'Patient services' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Patient services' }).querySelectorAll('a')).toHaveLength(10)
+    fireEvent.click(screen.getByRole('button', { name: 'Help & policies' }))
+    expect(screen.getByRole('link', { name: /Privacy Policy/ })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: /Terms & Conditions/ })).toHaveAttribute('href', '/terms')
+    expect(screen.getByRole('link', { name: /Cancellation & Refund Policy/ })).toHaveAttribute('href', '/cancellation-refund-policy')
+    expect(screen.getByRole('link', { name: /Account Deletion/ })).toHaveAttribute('href', '/account-deletion')
+    expect(screen.getByRole('link', { name: /Contact Us/ })).toHaveAttribute('href', '/contact')
+    expect(screen.queryByRole('link', { name: /Contact support/ })).not.toBeInTheDocument()
     expect(screen.getAllByText('Dr. Asha Rao').length).toBeGreaterThan(0)
     expect(screen.getByText('#12')).toBeInTheDocument()
     expect(apiClient.get).toHaveBeenCalledWith('/queue/mine/appt-1')
@@ -182,7 +192,7 @@ describe('Booking', () => {
     clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic' }],
   }
   const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son' }
-  const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: true, emergencyFee: 50, gstPercent: 5 }
+  const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: false, emergencyFee: 0, gstPercent: 5 }
 
   it("shows the doctor's primary clinic and fee preview once a doctor is chosen", () => {
     seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
@@ -202,14 +212,8 @@ describe('Booking', () => {
     expect(screen.getByText('₹20')).toBeInTheDocument() // platform charge
     expect(screen.getByText('5%')).toBeInTheDocument() // Transaction charge
 
-    // MUTUAL-EXCLUSIVITY FIX (superadmin request): platform charge and emergency fee never stack
-    // — checking "Emergency booking" drops the platform-charge preview to ₹0. Selected by `name`
-    // rather than label text, same reason as the Doctor field above (the "+₹50" surcharge text
-    // sits inside the same <label>, so its accessible name isn't the exact string "Emergency
-    // booking").
-    fireEvent.click(container.querySelector('input[name="isEmergency"]'))
-    expect(screen.queryByText('₹20')).not.toBeInTheDocument()
-    expect(screen.getByText('₹0')).toBeInTheDocument()
+    expect(container.querySelector('input[name="isEmergency"]')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Emergency booking/i)).not.toBeInTheDocument()
   })
 
   it('confirms a booking with the selected doctor, clinic, date, and family member', async () => {
@@ -256,7 +260,6 @@ describe('Booking', () => {
         clinicId: 'clinic-1',
         appointmentDate: '2026-09-25',
         reason: 'Follow up',
-        isEmergency: false,
         familyMemberId: 'fam-1',
       })
       expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
@@ -406,7 +409,7 @@ describe('Booking', () => {
     })
     try {
       seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
-      apiClient.post.mockImplementation((url, payload) => {
+      apiClient.post.mockImplementation((url, _payload) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-3', status: 'queued' })
         if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1' })
         if (url === '/payments/razorpay/verify') {
@@ -533,9 +536,7 @@ describe('Booking', () => {
   // old behaviour left the platform's cut out of this payment option entirely).
   it('shows the server-computed minBookingAmount (not the doctor\'s raw minBookingAdvanceAmount) as the minimum booking option, and pays that exact amount', async () => {
     vi.useFakeTimers()
-    let capturedOptions = null
-    window.Razorpay = vi.fn(function RazorpayMock(options) {
-      capturedOptions = options
+    window.Razorpay = vi.fn(function RazorpayMock() {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {

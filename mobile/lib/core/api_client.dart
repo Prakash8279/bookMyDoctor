@@ -18,9 +18,10 @@ import 'token_store.dart';
 class ApiResponse {
   final dynamic data;
   final Map<String, dynamic>? pagination;
+  final Map<String, dynamic>? kpi;
   final String? message;
 
-  ApiResponse({required this.data, this.pagination, this.message});
+  ApiResponse({required this.data, this.pagination, this.kpi, this.message});
 
   /// Convenience: `data` cast to a `List<Map<String, dynamic>>` — use for
   /// every list endpoint (they always return `data` as a bare array, never
@@ -208,6 +209,7 @@ class ApiClient {
     return ApiResponse(
       data: body['data'],
       pagination: body['pagination'] as Map<String, dynamic>?,
+      kpi: body['kpi'] as Map<String, dynamic>?,
       message: body['message'] as String?,
     );
   }

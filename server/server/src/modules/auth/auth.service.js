@@ -342,19 +342,6 @@ async function refresh({ refreshToken }) {
 }
 
 /**
- * Cheap identity/session check — base User columns only, no role-profile join
- * (GET /me in the me module returns the full profile).
- * @param {string} userId
- */
-async function getMe(userId) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: USER_SUMMARY_SELECT });
-  if (!user) {
-    throw new ApiError(401, 'UNAUTHORIZED', 'Authentication is required to access this resource.');
-  }
-  return user;
-}
-
-/**
  * Handles a forgot-password request. ALWAYS resolves (never throws for "no such account") and
  * the controller ALWAYS responds 200 with the same generic message regardless of the outcome
  * here — revealing "no account with that email" (or, below, an account's disabled status) to an
@@ -492,7 +479,6 @@ module.exports = {
   googleAuth,
   logout,
   refresh,
-  getMe,
   forgotPassword,
   resetPassword,
   normalizePhone,

@@ -131,6 +131,7 @@ class MeProfile {
   // clinic" instead of always requiring the full consultationFee upfront. me.validation.js caps
   // it at consultationFee server-side.
   final double? minBookingAdvanceAmount;
+  final String? bookingPaymentPolicy;
   final List<VerificationDocument> verificationDocuments;
   final BankDetails? bankDetails;
 
@@ -165,6 +166,7 @@ class MeProfile {
     this.reviewCount,
     this.emergencyAvailable,
     this.minBookingAdvanceAmount,
+    this.bookingPaymentPolicy,
     this.verificationDocuments = const [],
     this.bankDetails,
     this.clinicId,
@@ -202,6 +204,7 @@ class MeProfile {
       emergencyAvailable: json['emergencyAvailable'] as bool?,
       minBookingAdvanceAmount:
           json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+      bookingPaymentPolicy: json['bookingPaymentPolicy'] as String?,
       verificationDocuments: (json['verificationDocuments'] as List?)
               ?.map((e) => VerificationDocument.fromJson(e as Map<String, dynamic>))
               .toList() ??
@@ -313,6 +316,7 @@ class DoctorDirectoryItem {
   final String? scheduleSummary;
   final List<DoctorScheduleSlot> schedule;
   final double? minBookingAdvanceAmount;
+  final String? bookingPaymentPolicy;
   final DateTime? createdAt;
 
   DoctorDirectoryItem({
@@ -341,6 +345,7 @@ class DoctorDirectoryItem {
     this.scheduleSummary,
     this.schedule = const [],
     this.minBookingAdvanceAmount,
+    this.bookingPaymentPolicy,
     this.createdAt,
   });
 
@@ -385,6 +390,7 @@ class DoctorDirectoryItem {
             .map((e) => DoctorScheduleSlot.fromJson(e as Map<String, dynamic>))
             .toList(),
         minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+        bookingPaymentPolicy: json['bookingPaymentPolicy'] as String?,
         createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'].toString()),
       );
 }

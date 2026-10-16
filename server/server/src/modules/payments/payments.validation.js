@@ -15,7 +15,6 @@ const createPayment = [
   body('patientUserId').optional({ values: 'falsy' }).isUUID().withMessage('patientUserId must be a valid id.'),
   body('doctorUserId').optional({ values: 'falsy' }).isUUID().withMessage('doctorUserId must be a valid id.'),
   body('clinicId').optional({ values: 'falsy' }).isUUID().withMessage('clinicId must be a valid id.'),
-  body('isEmergency').optional({ values: 'falsy' }).isBoolean().withMessage('isEmergency must be a boolean.').toBoolean(),
   body('mode')
     .notEmpty()
     .withMessage('mode is required.')
@@ -69,8 +68,8 @@ const createRazorpayOrder = [
   body('appointmentId').notEmpty().withMessage('appointmentId is required.').isUUID().withMessage('appointmentId must be a valid id.'),
   body('paymentOption')
     .optional({ values: 'falsy' })
-    .isIn(['full', 'minimum'])
-    .withMessage('paymentOption must be either "full" or "minimum".'),
+    .isIn(['full', 'minimum', 'platform_only'])
+    .withMessage('paymentOption must be "full", "minimum", or "platform_only".'),
 ];
 
 const verifyRazorpayPayment = [

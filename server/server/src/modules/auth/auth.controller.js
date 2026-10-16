@@ -48,11 +48,6 @@ const refresh = asyncHandler(async (req, res) => {
   return success(res, applyAuthCookies(req, res, result));
 });
 
-const me = asyncHandler(async (req, res) => {
-  const user = await authService.getMe(req.user.id);
-  return success(res, user);
-});
-
 // Always 200 with this same generic message, whether or not the email belongs to a real
 // (enabled) account — see auth.service.js#forgotPassword for the enumeration-avoidance reasoning.
 const forgotPassword = asyncHandler(async (req, res) => {
@@ -79,7 +74,6 @@ module.exports = {
   googleAuth,
   logout,
   refresh,
-  me,
   forgotPassword,
   resetPassword,
   sendRegistrationEmailOtp,

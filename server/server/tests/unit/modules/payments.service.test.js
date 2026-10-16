@@ -799,7 +799,7 @@ describe('payments.service.createStandalonePayment (exercised via createPayment 
     });
   });
 
-  test('400 EMERGENCY_NOT_AVAILABLE when isEmergency is requested for a doctor without emergencyAvailable', async () => {
+  test('ignores a legacy isEmergency flag and never adds an emergency charge', async () => {
     mockHappyPathLookups({
       doctor: {
         id: 'doctor-1',
@@ -808,10 +808,10 @@ describe('payments.service.createStandalonePayment (exercised via createPayment 
       },
     });
 
-    await expect(paymentsService.createPayment({ ...BODY, isEmergency: true }, ADMIN)).rejects.toMatchObject({
-      statusCode: 400,
-      code: 'EMERGENCY_NOT_AVAILABLE',
-    });
+    await expect(paymentsService.createPayment({ ...BODY, isEmergency: true }, ADMIN)).resolves.toBeDefined();
+
+    const data = prisma.payment.create.mock.calls[0][0].data;
+    expect(data.emergencyFee.toString()).toBe('0');
   });
 
   test('computes consultationFee + convenienceFee server-side, with NO GST — a standalone/counter payment never went through the website\'s payment gateway', async () => {

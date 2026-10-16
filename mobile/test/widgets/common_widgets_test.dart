@@ -83,6 +83,81 @@ void main() {
 
       expect(find.byIcon(Icons.add), findsOneWidget);
     });
+
+    testWidgets('stacks a long action below the heading on a narrow phone', (tester) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageHeader(
+              title: 'Appointments and medical records',
+              subtitle: 'Manage every visit from one place',
+              action: ElevatedButton(
+                onPressed: () {},
+                child: const Text('Create a new appointment'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      final titleBottom = tester.getBottomLeft(find.text('Appointments and medical records')).dy;
+      final actionTop = tester.getTopLeft(find.text('Create a new appointment')).dy;
+      expect(actionTop, greaterThan(titleBottom));
+    });
+  });
+
+  group('narrow layout safety', () {
+    testWidgets('PrimaryButton keeps a long label inside a 280px card', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 280,
+                child: PrimaryButton(
+                  label: 'Continue to secure appointment payment',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Continue to secure appointment payment'), findsOneWidget);
+    });
+
+    testWidgets('SectionCard stacks a long trailing action on a narrow phone', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 320,
+              child: SectionCard(
+                title: 'Upcoming appointments',
+                trailing: TextButton(
+                  onPressed: () {},
+                  child: const Text('View complete appointment history'),
+                ),
+                child: const Text('No appointments yet'),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      final titleBottom = tester.getBottomLeft(find.text('Upcoming appointments')).dy;
+      final actionTop = tester.getTopLeft(find.text('View complete appointment history')).dy;
+      expect(actionTop, greaterThan(titleBottom));
+    });
   });
 
   group('EmptyStateView', () {

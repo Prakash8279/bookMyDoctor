@@ -61,6 +61,7 @@ const PROFILE_EDITABLE_FIELDS = {
     'bio',
     'emergencyAvailable',
     'minBookingAdvanceAmount',
+    'bookingPaymentPolicy',
     // COMPLETENESS ADD (request: "doctor bank details v only admin and super admin dekh sakta
     // hai add kro") — doctor-self-editable, but readable back only by the doctor themselves or
     // an admin/superadmin (doctors.service.js#shapeDoctor's includeContact gate), never by an
@@ -168,6 +169,24 @@ async function updateMe(userId, role, body) {
     profileUpdates.languages = deduped;
   }
 
+  // Backward compatibility for an older client that only sends the minimum amount: a positive
+  // value means the doctor intends the minimum-or-full rule; clearing it restores full-only.
+  if (
+    role === 'doctor' &&
+    'minBookingAdvanceAmount' in profileUpdates &&
+    !('bookingPaymentPolicy' in profileUpdates)
+  ) {
+    profileUpdates.bookingPaymentPolicy = Number(profileUpdates.minBookingAdvanceAmount) > 0
+      ? 'minimum_or_full'
+      : 'full';
+  }
+
+  if (role === 'doctor' && 'bookingPaymentPolicy' in profileUpdates) {
+    if (profileUpdates.bookingPaymentPolicy !== 'minimum_or_full') {
+      profileUpdates.minBookingAdvanceAmount = null;
+    }
+  }
+
   // BANK-DETAIL ENCRYPTION FIX (risky-item #3, docs/risky-fixes-plan-2026-09-20.md) — encrypt
   // every present, non-null bank field before it ever reaches Prisma, so doctor_profiles never
   // stores these 5 columns as plain text again. `null` (a doctor clearing a field) is left as-is
@@ -208,15 +227,17 @@ async function updateMe(userId, role, body) {
   const touchesMinBookingAmount =
     'minBookingAdvanceAmount' in profileUpdates && profileUpdates.minBookingAdvanceAmount != null;
   const touchesConsultationFee = 'consultationFee' in profileUpdates;
-  if (role === 'doctor' && (touchesMinBookingAmount || touchesConsultationFee)) {
+  const touchesPaymentPolicy = 'bookingPaymentPolicy' in profileUpdates;
+  if (role === 'doctor' && (touchesMinBookingAmount || touchesConsultationFee || touchesPaymentPolicy)) {
     let effectiveConsultationFee = profileUpdates.consultationFee;
     let effectiveMinBookingAdvanceAmount = 'minBookingAdvanceAmount' in profileUpdates
       ? profileUpdates.minBookingAdvanceAmount
       : undefined;
-    if (effectiveConsultationFee == null || effectiveMinBookingAdvanceAmount === undefined) {
+    let effectivePaymentPolicy = profileUpdates.bookingPaymentPolicy;
+    if (effectiveConsultationFee == null || effectiveMinBookingAdvanceAmount === undefined || effectivePaymentPolicy === undefined) {
       const existing = await prisma.doctorProfile.findUnique({
         where: { userId },
-        select: { consultationFee: true, minBookingAdvanceAmount: true },
+        select: { consultationFee: true, minBookingAdvanceAmount: true, bookingPaymentPolicy: true },
       });
       if (effectiveConsultationFee == null) {
         effectiveConsultationFee = existing ? Number(existing.consultationFee) : null;
@@ -225,6 +246,19 @@ async function updateMe(userId, role, body) {
         effectiveMinBookingAdvanceAmount =
           existing && existing.minBookingAdvanceAmount != null ? Number(existing.minBookingAdvanceAmount) : null;
       }
+      if (effectivePaymentPolicy === undefined) {
+        effectivePaymentPolicy = existing?.bookingPaymentPolicy || 'full';
+      }
+    }
+    if (
+      effectivePaymentPolicy === 'minimum_or_full' &&
+      (effectiveMinBookingAdvanceAmount == null || Number(effectiveMinBookingAdvanceAmount) <= 0)
+    ) {
+      throw new ApiError(
+        400,
+        'MIN_BOOKING_AMOUNT_REQUIRED',
+        'Set a minimum booking amount greater than zero when minimum payment is enabled.'
+      );
     }
     if (
       effectiveMinBookingAdvanceAmount != null &&

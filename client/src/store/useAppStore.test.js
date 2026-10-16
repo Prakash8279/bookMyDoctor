@@ -52,7 +52,6 @@ describe('initial state', () => {
     expect(state.dataLoading).toBe(false)
     expect(state.dataLoaded).toBe(false)
     expect(state.bookingQueueInfo).toBeNull()
-    expect(state.drafts).toEqual({})
     // Every collection key defaults to an empty array (never undefined) so unconditional
     // `data.xxx.map()` call sites never crash before the first fetch resolves.
     expect(state.data.cities).toEqual([])
@@ -776,18 +775,6 @@ describe('payments', () => {
       { id: 'appt-1', status: 'upcoming', tokenNumber: 12 },
       { id: 'appt-2', status: 'upcoming' },
     ])
-  })
-})
-
-describe('local-only drafts', () => {
-  it('saveDraft(): stores values under the given key without touching other drafts', () => {
-    useAppStore.getState().saveDraft('booking-form', { doctorId: 'd1' })
-    useAppStore.getState().saveDraft('review-form', { rating: 5 })
-
-    expect(useAppStore.getState().drafts).toEqual({
-      'booking-form': { doctorId: 'd1' },
-      'review-form': { rating: 5 },
-    })
   })
 })
 

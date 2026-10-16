@@ -28,9 +28,14 @@ module.exports = defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
+    // Local Windows QA can reuse the installed Chrome executable instead of downloading a
+    // separate Playwright browser. CI leaves this unset and keeps Playwright's normal browser.
+    launchOptions: process.env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+      : {},
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: process.env.PLAYWRIGHT_EXECUTABLE_PATH ? 'off' : 'retain-on-failure',
   },
   projects: [
     {

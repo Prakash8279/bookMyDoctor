@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
@@ -13,10 +13,9 @@ import { useAppStore } from '../store/useAppStore'
 import { formatDate, sequenceId } from '../lib/format'
 import { buildCsv, downloadCsv } from '../lib/csv'
 
-const Page = ({ title, subtitle, action, kicker, children }) => <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div>{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action}</div>{children}</section>
+const Page = ({ title, subtitle, action, kicker, children }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`btn-primary ${className}`} {...props}>{children}</button>
 const ToneButton = ({ children, tone = 'secondary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink hover:border-primary-dark'} ${className}`} {...props}>{children}</button>
-const EMPTY_DRAFT = {}
 // `role="alert"` red inline text matches the error-display idiom already used
 // across AdminPages.jsx/PatientPages.jsx — reused here rather than inventing
 // a new pattern for this file.
@@ -72,6 +71,31 @@ export function PublicContent({ kind }) {
   if (kind === 'contact') return <><SiteHeader /><section className="bg-surface px-4 py-14 sm:px-6"><div className="mx-auto max-w-5xl"><p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">We are here to help</p><h1 className="mt-3 text-4xl sm:text-5xl">{content[0]}</h1><p className="mt-4 max-w-xl text-sm text-muted">{content[1]}</p></div></section><main className="mx-auto max-w-5xl px-4 pb-14 sm:px-6"><div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]"><article className="rounded-card bg-charcoal p-6 text-white"><h2 className="text-xl text-white">Support that listens</h2><p className="mt-2 text-sm text-white/70">Send your query and our team will route it to the right specialist.</p><div className="mt-6 divide-y divide-white/10 border-t border-white/10">{CONTACT_ROWS.map((row) => <div key={row.label} className="flex items-start gap-3 py-4"><span className="mt-0.5 text-white/70">{row.icon}</span><div><p className="font-semibold text-white">{row.label}</p><p className="mt-0.5 text-sm text-white/60">{row.value}</p></div></div>)}</div></article><form onSubmit={send} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="grid gap-4 sm:grid-cols-2"><FormField label="Name" name="name" required /><FormField label="Email" name="email" type="email" required /></div><div className="mt-4"><FormField label="Subject" name="subject" type="select" options={['Appointment support', 'Doctor registration', 'Payment or billing', 'Technical issue', 'Other']} defaultValue="Appointment support" required /></div><div className="mt-4"><FormField label="How can we help?" name="message" type="textarea" required /></div><Button type="submit" className="mt-4 inline-flex items-center gap-2" disabled={submitting}><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg>{submitting ? 'Sending…' : 'Send message'}</Button><ErrorNote>{error}</ErrorNote>{sent && <p role="status" className="mt-3 text-sm font-semibold text-success">Message sent.</p>}</form></div></main></>
   return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-12 sm:px-6"><article className="rounded-card border border-border bg-white p-6 shadow-card"><h1 className="text-3xl">{content[0]}</h1><p className="mt-4 leading-7 text-muted">{content[1]}</p>{kind === 'blog' && <div className="mt-6 space-y-3">{['How to prepare for a specialist visit', 'What live queues mean for patients', 'Choosing an emergency clinic'].map((title) => <article className="rounded-button bg-surface p-4" key={title}><h2 className="text-lg">{title}</h2><p className="mt-1 text-sm text-muted">A practical BookADoctors guide.</p></article>)}</div>}</article></main></>
 }
+export function QuickClinicBooking({ data }) {
+  const [phone, setPhone] = useState('')
+  const [clinic, setClinic] = useState(null)
+  const [error, setError] = useState('')
+  const navigate = useNavigate()
+
+  const lookup = (event) => {
+    event.preventDefault()
+    const digits = phone.replace(/\D/g, '')
+    const found = digits.length >= 6
+      ? (data.clinics || []).find((item) => (item.phone || '').replace(/\D/g, '').endsWith(digits)) || null
+      : null
+    setClinic(found)
+    if (!found) setError('No active clinic matches this registered phone number.')
+    else setError('')
+  }
+
+  const doctors = clinic ? (data.doctors || []).filter((doctor) => (doctor.clinics || []).some((item) => item.id === clinic.id)) : []
+  return <Page title="Quick clinic booking" subtitle="Find a clinic using its registered phone number.">
+    <section className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-xl">Clinic registered number</h2><form className="mt-5 space-y-4" onSubmit={lookup}><FormField label="Phone number" type="tel" placeholder="e.g. +91 22 4000 1111" value={phone} onChange={(event) => setPhone(event.target.value)} required /><Button className="w-full">Find clinic</Button></form></section>
+    <ErrorNote>{error}</ErrorNote>
+    {clinic && <section className="mt-5 rounded-card border border-primary/20 bg-primary-light p-5"><h2 className="text-xl">{clinic.name}</h2><p className="mt-1 text-sm text-muted">{clinic.area?.name || clinic.address}, {clinic.city?.name}</p><div className="mt-4 flex flex-wrap gap-2">{doctors.map((doctor) => <button type="button" key={doctor.id} onClick={() => navigate(`/patient/book?doctorId=${doctor.id}`)} className="touch-target rounded-button border border-primary-dark bg-white px-3 text-sm font-semibold text-primary-dark">Book {doctor.name}</button>)}{!doctors.length && <p className="text-sm text-muted">No active doctors are listed for this clinic right now.</p>}</div></section>}
+  </Page>
+}
+
 export function PatientReviews({ data }) {
   // Real reviews require a completed appointment id (`POST /reviews` body:
   // {appointmentId, rating, text}) — there is no doctorId-only review path
@@ -130,8 +154,6 @@ export function DoctorReviews({ data }) {
     {loading ? <LoadingSkeleton /> : reviews.length ? <div className="space-y-3">{reviews.map((review) => <article key={review.id} className="rounded-card border border-border bg-white p-4 shadow-card"><div className="flex flex-wrap items-center justify-between gap-2"><strong>{review.patient?.name || 'Verified patient'}</strong><span className="text-sm text-muted">{'★'.repeat(Math.max(0, Number(review.rating) || 0))}{'☆'.repeat(Math.max(0, 5 - (Number(review.rating) || 0)))} · {formatDate(review.createdAt)}</span></div><p className="mt-2 text-sm text-muted">{review.text}</p></article>)}</div> : <EmptyState title="No reviews yet" message="Reviews from your completed appointments will appear here." />}
   </Page>
 }
-export function PatientEmergencyBooking({ data }) { return <Page title="Emergency booking" subtitle="For life-threatening emergencies, contact local emergency services immediately."><div className="grid gap-4">{(data.clinics || []).filter((clinic) => clinic.emergencyAvailable).map((clinic) => <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={clinic.id}><h2 className="text-xl">{clinic.name}</h2><p className="mt-1 text-sm text-muted">{clinic.address}</p><div className="mt-4 flex gap-3">{clinic.phone && <a className="btn-primary bg-error hover:bg-error" href={`tel:${clinic.phone.replace(/\s/g, '')}`}>Call now</a>}<Link className="btn-primary" to="/patient/book?emergency=1">Book urgent visit</Link></div></article>)}</div></Page> }
-export function QuickClinicBooking({ data }) { const [phone, setPhone] = useState(''); const [clinic, setClinic] = useState(null); const [scanning, setScanning] = useState(false); const navigate = useNavigate(); const lookup = (event) => { event.preventDefault(); setClinic((data.clinics || []).find((item) => (item.phone || '').replace(/\D/g, '').includes(phone.replace(/\D/g, ''))) || null) }; return <Page title="Quick clinic booking" subtitle="Scan a clinic QR code or enter its registered phone number."><div className="grid gap-5 lg:grid-cols-2"><section className="rounded-card border border-border bg-white p-5 shadow-card"><p className="text-sm font-semibold text-teal-dark">Option 1</p><h2 className="mt-2 text-xl">Scan clinic QR</h2><div className="mt-4 grid h-48 place-items-center rounded-button border-2 border-dashed border-border bg-surface"><div className="text-center"><p className="text-4xl">▣</p><button type="button" onClick={() => setScanning(true)} className="btn-primary mt-3">{scanning ? 'Scanner ready' : 'Open QR scanner'}</button>{scanning && <p className="mt-2 text-xs text-muted">Camera access is unavailable in this local browser demo. Enter the clinic number instead.</p>}</div></div></section><section className="rounded-card border border-border bg-white p-5 shadow-card"><p className="text-sm font-semibold text-teal-dark">Option 2</p><h2 className="mt-2 text-xl">Clinic registered number</h2><form className="mt-5 space-y-4" onSubmit={lookup}><FormField label="Phone number" type="tel" placeholder="e.g. +91 22 4000 1111" value={phone} onChange={(event) => setPhone(event.target.value)} /><Button className="w-full">Find clinic</Button></form>{phone && !clinic && <p className="mt-4 text-sm text-muted">Enter a registered clinic number to continue.</p>}{clinic && <div className="mt-5 rounded-button bg-primary-light p-4"><h3 className="font-sans text-lg">{clinic.name}</h3><p className="mt-1 text-sm text-muted">{clinic.area?.name}, {clinic.city?.name}</p><div className="mt-4 flex flex-wrap gap-2">{(data.doctors || []).filter((doctor) => (doctor.clinics || []).some((item) => item.id === clinic.id)).map((doctor) => <button type="button" key={doctor.id} onClick={() => navigate(`/patient/book?doctorId=${doctor.id}`)} className="touch-target rounded-button border border-primary-dark px-3 text-sm font-semibold text-primary-dark">Book {doctor.name}</button>)}</div></div>}</section></div></Page> }
 const clinicRecordsCsv = (rows) => buildCsv(['Id', 'Clinic', 'Doctor', 'Owner', 'Primary', 'Online booking', 'Public profile'], rows.map((row) => [row.displayId, row.clinicName, row.doctorLabel, row.owner, row.primary, row.onlineBooking, row.publicProfile]))
 export function DoctorClinics({ data }) {
   // `currentUser` lives at the top level of the store, not inside `data`.
@@ -161,21 +183,21 @@ export function DoctorClinics({ data }) {
   // GET /clinics has no `doctors` field on list rows (only the single-clinic
   // detail endpoint does) — fetch full detail for each of "my" clinics so
   // the team table below has real assignment rows (plan §1.5).
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     setListError('')
     return fetchClinics({ mine: true })
       .then((rows) => Promise.all((rows || []).map((row) => getClinic(row.id).catch(() => {}))))
       .catch((err) => setListError(err.message || 'Could not load your clinics.'))
       .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  }, [fetchClinics, getClinic])
+  useEffect(() => { load() }, [load])
 
   const clinics = data.clinics || []
   const clinic = clinics[0] || null
   useEffect(() => {
     if (clinic) setForm({ name: clinic.name || '', phone: clinic.phone || '', cityId: clinic.city?.id || '', areaId: clinic.area?.id || '', address: clinic.address || '' })
-  }, [clinic?.id])
+  }, [clinic])
   const areaOptions = (data.areas || []).filter((area) => !form.cityId || area.cityId === form.cityId)
 
   const saveClinic = async (event) => {
@@ -320,7 +342,7 @@ export function DoctorFees() {
   const currentUser = useAppStore((state) => state.currentUser)
   const updateDoctorProfile = useAppStore((state) => state.updateDoctorProfile)
   const profile = currentUser?.profile || {}
-  const [form, setForm] = useState({ consultationFee: profile.consultationFee ?? '', emergencyFee: profile.emergencyFee ?? '' })
+  const [form, setForm] = useState({ consultationFee: profile.consultationFee ?? '' })
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -333,7 +355,7 @@ export function DoctorFees() {
     setError('')
     setSaved(false)
     try {
-      await updateDoctorProfile({ consultationFee: Number(form.consultationFee) || 0, emergencyFee: Number(form.emergencyFee) || 0 })
+      await updateDoctorProfile({ consultationFee: Number(form.consultationFee) || 0 })
       setSaved(true)
     } catch (err) {
       setError(err.message || 'Could not save your fee schedule.')
@@ -341,7 +363,7 @@ export function DoctorFees() {
       setSubmitting(false)
     }
   }
-  return <Page title="Fee management"><form onSubmit={save} className="max-w-xl rounded-card border border-border bg-white p-5 shadow-card"><div className="space-y-4"><FormField label="Consultation fee (₹)" type="number" min="0" step="0.01" value={form.consultationFee} onChange={(event) => setForm({ ...form, consultationFee: event.target.value })} required /><FormField label="Emergency consultation fee (₹)" type="number" min="0" step="0.01" value={form.emergencyFee} onChange={(event) => setForm({ ...form, emergencyFee: event.target.value })} /><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save fee schedule'}</Button><ErrorNote>{error}</ErrorNote>{saved && <p role="status" className="text-sm font-semibold text-success">Fee schedule saved.</p>}</div></form></Page>
+  return <Page title="Fee management"><form onSubmit={save} className="max-w-xl rounded-card border border-border bg-white p-5 shadow-card"><div className="space-y-4"><FormField label="Consultation fee (₹)" type="number" min="0" step="0.01" value={form.consultationFee} onChange={(event) => setForm({ ...form, consultationFee: event.target.value })} required /><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save fee schedule'}</Button><ErrorNote>{error}</ErrorNote>{saved && <p role="status" className="text-sm font-semibold text-success">Fee schedule saved.</p>}</div></form></Page>
 }
 export function DoctorPaymentSetup() {
   const fetchClinics = useAppStore((state) => state.fetchClinics)
@@ -491,7 +513,7 @@ export function DoctorStaff() {
   const fetchClinics = useAppStore((state) => state.fetchClinics)
   const fetchReceptionists = useAppStore((state) => state.fetchReceptionists)
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     setListError('')
     return fetchClinics({ mine: true })
@@ -504,8 +526,8 @@ export function DoctorStaff() {
       .then((rows) => setReceptionists(rows || []))
       .catch((err) => setListError(err.message || 'Could not load clinic staff.'))
       .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [])
+  }, [fetchClinics, fetchReceptionists])
+  useEffect(() => { load() }, [load])
 
   // Convergence note (plan §1.7): both legacy call sites (here and
   // AdminPages' ManageReceptionists) now hit the same real endpoint, which
@@ -609,24 +631,36 @@ export function SimpleInbox({ data, title = 'Notifications' }) {
     {loading && !(data.notifications || []).length ? <LoadingSkeleton /> : <div className="space-y-3">{(data.notifications || []).map((item) => <button type="button" disabled={markingId === item.id} onClick={() => handleMarkOne(item.id)} className={`block w-full rounded-card border border-border bg-white p-4 text-left shadow-card ${!item.readAt ? 'border-l-4 border-l-primary' : ''}`} key={item.id}><div className="flex items-start justify-between gap-3"><div><h2 className="text-base">{item.title}</h2><p className="mt-1 text-sm text-muted">{item.body}</p></div><span className="text-xs text-muted">{formatDate(item.createdAt)}</span></div></button>)}{!(data.notifications || []).length && <EmptyState title="No notifications yet" message="Updates and alerts will appear here." />}</div>}
   </Page>
 }
-export function ReceptionAvailability({ data }) { return <Page title="Doctor availability"><DataTable rows={data.doctors || []} columns={[
-  { key: 'name', label: 'Doctor' },
-  { key: 'clinics', label: 'Clinic', render: (item) => (item.clinics || []).map((c) => c.name).join(', ') || '—' },
-  { key: 'specialization', label: 'Specialization', render: (item) => item.specialization?.name || '—' },
-  { key: 'onlineBooking', label: 'Online booking', render: (item) => <StatusPill status={item.onlineBooking ? 'active' : 'closed'} /> },
-]} /></Page> }
-export function ReceptionEmergency({ data }) {
-  // The queue row shape has no `isEmergency` field of its own (plan §1.9) —
-  // cross-reference the linked appointment (also bulk-loaded for the
-  // receptionist role) to find the true emergency tokens.
-  const emergencyAppointmentIds = new Set((data.appointments || []).filter((appointment) => appointment.isEmergency).map((appointment) => appointment.id))
-  const tokens = (data.queueTokens || []).filter((token) => token.status !== 'completed' && emergencyAppointmentIds.has(token.appointmentId))
-  return <Page title="Emergency queue" subtitle="Urgent walk-ins are prioritised and visible to the assigned doctor."><DataTable rows={tokens} columns={[
-    { key: 'tokenNumber', label: 'Emergency token', render: (item) => `#${item.tokenNumber}` },
-    { key: 'patient', label: 'Patient', render: (item) => item.patient?.name || '—' },
-    { key: 'patientsAhead', label: 'Ahead in queue' },
-    { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
-  ]} /></Page>
+export function ReceptionAvailability({ data }) {
+  const fetchAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
+  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+    fetchAvailability({ date })
+      .then((result) => { if (!cancelled) setRows(result || []) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Could not load slot availability.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [date, fetchAvailability])
+  const doctors = data.doctors || []
+  const tableRows = rows.map((row) => ({ ...row, doctor: doctors.find((doctor) => doctor.id === row.doctorUserId) }))
+  return <Page title="Doctor availability" subtitle="See scheduled, available, and already booked slots for every doctor." action={<FormField label="Date" type="date" min={new Date().toLocaleDateString('en-CA')} value={date} onChange={(event) => setDate(event.target.value)} />}>
+    <ErrorNote>{error}</ErrorNote>
+    {loading ? <LoadingSkeleton /> : <DataTable rows={tableRows} columns={[
+      { key: 'doctorName', label: 'Doctor' },
+      { key: 'clinicName', label: 'Clinic' },
+      { key: 'specialization', label: 'Specialization', render: (item) => item.doctor?.specialization?.name || '—' },
+      { key: 'totalSlots', label: 'Total slots' },
+      { key: 'availableSlots', label: 'Available' },
+      { key: 'bookedSlots', label: 'Booked' },
+      { key: 'emergency', label: 'Emergency', render: (item) => <StatusPill status={item.emergencyAvailable ? 'available' : 'unavailable'} /> },
+    ]} />}
+  </Page>
 }
 export function ReceptionReports({ data }) {
   // `payment.fees`/`appointment.fees` are the role-masked nested objects now
@@ -655,7 +689,6 @@ export function ReceptionReports({ data }) {
     <div className="mt-5"><DataTable rows={clinicPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'receiptNumber', label: 'Receipt' }, { key: 'mode', label: 'Mode' }, { key: 'doctorCharge', label: 'Doctor charge', render: (item) => `₹${item.doctorCharge}` }]} /></div>
   </Page>
 }
-export function AdminForm({ title, subtitle, fields = [], rows, columns }) { const [saved, setSaved] = useState(false); const drafts = useAppStore((state) => state.drafts); const saveDraft = useAppStore((state) => state.saveDraft); const draft = drafts[title] || EMPTY_DRAFT; const save = (event) => { event.preventDefault(); saveDraft(title, Object.fromEntries(new FormData(event.currentTarget).entries())); setSaved(true) }; return <Page title={title} subtitle={subtitle}>{rows ? <DataTable rows={rows} columns={columns} /> : <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card"><div className="space-y-4">{fields.map((field) => { const name = field.name || field.label; return <FormField key={field.label} {...field} name={name} defaultValue={draft[name] || field.defaultValue} /> })}<Button type="submit">Save changes</Button>{saved && <p role="status" className="text-sm font-semibold text-success">Changes saved in this browser.</p>}</div></form>}</Page> }
 const superAdminLinks = [
   ['People & clinics', '/super-admin/entities', 'Create and control doctors, patients, receptionists, and clinics.', '👥'],
   ['Payments & revenue', '/super-admin/revenue', 'Review every saved payment and the platform total.', '₹'],

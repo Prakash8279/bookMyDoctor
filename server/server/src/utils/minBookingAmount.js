@@ -132,10 +132,10 @@ function computeMinBookingRemainder({ consultationFee, minBookingAdvanceAmount }
  * un-split full payment, where the ratio is exactly 1 and the result is unchanged either way).
  * The four returned figures always sum to exactly `amount` (within paisa rounding).
  *
- * @param {{consultationFee:number, convenienceFee:number, emergencyFee:number, gstAmount:number, minBookingAdvanceAmount:number|null, amount:number}} input
+ * @param {{consultationFee:number, convenienceFee:number, emergencyFee:number, gstAmount:number, minBookingAdvanceAmount:number|null, bookingPaymentPolicy?:string, amount:number}} input
  * @returns {{consultationFee:number, convenienceFee:number, emergencyFee:number, gstAmount:number}}
  */
-function resolvePaymentRowFeeSplit({ consultationFee, convenienceFee, emergencyFee, gstAmount, minBookingAdvanceAmount, amount }) {
+function resolvePaymentRowFeeSplit({ consultationFee, convenienceFee, emergencyFee, gstAmount, minBookingAdvanceAmount, bookingPaymentPolicy, amount }) {
   const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const consultationFeeNum = Number(consultationFee) || 0;
   const convenienceFeeNum = Number(convenienceFee) || 0;
@@ -143,6 +143,15 @@ function resolvePaymentRowFeeSplit({ consultationFee, convenienceFee, emergencyF
   const gstAmountNum = Number(gstAmount) || 0;
   const amountNum = Number(amount) || 0;
   const closeTo = (a, b) => Math.abs(a - b) < 0.01;
+
+  if (bookingPaymentPolicy === 'platform_only' && closeTo(amountNum, convenienceFeeNum + emergencyFeeNum)) {
+    return {
+      consultationFee: 0,
+      convenienceFee: round2(convenienceFeeNum),
+      emergencyFee: round2(emergencyFeeNum),
+      gstAmount: 0,
+    };
+  }
 
   const minBookingAmount = computeMinBookingAmount({
     consultationFee: consultationFeeNum,

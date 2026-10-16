@@ -31,7 +31,6 @@ const createAppointment = [
     .matches(TIME_RE)
     .withMessage('appointmentTime must be in HH:MM 24-hour format.'),
   body('reason').optional({ values: 'falsy' }).isString().trim().isLength({ max: 1000 }),
-  body('isEmergency').optional({ values: 'falsy' }).isBoolean().withMessage('isEmergency must be a boolean.').toBoolean(),
   body('familyMemberId').optional({ values: 'falsy' }).isUUID().withMessage('familyMemberId must be a valid id.'),
   body('patientUserId').optional({ values: 'falsy' }).isUUID().withMessage('patientUserId must be a valid id.'),
   // COMPLETENESS FIX (audit Priority 1 #2 — walk-in registration): a receptionist/admin booking
@@ -50,6 +49,12 @@ const createAppointment = [
 ];
 
 const bookingStatus = [param('jobId').isUUID().withMessage('jobId must be a valid id.')];
+
+const availability = [
+  query('date').notEmpty().withMessage('date is required.').matches(DATE_RE).withMessage('date must be in YYYY-MM-DD format.'),
+  query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid id.'),
+  query('clinicId').optional({ values: 'falsy' }).isUUID().withMessage('clinicId must be a valid id.'),
+];
 
 const listAppointments = [
   query('status')
@@ -84,4 +89,4 @@ const updateStatus = [
     .withMessage('status must be one of: confirmed, completed, cancelled, no_show.'),
 ];
 
-module.exports = { createAppointment, bookingStatus, listAppointments, getAppointment, updateStatus };
+module.exports = { createAppointment, bookingStatus, availability, listAppointments, getAppointment, updateStatus };

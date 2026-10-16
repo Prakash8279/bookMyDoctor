@@ -56,6 +56,10 @@ const PatientDashboard = lazyNamed(() => import('./pages/PatientPages'), 'Patien
 const PatientSettings = lazyNamed(() => import('./pages/PatientPages'), 'PatientSettings')
 const Payments = lazyNamed(() => import('./pages/PatientPages'), 'Payments')
 
+const PatientMedicalRecords = lazyNamed(() => import('./pages/OperationsPages'), 'PatientMedicalRecords')
+const PatientComplaints = lazyNamed(() => import('./pages/OperationsPages'), 'PatientComplaints')
+const PaymentOperations = lazyNamed(() => import('./pages/OperationsPages'), 'PaymentOperations')
+
 const Analytics = lazyNamed(() => import('./pages/StaffPages'), 'Analytics')
 const CashPayment = lazyNamed(() => import('./pages/StaffPages'), 'CashPayment')
 const CheckIn = lazyNamed(() => import('./pages/StaffPages'), 'CheckIn')
@@ -89,12 +93,10 @@ const DoctorFees = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorFees')
 const DoctorPaymentSetup = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorPaymentSetup')
 const DoctorReviews = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorReviews')
 const DoctorStaff = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorStaff')
-const PatientEmergencyBooking = lazyNamed(() => import('./pages/FeaturePages'), 'PatientEmergencyBooking')
 const PatientReviews = lazyNamed(() => import('./pages/FeaturePages'), 'PatientReviews')
 const PublicContent = lazyNamed(() => import('./pages/FeaturePages'), 'PublicContent')
 const QuickClinicBooking = lazyNamed(() => import('./pages/FeaturePages'), 'QuickClinicBooking')
 const ReceptionAvailability = lazyNamed(() => import('./pages/FeaturePages'), 'ReceptionAvailability')
-const ReceptionEmergency = lazyNamed(() => import('./pages/FeaturePages'), 'ReceptionEmergency')
 const ReceptionReports = lazyNamed(() => import('./pages/FeaturePages'), 'ReceptionReports')
 const SimpleInbox = lazyNamed(() => import('./pages/FeaturePages'), 'SimpleInbox')
 const SuperAdminDashboard = lazyNamed(() => import('./pages/FeaturePages'), 'SuperAdminDashboard')
@@ -208,13 +210,13 @@ export default function App() {
       <Route path="book" element={requires('patient', <Booking data={data} />)} />
       <Route path="appointments" element={requires('patient', <PatientAppointments data={data} />)} />
       <Route path="booking-history" element={requires('patient', <BookingHistory data={data} />)} />
-      <Route path="records" element={requires('patient', <BookingHistory data={data} />)} />
+      <Route path="records" element={requires('patient', <PatientMedicalRecords data={data} />)} />
+      <Route path="complaints" element={requires('patient', <PatientComplaints data={data} />)} />
       <Route path="queue" element={requires('patient', <QueueTracker data={data} />)} />
       <Route path="quick-book" element={requires('patient', <QuickClinicBooking data={data} />)} />
       <Route path="family" element={requires('patient', <Family data={data} />)} />
       <Route path="payments" element={requires('patient', <Payments data={data} />)} />
       <Route path="reviews" element={requires('patient', <PatientReviews data={data} />)} />
-      <Route path="emergency" element={requires('patient', <PatientEmergencyBooking data={data} />)} />
       <Route path="notifications" element={requires('patient', <Notifications data={data} />)} />
       <Route path="profile" element={requires('patient', <PortalProfile data={data} />)} />
       <Route path="settings" element={requires('patient', <PatientSettings data={data} />)} />
@@ -254,7 +256,6 @@ export default function App() {
       <Route path="payments" element={requires('receptionist', <CashPayment data={data} />)} />
       <Route path="appointments" element={requires('receptionist', <ReceptionAppointments data={data} />)} />
       <Route path="availability" element={requires('receptionist', <ReceptionAvailability data={data} />)} />
-      <Route path="emergency" element={requires('receptionist', <ReceptionEmergency data={data} />)} />
       <Route path="reports" element={requires('receptionist', <ReceptionReports data={data} />)} />
       <Route path="patients" element={requires('receptionist', <PortalPatients data={data} />)} />
       <Route path="notifications" element={requires('receptionist', <SimpleInbox data={data} />)} />
@@ -290,6 +291,7 @@ export default function App() {
       <Route path="patients" element={requires('admin', <ManagePatients data={data} />)} />
       <Route path="receptionists" element={requires('admin', <ManageReceptionists data={data} />)} />
       <Route path="revenue" element={requires('admin', <RevenueReports data={data} />)} />
+      <Route path="payment-operations" element={requires('admin', <PaymentOperations data={data} />)} />
       <Route path="appointments" element={requires('admin', <PortalAppointments data={data} role="admin" />)} />
       <Route path="specializations" element={requires('admin', <Specializations data={data} />)} />
       <Route path="reviews" element={requires('admin', <ReviewModeration data={data} />)} />
@@ -312,6 +314,7 @@ export default function App() {
       <Route path="clinics" element={requires('superadmin', <ManageClinics data={data} />)} />
       <Route path="receptionists" element={requires('superadmin', <ManageReceptionists data={data} />)} />
       <Route path="revenue" element={requires('superadmin', <RevenueReports data={data} />)} />
+      <Route path="payment-operations" element={requires('superadmin', <PaymentOperations data={data} />)} />
       <Route path="charges" element={requires('superadmin', <PlatformCharges audience="superadmin" />)} />
       <Route path="cities" element={requires('superadmin', <CitiesAreas data={data} />)} />
       <Route path="tenants" element={requires('superadmin', <ManageClinics data={data} />)} />

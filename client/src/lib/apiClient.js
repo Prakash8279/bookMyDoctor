@@ -203,6 +203,13 @@ apiClient.interceptors.response.use(
         /* primitive data (rare) — skip attaching */
       }
     }
+    if (body && body.kpi !== undefined) {
+      try {
+        Object.defineProperty(data, '__kpi', { value: body.kpi, enumerable: false, configurable: true })
+      } catch {
+        /* primitive data (rare) — skip attaching */
+      }
+    }
     return data
   },
   async (error) => {

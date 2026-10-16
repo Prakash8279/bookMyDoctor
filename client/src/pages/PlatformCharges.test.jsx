@@ -33,10 +33,10 @@ const initialStoreState = useAppStore.getState()
 const SAVED_CHARGES = {
   commissionPercent: 12,
   patientConvenienceFee: 30,
-  emergencyFee: 60,
+  emergencyFee: 0,
   gstPercent: 18,
   applyConvenienceFee: true,
-  applyEmergencyFee: true,
+  applyEmergencyFee: false,
 }
 
 beforeEach(() => {
@@ -87,22 +87,14 @@ describe('PlatformCharges', () => {
     // commission is a platform-internal figure, not something patients pay), so it's
     // deliberately not asserted here.
     expect(await screen.findByLabelText(/Platform charge \(₹\)/)).toHaveValue(30)
-    expect(screen.getByLabelText(/Emergency booking fee \(₹\)/)).toHaveValue(60)
     expect(screen.getByLabelText(/^Transaction charge \(%\)/)).toHaveValue(18)
     expect(screen.getByLabelText('Apply platform charge to online bookings')).toBeChecked()
-    expect(screen.getByLabelText('Apply emergency fee to urgent bookings')).toBeChecked()
+    expect(screen.queryByLabelText(/Emergency booking fee/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Apply emergency fee/i)).not.toBeInTheDocument()
 
-    // The example bill defaults to a non-emergency booking: consultation 900 + platform charge 30
-    // = 930 subtotal; GST 18% of 930 = 167.4; total = 1097.4 -> formatMoney rounds to 2 decimal
-    // places, en-IN grouping. Platform charge and emergency fee are mutually exclusive (see
-    // appointments.service.js#runBookingJob) — the emergency fee only appears once the "This is an
-    // emergency booking" toggle below is checked, at which point the platform charge drops to 0.
+    // Consultation 900 + platform charge 30 = 930 subtotal; GST 18% of 930 = 167.4;
+    // total = 1097.4 -> formatMoney rounds to 2 decimal places, en-IN grouping.
     expect(screen.getByText('₹1,097.4')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByLabelText('This is an emergency booking'))
-    // consultation 900 + emergency 60 (platform charge now 0) = 960 subtotal; GST 18% of 960 =
-    // 172.8; total = 1132.8.
-    expect(screen.getByText('₹1,132.8')).toBeInTheDocument()
   })
 
   it('shows an inline error when the initial fetch fails', async () => {
@@ -115,12 +107,11 @@ describe('PlatformCharges', () => {
 
   it('submits the full-replace payload, leaving commissionPercent untouched since it is not editable here', async () => {
     apiClient.get.mockResolvedValue(SAVED_CHARGES)
-    apiClient.put.mockResolvedValue({ ...SAVED_CHARGES, applyEmergencyFee: false })
+    apiClient.put.mockResolvedValue(SAVED_CHARGES)
 
     render(<PlatformCharges />)
     await screen.findByLabelText(/Platform charge \(₹\)/)
 
-    fireEvent.click(screen.getByLabelText('Apply emergency fee to urgent bookings'))
     fireEvent.click(screen.getByRole('button', { name: /Save platform charges/i }))
 
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(1))
@@ -130,7 +121,7 @@ describe('PlatformCharges', () => {
     expect(apiClient.put).toHaveBeenCalledWith('/platform-charges', {
       commissionPercent: 12,
       patientConvenienceFee: 30,
-      emergencyFee: 60,
+      emergencyFee: 0,
       gstPercent: 18,
       applyConvenienceFee: true,
       applyEmergencyFee: false,
@@ -197,7 +188,7 @@ describe('PlatformCharges role gating (RoleGuard, via App)', () => {
 
     // RoleGuard bounces a role mismatch to that role's own dashboard instead of showing the
     // admin-only page.
-    expect(await screen.findByText(/Welcome, Nikhil\./i)).toBeInTheDocument()
+    expect(await screen.findAllByText(/Welcome, Nikhil\./i)).not.toHaveLength(0)
     expect(screen.queryByText('Platform charges')).not.toBeInTheDocument()
   })
 })

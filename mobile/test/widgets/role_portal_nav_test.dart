@@ -10,7 +10,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Portal Nav & Feature Parity Tests', () {
-    testWidgets('PatientHomeScreen has exactly 11 items matching reachable web experience', (tester) async {
+    testWidgets('PatientHomeScreen exposes all patient workflows', (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -24,18 +24,21 @@ void main() {
       );
 
       final roleScaffold = const PatientHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 11);
+      expect(roleScaffold.items.length, 14);
 
       final expectedLabels = [
         'Dashboard',
         'Find doctors',
         'Book appointment',
+        'Quick clinic booking',
         'My appointments',
         'Queue tracker',
         'Booking history',
+        'Medical records',
         'Payments',
         'Family members',
         'My reviews',
+        'Help & complaints',
         'Notifications',
         'My profile',
       ];
@@ -50,7 +53,7 @@ void main() {
       }
     });
 
-    testWidgets('DoctorHomeScreen has exactly 16 items matching web Sidebar.jsx', (tester) async {
+    testWidgets('DoctorHomeScreen matches the web doctor navigation', (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -64,12 +67,13 @@ void main() {
       );
 
       final roleScaffold = const DoctorHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 11);
+      expect(roleScaffold.items.length, 12);
 
       final expectedLabels = [
         'Dashboard',
         'Queue management',
         'Appointments',
+        'Consultation & EMR',
         'Analytics',
         'Patient reviews',
         'Notifications',
@@ -90,7 +94,7 @@ void main() {
       }
     });
 
-    testWidgets('ReceptionistHomeScreen has exactly 9 items matching web Sidebar.jsx', (tester) async {
+    testWidgets('ReceptionistHomeScreen matches the web receptionist navigation', (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -104,13 +108,15 @@ void main() {
       );
 
       final roleScaffold = const ReceptionistHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 9);
+      expect(roleScaffold.items.length, 11);
 
       final expectedLabels = [
         'Dashboard',
         'Walk-in registration',
         'Queue monitor',
+        'Check-in',
         'Appointments',
+        'Doctor availability',
         'Payments',
         'Patients',
         'Notifications',
@@ -128,7 +134,7 @@ void main() {
       }
     });
 
-    testWidgets('AdminHomeScreen for Admin has exactly 16 items matching web Sidebar.jsx', (tester) async {
+    testWidgets('AdminHomeScreen for Admin includes payment operations', (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -143,7 +149,7 @@ void main() {
 
       final roleScaffold = const AdminHomeScreen(isSuperAdmin: false).build(capturedContext) as RoleScaffold;
       expect(roleScaffold.portalTitle, 'Admin control panel');
-      expect(roleScaffold.items.length, 16);
+      expect(roleScaffold.items.length, 17);
 
       final expectedLabels = [
         'Dashboard',
@@ -155,6 +161,7 @@ void main() {
         'Specializations',
         'Appointments',
         'Revenue',
+        'Refunds & reconciliation',
         'Review moderation',
         'Complaints',
         'Contact inbox',
@@ -174,7 +181,7 @@ void main() {
       }
     });
 
-    testWidgets('AdminHomeScreen for Superadmin has exactly 21 items matching web Sidebar.jsx', (tester) async {
+    testWidgets('AdminHomeScreen for Superadmin includes payment operations', (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -189,13 +196,14 @@ void main() {
 
       final roleScaffold = const AdminHomeScreen(isSuperAdmin: true).build(capturedContext) as RoleScaffold;
       expect(roleScaffold.portalTitle, 'Super Admin control panel');
-      expect(roleScaffold.items.length, 21);
+      expect(roleScaffold.items.length, 22);
 
       final expectedLabels = [
         // Super Admin workspace (first 10 items)
         'Control center',
         'People & clinics',
         'Payments & revenue',
+        'Refunds & reconciliation',
         'Platform charges',
         'Cities & service areas',
         'Clinic tenants',
@@ -221,8 +229,8 @@ void main() {
         expect(roleScaffold.items[i].label, expectedLabels[i]);
       }
 
-      // Verify section divider above item 10 ('Dashboard')
-      expect(roleScaffold.items[10].headerAbove, 'Admin workspace');
+      // Verify section divider above item 11 ('Dashboard')
+      expect(roleScaffold.items[11].headerAbove, 'Admin workspace');
 
       for (final item in roleScaffold.items) {
         final widget = item.builder(capturedContext);

@@ -7,6 +7,11 @@ const complaintsService = require('./complaints.service');
 const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
+const createComplaint = asyncHandler(async (req, res) => {
+  const complaint = await complaintsService.createComplaint(req.body, req.user);
+  return success(res, complaint, { statusCode: 201, message: 'Complaint submitted.' });
+});
+
 const updateComplaint = asyncHandler(async (req, res) => {
   const complaint = await complaintsService.updateComplaint(req.params.id, req.body, req.user);
   return success(res, complaint, { message: 'Complaint updated.' });
@@ -18,4 +23,4 @@ const listComplaints = asyncHandler(async (req, res) => {
   return success(res, rows, { pagination });
 });
 
-module.exports = { updateComplaint, listComplaints };
+module.exports = { createComplaint, updateComplaint, listComplaints };

@@ -48,19 +48,19 @@ export function PdfPreviewModal({ preview, onClose, title = 'Document preview' }
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-charcoal/40 p-4"
+      className="app-modal-backdrop fixed inset-0 z-50 grid place-items-center bg-charcoal/40 p-4"
       role="presentation"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
-      <section ref={dialog} onKeyDown={trapFocus} role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title" className="flex h-[90vh] w-full max-w-3xl flex-col rounded-card bg-white p-4 shadow-card">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="pdf-preview-title" className="text-lg font-semibold">{title}</h2>
-          <div className="flex items-center gap-2">
-            <a ref={downloadRef} href={preview.url} download={preview.filename} className="btn-primary">↓ Download</a>
+      <section ref={dialog} onKeyDown={trapFocus} role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title" className="pdf-preview-panel flex h-[90dvh] w-full max-w-3xl flex-col rounded-card bg-white p-4 shadow-card">
+        <div className="pdf-preview-header flex items-center justify-between gap-3">
+          <h2 id="pdf-preview-title" className="min-w-0 text-lg font-semibold [overflow-wrap:anywhere]">{title}</h2>
+          <div className="pdf-preview-actions flex shrink-0 items-center gap-2">
+            <a ref={downloadRef} href={preview.url} download={preview.filename} className="btn-primary min-w-0">↓ Download</a>
             <button type="button" className="touch-target text-2xl text-muted" onClick={onClose} aria-label="Close preview">×</button>
           </div>
         </div>
-        <iframe src={preview.url} title={title} className="mt-3 flex-1 rounded-button border border-border" />
+        <iframe src={preview.url} title={title} className="mt-3 min-h-0 w-full flex-1 rounded-button border border-border" />
       </section>
     </div>
   )

@@ -39,18 +39,6 @@ function razorpayAuthHeader() {
 }
 
 /**
- * Looks up the authoritative amount (in rupees) Razorpay actually created an order for, given
- * its order id. Used at verify time instead of trusting any amount the frontend might send —
- * the frontend never gets a say in how much an order was for; it only ever echoes back
- * order/payment ids and a signature. Reused by verifyAndRecordPayment to decide whether the
- * patient paid the full consultation fee or just the doctor's minimum advance amount.
- * @param {string} orderId
- */
-async function fetchOrderAmountRupees(orderId) {
-  return (await fetchOrderDetails(orderId)).amountRupees;
-}
-
-/**
  * Fetches an order's authoritative amount AND its `notes` (the {appointmentId, patientUserId,
  * paymentOption} createOrder stamped on it — see that function below) directly from Razorpay,
  * never trusted from the frontend. verifyAndRecordPayment uses `notes` to confirm this order was
@@ -126,6 +114,7 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
       convenienceFee: true,
       emergencyFee: true,
       gstAmount: true,
+      bookingPaymentPolicy: true,
     },
   });
   if (!appointment) {
@@ -145,7 +134,7 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
  * just enough for the frontend to open Razorpay Checkout — never the key secret.
  * @param {string} appointmentId
  * @param {{id:string, role:string}} requester
- * @param {'full'|'minimum'} [paymentOption]
+ * @param {'full'|'minimum'|'platform_only'} [paymentOption]
  */
 async function createOrder(appointmentId, requester, paymentOption = 'full') {
   assertGatewayConfigured();
@@ -204,6 +193,24 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
     );
   }
 
+  const bookingPaymentPolicy = appointment.bookingPaymentPolicy || 'full';
+  const allowedOptions = bookingPaymentPolicy === 'minimum_or_full'
+    ? ['minimum', 'full']
+    : bookingPaymentPolicy === 'platform_only'
+    ? ['platform_only']
+    : ['full'];
+  if (!allowedOptions.includes(paymentOption)) {
+    throw new ApiError(
+      400,
+      'PAYMENT_OPTION_NOT_ALLOWED',
+      bookingPaymentPolicy === 'platform_only'
+        ? 'This booking only requires the platform charge.'
+        : bookingPaymentPolicy === 'minimum_or_full'
+        ? 'Choose either the minimum booking amount or the full amount.'
+        : 'This booking requires full payment.'
+    );
+  }
+
   // ATOMIC PAYMENT HOLD & CAPACITY RESERVATION
   // Under PostgreSQL advisory lock for (doctorUserId, appointmentDate):
   // 1. Lock doctor + appointment_date.
@@ -252,7 +259,9 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
   }
 
   let amountToCharge = appointment.totalAmount;
-  if (paymentOption === 'minimum') {
+  if (paymentOption === 'platform_only') {
+    amountToCharge = appointment.convenienceFee;
+  } else if (paymentOption === 'minimum') {
     // MIN-BOOKING-AMOUNT FIX (superadmin request) — this used to charge the doctor's raw
     // minBookingAdvanceAmount verbatim, meaning the platform collected ZERO cut whenever a
     // patient chose the "pay minimum now" option. Now derives the same minBookingAmount figure

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
@@ -96,6 +97,34 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
                   childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
                   children: [
                     FutureBuilder<ApiResponse>(
+                      future: ApiClient.instance.get('/appointments/availability', query: {
+                        'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                        'doctorId': d.doctorUserId,
+                        'clinicId': clinic.id,
+                      }),
+                      builder: (context, slotSnapshot) {
+                        final row = slotSnapshot.data?.list.isNotEmpty == true ? slotSnapshot.data!.list.first : null;
+                        if (slotSnapshot.connectionState != ConnectionState.done) {
+                          return const Padding(padding: EdgeInsets.only(bottom: AppSpacing.sm), child: LinearProgressIndicator());
+                        }
+                        if (row == null) return const SizedBox.shrink();
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          padding: const EdgeInsets.all(AppSpacing.sm),
+                          decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10)),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _slotMetric('Total', row['totalSlots']),
+                              _slotMetric('Available', row['availableSlots'], color: AppColors.success),
+                              _slotMetric('Booked', row['bookedSlots'], color: AppColors.primary),
+                              _slotMetric('Emergency', row['emergencyAvailable'] == true ? 'Yes' : 'No', color: row['emergencyAvailable'] == true ? AppColors.danger : AppColors.textSecondary),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    FutureBuilder<ApiResponse>(
                       future: ApiClient.instance.get('/clinics/${clinic.id}/hours', query: {'doctorId': d.doctorUserId, 'pageSize': 20}),
                       builder: (context, hSnap) {
                         if (hSnap.connectionState != ConnectionState.done) {
@@ -140,3 +169,10 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
     );
   }
 }
+
+Widget _slotMetric(String label, dynamic value, {Color color = AppColors.textPrimary}) => Column(
+      children: [
+        Text('$value', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+      ],
+    );

@@ -16,10 +16,8 @@ import '../../widgets/common_widgets.dart';
 /// Razorpay Checkout -> POST /payments/razorpay/verify with the checkout's response, then trust
 /// the freshly re-fetched appointment the backend returns rather than guessing its new shape.
 ///
-/// Only the "pay full amount" path is wired here (not web's separate "pay just the minimum
-/// booking amount, rest at the clinic" option) — that second option depends on
-/// doctorProfile.minBookingAdvanceAmount, which isn't modelled on mobile's DoctorDirectoryItem
-/// yet; flagged as a follow-up rather than bolted on here.
+/// Supports the doctor's three booking rules: platform charge only, minimum-or-full choice,
+/// and full payment only. The backend remains authoritative for which option is allowed.
 class PaymentRequiredScreen extends StatefulWidget {
   final Appointment appointment;
   const PaymentRequiredScreen({super.key, required this.appointment});
@@ -66,7 +64,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
         'currency': order['currency'],
         'order_id': order['orderId'],
         'name': 'BookADoctors',
-        'description': 'Consultation with ${_appointment.doctor?.name ?? "doctor"}${option == "minimum" ? " · Booking amount" : ""}',
+        'description': 'Consultation with ${_appointment.doctor?.name ?? "doctor"}${option == "minimum" ? " · Booking amount" : option == "platform_only" ? " · Platform charge" : ""}',
         'theme': {'color': '#AD5D3B'},
       });
     } catch (err) {
@@ -137,6 +135,8 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
     final total = _appointment.fees.totalAmount ?? 0;
     final minAmount = _appointment.fees.minBookingAmount ?? 0;
     final minRemainder = _appointment.fees.minBookingRemainder ?? 0;
+    final paymentPolicy = _appointment.fees.bookingPaymentPolicy ?? (minAmount > 0 ? 'minimum_or_full' : 'full');
+    final platformOnlyAmount = _appointment.fees.platformOnlyBookingAmount ?? 0;
     final paid = _appointment.status != 'pending_payment';
 
     return Scaffold(
@@ -274,16 +274,17 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                       ErrorBanner(error: _error!),
                       const SizedBox(height: AppSpacing.md),
                     ],
-                    SectionCard(
-                      title: 'Full consultation amount',
-                      trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                      child: PrimaryButton(
-                        label: 'Pay ₹${total.toStringAsFixed(0)} now',
-                        onPressed: () => _payNow('full'),
-                        loading: _payingNow,
+                    if (paymentPolicy != 'platform_only')
+                      SectionCard(
+                        title: 'Full consultation amount',
+                        trailing: Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        child: PrimaryButton(
+                          label: 'Pay ₹${total.toStringAsFixed(0)} now',
+                          onPressed: () => _payNow('full'),
+                          loading: _payingNow,
+                        ),
                       ),
-                    ),
-                    if (minAmount > 0) ...[
+                    if (paymentPolicy == 'minimum_or_full' && minAmount > 0) ...[
                       const SizedBox(height: AppSpacing.md),
                       SectionCard(
                         title: 'Minimum booking amount',
@@ -304,6 +305,27 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                               ),
                               onPressed: _payingNow ? null : () => _payNow('minimum'),
                               child: Text('Pay ₹${minAmount.toStringAsFixed(0)} now', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (paymentPolicy == 'platform_only') ...[
+                      SectionCard(
+                        title: 'Platform charge only',
+                        trailing: Text('₹${platformOnlyAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'No doctor advance is charged online. Consultation fee is payable at the clinic.',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            PrimaryButton(
+                              label: 'Pay ₹${platformOnlyAmount.toStringAsFixed(0)} now',
+                              onPressed: () => _payNow('platform_only'),
+                              loading: _payingNow,
                             ),
                           ],
                         ),

@@ -25,9 +25,7 @@ dependencies:
   # api_client.dart imports it explicitly for MediaType. Run `flutter pub get` after pulling this.
   image_picker: ^1.2.3
   http_parser: ^4.0.2
-  # COMPLETENESS FIX (mobile parity — client/src/pages/FeaturePages.jsx#PatientEmergencyBooking):
-  # "Call now" button on screens/patient/emergency_booking_screen.dart dials a clinic's phone
-  # number via the device dialer. Run `flutter pub get` after pulling this.
+  # Used by clinic/contact/profile actions that open phone, email, and external links.
   url_launcher: ^6.3.1
   # COMPLETENESS FIX (brand consistency — user asked the app to look "same to same" as the
   # website): theme/app_theme.dart now renders the whole app in Inter, matching the website's own
