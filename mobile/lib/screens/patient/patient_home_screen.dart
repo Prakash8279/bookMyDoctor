@@ -9,15 +9,12 @@ import 'family_members_screen.dart';
 import 'patient_dashboard_screen.dart';
 import 'patient_search_screen.dart';
 import 'payments_screen.dart';
-import 'medical_records_screen.dart';
 import 'complaints_screen.dart';
-import 'quick_clinic_booking_screen.dart';
 import 'queue_tracker_screen.dart';
 import 'reviews_screen.dart';
 
-/// Patient portal shell. The list stays aligned with the web portal and includes the complete
-/// booking, clinic phone lookup, records, payments, reviews, complaints, notification, and profile
-/// workflows. Clinical records are read-only for patients; complaint creation is patient-owned.
+/// Patient portal shell. Help, complaints, and policy links share one destination so the main
+/// navigation stays compact and aligned with the web portal.
 class PatientHomeScreen extends StatelessWidget {
   const PatientHomeScreen({super.key});
 
@@ -29,15 +26,13 @@ class PatientHomeScreen extends StatelessWidget {
         RoleNavItem(icon: Icons.dashboard_outlined, label: 'Dashboard', builder: _buildDashboard),
         RoleNavItem(icon: Icons.search_rounded, label: 'Find doctors', builder: _buildSearch),
         RoleNavItem(icon: Icons.calendar_month_outlined, label: 'Book appointment', builder: _buildBook),
-        RoleNavItem(icon: Icons.local_hospital_outlined, label: 'Quick clinic booking', builder: _buildQuickBook),
         RoleNavItem(icon: Icons.event_note_outlined, label: 'My appointments', builder: _buildAppointments),
         RoleNavItem(icon: Icons.confirmation_number_outlined, label: 'Queue tracker', builder: _buildQueue),
         RoleNavItem(icon: Icons.history_rounded, label: 'Booking history', builder: _buildHistory),
-        RoleNavItem(icon: Icons.folder_shared_outlined, label: 'Medical records', builder: _buildMedicalRecords),
         RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Payments', builder: _buildPayments),
         RoleNavItem(icon: Icons.people_outline, label: 'Family members', builder: _buildFamily),
         RoleNavItem(icon: Icons.star_outline_rounded, label: 'My reviews', builder: _buildReviews),
-        RoleNavItem(icon: Icons.support_agent_outlined, label: 'Help & complaints', builder: _buildComplaints),
+        RoleNavItem(icon: Icons.support_agent_outlined, label: 'Help & Policies', builder: _buildComplaints),
         RoleNavItem(icon: Icons.notifications_none, label: 'Notifications', builder: _buildNotifications),
         RoleNavItem(icon: Icons.person_outline, label: 'My profile', builder: _buildProfile),
       ],
@@ -48,11 +43,9 @@ class PatientHomeScreen extends StatelessWidget {
 Widget _buildDashboard(BuildContext context) => const PatientDashboardScreen();
 Widget _buildSearch(BuildContext context) => const PatientSearchScreen();
 Widget _buildBook(BuildContext context) => const BookAppointmentScreen();
-Widget _buildQuickBook(BuildContext context) => const QuickClinicBookingScreen();
 Widget _buildAppointments(BuildContext context) => const PatientAppointmentsScreen();
 Widget _buildQueue(BuildContext context) => const QueueTrackerScreen(embedded: true);
 Widget _buildHistory(BuildContext context) => const PatientAppointmentsScreen(isHistory: true);
-Widget _buildMedicalRecords(BuildContext context) => const PatientMedicalRecordsScreen();
 Widget _buildPayments(BuildContext context) => const PatientPaymentsScreen();
 Widget _buildFamily(BuildContext context) => const FamilyMembersScreen();
 Widget _buildReviews(BuildContext context) => const PatientReviewsScreen();

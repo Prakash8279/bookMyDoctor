@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
@@ -71,31 +71,6 @@ export function PublicContent({ kind }) {
   if (kind === 'contact') return <><SiteHeader /><section className="bg-surface px-4 py-14 sm:px-6"><div className="mx-auto max-w-5xl"><p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">We are here to help</p><h1 className="mt-3 text-4xl sm:text-5xl">{content[0]}</h1><p className="mt-4 max-w-xl text-sm text-muted">{content[1]}</p></div></section><main className="mx-auto max-w-5xl px-4 pb-14 sm:px-6"><div className="grid gap-6 lg:grid-cols-[.8fr_1.2fr]"><article className="rounded-card bg-charcoal p-6 text-white"><h2 className="text-xl text-white">Support that listens</h2><p className="mt-2 text-sm text-white/70">Send your query and our team will route it to the right specialist.</p><div className="mt-6 divide-y divide-white/10 border-t border-white/10">{CONTACT_ROWS.map((row) => <div key={row.label} className="flex items-start gap-3 py-4"><span className="mt-0.5 text-white/70">{row.icon}</span><div><p className="font-semibold text-white">{row.label}</p><p className="mt-0.5 text-sm text-white/60">{row.value}</p></div></div>)}</div></article><form onSubmit={send} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="grid gap-4 sm:grid-cols-2"><FormField label="Name" name="name" required /><FormField label="Email" name="email" type="email" required /></div><div className="mt-4"><FormField label="Subject" name="subject" type="select" options={['Appointment support', 'Doctor registration', 'Payment or billing', 'Technical issue', 'Other']} defaultValue="Appointment support" required /></div><div className="mt-4"><FormField label="How can we help?" name="message" type="textarea" required /></div><Button type="submit" className="mt-4 inline-flex items-center gap-2" disabled={submitting}><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path d="m21.854 2.147-10.94 10.939"></path></svg>{submitting ? 'Sending…' : 'Send message'}</Button><ErrorNote>{error}</ErrorNote>{sent && <p role="status" className="mt-3 text-sm font-semibold text-success">Message sent.</p>}</form></div></main></>
   return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-12 sm:px-6"><article className="rounded-card border border-border bg-white p-6 shadow-card"><h1 className="text-3xl">{content[0]}</h1><p className="mt-4 leading-7 text-muted">{content[1]}</p>{kind === 'blog' && <div className="mt-6 space-y-3">{['How to prepare for a specialist visit', 'What live queues mean for patients', 'Choosing an emergency clinic'].map((title) => <article className="rounded-button bg-surface p-4" key={title}><h2 className="text-lg">{title}</h2><p className="mt-1 text-sm text-muted">A practical BookADoctors guide.</p></article>)}</div>}</article></main></>
 }
-export function QuickClinicBooking({ data }) {
-  const [phone, setPhone] = useState('')
-  const [clinic, setClinic] = useState(null)
-  const [error, setError] = useState('')
-  const navigate = useNavigate()
-
-  const lookup = (event) => {
-    event.preventDefault()
-    const digits = phone.replace(/\D/g, '')
-    const found = digits.length >= 6
-      ? (data.clinics || []).find((item) => (item.phone || '').replace(/\D/g, '').endsWith(digits)) || null
-      : null
-    setClinic(found)
-    if (!found) setError('No active clinic matches this registered phone number.')
-    else setError('')
-  }
-
-  const doctors = clinic ? (data.doctors || []).filter((doctor) => (doctor.clinics || []).some((item) => item.id === clinic.id)) : []
-  return <Page title="Quick clinic booking" subtitle="Find a clinic using its registered phone number.">
-    <section className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-xl">Clinic registered number</h2><form className="mt-5 space-y-4" onSubmit={lookup}><FormField label="Phone number" type="tel" placeholder="e.g. +91 22 4000 1111" value={phone} onChange={(event) => setPhone(event.target.value)} required /><Button className="w-full">Find clinic</Button></form></section>
-    <ErrorNote>{error}</ErrorNote>
-    {clinic && <section className="mt-5 rounded-card border border-primary/20 bg-primary-light p-5"><h2 className="text-xl">{clinic.name}</h2><p className="mt-1 text-sm text-muted">{clinic.area?.name || clinic.address}, {clinic.city?.name}</p><div className="mt-4 flex flex-wrap gap-2">{doctors.map((doctor) => <button type="button" key={doctor.id} onClick={() => navigate(`/patient/book?doctorId=${doctor.id}`)} className="touch-target rounded-button border border-primary-dark bg-white px-3 text-sm font-semibold text-primary-dark">Book {doctor.name}</button>)}{!doctors.length && <p className="text-sm text-muted">No active doctors are listed for this clinic right now.</p>}</div></section>}
-  </Page>
-}
-
 export function PatientReviews({ data }) {
   // Real reviews require a completed appointment id (`POST /reviews` body:
   // {appointmentId, rating, text}) — there is no doctorId-only review path

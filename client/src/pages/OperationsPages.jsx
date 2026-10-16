@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
-import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { StatCard } from '../components/StatCard'
 import { StatusPill } from '../components/StatusPill'
@@ -10,29 +10,6 @@ import { useAppStore } from '../store/useAppStore'
 const Page = ({ title, subtitle, children }) => <section><div className="page-heading mb-5"><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{children}</section>
 const ErrorNote = ({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
 const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
-
-export function PatientMedicalRecords({ data }) {
-  const fetchRecords = useAppStore((state) => state.fetchRecords)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const load = useCallback(() => {
-    setLoading(true)
-    setError('')
-    return fetchRecords({ pageSize: 100 }).catch((err) => setError(err.message || 'Could not load medical records.')).finally(() => setLoading(false))
-  }, [fetchRecords])
-  useEffect(() => { load() }, [load])
-  return <Page title="Medical records" subtitle="Read-only consultation notes and care plans shared by your doctors.">
-    <DataTable loading={loading} error={error} onRetry={load} rows={data.records || []} columns={[
-      { key: 'createdAt', label: 'Date', render: (item) => formatDate(item.createdAt) },
-      { key: 'title', label: 'Record' },
-      { key: 'type', label: 'Type', render: (item) => item.type || 'Consultation' },
-      { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
-      { key: 'notes', label: 'Notes', render: (item) => item.notes || '—' },
-      { key: 'carePlan', label: 'Care plan', render: (item) => item.carePlan || '—' },
-    ]} />
-    {!loading && !error && !(data.records || []).length && <EmptyState title="No medical records yet" message="Records written after a consultation will appear here." />}
-  </Page>
-}
 
 export function PatientComplaints({ data }) {
   const fetchComplaints = useAppStore((state) => state.fetchComplaints)
@@ -61,7 +38,14 @@ export function PatientComplaints({ data }) {
       setSubmitting(false)
     }
   }
-  return <Page title="Help & complaints" subtitle="Raise an issue and track the admin response from the same place.">
+  return <Page title="Help & Policies" subtitle="Get support, raise a complaint, or read BookADoctors policies.">
+    <section className="mb-6 grid max-w-2xl gap-2 rounded-card border border-border bg-white p-4 shadow-card" aria-label="Help and policy links">
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/privacy">Privacy Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/terms">Terms &amp; Conditions <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/cancellation-refund-policy">Cancellation &amp; Refund Policy <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/account-deletion">Account Deletion <span aria-hidden="true">›</span></Link>
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/contact">Contact Us <span aria-hidden="true">›</span></Link>
+    </section>
     <form onSubmit={submit} className="mb-6 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card">
       <FormField label="Subject" name="subject" minLength={3} maxLength={160} required />
       <FormField label="Describe the issue" name="description" type="textarea" minLength={10} maxLength={5000} required />

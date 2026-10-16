@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../shared/contact_support_screen.dart';
+import '../shared/legal_policies_screen.dart';
 
 class PatientComplaintsScreen extends StatefulWidget {
   const PatientComplaintsScreen({super.key});
@@ -48,7 +50,30 @@ class _PatientComplaintsScreenState extends State<PatientComplaintsScreen> {
 
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(AppSpacing.md), children: [
-        const PageHeader(title: 'Help & complaints', subtitle: 'Raise an issue and track the admin response.'),
+        const PageHeader(title: 'Help & Policies', subtitle: 'Get support, raise a complaint, or read our policies.'),
+        SectionCard(
+          title: 'Help and policies',
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.gavel_outlined, color: AppColors.primary),
+                title: const Text('Privacy, terms & cancellation policy'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegalPoliciesScreen())),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.contact_support_outlined, color: AppColors.primary),
+                title: const Text('Contact support'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen())),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
         SectionCard(title: 'New complaint', child: Column(children: [
           TextField(controller: _subject, maxLength: 160, decoration: const InputDecoration(labelText: 'Subject')),
           const SizedBox(height: AppSpacing.sm),

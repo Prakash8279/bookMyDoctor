@@ -30,6 +30,9 @@ describe('Sidebar', () => {
     )
     expect(screen.getByRole('link', { name: 'Book appointment' })).toHaveAttribute('href', '/patient/book')
     expect(screen.getByRole('link', { name: 'Queue tracker' })).toHaveAttribute('href', '/patient/queue')
+    expect(screen.queryByRole('link', { name: 'Quick clinic booking' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Medical records' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Help & complaints' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Doctors' })).not.toBeInTheDocument()
   })
 
@@ -40,6 +43,7 @@ describe('Sidebar', () => {
       </MemoryRouter>
     )
     fireEvent.click(screen.getByRole('button', { name: 'Help & Policies' }))
+    expect(screen.getByRole('link', { name: 'Help & complaints' })).toHaveAttribute('href', '/patient/complaints')
     expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms & Conditions' })).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: 'Cancellation & Refund' })).toHaveAttribute('href', '/cancellation-refund-policy')

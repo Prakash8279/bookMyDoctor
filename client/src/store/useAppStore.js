@@ -380,7 +380,6 @@ export const useAppStore = create(
           tasks.push(
             get().fetchFamilyMembers(),
             get().fetchAppointments(),
-            get().fetchRecords(),
             get().fetchPayments(),
             get().fetchNotifications(),
             // BUG FIX: a patient's boot-time data load never fetched this, so data.platformCharges

@@ -22,7 +22,7 @@ describe('SiteFooter', () => {
     expect(screen.getByRole('link', { name: 'Find a doctor' })).toHaveAttribute('href', '/search')
     expect(screen.getByRole('link', { name: 'My appointments' })).toHaveAttribute('href', '/patient/appointments')
     expect(screen.getByRole('link', { name: 'Live queue' })).toHaveAttribute('href', '/patient/queue')
-    expect(screen.getByRole('link', { name: 'Health records' })).toHaveAttribute('href', '/patient/records')
+    expect(screen.queryByRole('link', { name: 'Health records' })).not.toBeInTheDocument()
   })
 
   it('renders the professionals section links', () => {

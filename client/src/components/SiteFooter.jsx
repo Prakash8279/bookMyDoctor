@@ -72,7 +72,6 @@ export function SiteFooter() {
         <Link to="/search">Find a doctor</Link>
         <Link to="/patient/appointments">My appointments</Link>
         <Link to="/patient/queue">Live queue</Link>
-        <Link to="/patient/records">Health records</Link>
       </div>
 
       <div>

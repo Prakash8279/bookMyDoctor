@@ -27,13 +27,10 @@ const Button = ({ children, className = '', ...props }) => <button className={`t
 
 const PATIENT_SERVICES = [
   ['Book appointment', '/patient/book', 'calendar-days'],
-  ['Quick clinic booking', '/patient/quick-book', 'activity'],
   ['My appointments', '/patient/appointments', 'clipboard-list'],
   ['Queue tracker', '/patient/queue', 'ticket-check'],
-  ['Medical records', '/patient/records', 'file-heart'],
   ['Payments', '/patient/payments', 'credit-card'],
   ['Family members', '/patient/family', 'users-round'],
-  ['Help & complaints', '/patient/complaints', 'message-square-warning'],
   ['Notifications', '/patient/notifications', 'bell'],
   ['My profile', '/patient/profile', 'user-round'],
 ]
@@ -50,6 +47,7 @@ function PatientServiceGrid() {
       <button type="button" className={tileClass} aria-expanded={policiesOpen} aria-controls="patient-help-links" onClick={() => setPoliciesOpen((open) => !open)}><span aria-hidden="true" className={iconClass}><PatientNavIcon name="file-text" /></span><span className="max-w-full [overflow-wrap:anywhere]">Help &amp; policies</span></button>
     </div>
     {policiesOpen && <div id="patient-help-links" className="mt-3 grid gap-2 rounded-button border border-border bg-white p-3 shadow-card" aria-label="Help and policy links">
+      <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/patient/complaints">Help &amp; complaints <span aria-hidden="true">›</span></Link>
       <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/privacy">Privacy Policy <span aria-hidden="true">›</span></Link>
       <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/terms">Terms &amp; Conditions <span aria-hidden="true">›</span></Link>
       <Link className="touch-target flex items-center justify-between rounded-button px-3 text-sm font-semibold text-ink hover:bg-surface" to="/cancellation-refund-policy">Cancellation &amp; Refund Policy <span aria-hidden="true">›</span></Link>

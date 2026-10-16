@@ -24,21 +24,19 @@ void main() {
       );
 
       final roleScaffold = const PatientHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 14);
+      expect(roleScaffold.items.length, 12);
 
       final expectedLabels = [
         'Dashboard',
         'Find doctors',
         'Book appointment',
-        'Quick clinic booking',
         'My appointments',
         'Queue tracker',
         'Booking history',
-        'Medical records',
         'Payments',
         'Family members',
         'My reviews',
-        'Help & complaints',
+        'Help & Policies',
         'Notifications',
         'My profile',
       ];

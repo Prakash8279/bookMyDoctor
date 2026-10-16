@@ -56,7 +56,6 @@ const PatientDashboard = lazyNamed(() => import('./pages/PatientPages'), 'Patien
 const PatientSettings = lazyNamed(() => import('./pages/PatientPages'), 'PatientSettings')
 const Payments = lazyNamed(() => import('./pages/PatientPages'), 'Payments')
 
-const PatientMedicalRecords = lazyNamed(() => import('./pages/OperationsPages'), 'PatientMedicalRecords')
 const PatientComplaints = lazyNamed(() => import('./pages/OperationsPages'), 'PatientComplaints')
 const PaymentOperations = lazyNamed(() => import('./pages/OperationsPages'), 'PaymentOperations')
 
@@ -95,7 +94,6 @@ const DoctorReviews = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorRev
 const DoctorStaff = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorStaff')
 const PatientReviews = lazyNamed(() => import('./pages/FeaturePages'), 'PatientReviews')
 const PublicContent = lazyNamed(() => import('./pages/FeaturePages'), 'PublicContent')
-const QuickClinicBooking = lazyNamed(() => import('./pages/FeaturePages'), 'QuickClinicBooking')
 const ReceptionAvailability = lazyNamed(() => import('./pages/FeaturePages'), 'ReceptionAvailability')
 const ReceptionReports = lazyNamed(() => import('./pages/FeaturePages'), 'ReceptionReports')
 const SimpleInbox = lazyNamed(() => import('./pages/FeaturePages'), 'SimpleInbox')
@@ -210,10 +208,8 @@ export default function App() {
       <Route path="book" element={requires('patient', <Booking data={data} />)} />
       <Route path="appointments" element={requires('patient', <PatientAppointments data={data} />)} />
       <Route path="booking-history" element={requires('patient', <BookingHistory data={data} />)} />
-      <Route path="records" element={requires('patient', <PatientMedicalRecords data={data} />)} />
       <Route path="complaints" element={requires('patient', <PatientComplaints data={data} />)} />
       <Route path="queue" element={requires('patient', <QueueTracker data={data} />)} />
-      <Route path="quick-book" element={requires('patient', <QuickClinicBooking data={data} />)} />
       <Route path="family" element={requires('patient', <Family data={data} />)} />
       <Route path="payments" element={requires('patient', <Payments data={data} />)} />
       <Route path="reviews" element={requires('patient', <PatientReviews data={data} />)} />
