@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/RoleGuard'
 import { SiteFooter } from './components/SiteFooter'
 import { SeoMeta } from './components/SeoMeta'
+import { ScrollToTop } from './components/ScrollToTop'
 import { LoadingSkeleton } from './components/LoadingSkeleton'
 import { PortalLayout } from './layouts/PortalLayout'
 import { getTokens } from './lib/apiClient'
@@ -43,6 +44,7 @@ const TermsOfService = lazyNamed(() => import('./pages/TermsOfService'), 'TermsO
 const PrivacyPolicy = lazyNamed(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
 const CancellationRefundPolicy = lazyNamed(() => import('./pages/CancellationRefundPolicy'), 'CancellationRefundPolicy')
 const AccountDeletion = lazyNamed(() => import('./pages/AccountDeletion'), 'AccountDeletion')
+const Accessibility = lazyNamed(() => import('./pages/Accessibility'), 'Accessibility')
 
 const PatientLanding = lazyNamed(() => import('./pages/PublicLanding'), 'PatientLanding')
 const ProviderLanding = lazyNamed(() => import('./pages/PublicLanding'), 'ProviderLanding')
@@ -172,7 +174,7 @@ export default function App() {
   // first navigation to each — <Suspense> here shows the same splash used
   // for the initial bulk load above while that chunk downloads, instead of
   // the route panel flashing blank.
-  return <><SeoMeta /><Suspense fallback={<div className="grid min-h-screen place-items-center bg-surface p-6"><div className="w-full max-w-md"><LoadingSkeleton rows={5} /></div></div>}>
+  return <><SeoMeta /><ScrollToTop /><Suspense fallback={<div className="grid min-h-screen place-items-center bg-surface p-6"><div className="w-full max-w-md"><LoadingSkeleton rows={5} /></div></div>}>
   <Routes>
     <Route path="/" element={publicPage(<PatientLanding />)} />
     <Route path="/for-doctors" element={publicPage(<ProviderLanding />)} />
@@ -195,6 +197,7 @@ export default function App() {
     <Route path="/privacy-policy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/privacypolicy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/cancellation-refund-policy" element={publicPage(<CancellationRefundPolicy />)} />
+    <Route path="/accessibility" element={publicPage(<Accessibility />)} />
     <Route path="/delete-account" element={publicPage(<AccountDeletion />)} />
     <Route path="/account-deletion" element={publicPage(<AccountDeletion />)} />
     <Route path="/deleteaccount" element={publicPage(<AccountDeletion />)} />

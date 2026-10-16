@@ -17,6 +17,7 @@ const PUBLIC_META = {
   '/terms': ['Terms of Service | BookADoctors', 'Read the BookADoctors terms of service for patients, doctors, clinics, and staff.'],
   '/privacy': ['Privacy Policy | BookADoctors', 'Read how BookADoctors collects, uses, protects, and manages personal information.'],
   '/cancellation-refund-policy': ['Cancellation and Refund Policy | BookADoctors', 'Read the BookADoctors appointment cancellation and refund policy.'],
+  '/accessibility': ['Accessibility | BookADoctors', 'Learn about accessibility features and how to get accessibility support from BookADoctors.'],
 }
 
 const CANONICAL_ALIASES = {

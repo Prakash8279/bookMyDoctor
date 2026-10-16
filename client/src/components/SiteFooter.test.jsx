@@ -46,6 +46,7 @@ describe('SiteFooter', () => {
     expect(screen.getByText('© 2026 BookADoctors. All rights reserved.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
-    expect(screen.getByText(/Accessibility/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Cancellation & Refund' })).toHaveAttribute('href', '/cancellation-refund-policy')
+    expect(screen.getByRole('link', { name: 'Accessibility' })).toHaveAttribute('href', '/accessibility')
   })
 })
