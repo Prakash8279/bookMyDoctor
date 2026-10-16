@@ -11,10 +11,19 @@ const FOOTER_NAV = {
   receptionist: [['Home', '/receptionist/dashboard', 'layout-dashboard'], ['Appointments', '/receptionist/appointments', 'clipboard-list'], ['Walk-in', '/receptionist/walk-in', 'user-round'], ['Queue', '/receptionist/queue', 'ticket-check'], ['Profile', '/receptionist/profile', 'user-round']],
 }
 
-function PortalBottomNav({ role }) {
+export function PortalBottomNav({ role }) {
   const items = FOOTER_NAV[role] || []
+  if (!items.length) return null
   const roleLabel = role === 'receptionist' ? 'Receptionist' : role.charAt(0).toUpperCase() + role.slice(1)
   return <nav aria-label={`${roleLabel} bottom navigation`} className="portal-bottom-nav fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border shadow-[0_-4px_16px_rgba(35,30,28,0.08)] backdrop-blur lg:hidden [padding-bottom:env(safe-area-inset-bottom)]">{items.map(([label, path, icon]) => <NavLink key={path} end={path.endsWith('/dashboard')} to={path} className={({ isActive }) => `flex min-h-[62px] min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-[10px] font-semibold transition ${isActive ? 'text-primary-dark' : 'text-muted'}`}><PatientNavIcon name={icon} /><span className="max-w-full truncate">{label}</span></NavLink>)}</nav>
+}
+
+export function PublicPageShell({ role, children }) {
+  const showBottomNav = COMPACT_PORTAL_ROLES.has(role)
+  return <div className={showBottomNav ? 'public-page-with-bottom-nav' : ''}>
+    {children}
+    {showBottomNav && <PortalBottomNav role={role} />}
+  </div>
 }
 
 export function PortalLayout({ role, onLogout }) {

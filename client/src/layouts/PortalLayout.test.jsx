@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
-import { PortalLayout } from './PortalLayout'
+import { PortalLayout, PublicPageShell } from './PortalLayout'
 import { useAppStore } from '../store/useAppStore'
 
 const initialStoreState = useAppStore.getState()
@@ -112,5 +112,30 @@ describe('PortalLayout', () => {
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/patient/dashboard')
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/patient/profile')
     expect(screen.getByRole('link', { name: 'Book appointment' })).toHaveAttribute('href', '/patient/book')
+  })
+})
+
+describe('PublicPageShell', () => {
+  it('shows the role bottom navigation on public pages for a signed-in patient', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <PublicPageShell role="patient"><div>Public home</div></PublicPageShell>
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Public home')).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Patient bottom navigation' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Book' })).toHaveAttribute('href', '/patient/book')
+    expect(container.firstChild).toHaveClass('public-page-with-bottom-nav')
+  })
+
+  it('keeps anonymous public pages unchanged', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <PublicPageShell role=""><div>Anonymous home</div></PublicPageShell>
+      </MemoryRouter>
+    )
+    expect(screen.getByText('Anonymous home')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+    expect(container.firstChild).not.toHaveClass('public-page-with-bottom-nav')
   })
 })

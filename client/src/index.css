@@ -278,6 +278,9 @@ section[aria-label='Live queue status'] .bg-charcoal { animation: dc-queue-pulse
 .portal-bottom-nav {
   background: rgba(255, 255, 255, 0.95);
 }
+.public-page-with-bottom-nav {
+  padding-bottom: calc(62px + env(safe-area-inset-bottom));
+}
 [data-theme=dark] .portal-bottom-nav {
   background: rgba(14, 14, 14, 0.96);
   border-color: #303030 !important;
@@ -288,6 +291,11 @@ section[aria-label='Live queue status'] .bg-charcoal { animation: dc-queue-pulse
 }
 [data-theme=dark] .portal-bottom-nav .text-primary-dark {
   color: #fff !important;
+}
+@media (min-width: 1024px) {
+  .public-page-with-bottom-nav {
+    padding-bottom: 0;
+  }
 }
 
 /* Mobile: show a "Back to home" link at the very top of auth pages, above

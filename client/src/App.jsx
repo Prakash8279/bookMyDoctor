@@ -5,7 +5,7 @@ import { SiteFooter } from './components/SiteFooter'
 import { SeoMeta } from './components/SeoMeta'
 import { ScrollToTop } from './components/ScrollToTop'
 import { LoadingSkeleton } from './components/LoadingSkeleton'
-import { PortalLayout } from './layouts/PortalLayout'
+import { PortalLayout, PublicPageShell } from './layouts/PortalLayout'
 import { getTokens } from './lib/apiClient'
 import { PlatformCharges } from './pages/PlatformCharges'
 import { useAppStore } from './store/useAppStore'
@@ -153,7 +153,7 @@ export default function App() {
 
   const requires = (targetRole, element) => <ProtectedRoute role={targetRole} currentRole={role}>{element}</ProtectedRoute>
   const portal = (targetRole) => <ProtectedLayout role={targetRole} currentRole={role} onLogout={logout} />
-  const publicPage = (element) => <>{element}<SiteFooter /></>
+  const publicPage = (element) => <PublicPageShell role={role}>{element}<SiteFooter /></PublicPageShell>
 
   // Direct WhatsApp click-to-chat redirect for SEO & direct traffic
   const WhatsAppRedirect = () => {
