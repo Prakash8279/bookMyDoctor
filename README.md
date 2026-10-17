@@ -63,8 +63,9 @@ The platform provides dedicated, role-tailored experiences for all 5 roles:
 
 ---
 
-### Step 1: Start the Backend & Worker (`server/server/`)
-The backend requires both the **HTTP API** and the **BullMQ Queue Worker** running simultaneously:
+### Step 1: Start a Local Backend & Worker (optional)
+Skip this step when using the live API through the local Vite proxy. For a fully
+local stack, the backend needs both the **HTTP API** and the **BullMQ Queue Worker**:
 
 ```bash
 cd server/server
@@ -90,8 +91,18 @@ npm run worker
 cd client
 npm install
 npm run dev
-# The web app runs at http://localhost:5173 and connects to http://localhost:4000
+# Open http://localhost:5173
 ```
+
+The local Vite server reloads code changes immediately. With `VITE_API_BASE_URL=/api`
+in `client/.env`, it forwards API requests to the live BookADoctors backend;
+there is no need to redeploy AWS while reviewing frontend changes. This uses
+live accounts and records, so bookings, payments, and edits made on localhost
+also affect production. Deploy only when a change is ready for everyone.
+
+To use a backend running on your own computer instead, set
+`VITE_API_BASE_URL=http://localhost:4000` in `client/.env` and start the backend
+and worker from Step 1. Restart Vite after changing `.env`.
 
 ---
 

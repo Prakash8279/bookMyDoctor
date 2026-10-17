@@ -4,6 +4,20 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      // Keep the local web app on one origin. Vite forwards API calls to the live
+      // backend, so code changes appear immediately without rebuilding on AWS.
+      '/api': {
+        target: 'https://bookadoctors.com',
+        changeOrigin: true,
+        secure: true,
+        // The API sets its refresh cookie on /auth. From localhost its matching
+        // path is /api/auth, otherwise login expires after the access token does.
+        cookiePathRewrite: { '/auth': '/api/auth' },
+      },
+    },
+  },
   build: {
     rollupOptions: {
       output: {
