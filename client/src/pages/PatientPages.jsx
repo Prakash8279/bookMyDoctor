@@ -853,18 +853,26 @@ export function Booking({ data }) {
                       )}
                     </div>
 
-                    <div className="mt-2 flex items-center justify-between gap-2 text-xs sm:mt-2.5">
+                    <div className="mt-2 flex items-end justify-between gap-2 text-xs sm:mt-2.5">
                       <div>
                         <span className="text-muted block text-[11px]">Consultation</span>
                         <strong className="text-sm font-sans text-ink">₹{Number(item.consultationFee) || 0}/visit</strong>
                       </div>
-                      {item.emergencyAvailable && (
-                        <span className="rounded bg-error/10 px-2 py-0.5 text-[11px] font-semibold text-error">
-                          Emergency available
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className="rounded bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink"
+                          title="Total / available slots"
+                          aria-label={`Slots: ${itemAvailability?.totalSlots ?? 'not loaded'} total, ${itemAvailability?.availableSlots ?? 'not loaded'} available`}
+                        >
+                          Slots {itemAvailability?.totalSlots ?? '—'}/{itemAvailability?.availableSlots ?? '—'}
                         </span>
-                      )}
+                        {item.emergencyAvailable && (
+                          <span className="rounded bg-error/10 px-2 py-0.5 text-[11px] font-semibold text-error">
+                            Emergency available
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="booking-doctor-slots mt-2 grid grid-cols-3 items-center gap-1 rounded-button border border-border bg-white px-2 py-1.5 text-center sm:mt-3 sm:p-2"><div><strong className="block text-xs sm:text-sm">{itemAvailability?.totalSlots ?? '—'}</strong><span className="text-[10px] text-muted">Total</span></div><div><strong className="block text-xs text-success sm:text-sm">{itemAvailability?.availableSlots ?? '—'}</strong><span className="text-[10px] text-muted">Available</span></div><div><strong className="block text-xs text-primary-dark sm:text-sm">{itemAvailability?.bookedSlots ?? '—'}</strong><span className="text-[10px] text-muted">Booked</span></div></div>
                   </div>
 
                   <div className="mt-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
