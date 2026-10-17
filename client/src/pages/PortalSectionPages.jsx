@@ -528,7 +528,18 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
     <form onSubmit={save} className="rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="text-lg">{role === 'patient' ? 'Account information' : 'Profile details'}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-button bg-surface p-3"><span className="grid h-16 w-16 overflow-hidden place-items-center rounded-full bg-primary-light text-lg font-bold text-primary-dark">{current.photoUrl ? <img src={current.photoUrl} alt="Profile" className="h-full w-full object-cover" /> : (current.name || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span><label className="block text-sm font-medium text-ink"><span className="mb-1 block">Profile photo</span><input type="file" accept="image/*" onChange={choosePhoto} disabled={uploadingPhoto} className="block max-w-full text-xs" /><span className="mt-1 block text-xs text-muted">{uploadingPhoto ? 'Uploading…' : 'JPEG, PNG, or WebP, up to 5MB.'}</span>{photoError && <span role="alert" className="mt-1 block text-xs font-semibold text-error">{photoError}</span>}</label></div>
+        <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-button bg-surface p-3">
+          <span className="grid h-16 w-16 shrink-0 overflow-hidden place-items-center rounded-full bg-primary-light text-lg font-bold text-primary-dark">{current.photoUrl ? <img src={current.photoUrl} alt="Profile" className="h-full w-full object-cover" /> : (current.name || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
+          <div className="min-w-[11rem] flex-1">
+            <span className="mb-1.5 block text-sm font-medium text-ink">Profile photo</span>
+            <label htmlFor="portal-profile-photo" className={`inline-flex min-h-10 max-w-full items-center justify-center rounded-button border border-primary-dark px-3 py-2 text-sm font-semibold transition-colors ${uploadingPhoto ? 'cursor-wait bg-primary-light text-primary-dark opacity-70' : 'cursor-pointer bg-white text-primary-dark hover:bg-primary-light'}`}>
+              <input id="portal-profile-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} disabled={uploadingPhoto} className="sr-only" />
+              <span className="truncate">{uploadingPhoto ? 'Uploading photo…' : current.photoUrl ? 'Change photo' : 'Choose photo'}</span>
+            </label>
+            <span className="mt-1.5 block text-xs text-muted">JPEG, PNG, or WebP, up to 5MB.</span>
+            {photoError && <span role="alert" className="mt-1 block text-xs font-semibold text-error">{photoError}</span>}
+          </div>
+        </div>
         <FormField label="Full name" name="name" defaultValue={current.name || ''} required />
         {/* Email isn't in the PATCH /me editable field set (plan §1.2) —
             shown for reference only. */}
