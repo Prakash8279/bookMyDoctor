@@ -102,10 +102,10 @@ export function PatientDashboard({ data }) {
       <PatientServiceGrid />
 
       {/* Metric Cards Grid */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Link to="/patient/booking-history" className="block"><StatCard label="TOTAL APPOINTMENTS" value={userAppointments.length} icon="#" /></Link>
-        <Link to="/patient/appointments" className="block"><StatCard label="UPCOMING" value={upcomingAppointments.length} icon="◷" /></Link>
-        <Link to="/patient/payments" className="block"><StatCard label="PENDING PAYMENTS" value={pendingPaymentCount} icon="₹" /></Link>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Link to="/patient/booking-history" className="block min-w-0"><StatCard label="TOTAL APPOINTMENTS" value={userAppointments.length} icon="#" compactOnMobile /></Link>
+        <Link to="/patient/appointments" className="block min-w-0"><StatCard label="UPCOMING" value={upcomingAppointments.length} icon="◷" compactOnMobile /></Link>
+        <Link to="/patient/payments" className="block min-w-0"><StatCard label="PENDING PAYMENTS" value={pendingPaymentCount} icon="₹" compactOnMobile /></Link>
       </div>
 
       <section className="mt-6 rounded-card border border-border bg-white p-5 shadow-card">
