@@ -179,6 +179,7 @@ describe('PatientDashboard', () => {
     renderConnected(PatientDashboard)
 
     expect(screen.getByText('No upcoming appointments scheduled')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Find a doctor near you' })).toHaveAttribute('href', '/patient/book')
     expect(apiClient.get).not.toHaveBeenCalledWith(expect.stringContaining('/queue/mine'))
   })
 })

@@ -158,7 +158,7 @@ export function PatientDashboard({ data }) {
           <p className="text-4xl">🏥</p>
           <h2 className="mt-3 text-xl font-bold font-sans">No upcoming appointments scheduled</h2>
           <p className="mt-1 text-sm text-muted">Book a visit with verified doctors in Mumbai, follow your live queue token, and skip waiting room delays.</p>
-          <Link to="/search" className="btn-primary mt-5">Find a doctor near you</Link>
+          <Link to="/patient/book" className="btn-primary mt-5">Find a doctor near you</Link>
         </div>
       )}
 
