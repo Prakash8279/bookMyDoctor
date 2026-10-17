@@ -204,6 +204,7 @@ describe('Booking', () => {
 
     const toggle = screen.getByRole('button', { name: 'Filters' })
     const fields = document.getElementById('booking-doctor-filters')
+    expect(toggle).toHaveTextContent('Search doctor or clinic name, filter by city/specialization, or sort')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(fields).toHaveClass('hidden')
 

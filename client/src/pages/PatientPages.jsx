@@ -725,17 +725,25 @@ export function Booking({ data }) {
           </div>
           <button
             type="button"
-            className="flex min-h-11 items-center gap-2 text-sm font-semibold text-ink md:hidden"
+            className="flex min-h-11 w-full items-center justify-between gap-3 text-left md:hidden"
+            aria-label="Filters"
             aria-expanded={filtersOpen}
             aria-controls="booking-doctor-filters"
             onClick={() => setFiltersOpen((open) => !open)}
           >
-            Filters <span aria-hidden="true" className={`text-primary-dark transition-transform ${filtersOpen ? 'rotate-180' : ''}`}>⌄</span>
+            <span className="min-w-0">
+              <span className="block font-sans text-lg font-bold text-ink">Filters</span>
+              <span className="block text-xs leading-snug text-muted">Search doctor or clinic name, filter by city/specialization, or sort</span>
+            </span>
+            <span aria-hidden="true" className={`shrink-0 text-primary-dark transition-transform ${filtersOpen ? 'rotate-180' : ''}`}>⌄</span>
           </button>
-          <button type="button" className="text-sm font-semibold text-primary-dark hover:underline" onClick={clearDoctorFilters}>Clear</button>
+          <button type="button" className="hidden text-sm font-semibold text-primary-dark hover:underline md:inline" onClick={clearDoctorFilters}>Clear</button>
         </div>
 
         <div id="booking-doctor-filters" className={`${filtersOpen ? 'mt-3 block' : 'hidden'} md:mt-4 md:block`}>
+        <div className="mb-2 flex justify-end md:hidden">
+          <button type="button" className="text-sm font-semibold text-primary-dark hover:underline" onClick={clearDoctorFilters}>Clear</button>
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FormField
             label="Doctor name / Clinic name"
