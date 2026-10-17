@@ -592,7 +592,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   trailing: TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const NotificationsScreen(showExportCsv: true)),
+                        MaterialPageRoute(builder: (_) => const NotificationsScreen(showLiveBadge: true)),
                       );
                     },
                     child: const Text(

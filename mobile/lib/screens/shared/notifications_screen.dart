@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
-import '../../core/csv_export.dart';
 import '../../models/admin_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -13,13 +12,8 @@ import '../../widgets/common_widgets.dart';
 /// Note the row `id` here is the NotificationRecipient id, distinct from
 /// `notificationId` — PATCH /:id/read takes THIS id, not notificationId.
 class NotificationsScreen extends StatefulWidget {
-  // COMPLETENESS FIX (mobile parity audit, patient panel): only the patient portal's own
-  // Notifications page (PatientPages.jsx) has an "Export CSV" button — the shared SimpleInbox
-  // (FeaturePages.jsx) that doctor/receptionist/admin use does not. Since this screen is shared
-  // across all 4 roles, the button is opt-in per caller rather than always-on, so doctor/
-  // receptionist/admin don't gain an extra button their own web page never has.
-  final bool showExportCsv;
-  const NotificationsScreen({super.key, this.showExportCsv = false});
+  final bool showLiveBadge;
+  const NotificationsScreen({super.key, this.showLiveBadge = false});
 
   @override
   State<NotificationsScreen> createState() => _NotificationsScreenState();
@@ -92,27 +86,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // COMPLETENESS FIX (mobile parity audit): web's patient Notifications "Export CSV" action
-  // (PatientPages.jsx#Notifications exportCsv) had no mobile equivalent. Same header/column
-  // order/values — note web exports the raw createdAt string, not a display-formatted date.
-  Future<void> _exportCsv(List<AppNotification> items) async {
-    await shareCsv(
-      filename: 'notifications.csv',
-      headers: const ['ID', 'Date', 'Title', 'Message', 'Type', 'Status'],
-      rows: [
-        for (var i = 0; i < items.length; i++)
-          [
-            'DC${(i + 1).toString().padLeft(2, '0')}',
-            items[i].createdAt ?? '',
-            items[i].title,
-            items[i].body,
-            items[i].type ?? 'system',
-            items[i].isRead ? 'read' : 'unread',
-          ],
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     // No own Scaffold/AppBar — this screen is only ever embedded as a RoleScaffold nav-item body
@@ -139,7 +112,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   // Notifications header shows a "● Live" pill (PatientPages.jsx) confirming this
                   // list polls for fresh data — mobile already polls every 30s (see initState's
                   // Timer) but never showed the indicator that tells the patient it's live.
-                  if (widget.showExportCsv) ...[
+                  if (widget.showLiveBadge) ...[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       margin: const EdgeInsets.only(right: 6),
@@ -159,18 +132,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ],
                   TextButton(onPressed: _markAllRead, child: const Text('Mark all read')),
-                  if (widget.showExportCsv)
-                    FutureBuilder<List<AppNotification>>(
-                      future: _future,
-                      builder: (context, snapshot) {
-                        final items = snapshot.data ?? const <AppNotification>[];
-                        return TextButton.icon(
-                          onPressed: items.isEmpty ? null : () => _exportCsv(items),
-                          icon: const Icon(Icons.file_download_outlined, size: 16),
-                          label: const Text('Export CSV'),
-                        );
-                      },
-                    ),
                 ],
               ),
             ),

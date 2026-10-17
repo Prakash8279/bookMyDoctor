@@ -50,7 +50,7 @@ Widget _buildPayments(BuildContext context) => const PatientPaymentsScreen();
 Widget _buildFamily(BuildContext context) => const FamilyMembersScreen();
 Widget _buildReviews(BuildContext context) => const PatientReviewsScreen();
 Widget _buildComplaints(BuildContext context) => const PatientComplaintsScreen();
-Widget _buildNotifications(BuildContext context) => const NotificationsScreen(showExportCsv: true);
+Widget _buildNotifications(BuildContext context) => const NotificationsScreen(showLiveBadge: true);
 Widget _buildProfile(BuildContext context) => const ProfileScreen();
 
 

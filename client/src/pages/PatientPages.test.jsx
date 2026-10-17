@@ -1209,6 +1209,7 @@ describe('Notifications', () => {
 
     expect(await screen.findByText('Booking confirmed')).toBeInTheDocument()
     expect(apiClient.get).toHaveBeenCalledWith('/notifications', { params: {} })
+    expect(screen.queryByRole('button', { name: /Export CSV/i })).not.toBeInTheDocument()
   })
 
   it('marks a single notification as read', async () => {
