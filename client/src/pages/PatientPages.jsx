@@ -874,17 +874,17 @@ export function Booking({ data }) {
                     </div>
                   </div>
 
-                  <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
+                  <div className="booking-doctor-actions mt-2 flex gap-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
                     <Link
                       to={`/doctors/${item.id}`}
-                      className="grid min-h-10 place-items-center rounded-button border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:text-primary-dark sm:min-h-11 sm:py-2"
+                      className="grid min-h-10 min-w-0 flex-1 place-items-center rounded-button border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:text-primary-dark sm:min-h-11 sm:py-2"
                     >
                       Profile
                     </Link>
                     <button
                       type="button"
                       onClick={() => selectDoctorAndProceed(item.id)}
-                      className="min-h-10 w-full rounded-button border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:bg-primary-dark hover:text-white sm:min-h-11 sm:py-2"
+                      className="min-h-10 min-w-0 flex-1 rounded-button border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:bg-primary-dark hover:text-white sm:min-h-11 sm:py-2"
                     >
                       Book
                     </button>

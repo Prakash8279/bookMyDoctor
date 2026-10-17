@@ -331,8 +331,12 @@ describe('Booking', () => {
     expect(screen.queryByRole('heading', { name: 'Dr. Asha Rao' })).not.toBeInTheDocument()
 
     // Each result exposes an independent public-profile link and booking action.
-    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/doctors/doc-2')
-    fireEvent.click(screen.getByRole('button', { name: 'Book' }))
+    const profileLink = screen.getByRole('link', { name: 'Profile' })
+    const bookButton = screen.getByRole('button', { name: 'Book' })
+    expect(profileLink).toHaveAttribute('href', '/doctors/doc-2')
+    expect(profileLink.parentElement).toHaveClass('flex')
+    expect(bookButton.parentElement).toBe(profileLink.parentElement)
+    fireEvent.click(bookButton)
 
     // Booking form opens for Dr. Vivek Sharma on next page
     expect(screen.getByText('Booking with Dr. Vivek Sharma')).toBeInTheDocument()
