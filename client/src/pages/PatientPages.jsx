@@ -258,6 +258,7 @@ export function Booking({ data }) {
   const emptyDoctorFilters = { name: '', city: '', area: '', specialization: '', clinic: '', fee: '', maxFee: '', experience: '', rating: '', today: false, activeClinic: false, emergency: false, sort: '' }
   const [doctorFilters, setDoctorFilters] = useState(emptyDoctorFilters)
   const [appliedDoctorFilters, setAppliedDoctorFilters] = useState(emptyDoctorFilters)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const updateDoctorFilter = (key) => (event) => setDoctorFilters((current) => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }))
   const filteredDoctors = useMemo(() => {
     const result = (data.doctors || []).filter((item) => {
@@ -716,15 +717,25 @@ export function Booking({ data }) {
       </select>
 
       {/* Step 1: Filter & Search Panel */}
-      <div className="max-w-4xl rounded-card border border-border bg-white p-5 shadow-card mb-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
+      <div className="mb-4 max-w-4xl rounded-card border border-border bg-white p-3 shadow-card sm:p-5 md:mb-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="hidden md:block">
             <h2 className="font-sans text-lg font-bold text-ink">Filters</h2>
             <p className="text-xs text-muted">Search doctor or clinic name, filter by city/specialization, or sort</p>
           </div>
+          <button
+            type="button"
+            className="flex min-h-11 items-center gap-2 text-sm font-semibold text-ink md:hidden"
+            aria-expanded={filtersOpen}
+            aria-controls="booking-doctor-filters"
+            onClick={() => setFiltersOpen((open) => !open)}
+          >
+            Filters <span aria-hidden="true" className={`text-primary-dark transition-transform ${filtersOpen ? 'rotate-180' : ''}`}>⌄</span>
+          </button>
           <button type="button" className="text-sm font-semibold text-primary-dark hover:underline" onClick={clearDoctorFilters}>Clear</button>
         </div>
 
+        <div id="booking-doctor-filters" className={`${filtersOpen ? 'mt-3 block' : 'hidden'} md:mt-4 md:block`}>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FormField
             label="Doctor name / Clinic name"
@@ -767,14 +778,12 @@ export function Booking({ data }) {
           <button
             type="button"
             className="btn-primary"
-            onClick={() => setAppliedDoctorFilters({ ...doctorFilters })}
+            onClick={() => { setAppliedDoctorFilters({ ...doctorFilters }); setFiltersOpen(false) }}
           >
             Apply filters
           </button>
         </div>
-        <p className="mt-3 text-sm text-muted">
-          {filteredDoctors.length} doctor{filteredDoctors.length === 1 ? '' : 's'} match — pick one below.
-        </p>
+        </div>
       </div>
 
       {/* Direct Filter Results: Doctor Cards List */}

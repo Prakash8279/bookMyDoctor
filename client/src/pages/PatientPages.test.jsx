@@ -198,6 +198,26 @@ describe('Booking', () => {
   const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son' }
   const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: false, emergencyFee: 0, gstPercent: 5 }
 
+  it('opens the compact filter panel and closes it after applying filters', () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+
+    const toggle = screen.getByRole('button', { name: 'Filters' })
+    const fields = document.getElementById('booking-doctor-filters')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(fields).toHaveClass('hidden')
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(fields).toHaveClass('block')
+
+    fireEvent.change(screen.getByPlaceholderText('Search doctor or clinic name...'), { target: { value: 'Asha' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(fields).toHaveClass('hidden')
+    expect(screen.getByRole('heading', { name: 'Dr. Asha Rao' })).toBeInTheDocument()
+  })
+
   it("shows the doctor's primary clinic and fee preview once a doctor is chosen", () => {
     seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
     const { container } = renderConnected(Booking, {}, { route: '/patient/book' })
