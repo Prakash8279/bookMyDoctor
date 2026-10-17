@@ -4,7 +4,6 @@ import { DataTable } from '../components/DataTable'
 import { FormField } from '../components/FormField'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
-import { StatCard } from '../components/StatCard'
 import { StatusPill } from '../components/StatusPill'
 import { PaymentSourceBadge } from '../components/PaymentSourceBadge'
 import { useAppStore } from '../store/useAppStore'
@@ -63,7 +62,6 @@ export function PatientDashboard({ data }) {
   const userAppointments = data.appointments || []
   const upcomingAppointments = userAppointments.filter((item) => ['upcoming', 'confirmed'].includes(item.status))
   const upcoming = upcomingAppointments[0]
-  const pendingPaymentCount = userAppointments.filter((appointment) => appointment.paymentStatus === 'pending').length
   const [queueStatus, setQueueStatus] = useState(null)
   const [queueStatusError, setQueueStatusError] = useState('')
 
@@ -101,14 +99,7 @@ export function PatientDashboard({ data }) {
       <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {(currentUser.name || 'Patient').split(' ')[0]}.</h1>
       <PatientServiceGrid />
 
-      {/* Metric Cards Grid */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <Link to="/patient/booking-history" className="block min-w-0"><StatCard label="TOTAL APPOINTMENTS" value={userAppointments.length} icon="#" compactOnMobile /></Link>
-        <Link to="/patient/appointments" className="block min-w-0"><StatCard label="UPCOMING" value={upcomingAppointments.length} icon="◷" compactOnMobile /></Link>
-        <Link to="/patient/payments" className="block min-w-0"><StatCard label="PENDING PAYMENTS" value={pendingPaymentCount} icon="₹" compactOnMobile /></Link>
-      </div>
-
-      <section className="mt-6 rounded-card border border-border bg-white p-5 shadow-card">
+      <section className="rounded-card border border-border bg-white p-5 shadow-card lg:mt-6">
         <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg">Recent live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span></div>
         <DataTable rows={userAppointments.slice(0, 5)} columns={[{ key: 'date', label: 'Time / ID', render: (item) => `${item.appointmentDate || 'Today'} ${item.appointmentTime || ''}` }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' }, { key: 'clinic', label: 'Details', render: (item) => item.clinic?.name || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} />
       </section>
