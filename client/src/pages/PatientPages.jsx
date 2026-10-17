@@ -717,7 +717,7 @@ export function Booking({ data }) {
       </select>
 
       {/* Step 1: Filter & Search Panel */}
-      <div className="mb-4 max-w-4xl rounded-card border border-border bg-white p-3 shadow-card sm:p-5 md:mb-6">
+      <div className="mb-4 max-w-4xl rounded-card border border-border bg-white px-3 py-2.5 shadow-card sm:p-5 md:mb-6">
         <div className="flex items-center justify-between gap-3">
           <div className="hidden md:block">
             <h2 className="font-sans text-lg font-bold text-ink">Filters</h2>
@@ -725,7 +725,7 @@ export function Booking({ data }) {
           </div>
           <button
             type="button"
-            className="flex min-h-11 w-full items-center justify-between gap-3 text-left md:hidden"
+            className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-3 text-left md:hidden"
             aria-label="Filters"
             aria-expanded={filtersOpen}
             aria-controls="booking-doctor-filters"
@@ -735,7 +735,9 @@ export function Booking({ data }) {
               <span className="block font-sans text-lg font-bold text-ink">Filters</span>
               <span className="block text-xs leading-snug text-muted">Search doctor or clinic name, filter by city/specialization, or sort</span>
             </span>
-            <span aria-hidden="true" className={`shrink-0 text-primary-dark transition-transform ${filtersOpen ? 'rotate-180' : ''}`}>⌄</span>
+            <svg aria-hidden="true" className={`mt-1 size-5 text-primary-dark transition-transform ${filtersOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
           <button type="button" className="hidden text-sm font-semibold text-primary-dark hover:underline md:inline" onClick={clearDoctorFilters}>Clear</button>
         </div>
