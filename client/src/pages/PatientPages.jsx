@@ -815,8 +815,7 @@ export function Booking({ data }) {
               return (
                 <article
                   key={item.id}
-                  onClick={() => selectDoctorAndProceed(item.id)}
-                  className="booking-doctor-card group relative flex flex-col justify-between rounded-card border border-border bg-white p-3 shadow-card transition-all cursor-pointer hover:border-primary-dark/60 hover:shadow-md sm:p-4"
+                  className="booking-doctor-card group relative flex flex-col justify-between rounded-card border border-border bg-white p-3 shadow-card transition-all hover:border-primary-dark/60 hover:shadow-md sm:p-4"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2">
@@ -861,10 +860,10 @@ export function Booking({ data }) {
                       <div className="flex flex-col items-end gap-1">
                         <span
                           className="rounded bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink"
-                          title="Total / available slots"
+                          title="Total slots, available slots"
                           aria-label={`Slots: ${itemAvailability?.totalSlots ?? 'not loaded'} total, ${itemAvailability?.availableSlots ?? 'not loaded'} available`}
                         >
-                          Slots {itemAvailability?.totalSlots ?? '—'}/{itemAvailability?.availableSlots ?? '—'}
+                          Slot {itemAvailability?.totalSlots ?? '—'}, Avl {itemAvailability?.availableSlots ?? '—'}
                         </span>
                         {item.emergencyAvailable && (
                           <span className="rounded bg-error/10 px-2 py-0.5 text-[11px] font-semibold text-error">
@@ -875,16 +874,19 @@ export function Booking({ data }) {
                     </div>
                   </div>
 
-                  <div className="mt-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
+                  <div className="mt-2 grid grid-cols-2 gap-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
+                    <Link
+                      to={`/doctors/${item.id}`}
+                      className="grid min-h-10 place-items-center rounded-button border border-border bg-white px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:text-primary-dark sm:min-h-11 sm:py-2"
+                    >
+                      Profile
+                    </Link>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        selectDoctorAndProceed(item.id)
-                      }}
-                      className="min-h-10 w-full rounded-button border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-all group-hover:border-primary-dark group-hover:bg-primary-dark group-hover:text-white sm:min-h-11 sm:py-2"
+                      onClick={() => selectDoctorAndProceed(item.id)}
+                      className="min-h-10 w-full rounded-button border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-all hover:border-primary-dark hover:bg-primary-dark hover:text-white sm:min-h-11 sm:py-2"
                     >
-                      Select & Book
+                      Book
                     </button>
                   </div>
                 </article>

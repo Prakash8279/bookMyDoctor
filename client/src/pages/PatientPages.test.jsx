@@ -330,8 +330,9 @@ describe('Booking', () => {
     expect(screen.getByRole('heading', { name: 'Dr. Vivek Sharma' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Dr. Asha Rao' })).not.toBeInTheDocument()
 
-    // Click "Select & Book" on Dr. Vivek Sharma's card
-    fireEvent.click(screen.getByRole('button', { name: 'Select & Book' }))
+    // Each result exposes an independent public-profile link and booking action.
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/doctors/doc-2')
+    fireEvent.click(screen.getByRole('button', { name: 'Book' }))
 
     // Booking form opens for Dr. Vivek Sharma on next page
     expect(screen.getByText('Booking with Dr. Vivek Sharma')).toBeInTheDocument()
