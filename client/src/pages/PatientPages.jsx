@@ -816,19 +816,19 @@ export function Booking({ data }) {
                 <article
                   key={item.id}
                   onClick={() => selectDoctorAndProceed(item.id)}
-                  className="group relative flex flex-col justify-between rounded-card border border-border bg-white p-4 shadow-card transition-all cursor-pointer hover:border-primary-dark/60 hover:shadow-md"
+                  className="booking-doctor-card group relative flex flex-col justify-between rounded-card border border-border bg-white p-3 shadow-card transition-all cursor-pointer hover:border-primary-dark/60 hover:shadow-md sm:p-4"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-light text-primary-dark font-bold text-sm uppercase">
+                      <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-light text-xs font-bold uppercase text-primary-dark sm:h-11 sm:w-11 sm:text-sm">
                           {initials}
                         </span>
-                        <div>
-                          <h4 className="font-bold text-base text-ink group-hover:text-primary-dark transition-colors">
+                        <div className="min-w-0">
+                          <h4 className="truncate text-sm font-bold text-ink transition-colors group-hover:text-primary-dark sm:text-base">
                             {item.name}
                           </h4>
-                          <p className="text-xs text-muted font-medium">
+                          <p className="truncate text-[11px] font-medium text-muted sm:text-xs">
                             {item.specialization?.name || 'General practice'}
                             {item.experienceYears ? ` · ${item.experienceYears} yrs` : ''}
                           </p>
@@ -841,7 +841,7 @@ export function Booking({ data }) {
                       ) : null}
                     </div>
 
-                    <div className="mt-3.5 space-y-1 rounded-button bg-surface p-2.5 text-xs text-muted">
+                    <div className="mt-2 space-y-0.5 rounded-button bg-surface p-2 text-[11px] text-muted sm:mt-3.5 sm:space-y-1 sm:p-2.5 sm:text-xs">
                       <p className="flex items-center gap-1.5 font-semibold text-ink">
                         <span className="text-primary-dark">🏥</span>
                         <span className="truncate" title={clinicName}>Clinic: {clinicName}</span>
@@ -853,7 +853,7 @@ export function Booking({ data }) {
                       )}
                     </div>
 
-                    <div className="mt-2.5 flex items-center justify-between text-xs">
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs sm:mt-2.5">
                       <div>
                         <span className="text-muted block text-[11px]">Consultation</span>
                         <strong className="text-sm font-sans text-ink">₹{Number(item.consultationFee) || 0}/visit</strong>
@@ -864,17 +864,17 @@ export function Booking({ data }) {
                         </span>
                       )}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-1 rounded-button border border-border bg-white p-2 text-center"><div><strong className="block text-sm">{itemAvailability?.totalSlots ?? '—'}</strong><span className="text-[10px] text-muted">Total</span></div><div><strong className="block text-sm text-success">{itemAvailability?.availableSlots ?? '—'}</strong><span className="text-[10px] text-muted">Available</span></div><div><strong className="block text-sm text-primary-dark">{itemAvailability?.bookedSlots ?? '—'}</strong><span className="text-[10px] text-muted">Booked</span></div></div>
+                    <div className="booking-doctor-slots mt-2 grid grid-cols-3 items-center gap-1 rounded-button border border-border bg-white px-2 py-1.5 text-center sm:mt-3 sm:p-2"><div><strong className="block text-xs sm:text-sm">{itemAvailability?.totalSlots ?? '—'}</strong><span className="text-[10px] text-muted">Total</span></div><div><strong className="block text-xs text-success sm:text-sm">{itemAvailability?.availableSlots ?? '—'}</strong><span className="text-[10px] text-muted">Available</span></div><div><strong className="block text-xs text-primary-dark sm:text-sm">{itemAvailability?.bookedSlots ?? '—'}</strong><span className="text-[10px] text-muted">Booked</span></div></div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-border/60">
+                  <div className="mt-2 border-t border-border/60 pt-2 sm:mt-4 sm:pt-3">
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
                         selectDoctorAndProceed(item.id)
                       }}
-                      className="touch-target w-full rounded-button py-2 text-xs font-semibold transition-all bg-surface text-ink border border-border group-hover:bg-primary-dark group-hover:text-white group-hover:border-primary-dark"
+                      className="min-h-10 w-full rounded-button border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-ink transition-all group-hover:border-primary-dark group-hover:bg-primary-dark group-hover:text-white sm:min-h-11 sm:py-2"
                     >
                       Select & Book
                     </button>
