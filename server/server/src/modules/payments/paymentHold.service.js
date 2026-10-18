@@ -17,9 +17,9 @@
  * 7. Structured audit logging without logging sensitive credentials or payment secrets.
  */
 const prisma = require('../../config/db');
-const env = require('../../config/env');
 const logger = require('../../config/logger');
 const ApiError = require('../../utils/ApiError');
+const bookingExpiryService = require('../appointments/bookingExpiry.service');
 
 /**
  * Format a Date object to YYYY-MM-DD
@@ -142,7 +142,7 @@ async function getEffectiveOccupancyTx(tx, doctorUserId, appointmentDate, exclud
  * @returns {Promise<object>} Created/refreshed payment hold
  */
 async function createOrRefreshHoldTx(tx, { appointment, patientUserId, durationSeconds }) {
-  const duration = durationSeconds || env.paymentHoldDurationSeconds || 600;
+  const duration = durationSeconds || bookingExpiryService.PAYMENT_WINDOW_MS / 1000;
   const doctorUserId = appointment.doctorUserId;
   const appointmentDate = appointment.appointmentDate;
   const dateStr = toDateStr(appointmentDate);
@@ -182,7 +182,12 @@ async function createOrRefreshHoldTx(tx, { appointment, patientUserId, durationS
 
   // 6. Check if an active hold already exists for this appointment
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + duration * 1000);
+  const expiresAt = appointment.createdAt
+    ? bookingExpiryService.paymentDeadline(appointment.createdAt)
+    : new Date(now.getTime() + duration * 1000);
+  if (expiresAt <= now) {
+    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The five-minute payment window has expired. Please book an available slot again.');
+  }
 
   if (!tx?.paymentHold?.findFirst) {
     return {

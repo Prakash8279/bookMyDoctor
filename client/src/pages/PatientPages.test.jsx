@@ -454,7 +454,7 @@ describe('Booking', () => {
         url === '/appointments/booking-status/job-3'
           ? Promise.resolve({
               status: 'confirmed',
-              appointment: { id: 'appt-9', status: 'pending_payment', doctor: { name: 'Dr. Asha Rao' }, appointmentDate: '2026-09-25', fees: { totalAmount: 600 } },
+              appointment: { id: 'appt-9', status: 'pending_payment', createdAt: new Date().toISOString(), tokenNumber: null, doctor: { name: 'Dr. Asha Rao' }, appointmentDate: '2026-09-25', fees: { totalAmount: 600 } },
             })
           : Promise.resolve([])
       )
@@ -468,6 +468,8 @@ describe('Booking', () => {
       vi.useRealTimers()
 
       expect(screen.getByText('Payment required to confirm')).toBeInTheDocument()
+      expect(screen.getByText(/Complete payment within five minutes to keep this slot/)).toBeInTheDocument()
+      expect(screen.queryByText(/Token #9/)).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Pay ₹600 now' }))
 
       await waitFor(() =>

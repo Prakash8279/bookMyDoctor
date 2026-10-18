@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
@@ -29,6 +31,7 @@ class PaymentRequiredScreen extends StatefulWidget {
 class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
   late final Razorpay _razorpay;
   late Appointment _appointment;
+  Timer? _clockTimer;
   bool _payingNow = false;
   String? _error;
 
@@ -36,6 +39,9 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
   void initState() {
     super.initState();
     _appointment = widget.appointment;
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _appointment.status == 'pending_payment') setState(() {});
+    });
     _razorpay = Razorpay();
     _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _onPaymentSuccess);
     _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _onPaymentError);
@@ -43,11 +49,16 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
     _razorpay.clear();
     super.dispose();
   }
 
   Future<void> _payNow([String option = 'full']) async {
+    if (_secondsRemaining == 0) {
+      setState(() => _error = 'Your five-minute payment window expired. Please book an available slot again.');
+      return;
+    }
     setState(() {
       _error = null;
       _payingNow = true;
@@ -74,6 +85,13 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
         _error = err is ApiException ? err.message : 'Could not start the payment. Please try again.';
       });
     }
+  }
+
+  int? get _secondsRemaining {
+    final createdAt = DateTime.tryParse(_appointment.createdAt ?? '');
+    if (createdAt == null) return null;
+    final remainingMs = createdAt.add(const Duration(minutes: 5)).difference(DateTime.now()).inMilliseconds;
+    return remainingMs <= 0 ? 0 : (remainingMs + 999) ~/ 1000;
   }
 
   Future<void> _onPaymentSuccess(PaymentSuccessResponse response) async {
@@ -137,14 +155,28 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
     final minRemainder = _appointment.fees.minBookingRemainder ?? 0;
     final paymentPolicy = _appointment.fees.bookingPaymentPolicy ?? (minAmount > 0 ? 'minimum_or_full' : 'full');
     final platformOnlyAmount = _appointment.fees.platformOnlyBookingAmount ?? 0;
-    final paid = _appointment.status != 'pending_payment';
+    final paid = ['upcoming', 'confirmed', 'completed'].contains(_appointment.status);
+    final expired = _appointment.status == 'cancelled' || (_appointment.status == 'pending_payment' && _secondsRemaining == 0);
 
     return Scaffold(
       appBar: AppBar(title: Text(paid ? 'Appointment booked' : 'Payment')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
-          child: paid
+          child: expired
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const PageHeader(title: 'Booking expired', subtitle: 'Payment was not completed within five minutes.'),
+                    const SectionCard(
+                      title: 'Slot released',
+                      child: Text('No token number was issued. If a payment was captured, its refund will be processed.'),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    PrimaryButton(label: 'Choose another slot', onPressed: () => Navigator.of(context).pop()),
+                  ],
+                )
+              : paid
               ? Container(
                   padding: const EdgeInsets.all(AppSpacing.lg),
                   decoration: BoxDecoration(
@@ -265,6 +297,11 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                           const Text(
                             'Your token number will be issued as soon as payment is received.',
                             style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            'Complete payment within five minutes to keep this slot${_secondsRemaining != null ? ' · ${_secondsRemaining! ~/ 60}:${(_secondsRemaining! % 60).toString().padLeft(2, '0')} left' : ''}.',
+                            style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),

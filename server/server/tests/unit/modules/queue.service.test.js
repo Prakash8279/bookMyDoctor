@@ -62,6 +62,12 @@ const queueService = require('../../../src/modules/queue/queue.service');
 const MINUTES_PER_WAITING_PATIENT = 9; // mirrors the module's own private constant
 
 describe('queueService.getMyQueueStatus', () => {
+  test('never reveals an on-hold token before payment', async () => {
+    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1', status: 'pending_payment' });
+    const result = await queueService.getMyQueueStatus('appt-1', { id: 'patient-1', role: 'patient' });
+    expect(result.token).toBeNull();
+    expect(prisma.queueToken.findUnique).not.toHaveBeenCalled();
+  });
   test('throws APPOINTMENT_NOT_FOUND (404) when the appointment does not exist', async () => {
     prisma.appointment.findUnique.mockResolvedValue(null);
 

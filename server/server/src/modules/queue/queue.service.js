@@ -184,13 +184,17 @@ function shapeQueueListRow(row, patientsAhead, estimatedWaitMinutes, role) {
 async function getMyQueueStatus(appointmentId, requester) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    select: { id: true, patientUserId: true },
+    select: { id: true, patientUserId: true, status: true },
   });
   // 404, not 403 — same enumeration-avoidance posture used throughout this codebase (see
   // appointments.service.js#getVisibleAppointmentOrThrow and this module's own
   // getVisibleQueueTokenOrThrow just below).
   if (!appointment || appointment.patientUserId !== requester.id) {
     throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
+  }
+
+  if (appointment.status === 'pending_payment' || appointment.status === 'cancelled') {
+    return { token: null, status: null, nowServing: null, patientsAhead: null, estimatedWaitMinutes: null };
   }
 
   const token = await prisma.queueToken.findUnique({

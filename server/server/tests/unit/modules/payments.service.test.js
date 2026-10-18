@@ -121,6 +121,7 @@ jest.mock('../../../src/services/commissionLookupService', () => ({
 jest.mock('../../../src/modules/appointments/appointments.service', () => ({
   invalidateAppointmentListCaches: jest.fn(),
 }));
+jest.mock('../../../src/modules/payments/razorpay.service', () => ({ processRefund: jest.fn().mockResolvedValue({}) }));
 
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../../src/config/db');
@@ -411,6 +412,29 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
       where: { appointmentId: 'appt-1', status: 'on_hold' },
       data: { status: 'waiting' },
     });
+  });
+
+  test('a captured payment after five minutes cannot issue a token and starts a refund', async () => {
+    const tx = makeTx({
+      paymentHold: {
+        findFirst: jest.fn().mockResolvedValue({ status: 'PENDING', holdExpiresAt: new Date(Date.now() + 60000) }),
+        updateMany: jest.fn(),
+      },
+      queueToken: { updateMany: jest.fn(), deleteMany: jest.fn() },
+      refund: { upsert: jest.fn().mockResolvedValue({ id: 'refund-1' }) },
+    });
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({
+      status: 'pending_payment', source: 'online', createdAt: new Date(Date.now() - 6 * 60 * 1000),
+    }));
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
+
+    const result = await paymentsService.createPaymentForAppointment('appt-1', PATIENT, 'online', 'rzp_pay_late', null, 100);
+
+    expect(result.autoRefunded).toBe(true);
+    expect(tx.appointment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'cancelled' }) }));
+    expect(tx.queueToken.deleteMany).toHaveBeenCalledWith({ where: { appointmentId: 'appt-1' } });
+    expect(tx.queueToken.updateMany).not.toHaveBeenCalled();
+    expect(tx.refund.upsert).toHaveBeenCalled();
   });
 
   test('an ordinary payment on an already-upcoming appointment does NOT touch appointment.status or queue tokens', async () => {

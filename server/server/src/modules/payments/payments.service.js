@@ -32,6 +32,7 @@ const { ADMIN_ROLES, STAFF_ROLES } = require('../../utils/roles');
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
 const { computeMinBookingRemainder, resolvePaymentRowFeeSplit } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('./paymentHold.service');
+const bookingExpiryService = require('../appointments/bookingExpiry.service');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -277,6 +278,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           clinicId: true,
           paymentStatus: true,
           tokenNumber: true,
+          createdAt: true,
           consultationFee: true,
           convenienceFee: true,
           emergencyFee: true,
@@ -349,6 +351,10 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         cannotConfirmBooking = true;
         cannotConfirmReason = `Appointment status is already "${appointment.status}".`;
       } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {
+        if (appointment.createdAt && bookingExpiryService.paymentWindowExpired(appointment.createdAt)) {
+          cannotConfirmBooking = true;
+          cannotConfirmReason = 'The five-minute booking payment window expired.';
+        }
         // Check if there is an active valid payment hold for this appointment
         const hold = await tx.paymentHold.findFirst({
           where: { appointmentId: appointment.id },
@@ -370,7 +376,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
             },
           });
 
-          if (hasValidHold) {
+          if (hasValidHold && !cannotConfirmBooking) {
             // Patient holds a valid reservation! Booking confirmed without double counting.
             cannotConfirmBooking = false;
           } else if (activeConfirmedCount >= maxLimit) {

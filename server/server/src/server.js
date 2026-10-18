@@ -9,10 +9,27 @@ const env = require('./config/env');
 const logger = require('./config/logger');
 const prisma = require('./config/db');
 const redis = require('./config/redis');
+const bookingExpiryService = require('./modules/appointments/bookingExpiry.service');
 
 const server = app.listen(env.port, () => {
   logger.info(`[server] BookADoctors API listening on port ${env.port} (${env.nodeEnv})`);
 });
+
+// The read/write paths also expire stale reservations lazily. This timer releases idle slots
+// without waiting for another visitor; guarded updates make it safe across multiple API workers.
+let bookingExpiryRunning = false;
+const bookingExpiryTimer = setInterval(async () => {
+  if (bookingExpiryRunning) return;
+  bookingExpiryRunning = true;
+  try {
+    await bookingExpiryService.expireOverduePendingBookings();
+  } catch (err) {
+    logger.error(`[booking-expiry] Background cleanup failed: ${err.message}`);
+  } finally {
+    bookingExpiryRunning = false;
+  }
+}, 10_000);
+bookingExpiryTimer.unref();
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -21,6 +38,7 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(bookingExpiryTimer);
 
   logger.info(`[server] Received ${signal}, shutting down gracefully...`);
 

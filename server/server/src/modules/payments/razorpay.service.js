@@ -31,6 +31,7 @@ const paymentsService = require('./payments.service');
 const { computeMinBookingAmount } = require('../../utils/minBookingAmount');
 const { withLock, LockAcquisitionError } = require('../../services/lockService');
 const paymentHoldService = require('./paymentHold.service');
+const bookingExpiryService = require('../appointments/bookingExpiry.service');
 
 const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
 
@@ -115,6 +116,7 @@ async function getOwnAppointmentOrThrow(appointmentId, requester) {
       emergencyFee: true,
       gstAmount: true,
       bookingPaymentPolicy: true,
+      createdAt: true,
     },
   });
   if (!appointment) {
@@ -171,6 +173,14 @@ async function createOrder(appointmentId, requester, paymentOption = 'full') {
 
 async function createOrderLocked(appointmentId, requester, paymentOption) {
   const appointment = await getOwnAppointmentOrThrow(appointmentId, requester);
+
+  if (appointment.status === 'pending_payment' && appointment.createdAt && bookingExpiryService.paymentWindowExpired(appointment.createdAt)) {
+    await bookingExpiryService.expireOverduePendingBookings({
+      doctorUserId: appointment.doctorUserId,
+      appointmentDate: appointment.appointmentDate,
+    });
+    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The five-minute payment window has expired. Please book an available slot again.');
+  }
 
   if (appointment.paymentStatus === 'paid') {
     throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'This appointment is already paid for.');
@@ -341,7 +351,7 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
     appointmentId: appointment.id,
     holdId: holdResult && holdResult.hold ? holdResult.hold.id : null,
     holdExpiresAt: holdResult && holdResult.hold ? holdResult.hold.holdExpiresAt.toISOString() : null,
-    holdDurationSeconds: holdResult ? holdResult.durationSeconds : env.paymentHoldDurationSeconds,
+    holdDurationSeconds: holdResult ? holdResult.durationSeconds : bookingExpiryService.PAYMENT_WINDOW_MS / 1000,
   };
 }
 

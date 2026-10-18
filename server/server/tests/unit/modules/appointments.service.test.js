@@ -218,6 +218,22 @@ describe('appointmentsService.getAppointmentById — visibility (404-not-403 enu
     ).rejects.toMatchObject({ statusCode: 404, code: 'APPOINTMENT_NOT_FOUND' });
   });
 
+  test('a patient cannot see the internally reserved token before paying', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ status: 'pending_payment', tokenNumber: 12 }));
+    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
+    expect(result.tokenNumber).toBeNull();
+  });
+
+  test('an expired unpaid booking never reveals its reserved token in history', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({
+      status: 'cancelled', paymentStatus: 'pending', tokenNumber: 12,
+    }));
+    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+    const result = await appointmentsService.getAppointmentById('appt-1', { id: PATIENT_ID, role: 'patient' });
+    expect(result.tokenNumber).toBeNull();
+  });
+
   test('a doctor gets 404 (not 403) for an appointment belonging to a different doctor', async () => {
     prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ doctorUserId: 'other-doctor' }));
     loadCommissionPercentIfAdmin.mockResolvedValue(null);
@@ -932,6 +948,7 @@ describe('appointmentsService.runBookingJob', () => {
         create: jest.fn().mockImplementation(async ({ data }) => ({ id: 'appt-new', ...data })),
       },
       queueToken: { create: jest.fn().mockResolvedValue({}) },
+      paymentHold: { create: jest.fn().mockResolvedValue({}) },
       // findFirst defaults to "no existing walk-in patient by phone" (null) — the
       // phone-advisory-lock race fix's normal, non-matching path — so tests that never touch the
       // walk-in-patient flow at all are unaffected.
@@ -1170,6 +1187,11 @@ describe('appointmentsService.runBookingJob', () => {
     expect(appointment.consultationFee.toString()).toBe('500');
     expect(appointment.convenienceFee.toString()).toBe('20');
     expect(queueToken.status).toBe('on_hold');
+    expect(tx.paymentHold.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      appointmentId: 'appt-new', status: 'PENDING',
+    }) }));
+    const hold = tx.paymentHold.create.mock.calls[0][0].data;
+    expect(hold.holdExpiresAt.getTime() - hold.holdCreatedAt.getTime()).toBe(5 * 60 * 1000);
   });
 
   test('an online booking with a non-zero total starts pending_payment/on_hold and skips the "booking confirmed" notifications', async () => {
@@ -1524,8 +1546,9 @@ describe('appointmentsService.updateAppointmentStatus', () => {
 
   beforeEach(() => {
     tx = {
-      appointment: { update: jest.fn() },
-      queueToken: { delete: jest.fn(), update: jest.fn() },
+      appointment: { update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      queueToken: { delete: jest.fn(), deleteMany: jest.fn(), update: jest.fn() },
+      paymentHold: { updateMany: jest.fn() },
     };
     prisma.$transaction.mockImplementation((cb) => cb(tx));
     loadCommissionPercentIfAdmin.mockResolvedValue(null);
@@ -1603,6 +1626,10 @@ describe('appointmentsService.updateAppointmentStatus', () => {
     const result = await appointmentsService.updateAppointmentStatus('appt-1', 'cancelled', { id: PATIENT_ID, role: 'patient' });
     expect(result.status).toBe('cancelled');
     expect(prisma.bookingRules.findUnique).not.toHaveBeenCalled();
+    expect(tx.queueToken.deleteMany).toHaveBeenCalledWith({ where: { appointmentId: 'appt-1', status: 'on_hold' } });
+    expect(tx.paymentHold.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { appointmentId: 'appt-1', status: 'PENDING' },
+    }));
   });
 
   test('throws 400 CANCELLATION_WINDOW_PASSED when a patient cancels too close to the appointment time', async () => {

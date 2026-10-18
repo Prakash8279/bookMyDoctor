@@ -35,6 +35,7 @@ const {
 const { loadCommissionPercentIfAdmin } = require('../../services/commissionLookupService');
 const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('../payments/paymentHold.service');
+const bookingExpiryService = require('./bookingExpiry.service');
 const { nextPatientNumber } = require('../../utils/idGenerators');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
@@ -192,6 +193,8 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
   if (selectedDate.getTime() < today.getTime()) {
     throw new ApiError(400, 'INVALID_DATE', 'Availability can only be checked for today or a future date.');
   }
+
+  await bookingExpiryService.expireOverduePendingBookings({ doctorUserId: doctorId, appointmentDate: selectedDate });
 
   const weekday = selectedDate.getUTCDay();
   const links = await prisma.doctorClinic.findMany({
@@ -458,7 +461,9 @@ function shapeAppointment(row, role, commissionPercent) {
     isEmergency: row.isEmergency,
     status: row.status,
     source: row.source,
-    tokenNumber: row.tokenNumber,
+    tokenNumber: row.status === 'pending_payment' || (row.status === 'cancelled' && row.paymentStatus === 'pending')
+      ? null
+      : row.tokenNumber,
     paymentStatus: row.paymentStatus,
     paymentMethod: row.paymentMethod,
     fees: shapeFees(row, role, commissionPercent),
@@ -936,6 +941,7 @@ async function runBookingJob(payload) {
   }
 
   const isSameDay = appointmentDateUTC.getTime() === todayUTC.getTime();
+  await bookingExpiryService.expireOverduePendingBookings({ doctorUserId, appointmentDate: appointmentDateUTC });
   if (isSameDay && source === 'online' && doctorProfile.allowRebooking === false) {
     throw new ApiError(400, 'SAME_DAY_BOOKING_DISABLED', 'This doctor does not accept same-day online bookings.');
   }
@@ -1113,7 +1119,7 @@ async function runBookingJob(payload) {
       // self-releasing (xact-scoped) advisory lock closes that gap for one extra statement.
       // Does not contradict manual_sql/001 §5, which already frames the Redis lock + row lock
       // as "belt and suspenders" — this is a third, cheap layer in the same spirit.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${doctorUserId + dateStr}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`doctor-day:${doctorUserId}:${dateStr}`}))`;
 
       // SECURITY/CORRECTNESS FIX (found in an audit): re-check the doctor's daily online-booking
       // cap HERE, now that the advisory lock above fully serializes every booking attempt for
@@ -1214,6 +1220,7 @@ async function runBookingJob(payload) {
         tokenNumber = Number(maxRow[0].max) + 1;
       }
 
+      const bookingCreatedAt = new Date();
       let created;
       try {
         created = await tx.appointment.create({
@@ -1237,6 +1244,7 @@ async function runBookingJob(payload) {
             paymentStatus: 'pending',
             paymentMethod: paymentMethod || null,
             bookingPaymentPolicy,
+            ...(requiresPrepayment ? { createdAt: bookingCreatedAt } : {}),
           },
           select: { id: true },
         });
@@ -1270,6 +1278,20 @@ async function runBookingJob(payload) {
           queueDate: appointmentDateUTC,
         },
       });
+
+      if (requiresPrepayment) {
+        await tx.paymentHold.create({
+          data: {
+            appointmentId: created.id,
+            doctorUserId,
+            patientUserId,
+            appointmentDate: appointmentDateUTC,
+            status: 'PENDING',
+            holdCreatedAt: bookingCreatedAt,
+            holdExpiresAt: bookingExpiryService.paymentDeadline(bookingCreatedAt),
+          },
+        });
+      }
 
       return { appointmentId: created.id, tokenNumber };
     }, {
@@ -1557,7 +1579,22 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
 
   let createdRefundRecord = null;
   await prisma.$transaction(async (tx) => {
-    await tx.appointment.update({ where: { id }, data: { status: targetStatus } });
+    if (targetStatus === 'cancelled' && row.status === 'pending_payment') {
+      const updated = await tx.appointment.updateMany({
+        where: { id, status: 'pending_payment' },
+        data: { status: 'cancelled' },
+      });
+      if (!updated.count) {
+        throw new ApiError(409, 'BOOKING_ALREADY_SETTLED', 'This booking changed while cancellation was in progress. Please refresh.');
+      }
+      await tx.queueToken.deleteMany({ where: { appointmentId: id, status: 'on_hold' } });
+      await tx.paymentHold.updateMany({
+        where: { appointmentId: id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+    } else {
+      await tx.appointment.update({ where: { id }, data: { status: targetStatus } });
+    }
 
     // Release the token from the live queue
     if (

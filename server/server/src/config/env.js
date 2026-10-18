@@ -262,7 +262,7 @@ module.exports = {
   // PAYMENT HOLD CONFIGURATION
   // Authoritative temporary slot reservation window for checkout sessions.
   // Default: 600 seconds (10 minutes).
-  paymentHoldDurationSeconds: parseIntWithDefault(process.env.PAYMENT_HOLD_DURATION_SECONDS, 600),
+  paymentHoldDurationSeconds: parseIntWithDefault(process.env.PAYMENT_HOLD_DURATION_SECONDS, 300),
 
   // GOOGLE SIGN-IN (user request: "google work nahi kar rah hai fix kro") — "Continue with
   // Google" on the login/register pages (modules/auth/auth.service.js#googleAuth). Same

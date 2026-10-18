@@ -66,6 +66,11 @@ jest.mock('../../../src/modules/payments/paymentHold.service', () => ({
   attachRazorpayOrderToHold: jest.fn(),
   markHoldRefundedTx: jest.fn(),
 }));
+jest.mock('../../../src/modules/appointments/bookingExpiry.service', () => ({
+  PAYMENT_WINDOW_MS: 5 * 60 * 1000,
+  paymentWindowExpired: jest.fn((createdAt) => Date.now() >= new Date(createdAt).getTime() + 5 * 60 * 1000),
+  expireOverduePendingBookings: jest.fn().mockResolvedValue(1),
+}));
 
 const crypto = require('crypto');
 const prisma = require('../../../src/config/db');
@@ -76,6 +81,7 @@ const appointmentsService = require('../../../src/modules/appointments/appointme
 const queueService = require('../../../src/modules/queue/queue.service');
 const lockService = require('../../../src/services/lockService');
 const paymentHoldService = require('../../../src/modules/payments/paymentHold.service');
+const bookingExpiryService = require('../../../src/modules/appointments/bookingExpiry.service');
 const razorpayService = require('../../../src/modules/payments/razorpay.service');
 
 const KEY_ID = 'rzp_test_key_id';
@@ -148,6 +154,16 @@ describe('razorpay.service — gateway-not-configured guard', () => {
 });
 
 describe('razorpay.service.createOrder — ownership and state guards', () => {
+  test('rejects a new payment order after the five-minute booking window', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({
+      createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      appointmentDate: new Date('2026-10-18T00:00:00.000Z'),
+    }));
+    await expect(razorpayService.createOrder('appt-1', PATIENT)).rejects.toMatchObject({
+      statusCode: 409, code: 'PAYMENT_WINDOW_EXPIRED',
+    });
+    expect(bookingExpiryService.expireOverduePendingBookings).toHaveBeenCalled();
+  });
   test('404 APPOINTMENT_NOT_FOUND when the appointment does not exist', async () => {
     prisma.appointment.findUnique.mockResolvedValue(null);
 
@@ -294,7 +310,7 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
       appointmentId: 'appt-1',
       holdId: null,
       holdExpiresAt: null,
-      holdDurationSeconds: 600,
+      holdDurationSeconds: 300,
     });
   });
 
