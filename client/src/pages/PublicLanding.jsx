@@ -362,6 +362,16 @@ export function PatientLanding() {
 
           <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
             <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
+              <span>Who founded BookADoctors?</span>
+              <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
+            </summary>
+            <p className="mt-3 text-muted text-sm leading-relaxed">
+              <a href="/founder/prakash-kumar/" className="font-semibold text-primary-dark underline">Prakash Kumar</a> is the founder of BookADoctors. Read his official founder profile to learn about the platform.
+            </p>
+          </details>
+
+          <details className="rounded-xl border border-border bg-white p-5 shadow-sm cursor-pointer group">
+            <summary className="font-semibold text-lg text-charcoal list-none flex justify-between items-center">
               <span>How do I book a doctor appointment on BookADoctors?</span>
               <span className="text-primary font-bold group-open:rotate-180 transition-transform">▼</span>
             </summary>

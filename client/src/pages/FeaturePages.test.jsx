@@ -93,6 +93,7 @@ describe('PublicContent', () => {
   it('renders the About page content', () => {
     render(<MemoryRouter><PublicContent kind="about" /></MemoryRouter>)
     expect(screen.getByRole('heading', { name: 'About BookADoctors' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Prakash Kumar' })).toHaveAttribute('href', '/founder/prakash-kumar/')
   })
 
   it('renders the Blog page with its list of guide articles', () => {
