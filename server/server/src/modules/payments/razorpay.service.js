@@ -179,7 +179,7 @@ async function createOrderLocked(appointmentId, requester, paymentOption) {
       doctorUserId: appointment.doctorUserId,
       appointmentDate: appointment.appointmentDate,
     });
-    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The five-minute payment window has expired. Please book an available slot again.');
+    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The ten-minute payment window has expired. Please book an available slot again.');
   }
 
   if (appointment.paymentStatus === 'paid') {

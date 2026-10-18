@@ -468,7 +468,7 @@ describe('Booking', () => {
       vi.useRealTimers()
 
       expect(screen.getByText('Payment required to confirm')).toBeInTheDocument()
-      expect(screen.getByText(/Complete payment within five minutes to keep this slot/)).toBeInTheDocument()
+      expect(screen.getByText(/Complete payment within ten minutes to keep this slot/)).toBeInTheDocument()
       expect(screen.queryByText(/Token #9/)).not.toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Pay ₹600 now' }))
 

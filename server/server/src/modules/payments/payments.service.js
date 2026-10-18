@@ -353,7 +353,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {
         if (appointment.createdAt && bookingExpiryService.paymentWindowExpired(appointment.createdAt)) {
           cannotConfirmBooking = true;
-          cannotConfirmReason = 'The five-minute booking payment window expired.';
+          cannotConfirmReason = 'The ten-minute booking payment window expired.';
         }
         // Check if there is an active valid payment hold for this appointment
         const hold = await tx.paymentHold.findFirst({

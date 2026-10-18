@@ -1191,7 +1191,7 @@ describe('appointmentsService.runBookingJob', () => {
       appointmentId: 'appt-new', status: 'PENDING',
     }) }));
     const hold = tx.paymentHold.create.mock.calls[0][0].data;
-    expect(hold.holdExpiresAt.getTime() - hold.holdCreatedAt.getTime()).toBe(5 * 60 * 1000);
+    expect(hold.holdExpiresAt.getTime() - hold.holdCreatedAt.getTime()).toBe(10 * 60 * 1000);
   });
 
   test('an online booking with a non-zero total starts pending_payment/on_hold and skips the "booking confirmed" notifications', async () => {

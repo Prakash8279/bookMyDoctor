@@ -1,7 +1,7 @@
 const prisma = require('../../config/db');
 const logger = require('../../config/logger');
 
-const PAYMENT_WINDOW_MS = 5 * 60 * 1000;
+const PAYMENT_WINDOW_MS = 10 * 60 * 1000;
 
 function paymentDeadline(createdAt) {
   return new Date(new Date(createdAt).getTime() + PAYMENT_WINDOW_MS);
@@ -40,7 +40,7 @@ async function expirePendingBooking(row, cutoff) {
     }),
     queueService.invalidateQueueListCaches({ doctorUserId: row.doctorUserId, clinicId: row.clinicId }),
   ]);
-  logger.info(`[booking-expiry] Released unpaid booking ${row.id} after five minutes`);
+  logger.info(`[booking-expiry] Released unpaid booking ${row.id} after ten minutes`);
   return true;
 }
 

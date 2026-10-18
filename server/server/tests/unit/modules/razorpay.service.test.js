@@ -67,8 +67,8 @@ jest.mock('../../../src/modules/payments/paymentHold.service', () => ({
   markHoldRefundedTx: jest.fn(),
 }));
 jest.mock('../../../src/modules/appointments/bookingExpiry.service', () => ({
-  PAYMENT_WINDOW_MS: 5 * 60 * 1000,
-  paymentWindowExpired: jest.fn((createdAt) => Date.now() >= new Date(createdAt).getTime() + 5 * 60 * 1000),
+  PAYMENT_WINDOW_MS: 10 * 60 * 1000,
+  paymentWindowExpired: jest.fn((createdAt) => Date.now() >= new Date(createdAt).getTime() + 10 * 60 * 1000),
   expireOverduePendingBookings: jest.fn().mockResolvedValue(1),
 }));
 
@@ -154,9 +154,9 @@ describe('razorpay.service — gateway-not-configured guard', () => {
 });
 
 describe('razorpay.service.createOrder — ownership and state guards', () => {
-  test('rejects a new payment order after the five-minute booking window', async () => {
+  test('rejects a new payment order after the ten-minute booking window', async () => {
     prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow({
-      createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      createdAt: new Date(Date.now() - 11 * 60 * 1000),
       appointmentDate: new Date('2026-10-18T00:00:00.000Z'),
     }));
     await expect(razorpayService.createOrder('appt-1', PATIENT)).rejects.toMatchObject({
@@ -310,7 +310,7 @@ describe('razorpay.service.createOrder — payload shape (full vs minimum)', () 
       appointmentId: 'appt-1',
       holdId: null,
       holdExpiresAt: null,
-      holdDurationSeconds: 300,
+      holdDurationSeconds: 600,
     });
   });
 

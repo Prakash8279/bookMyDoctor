@@ -20,11 +20,11 @@ beforeEach(() => {
   prisma.appointment.findMany.mockResolvedValue([row]);
 });
 
-test('payment deadline is exactly five minutes after booking creation', () => {
+test('payment deadline is exactly ten minutes after booking creation', () => {
   const createdAt = new Date('2026-10-17T10:00:00.000Z');
-  expect(expiry.paymentDeadline(createdAt).toISOString()).toBe('2026-10-17T10:05:00.000Z');
-  expect(expiry.paymentWindowExpired(createdAt, new Date('2026-10-17T10:04:59.999Z'))).toBe(false);
-  expect(expiry.paymentWindowExpired(createdAt, new Date('2026-10-17T10:05:00.000Z'))).toBe(true);
+  expect(expiry.paymentDeadline(createdAt).toISOString()).toBe('2026-10-17T10:10:00.000Z');
+  expect(expiry.paymentWindowExpired(createdAt, new Date('2026-10-17T10:09:59.999Z'))).toBe(false);
+  expect(expiry.paymentWindowExpired(createdAt, new Date('2026-10-17T10:10:00.000Z'))).toBe(true);
 });
 
 test('an overdue unpaid booking releases its slot, hidden token, and payment hold', async () => {

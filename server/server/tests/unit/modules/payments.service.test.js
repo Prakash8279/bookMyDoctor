@@ -414,7 +414,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     });
   });
 
-  test('a captured payment after five minutes cannot issue a token and starts a refund', async () => {
+  test('a captured payment after ten minutes cannot issue a token and starts a refund', async () => {
     const tx = makeTx({
       paymentHold: {
         findFirst: jest.fn().mockResolvedValue({ status: 'PENDING', holdExpiresAt: new Date(Date.now() + 60000) }),
@@ -424,7 +424,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
       refund: { upsert: jest.fn().mockResolvedValue({ id: 'refund-1' }) },
     });
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({
-      status: 'pending_payment', source: 'online', createdAt: new Date(Date.now() - 6 * 60 * 1000),
+      status: 'pending_payment', source: 'online', createdAt: new Date(Date.now() - 11 * 60 * 1000),
     }));
     prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
 

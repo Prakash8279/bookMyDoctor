@@ -56,7 +56,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
 
   Future<void> _payNow([String option = 'full']) async {
     if (_secondsRemaining == 0) {
-      setState(() => _error = 'Your five-minute payment window expired. Please book an available slot again.');
+      setState(() => _error = 'Your ten-minute payment window expired. Please book an available slot again.');
       return;
     }
     setState(() {
@@ -90,7 +90,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
   int? get _secondsRemaining {
     final createdAt = DateTime.tryParse(_appointment.createdAt ?? '');
     if (createdAt == null) return null;
-    final remainingMs = createdAt.add(const Duration(minutes: 5)).difference(DateTime.now()).inMilliseconds;
+    final remainingMs = createdAt.add(const Duration(minutes: 10)).difference(DateTime.now()).inMilliseconds;
     return remainingMs <= 0 ? 0 : (remainingMs + 999) ~/ 1000;
   }
 
@@ -167,7 +167,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const PageHeader(title: 'Booking expired', subtitle: 'Payment was not completed within five minutes.'),
+                    const PageHeader(title: 'Booking expired', subtitle: 'Payment was not completed within ten minutes.'),
                     const SectionCard(
                       title: 'Slot released',
                       child: Text('No token number was issued. If a payment was captured, its refund will be processed.'),
@@ -300,7 +300,7 @@ class _PaymentRequiredScreenState extends State<PaymentRequiredScreen> {
                           ),
                           const SizedBox(height: AppSpacing.xs),
                           Text(
-                            'Complete payment within five minutes to keep this slot${_secondsRemaining != null ? ' · ${_secondsRemaining! ~/ 60}:${(_secondsRemaining! % 60).toString().padLeft(2, '0')} left' : ''}.',
+                            'Complete payment within ten minutes to keep this slot${_secondsRemaining != null ? ' · ${_secondsRemaining! ~/ 60}:${(_secondsRemaining! % 60).toString().padLeft(2, '0')} left' : ''}.',
                             style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w600),
                           ),
                         ],

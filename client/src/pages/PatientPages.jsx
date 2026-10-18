@@ -214,7 +214,7 @@ export function Booking({ data }) {
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
   const [clockNowMs, setClockNowMs] = useState(Date.now())
   const paymentDeadlineMs = booked?.status === 'pending_payment' && booked.createdAt
-    ? Date.parse(booked.createdAt) + 5 * 60 * 1000
+    ? Date.parse(booked.createdAt) + 10 * 60 * 1000
     : null
   const paymentSecondsLeft = paymentDeadlineMs == null ? null : Math.max(0, Math.ceil((paymentDeadlineMs - clockNowMs) / 1000))
 
@@ -374,7 +374,7 @@ export function Booking({ data }) {
   // rest collected at the clinic).
   const payNow = async (paymentOption = 'full') => {
     if (paymentDeadlineMs != null && Date.now() >= paymentDeadlineMs) {
-      setPaymentError('Your five-minute payment window expired. Please choose an available slot again.')
+      setPaymentError('Your ten-minute payment window expired. Please choose an available slot again.')
       return
     }
     setPaymentError('')
@@ -442,7 +442,7 @@ export function Booking({ data }) {
   }
   if (booked) {
     if (booked.status === 'cancelled') {
-      return <Page title="Booking not confirmed" subtitle="The five-minute payment window ended before confirmation.">
+      return <Page title="Booking not confirmed" subtitle="The ten-minute payment window ended before confirmation.">
         <div className="max-w-xl rounded-card border border-border bg-white p-6 shadow-card">
           <p className="text-sm text-muted">This slot was released and no token number was issued. If a payment was captured, its refund will be processed.</p>
           <Link className="btn-primary mt-5 inline-flex" to="/patient/book" onClick={() => setBooked(null)}>Choose another slot</Link>
@@ -469,7 +469,7 @@ export function Booking({ data }) {
     const minRemainder = Number(booked.fees?.minBookingRemainder) || 0
     if (pendingPayment) {
       if (paymentSecondsLeft === 0) {
-        return <Page title="Booking expired" subtitle="Payment was not completed within five minutes.">
+        return <Page title="Booking expired" subtitle="Payment was not completed within ten minutes.">
           <div className="max-w-xl rounded-card border border-border bg-white p-6 shadow-card">
             <p className="text-sm text-muted">Your held slot has been released and no token number was issued.</p>
             <Link className="btn-primary mt-5 inline-flex" to="/patient/book" onClick={() => setBooked(null)}>Choose another slot</Link>
@@ -487,7 +487,7 @@ export function Booking({ data }) {
           <p className="mt-2 text-sm text-muted">{doctor?.name || '—'} · {booked.appointmentDate}</p>
           <p className="mt-2 text-sm text-muted">Your token number will be issued as soon as payment is received.</p>
           <p className="mt-2 text-sm font-semibold text-primary-dark" role="status">
-            Complete payment within five minutes to keep this slot{paymentSecondsLeft != null ? ` · ${Math.floor(paymentSecondsLeft / 60)}:${String(paymentSecondsLeft % 60).padStart(2, '0')} left` : ''}.
+            Complete payment within ten minutes to keep this slot{paymentSecondsLeft != null ? ` · ${Math.floor(paymentSecondsLeft / 60)}:${String(paymentSecondsLeft % 60).padStart(2, '0')} left` : ''}.
           </p>
           <div className="mt-5 space-y-3">
             {bookingPaymentPolicy !== 'platform_only' && <div className="rounded-button bg-surface p-4">

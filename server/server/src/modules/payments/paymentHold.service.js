@@ -186,7 +186,7 @@ async function createOrRefreshHoldTx(tx, { appointment, patientUserId, durationS
     ? bookingExpiryService.paymentDeadline(appointment.createdAt)
     : new Date(now.getTime() + duration * 1000);
   if (expiresAt <= now) {
-    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The five-minute payment window has expired. Please book an available slot again.');
+    throw new ApiError(409, 'PAYMENT_WINDOW_EXPIRED', 'The ten-minute payment window has expired. Please book an available slot again.');
   }
 
   if (!tx?.paymentHold?.findFirst) {
