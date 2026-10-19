@@ -18,9 +18,11 @@ jest.mock('../../../src/config/db', () => ({
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   },
   payment: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     updateMany: jest.fn(),
     count: jest.fn().mockResolvedValue(0),
   },
@@ -28,6 +30,8 @@ jest.mock('../../../src/config/db', () => ({
     findUnique: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
+    upsert: jest.fn(),
+    aggregate: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     count: jest.fn(),
@@ -35,6 +39,7 @@ jest.mock('../../../src/config/db', () => ({
   },
   queueToken: {
     delete: jest.fn(),
+    deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     update: jest.fn(),
   },
   bookingRules: {
@@ -49,15 +54,26 @@ jest.mock('../../../src/config/db', () => ({
   notification: {
     create: jest.fn().mockResolvedValue({}),
   },
+  notificationRecipient: {
+    create: jest.fn().mockResolvedValue({}),
+  },
   $transaction: jest.fn((callbackOrArray) => {
     if (typeof callbackOrArray === 'function') {
       return callbackOrArray(require('../../../src/config/db'));
     }
     return Promise.all(callbackOrArray);
   }),
+  $executeRaw: jest.fn().mockResolvedValue(1),
 }));
 
 jest.mock('../../../src/services/activityLogService', () => ({ log: jest.fn().mockResolvedValue({}) }));
+// Cancellation tests never enqueue bookings. Mocking this import prevents the
+// real BullMQ connection from retrying Redis indefinitely after Jest finishes.
+jest.mock('../../../src/jobs/bookingQueue', () => ({
+  enqueueBookingJob: jest.fn(),
+  getJob: jest.fn(),
+  getQueuePosition: jest.fn(),
+}));
 jest.mock('../../../src/config/redis', () => ({
   del: jest.fn().mockResolvedValue(1),
   scan: jest.fn().mockResolvedValue(['0', []]),
@@ -73,6 +89,13 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // clearAllMocks retains queued mockResolvedValueOnce responses. A failed
+    // transaction must not leak its unused post-commit lookup into the next test.
+    prisma.appointment.findUnique.mockReset();
+    prisma.refund.findUnique.mockReset();
+    prisma.refund.findFirst.mockReset();
+    prisma.payment.findUnique.mockResolvedValue({ amount: 500 });
+    prisma.refund.aggregate.mockResolvedValue({ _sum: { amount: 500 } });
     global.fetch = jest.fn();
     env.razorpay.keyId = 'rzp_test_sampleKeyId';
     env.razorpay.keySecret = 'sampleSecret123';
@@ -365,6 +388,48 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
 
     expect(res.handled).toBe(true);
     expect(res.alreadyProcessed).toBe(true);
+    expect(prisma.refund.update).not.toHaveBeenCalled();
+  });
+
+  test('imports a processed refund issued in the gateway dashboard and updates the local payment', async () => {
+    prisma.refund.findFirst.mockResolvedValue(null);
+    prisma.payment.findFirst.mockResolvedValue({ id: 'payment-2', appointmentId: 'appt-2', amount: 2 });
+    prisma.payment.findUnique.mockResolvedValue({ amount: 2 });
+    prisma.refund.aggregate.mockResolvedValue({ _sum: { amount: 2 } });
+    prisma.refund.upsert.mockResolvedValue({ id: 'external-1', appointmentId: 'appt-2', paymentId: 'payment-2', amount: 2, status: 'pending' });
+
+    const result = await razorpayService.handleRefundWebhookEvent({
+      event: 'refund.processed',
+      payload: { refund: { entity: { id: 'rfnd_external', payment_id: 'pay_external', amount: 200, notes: {} } } },
+    });
+
+    expect(result).toEqual({ handled: true, event: 'refund.processed' });
+    expect(prisma.refund.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { razorpayRefundId: 'rfnd_external' },
+      create: expect.objectContaining({ amount: 2, paymentId: 'payment-2', idempotencyKey: 'refund:gateway-event:rfnd_external' }),
+    }));
+    expect(prisma.payment.updateMany).toHaveBeenCalledWith({ where: { id: 'payment-2' }, data: { status: 'refunded' } });
+  });
+
+  test('records a partial gateway refund without marking the entire payment refunded', async () => {
+    prisma.refund.findFirst.mockResolvedValue({ id: 'partial-1', paymentId: 'payment-1', appointmentId: 'appt-1', amount: 100, status: 'pending' });
+    prisma.refund.aggregate.mockResolvedValue({ _sum: { amount: 100 } });
+    await razorpayService.handleRefundWebhookEvent({
+      event: 'refund.processed',
+      payload: { refund: { entity: { id: 'rfnd_partial', payment_id: 'pay_1', amount: 10000 } } },
+    });
+    expect(prisma.refund.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'processed' }) }));
+    expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  test('a delayed failed event cannot downgrade an already processed refund', async () => {
+    prisma.refund.findFirst.mockResolvedValue({ id: 'done-1', status: 'processed' });
+    const result = await razorpayService.handleRefundWebhookEvent({
+      event: 'refund.failed',
+      payload: { refund: { entity: { id: 'rfnd_done', payment_id: 'pay_1' } } },
+    });
+    expect(result.alreadyProcessed).toBe(true);
     expect(prisma.refund.update).not.toHaveBeenCalled();
   });
 

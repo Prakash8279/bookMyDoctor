@@ -57,7 +57,7 @@ async function fetchOrderDetails(orderId) {
     throw new ApiError(502, 'PAYMENT_GATEWAY_UNREACHABLE', 'Could not reach the payment gateway. Please try again.');
   }
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload || typeof payload.amount !== 'number') {
+  if (!response.ok || !payload || !Number.isSafeInteger(payload.amount) || payload.amount <= 0) {
     throw new ApiError(502, 'PAYMENT_GATEWAY_ERROR', 'Could not verify the payment amount with the payment gateway.');
   }
   return {
@@ -67,6 +67,25 @@ async function fetchOrderDetails(orderId) {
     status: payload.status || null,
     notes: (payload.notes && typeof payload.notes === 'object') ? payload.notes : {},
   };
+}
+
+async function assertPaymentCaptured(paymentId, orderId, order) {
+  let response;
+  try {
+    response = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+      headers: { Authorization: razorpayAuthHeader() },
+    });
+  } catch {
+    throw new ApiError(502, 'PAYMENT_STATUS_UNAVAILABLE', 'We could not confirm the payment status. Check My appointments before paying again.');
+  }
+  const payment = await response.json().catch(() => null);
+  if (!response.ok || !payment || payment.id !== paymentId || payment.order_id !== orderId ||
+      payment.amount !== order.amount || payment.currency !== order.currency) {
+    throw new ApiError(502, 'PAYMENT_STATUS_MISMATCH', 'The gateway payment details could not be verified. Check My appointments before paying again.');
+  }
+  if (payment.status !== 'captured') {
+    throw new ApiError(409, 'PAYMENT_PROCESSING', 'Your payment is awaiting gateway confirmation. Check My appointments before paying again.');
+  }
 }
 
 function assertGatewayConfigured() {
@@ -389,7 +408,8 @@ async function verifyAndRecordPayment(body, requester) {
   // signature. Ask Razorpay itself what the order was for; this is what decides whether
   // createPaymentForAppointment records the appointment as fully `paid` or just `partial`
   // (doctor's minimum advance amount).
-  const { amountRupees: chargedAmount, notes } = await fetchOrderDetails(razorpayOrderId);
+  const order = await fetchOrderDetails(razorpayOrderId);
+  const { amountRupees: chargedAmount, notes } = order;
 
   // SECURITY FIX (found in an audit): the signature checked above only proves this order/payment
   // pair really came from Razorpay — it's an HMAC of `orderId|paymentId` alone, completely
@@ -410,6 +430,10 @@ async function verifyAndRecordPayment(body, requester) {
       'This payment does not match the selected appointment. No charge has been recorded against it.'
     );
   }
+
+  // A valid Checkout signature can arrive while a payment is only authorized.
+  // Issue a token only after Razorpay confirms capture of this exact order/amount.
+  await assertPaymentCaptured(razorpayPaymentId, razorpayOrderId, order);
 
   // Reuses the receptionist/admin cash-recording path's exact fee-copy/row-lock/already-paid
   // guards — 'online' mode, Razorpay's payment id as the transaction reference — via the shared
@@ -658,22 +682,48 @@ async function handleRefundWebhookEvent(event) {
   const razorpayRefundId = refundEntity.id;
   const razorpayPaymentId = refundEntity.payment_id;
   const refundNotes = refundEntity.notes || {};
+  if (!razorpayPaymentId) return { handled: false, reason: 'missing_payment_id' };
 
   // Find corresponding refund record in database
   let refund = await prisma.refund.findFirst({
     where: {
       OR: [
         { razorpayRefundId },
-        ...(refundNotes.refundId ? [{ id: refundNotes.refundId }] : []),
-        ...(refundNotes.appointmentId ? [{ appointmentId: refundNotes.appointmentId }] : []),
-        { razorpayPaymentId },
+        ...(refundNotes.refundId ? [{ id: refundNotes.refundId, razorpayPaymentId, razorpayRefundId: null }] : []),
       ],
     },
   });
 
   if (!refund) {
-    return { handled: false, reason: 'refund_not_ours' };
+    // Refunds issued directly in Razorpay have no local refundId note. Match the
+    // original gateway payment, then import this exact refund once. Matching only
+    // an appointment/payment could overwrite a different partial refund.
+    const payment = await prisma.payment.findFirst({
+      where: { transactionRef: razorpayPaymentId, mode: 'online' },
+      select: { id: true, appointmentId: true, amount: true },
+    });
+    if (!payment?.appointmentId) return { handled: false, reason: 'refund_not_ours' };
+    if (!Number.isSafeInteger(refundEntity.amount) || refundEntity.amount <= 0 ||
+        refundEntity.amount > Math.round(Number(payment.amount) * 100)) {
+      throw new ApiError(400, 'INVALID_REFUND_AMOUNT', 'The gateway refund amount is invalid.');
+    }
+    refund = await prisma.refund.upsert({
+      where: { razorpayRefundId },
+      create: {
+        appointmentId: payment.appointmentId,
+        paymentId: payment.id,
+        amount: refundEntity.amount / 100,
+        razorpayPaymentId,
+        razorpayRefundId,
+        status: 'pending',
+        idempotencyKey: `refund:gateway-event:${razorpayRefundId}`,
+      },
+      update: {},
+    });
   }
+
+  // A delayed created/failed notification must not reverse a processed refund.
+  if (refund.status === 'processed') return { handled: true, alreadyProcessed: true };
 
   if (event.event === 'refund.created') {
     if (refund.status === 'processed') {
@@ -743,11 +793,23 @@ async function markRefundFailed(refundId, failureReason) {
 }
 
 async function finalizeProcessedRefund(refund, razorpayRefundId) {
-  await prisma.$transaction(async (tx) => {
+  const paymentContext = await prisma.$transaction(async (tx) => {
+    // Serialize partial refunds for the same payment so their combined total is
+    // checked consistently, even when gateway events arrive together.
+    await tx.$executeRaw`SELECT id FROM payments WHERE id = ${refund.paymentId} FOR UPDATE`;
     await tx.refund.update({
       where: { id: refund.id },
       data: { razorpayRefundId, status: 'processed', failureReason: null, updatedAt: new Date() },
     });
+    const payment = await tx.payment.findUnique({
+      where: { id: refund.paymentId },
+      select: { amount: true, patientUserId: true, doctorUserId: true, clinicId: true },
+    });
+    const refunded = await tx.refund.aggregate({
+      where: { paymentId: refund.paymentId, status: 'processed' },
+      _sum: { amount: true },
+    });
+    if (!payment || Number(refunded._sum.amount || 0) < Number(payment.amount)) return;
     await tx.payment.updateMany({
       where: { id: refund.paymentId },
       data: { status: 'refunded' },
@@ -762,9 +824,17 @@ async function finalizeProcessedRefund(refund, razorpayRefundId) {
         where: { id: refund.appointmentId },
         data: { paymentStatus: 'refunded' },
       });
+      await paymentHoldService.markHoldRefundedTx(tx, refund.appointmentId);
     }
-    await paymentHoldService.markHoldRefundedTx(tx, refund.appointmentId);
+    return payment;
   });
+  if (paymentContext) {
+    const appointmentsService = require('../appointments/appointments.service');
+    await Promise.allSettled([
+      paymentsService.invalidatePaymentListCaches(paymentContext),
+      appointmentsService.invalidateAppointmentListCaches(paymentContext),
+    ]);
+  }
 }
 
 async function saveGatewayRefundState(refund, gatewayRefund) {

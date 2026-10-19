@@ -462,7 +462,8 @@ describe('razorpay.service.verifyAndRecordPayment — HMAC signature verificatio
   const PAYMENT_ID = 'pay_xyz789';
 
   function mockOrderDetails(notes) {
-    global.fetch.mockResolvedValue(jsonResponse({ amount: 61360, notes }));
+    global.fetch.mockResolvedValueOnce(jsonResponse({ amount: 61360, notes }))
+      .mockResolvedValue(jsonResponse({ id: PAYMENT_ID, order_id: ORDER_ID, amount: 61360, currency: 'INR', status: 'captured' }));
   }
 
   beforeEach(() => {
@@ -502,6 +503,24 @@ describe('razorpay.service.verifyAndRecordPayment — HMAC signature verificatio
       ORDER_ID
     );
     expect(result).toEqual({ payment: { id: 'pay-1' }, appointment: { id: 'appt-1' } });
+  });
+
+  test('an authorized payment cannot confirm a booking before capture', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ amount: 61360, currency: 'INR', notes: { appointmentId: 'appt-1', patientUserId: PATIENT.id } }))
+      .mockResolvedValueOnce(jsonResponse({ id: PAYMENT_ID, order_id: ORDER_ID, amount: 61360, currency: 'INR', status: 'authorized' }));
+    await expect(razorpayService.verifyAndRecordPayment({ appointmentId: 'appt-1', razorpayOrderId: ORDER_ID,
+      razorpayPaymentId: PAYMENT_ID, razorpaySignature: signature(ORDER_ID, PAYMENT_ID) }, PATIENT))
+      .rejects.toMatchObject({ code: 'PAYMENT_PROCESSING' });
+    expect(paymentsService.createPaymentForAppointment).not.toHaveBeenCalled();
+  });
+
+  test('rejects a captured payment with mismatched gateway amount', async () => {
+    global.fetch.mockResolvedValueOnce(jsonResponse({ amount: 61360, currency: 'INR', notes: { appointmentId: 'appt-1', patientUserId: PATIENT.id } }))
+      .mockResolvedValueOnce(jsonResponse({ id: PAYMENT_ID, order_id: ORDER_ID, amount: 100, currency: 'INR', status: 'captured' }));
+    await expect(razorpayService.verifyAndRecordPayment({ appointmentId: 'appt-1', razorpayOrderId: ORDER_ID,
+      razorpayPaymentId: PAYMENT_ID, razorpaySignature: signature(ORDER_ID, PAYMENT_ID) }, PATIENT))
+      .rejects.toMatchObject({ code: 'PAYMENT_STATUS_MISMATCH' });
+    expect(paymentsService.createPaymentForAppointment).not.toHaveBeenCalled();
   });
 
   test('a TAMPERED signature (payload bytes changed after signing) is rejected with 400 PAYMENT_SIGNATURE_INVALID, and nothing is recorded', async () => {
@@ -659,9 +678,9 @@ describe('razorpay.service.verifyAndRecordPayment — never trusts the frontend 
   test('the amount passed to createPaymentForAppointment comes from Razorpay\'s own order record (in rupees), not anything in the request body', async () => {
     // Order was actually created for 100 rupees (minimum-advance flow) — the request body itself
     // never carries an amount field at all, but even if it did, this must ignore it.
-    global.fetch.mockResolvedValue(
+    global.fetch.mockResolvedValueOnce(
       jsonResponse({ amount: 10000, notes: { appointmentId: 'appt-1', patientUserId: 'patient-1' } })
-    );
+    ).mockResolvedValue(jsonResponse({ id: PAYMENT_ID, order_id: ORDER_ID, amount: 10000, currency: 'INR', status: 'captured' }));
     paymentsService.createPaymentForAppointment.mockResolvedValue({
       id: 'pay-1',
       amount: '100',
@@ -693,9 +712,9 @@ describe('razorpay.service.verifyAndRecordPayment — side effects after a succe
 
   beforeEach(() => {
     prisma.appointment.findUnique.mockResolvedValue(buildAppointmentRow());
-    global.fetch.mockResolvedValue(
+    global.fetch.mockResolvedValueOnce(
       jsonResponse({ amount: 61360, notes: { appointmentId: 'appt-1', patientUserId: 'patient-1' } })
-    );
+    ).mockResolvedValue(jsonResponse({ id: PAYMENT_ID, order_id: ORDER_ID, amount: 61360, currency: 'INR', status: 'captured' }));
     paymentsService.createPaymentForAppointment.mockResolvedValue({
       id: 'pay-1',
       amount: '613.6',

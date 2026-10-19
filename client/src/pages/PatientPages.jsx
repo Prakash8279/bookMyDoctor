@@ -210,6 +210,8 @@ export function Booking({ data }) {
   const currentUser = useAppStore((state) => state.currentUser) || {}
   const [payingNow, setPayingNow] = useState(false)
   const [paymentError, setPaymentError] = useState('')
+  const checkoutRef = useRef(null)
+  const checkoutMountedRef = useRef(true)
   const platformCharges = data.platformCharges
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
   const [clockNowMs, setClockNowMs] = useState(Date.now())
@@ -224,6 +226,22 @@ export function Booking({ data }) {
     const interval = window.setInterval(() => setClockNowMs(Date.now()), 1000)
     return () => window.clearInterval(interval)
   }, [paymentDeadlineMs])
+
+  useEffect(() => {
+    if (paymentSecondsLeft !== 0 || !checkoutRef.current) return
+    checkoutRef.current.close?.()
+    checkoutRef.current = null
+    setPayingNow(false)
+  }, [paymentSecondsLeft])
+
+  useEffect(() => {
+    checkoutMountedRef.current = true
+    return () => {
+      checkoutMountedRef.current = false
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     const qDoctor = params.get('doctorId') || params.get('doctor') || ''
@@ -373,6 +391,7 @@ export function Booking({ data }) {
   // consultation amount) or 'minimum' (pay just the doctor's configured minimum booking amount,
   // rest collected at the clinic).
   const payNow = async (paymentOption = 'full') => {
+    if (checkoutRef.current || payingNow) return
     if (paymentDeadlineMs != null && Date.now() >= paymentDeadlineMs) {
       setPaymentError('Your ten-minute payment window expired. Please choose an available slot again.')
       return
@@ -383,7 +402,14 @@ export function Booking({ data }) {
       await loadRazorpayScript().catch(() => {
         throw new Error('Payment gateway failed to load. Check your internet connection and try again.')
       })
+      if (!checkoutMountedRef.current) return
       const order = await createRazorpayOrder(booked.id, paymentOption)
+      if (!checkoutMountedRef.current) return
+      const checkoutDeadlineMs = Date.parse(order.holdExpiresAt) || paymentDeadlineMs
+      const checkoutSecondsLeft = Math.floor((checkoutDeadlineMs - Date.now()) / 1000)
+      if (checkoutSecondsLeft <= 0) {
+        throw new Error('Your ten-minute payment window expired. Please choose an available slot again.')
+      }
       const checkout = new window.Razorpay({
         key: order.keyId,
         amount: order.amount,
@@ -392,9 +418,11 @@ export function Booking({ data }) {
         name: 'BookADoctors',
         description: `Consultation with ${doctor?.name || booked.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : paymentOption === 'platform_only' ? ' · Platform charge' : ''}`,
         prefill: { name: currentUser.name || '', email: currentUser.email || '', contact: currentUser.phone || '' },
+        timeout: checkoutSecondsLeft,
         theme: { color: '#ad5d3b' },
-        modal: { ondismiss: () => setPayingNow(false) },
+        modal: { ondismiss: () => { checkoutRef.current = null; setPayingNow(false) } },
         handler: async (response) => {
+          checkoutRef.current = null
           try {
             // Backend returns the authoritative, freshly re-fetched appointment (status may have
             // just flipped pending_payment -> upcoming, with the reserved token now visible) — trust
@@ -434,8 +462,11 @@ export function Booking({ data }) {
         setPaymentError(failure?.error?.description || 'Payment failed. Please try again.')
         setPayingNow(false)
       })
+      checkoutRef.current = checkout
       checkout.open()
     } catch (orderError) {
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
       setPaymentError(orderError.message)
       setPayingNow(false)
     }

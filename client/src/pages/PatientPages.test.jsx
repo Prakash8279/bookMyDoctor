@@ -441,7 +441,7 @@ describe('Booking', () => {
       seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url, _payload) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-3', status: 'queued' })
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         if (url === '/payments/razorpay/verify') {
           return Promise.resolve({
             payment: { id: 'pay-1', amount: 600 },
@@ -476,7 +476,7 @@ describe('Booking', () => {
         expect(apiClient.post).toHaveBeenCalledWith('/payments/razorpay/order', { appointmentId: 'appt-9', paymentOption: 'full' })
       )
       expect(window.Razorpay).toHaveBeenCalledWith(
-        expect.objectContaining({ key: 'key_1', amount: 60000, currency: 'INR', order_id: 'order_1' })
+        expect.objectContaining({ key: 'key_1', amount: 60000, currency: 'INR', order_id: 'order_1', timeout: expect.any(Number) })
       )
 
       await act(async () => {
@@ -516,7 +516,7 @@ describe('Booking', () => {
       seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-5', status: 'queued' })
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         if (url === '/payments/razorpay/verify') return Promise.reject(new Error('The request took too long to respond. Please check your connection and try again.'))
         return Promise.resolve({})
       })
@@ -577,7 +577,7 @@ describe('Booking', () => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-4', status: 'queued' })
         // Server order amount reflects fees.minBookingAmount (¥33.60 below), NOT the doctor's raw
         // minBookingAdvanceAmount of ₹100 from the DOCTOR fixture.
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 3360, currency: 'INR', orderId: 'order_2' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 3360, currency: 'INR', orderId: 'order_2', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         return Promise.resolve({})
       })
       apiClient.get.mockImplementation((url) =>
@@ -893,7 +893,7 @@ describe('PatientAppointments', () => {
       try {
         seedData({ appointments: [APPT_PENDING_PAYMENT] })
         apiClient.post.mockImplementation((url) => {
-          if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_9' })
+          if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_9', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
           if (url === '/payments/razorpay/verify') {
             return Promise.resolve({
               payment: { id: 'pay-9', amount: 600 },
