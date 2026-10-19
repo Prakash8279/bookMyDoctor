@@ -15,6 +15,7 @@ import { buildCsv, downloadCsv } from '../lib/csv'
 import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
+import { PaymentConfirmation } from '../components/PaymentConfirmation'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
 import { PatientNavIcon } from '../components/PatientNavIcon'
 
@@ -199,6 +200,7 @@ const todayStr = () => {
 export function Booking({ data }) {
   const [params, setSearchParams] = useSearchParams()
   const [booked, setBooked] = useState(null)
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const createAppointment = useAppStore((state) => state.createAppointment)
@@ -247,6 +249,10 @@ export function Booking({ data }) {
     const qDoctor = params.get('doctorId') || params.get('doctor') || ''
     if (qDoctor !== doctorId) {
       setDoctorId(qDoctor)
+      setBooked(null)
+      setShowPaymentConfirmation(false)
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
     }
   }, [params, doctorId])
 
@@ -434,6 +440,7 @@ export function Booking({ data }) {
               razorpaySignature: response.razorpay_signature,
             })
             setBooked(appointment)
+            setShowPaymentConfirmation(appointment?.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(appointment.status))
           } catch (verifyError) {
             // RESUME/RECONCILE FIX (senior-dev payment audit, "payment sahi nahi hua hai"): this
             // handler only ever fires after Razorpay has already captured the payment — a failure
@@ -447,6 +454,7 @@ export function Booking({ data }) {
               const fresh = await getAppointment(booked.id)
               if (fresh && fresh.status !== 'pending_payment') {
                 setBooked(fresh)
+                setShowPaymentConfirmation(fresh.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(fresh.status))
                 return
               }
             } catch {
@@ -472,6 +480,7 @@ export function Booking({ data }) {
     }
   }
   if (booked) {
+    if (showPaymentConfirmation) return <PaymentConfirmation appointment={booked} />
     if (booked.status === 'cancelled') {
       return <Page title="Booking not confirmed" subtitle="The ten-minute payment window ended before confirmation.">
         <div className="max-w-xl rounded-card border border-border bg-white p-6 shadow-card">
@@ -975,6 +984,7 @@ export function Booking({ data }) {
   )
 }
 export function PatientAppointments({ data, history = false }) {
+  const [confirmedPayment, setConfirmedPayment] = useState(null)
   const isMobile = useIsMobile()
   const [reviewAppointment, setReviewAppointment] = useState('')
   const [rating, setRating] = useState('')
@@ -1004,7 +1014,9 @@ export function PatientAppointments({ data, history = false }) {
   })
   const resumePayment = (appointment, paymentOption) => {
     setCancelError('')
-    payNow(appointment, paymentOption, { currentUser })
+    payNow(appointment, paymentOption, { currentUser, onUpdated: (updated) => {
+      if (updated?.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(updated.status)) setConfirmedPayment(updated)
+    } })
   }
   const owned = data.appointments || []
   const completed = owned.filter((item) => item.status === 'completed')
@@ -1169,6 +1181,8 @@ export function PatientAppointments({ data, history = false }) {
     }
     return records
   }, [records, statusFilter])
+
+  if (confirmedPayment) return <PaymentConfirmation appointment={confirmedPayment} onClose={() => setConfirmedPayment(null)} />
 
   return <>
     <Page title={history ? 'Booking history' : 'My appointments'} subtitle={history ? 'Review every clinic visit and view/download booking slips.' : 'View upcoming bookings, view/download slips, and review completed consultations.'} action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>

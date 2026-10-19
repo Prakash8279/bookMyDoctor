@@ -489,6 +489,9 @@ describe('Booking', () => {
         razorpayPaymentId: 'pay_1',
         razorpaySignature: 'sig_1',
       })
+      expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+      expect(screen.queryByText('Token #9')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
       expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
       expect(screen.getByText('Token #9')).toBeInTheDocument()
       expect(screen.getByText('✓ Paid online')).toBeInTheDocument()
@@ -553,6 +556,8 @@ describe('Booking', () => {
       })
 
       await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments/appt-11'))
+      expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
       expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
       expect(screen.getByText('Token #11')).toBeInTheDocument()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument() // no false "payment failed" error shown
@@ -917,6 +922,10 @@ describe('PatientAppointments', () => {
           await capturedOptions.handler({ razorpay_order_id: 'order_9', razorpay_payment_id: 'pay_9', razorpay_signature: 'sig_9' })
         })
 
+        expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
+        expect(screen.getByText('Token #5')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('link', { name: 'View my appointments' }))
         expect(await screen.findByText('#5')).toBeInTheDocument() // tokenNumber now assigned
         expect(screen.queryByRole('button', { name: 'Pay ₹600 now' })).not.toBeInTheDocument() // row is no longer pending_payment
       } finally {

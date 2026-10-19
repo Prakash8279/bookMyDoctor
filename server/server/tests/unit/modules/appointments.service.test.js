@@ -1108,7 +1108,7 @@ describe('appointmentsService.runBookingJob', () => {
     mockUsers({ doctor: happyDoctor({ emergencyAvailable: false }) });
     await expect(appointmentsService.runBookingJob(basePayload({ isEmergency: true }))).resolves.toEqual({
       appointmentId: 'appt-new',
-      tokenNumber: 1,
+      tokenNumber: null,
     });
 
     const data = tx.appointment.create.mock.calls[0][0].data;
@@ -1181,12 +1181,12 @@ describe('appointmentsService.runBookingJob', () => {
     await appointmentsService.runBookingJob(basePayload());
 
     const appointment = tx.appointment.create.mock.calls[0][0].data;
-    const queueToken = tx.queueToken.create.mock.calls[0][0].data;
     expect(appointment.bookingPaymentPolicy).toBe('platform_only');
     expect(appointment.status).toBe('pending_payment');
     expect(appointment.consultationFee.toString()).toBe('500');
     expect(appointment.convenienceFee.toString()).toBe('20');
-    expect(queueToken.status).toBe('on_hold');
+    expect(appointment.tokenNumber).toBeNull();
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
     expect(tx.paymentHold.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       appointmentId: 'appt-new', status: 'PENDING',
     }) }));
@@ -1194,13 +1194,14 @@ describe('appointmentsService.runBookingJob', () => {
     expect(hold.holdExpiresAt.getTime() - hold.holdCreatedAt.getTime()).toBe(10 * 60 * 1000);
   });
 
-  test('an online booking with a non-zero total starts pending_payment/on_hold and skips the "booking confirmed" notifications', async () => {
+  test('an unpaid online booking holds a slot without allocating a queue number or sending confirmation', async () => {
     await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
 
     const apptData = tx.appointment.create.mock.calls[0][0].data;
-    const tokenData = tx.queueToken.create.mock.calls[0][0].data;
     expect(apptData.status).toBe('pending_payment');
-    expect(tokenData.status).toBe('on_hold');
+    expect(apptData.tokenNumber).toBeNull();
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(notificationsService.notifySystemEventSafe).not.toHaveBeenCalled();
   });
 
@@ -1245,7 +1246,7 @@ describe('appointmentsService.runBookingJob', () => {
   test('token numbering assigns MAX(token_number)+1, scoped per doctor+day', async () => {
     tx.$queryRaw.mockResolvedValue([{ max: 7 }]);
 
-    const result = await appointmentsService.runBookingJob(basePayload());
+    const result = await appointmentsService.runBookingJob(basePayload({ source: 'walk_in', requestedByUserId: 'recep-1', requestedByRole: 'receptionist' }));
 
     expect(result.tokenNumber).toBe(8);
     expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(8);
@@ -1256,8 +1257,11 @@ describe('appointmentsService.runBookingJob', () => {
   // continues token no jayega ya odd ya even patient ko mle") — doctorProfile.tokenNumberingMode
   // ─────────────────────────────────────────────────────────────────────────────────────────
   describe('token numbering — doctorProfile.tokenNumberingMode = "alternate"', () => {
+    beforeEach(() => {
+      prisma.platformCharges.findUnique.mockResolvedValue({ applyConvenienceFee: false, patientConvenienceFee: dec(0), gstPercent: dec(0) });
+    });
     test('an ONLINE booking gets the first ODD token (1) when no odd-parity token exists yet that day', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1268,7 +1272,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('a WALK-IN booking gets the first EVEN token (2) when no even-parity token exists yet that day', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(
@@ -1281,7 +1285,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the next ONLINE booking continues the odd sequence (existing odd max + 2), independent of the even sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 5 }]); // highest existing ODD token for this doctor+day
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1290,7 +1294,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the next WALK-IN booking continues the even sequence (existing even max + 2), independent of the odd sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 4 }]); // highest existing EVEN token for this doctor+day
 
       const result = await appointmentsService.runBookingJob(
@@ -1301,7 +1305,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the parity query filters token_number % 2 by source, scoped to this doctor+day, under the same advisory lock', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1313,7 +1317,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the default ("sequential") mode is unaffected — a doctor who never configured this keeps the pre-existing one-shared-count behavior', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'sequential' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'sequential' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 3 }]);
 
       const online = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1329,7 +1333,7 @@ describe('appointmentsService.runBookingJob', () => {
     // online ke lie") — doctorProfile.onlineTokenParity flips which parity 'alternate' mode
     // assigns to online vs walk-in bookings.
     test('onlineTokenParity="odd" (the default) gives ONLINE the odd sequence, same as no override at all', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'odd' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'odd' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1338,7 +1342,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('onlineTokenParity="even" FLIPS it — ONLINE now gets the even sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1347,7 +1351,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('onlineTokenParity="even" also flips WALK-IN onto the odd sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(
@@ -1358,7 +1362,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('an unset/unrecognized onlineTokenParity behaves exactly like the "odd" default', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: undefined }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: undefined }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));

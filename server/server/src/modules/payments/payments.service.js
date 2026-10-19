@@ -33,6 +33,7 @@ const { loadCommissionPercentIfAdmin } = require('../../services/commissionLooku
 const { computeMinBookingRemainder, resolvePaymentRowFeeSplit } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('./paymentHold.service');
 const bookingExpiryService = require('../appointments/bookingExpiry.service');
+const { nextQueueTokenNumber } = require('../../utils/queueTokenNumber');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -284,7 +285,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           emergencyFee: true,
           gstAmount: true,
           totalAmount: true,
-          doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true } } } },
+          doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true, tokenNumberingMode: true, onlineTokenParity: true } } } },
         },
       });
 
@@ -528,19 +529,30 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         select: { id: true },
       });
 
+      const tokenNumber = appointment.status === 'pending_payment'
+        ? await nextQueueTokenNumber(tx, {
+            doctorUserId: appointment.doctorUserId,
+            appointmentDate: appointment.appointmentDate,
+            source: appointment.source,
+            profile: appointment.doctor?.doctorProfile,
+          })
+        : appointment.tokenNumber;
+
       await tx.appointment.update({
         where: { id: appointment.id },
         data: {
           paymentStatus: newPaymentStatus,
           paymentMethod: mode,
-          ...(appointment.status === 'pending_payment' ? { status: 'upcoming' } : {}),
+          ...(appointment.status === 'pending_payment' ? { status: 'upcoming', tokenNumber } : {}),
         },
       });
 
       if (appointment.status === 'pending_payment') {
-        await tx.queueToken.updateMany({
-          where: { appointmentId: appointment.id, status: 'on_hold' },
-          data: { status: 'waiting' },
+        await tx.queueToken.upsert({
+          where: { appointmentId: appointment.id },
+          create: { appointmentId: appointment.id, doctorUserId: appointment.doctorUserId, clinicId: appointment.clinicId,
+            tokenNumber, status: 'waiting', queueDate: appointment.appointmentDate },
+          update: { tokenNumber, status: 'waiting' },
         });
         await paymentHoldService.confirmHoldTx(tx, appointment.id, gatewayOrderId);
       }
@@ -548,7 +560,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       notifyContext = {
         patientUserId: appointment.patientUserId,
         doctorUserId: appointment.doctorUserId,
-        tokenNumber: appointment.tokenNumber,
+        tokenNumber,
         chargedAmount: chargedAmount.toString(),
         justConfirmedBooking: appointment.status === 'pending_payment',
       };

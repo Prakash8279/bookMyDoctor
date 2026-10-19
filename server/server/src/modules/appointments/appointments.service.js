@@ -36,6 +36,7 @@ const { loadCommissionPercentIfAdmin } = require('../../services/commissionLooku
 const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('../payments/paymentHold.service');
 const bookingExpiryService = require('./bookingExpiry.service');
+const { nextQueueTokenNumber } = require('../../utils/queueTokenNumber');
 const { nextPatientNumber } = require('../../utils/idGenerators');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
@@ -1175,50 +1176,9 @@ async function runBookingJob(payload) {
         }
       }
 
-      // NOTE (fix, see verifier finding): PostgreSQL forbids a locking clause
-      // (FOR UPDATE/SHARE/...) on a query whose output rows can't be tied to
-      // individual table rows — an aggregate like MAX() collapses to a single
-      // synthetic row, so `... FOR UPDATE` here is invalid SQL and previously
-      // made every booking attempt fail. `FOR UPDATE` is dropped; it was also
-      // redundant given the `pg_advisory_xact_lock(hashtext(doctorUserId||dateStr))`
-      // taken immediately above on the same (doctorUserId, appointmentDate) key,
-      // which already fully serializes every concurrent transaction computing
-      // MAX(token_number) for this doctor+day — no other transaction can reach
-      // this SELECT (or the subsequent INSERT) until the advisory lock is released
-      // at the end of this transaction.
-      //
-      // FEATURE (request: "doctor ek booking rule do jo booking online wala continues token no
-      // jayega ya odd ya even patient ko mile"): doctorProfile.tokenNumberingMode picks between
-      // two numbering schemes, both still fully covered by the same advisory lock above so
-      // neither branch can race:
-      //   'sequential' (default) — one shared MAX(token_number)+1 count, exactly the
-      //     pre-existing behavior, unaffected by this feature.
-      //   'alternate' — online bookings get their own sequence and walk-in bookings get the
-      //     OTHER one, each tracked as MAX(token_number) restricted to that parity, +2 (or the
-      //     first number of that parity when none exists yet for the day) — so the two sources
-      //     never collide and a queue display can tell them apart from the token number alone.
-      //     Which parity (odd/even) online gets is itself doctor-selectable — see
-      //     doctorProfile.onlineTokenParity (request: "odd ya even select karne ka option do
-      //     doctor jo select kar online ke lie") — 'odd' is the default (online=odd,
-      //     walk-in=even), 'even' flips it (online=even, walk-in=odd).
-      let tokenNumber;
-      if (doctorProfile.tokenNumberingMode === 'alternate') {
-        const onlineWantsOdd = doctorProfile.onlineTokenParity !== 'even';
-        const wantsOdd = source === 'online' ? onlineWantsOdd : !onlineWantsOdd;
-        const parityRow = await tx.$queryRaw`
-          SELECT COALESCE(MAX(token_number), 0) AS max FROM appointments
-          WHERE doctor_user_id = ${doctorUserId} AND appointment_date = ${appointmentDateUTC}::date
-            AND (token_number % 2) = ${wantsOdd ? 1 : 0}
-        `;
-        const currentMax = Number(parityRow[0].max);
-        tokenNumber = currentMax > 0 ? currentMax + 2 : wantsOdd ? 1 : 2;
-      } else {
-        const maxRow = await tx.$queryRaw`
-          SELECT COALESCE(MAX(token_number), 0) AS max FROM appointments
-          WHERE doctor_user_id = ${doctorUserId} AND appointment_date = ${appointmentDateUTC}::date
-        `;
-        tokenNumber = Number(maxRow[0].max) + 1;
-      }
+      const tokenNumber = requiresPrepayment ? null : await nextQueueTokenNumber(tx, {
+        doctorUserId, appointmentDate: appointmentDateUTC, source, profile: doctorProfile,
+      });
 
       const bookingCreatedAt = new Date();
       let created;
@@ -1268,13 +1228,13 @@ async function runBookingJob(payload) {
         throw err;
       }
 
-      await tx.queueToken.create({
+      if (!requiresPrepayment) await tx.queueToken.create({
         data: {
           appointmentId: created.id,
           doctorUserId,
           clinicId,
           tokenNumber,
-          status: requiresPrepayment ? 'on_hold' : 'waiting',
+          status: 'waiting',
           queueDate: appointmentDateUTC,
         },
       });

@@ -523,7 +523,7 @@ model Appointment {
   isEmergency      Boolean            @default(false) @map("is_emergency")
   status           AppointmentStatus  @default(upcoming)
   source           AppointmentSource
-  tokenNumber      Int                @map("token_number")
+  tokenNumber      Int?               @map("token_number") // assigned only when the booking is confirmed
   consultationFee  Decimal            @default(0) @map("consultation_fee") @db.Decimal(10, 2)
   convenienceFee   Decimal            @default(0) @map("convenience_fee") @db.Decimal(10, 2)
   emergencyFee     Decimal            @default(0) @map("emergency_fee") @db.Decimal(10, 2)

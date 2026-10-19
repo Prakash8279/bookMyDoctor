@@ -183,14 +183,14 @@ function buildPaymentRow(overrides = {}) {
 /** Builds a fake Prisma interactive-transaction client and wires prisma.$transaction to run it. */
 function makeTx(overrides = {}) {
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([{ id: 'appt-1' }]),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'appt-1', max: 0 }]),
     appointment: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
     receptionistProfile: { findUnique: jest.fn() },
     // findFirst defaults to "no prior payment with this transactionRef" (null) — the
     // replay-protection guard's normal, non-replay path — so every pre-existing test that never
     // sets this override is unaffected.
     payment: { create: jest.fn().mockResolvedValue({ id: 'pay-1' }), aggregate: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
-    queueToken: { updateMany: jest.fn().mockResolvedValue({}) },
+    queueToken: { updateMany: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     ...overrides,
   };
   prisma.$transaction.mockImplementation(async (cb) => cb(tx));
@@ -400,7 +400,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('paid');
   });
 
-  test('a pending_payment booking flips to upcoming and its on_hold queue token to waiting, in the same transaction', async () => {
+  test('a captured payment confirms the booking and allocates its first issued queue token atomically', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ status: 'pending_payment' }));
     prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
@@ -408,10 +408,33 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     await paymentsService.createPaymentForAppointment('appt-1', PATIENT, 'online', 'rzp_pay_1');
 
     expect(tx.appointment.update.mock.calls[0][0].data.status).toBe('upcoming');
-    expect(tx.queueToken.updateMany).toHaveBeenCalledWith({
-      where: { appointmentId: 'appt-1', status: 'on_hold' },
-      data: { status: 'waiting' },
+    expect(tx.appointment.update.mock.calls[0][0].data.tokenNumber).toBe(1);
+    expect(tx.queueToken.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { appointmentId: 'appt-1' },
+      create: expect.objectContaining({ tokenNumber: 1, status: 'waiting' }),
+    }));
+  });
+
+  test('two successful confirmations get tokens 1 and 2 while an earlier unpaid reservation consumes none', async () => {
+    let issuedMax = 0;
+    const tx = makeTx({
+      $queryRaw: jest.fn(async (sql) => sql.join('').includes('MAX(token_number)')
+        ? [{ max: issuedMax }] : [{ id: 'booking' }]),
+      $executeRaw: jest.fn(),
+      paymentHold: { findFirst: jest.fn().mockResolvedValue(null) },
     });
+    tx.appointment.update.mockImplementation(async ({ data }) => { issuedMax = data.tokenNumber; return {}; });
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
+    for (const id of ['second-booking', 'third-booking']) {
+      tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({
+        id, status: 'pending_payment', tokenNumber: null, source: 'online',
+        appointmentDate: new Date('2026-10-20'), createdAt: new Date(),
+      }));
+      await paymentsService.createPaymentForAppointment(id, PATIENT, 'online', 'gateway-' + id);
+    }
+    expect(tx.appointment.update.mock.calls.map(([args]) => args.data.tokenNumber)).toEqual([1, 2]);
+    expect(tx.queueToken.upsert.mock.calls.map(([args]) => args.create.tokenNumber)).toEqual([1, 2]);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
   });
 
   test('a captured payment after ten minutes cannot issue a token and starts a refund', async () => {
