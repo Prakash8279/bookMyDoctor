@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { PortalLayout, PublicPageShell } from './PortalLayout'
 import { useAppStore } from '../store/useAppStore'
@@ -50,7 +50,9 @@ describe('PortalLayout', () => {
     expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Doctor bottom navigation' })).toBeInTheDocument()
     expect(screen.getByRole('main')).toHaveClass('portal-content--with-bottom-nav')
-    expect(screen.getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/doctor/schedule')
+    const bottomNav = screen.getByRole('navigation', { name: 'Doctor bottom navigation' })
+    expect(within(bottomNav).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/doctor/reports')
+    expect(within(bottomNav).queryByRole('link', { name: 'Schedule' })).not.toBeInTheDocument()
   })
 
   it('uses the compact mobile layout for receptionist while retaining the desktop sidebar', () => {

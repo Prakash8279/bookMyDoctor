@@ -209,14 +209,18 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
     select: {
       doctorUserId: true,
       clinicId: true,
-      doctor: { select: { name: true, doctorProfile: { select: { emergencyAvailable: true } } } },
+      doctor: { select: { name: true, doctorProfile: { select: { emergencyAvailable: true, maxDaysAdvance: true } } } },
       clinic: { select: { name: true } },
     },
   });
-  if (!links.length) return [];
+  const bookableLinks = links.filter((link) => {
+    const maxDays = link.doctor.doctorProfile?.maxDaysAdvance ?? 30;
+    return selectedDate.getTime() <= today.getTime() + maxDays * 24 * 60 * 60 * 1000;
+  });
+  if (!bookableLinks.length) return [];
 
-  const doctorIds = [...new Set(links.map((row) => row.doctorUserId))];
-  const clinicIds = [...new Set(links.map((row) => row.clinicId))];
+  const doctorIds = [...new Set(bookableLinks.map((row) => row.doctorUserId))];
+  const clinicIds = [...new Set(bookableLinks.map((row) => row.clinicId))];
   const [hoursRows, closures, appointments] = await Promise.all([
     prisma.doctorClinicHours.findMany({
       where: { doctorUserId: { in: doctorIds }, clinicId: { in: clinicIds }, weekday, status: 'active' },
@@ -248,7 +252,7 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
   const isToday = selectedDate.getTime() === today.getTime();
   const now = isToday ? currentBusinessTimeHHMM() : null;
 
-  return links.map((link) => {
+  return bookableLinks.map((link) => {
     const key = keyOf(link.doctorUserId, link.clinicId);
     const hours = hoursByKey.get(key);
     const closed = closedKeys.has(key);

@@ -7,7 +7,7 @@ import { useAppStore } from '../store/useAppStore'
 const COMPACT_PORTAL_ROLES = new Set(['patient', 'doctor', 'receptionist'])
 const FOOTER_NAV = {
   patient: [['Home', '/patient/dashboard', 'layout-dashboard'], ['Appointments', '/patient/appointments', 'clipboard-list'], ['Book', '/patient/book', 'calendar-days'], ['Queue', '/patient/queue', 'ticket-check'], ['Profile', '/patient/profile', 'user-round']],
-  doctor: [['Home', '/doctor/dashboard', 'layout-dashboard'], ['Appointments', '/doctor/appointments', 'clipboard-list'], ['Queue', '/doctor/queue', 'ticket-check'], ['Schedule', '/doctor/schedule', 'clock3'], ['Profile', '/doctor/profile', 'user-round']],
+  doctor: [['Home', '/doctor/dashboard', 'layout-dashboard'], ['Appointments', '/doctor/appointments', 'clipboard-list'], ['Queue', '/doctor/queue', 'ticket-check'], ['Reports', '/doctor/reports', 'file-text'], ['Profile', '/doctor/profile', 'user-round']],
   receptionist: [['Home', '/receptionist/dashboard', 'layout-dashboard'], ['Appointments', '/receptionist/appointments', 'clipboard-list'], ['Walk-in', '/receptionist/walk-in', 'user-round'], ['Queue', '/receptionist/queue', 'ticket-check'], ['Profile', '/receptionist/profile', 'user-round']],
 }
 

@@ -89,7 +89,6 @@ const RevenueReports = lazyNamed(() => import('./pages/AdminPages'), 'RevenueRep
 
 const ClinicSearch = lazyNamed(() => import('./pages/FeaturePages'), 'ClinicSearch')
 const DoctorClinics = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorClinics')
-const DoctorEmr = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorEmr')
 const DoctorFees = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorFees')
 const DoctorPaymentSetup = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorPaymentSetup')
 const DoctorReviews = lazyNamed(() => import('./pages/FeaturePages'), 'DoctorReviews')
@@ -228,7 +227,7 @@ export default function App() {
       <Route path="payments" element={requires('doctor', <DoctorPaymentSetup />)} />
       <Route path="queue" element={requires('doctor', <QueueManagement data={data} />)} />
       <Route path="appointments" element={requires('doctor', <DoctorAppointments data={data} />)} />
-      <Route path="emr" element={requires('doctor', <DoctorEmr data={data} />)} />
+      <Route path="emr" element={requires('doctor', <Navigate to="/doctor/dashboard" replace />)} />
       {/* COMPLETENESS FIX (audit Priority 1 #5): "Schedule" here silently local-drafted a
           follow-up with zero server effect and zero user feedback — not linked from any sidebar,
           but reachable by direct URL. Redirecting to the real Appointments list rather than

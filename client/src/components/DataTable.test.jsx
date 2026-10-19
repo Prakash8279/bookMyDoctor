@@ -110,6 +110,22 @@ describe('DataTable', () => {
       expect(within(card).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
     })
 
+    it('keeps optional mobile extra fields inside a closed details control', () => {
+      mockMobileViewport(true)
+      const compactColumns = [
+        { key: 'name', label: 'Patient' },
+        { key: 'phone', label: 'Phone' },
+      ]
+      render(<DataTable columns={compactColumns} rows={[{ id: 1, name: 'Asha', phone: '9000000001' }]} mobileSummary={(row) => <strong>{row.name}</strong>} mobileSummaryKeys={['name']} />)
+
+      const card = screen.getByText('Asha').closest('li')
+      const details = card.querySelector('details')
+      expect(details).not.toHaveAttribute('open')
+      fireEvent.click(within(card).getByText('More details'))
+      expect(details).toHaveAttribute('open')
+      expect(within(details).getByText('9000000001')).toBeInTheDocument()
+    })
+
     it('paginates the same way in card view', () => {
       mockMobileViewport(true)
       const rows = [{ id: 1, name: 'Alice', status: 'active' }]

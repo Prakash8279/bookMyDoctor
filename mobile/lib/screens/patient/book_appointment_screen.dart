@@ -86,12 +86,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     try {
       final futures = await Future.wait([
         widget.preselectedDoctor == null
-            ? ApiClient.instance.get('/doctors', query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'})
+            ? ApiClient.instance.get('/doctors', query: {
+                'pageSize': 100,
+                'sortBy': 'rating',
+                'sortOrder': 'desc'
+              })
             : Future.value(null),
         ApiClient.instance.get('/family-members', query: {'pageSize': 50}),
         ApiClient.instance.get('/platform-charges'),
         ApiClient.instance.get('/geography/cities', query: {'pageSize': 100}),
-        ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100}),
+        ApiClient.instance
+            .get('/geography/specializations', query: {'pageSize': 100}),
       ]);
 
       if (!mounted) return;
@@ -100,7 +105,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         if (futures[0] != null) {
           final docList = <DoctorDirectoryItem>[];
           for (final item in (futures[0] as ApiResponse).list) {
-            try { docList.add(DoctorDirectoryItem.fromJson(item)); } catch (_) {}
+            try {
+              docList.add(DoctorDirectoryItem.fromJson(item));
+            } catch (_) {}
           }
           _doctors = docList;
         } else if (widget.preselectedDoctor != null) {
@@ -109,12 +116,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
         final fmList = <FamilyMember>[];
         for (final item in (futures[1] as ApiResponse).list) {
-          try { fmList.add(FamilyMember.fromJson(item)); } catch (_) {}
+          try {
+            fmList.add(FamilyMember.fromJson(item));
+          } catch (_) {}
         }
         _familyMembers = fmList;
 
         try {
-          _platformCharges = PlatformCharges.fromJson((futures[2] as ApiResponse).map);
+          _platformCharges =
+              PlatformCharges.fromJson((futures[2] as ApiResponse).map);
         } catch (_) {
           _platformCharges = PlatformCharges(
             patientConvenienceFee: 0,
@@ -127,13 +137,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
         final cityList = <City>[];
         for (final item in (futures[3] as ApiResponse).list) {
-          try { cityList.add(City.fromJson(item)); } catch (_) {}
+          try {
+            cityList.add(City.fromJson(item));
+          } catch (_) {}
         }
         _cities = cityList;
 
         final specList = <Specialization>[];
         for (final item in (futures[4] as ApiResponse).list) {
-          try { specList.add(Specialization.fromJson(item)); } catch (_) {}
+          try {
+            specList.add(Specialization.fromJson(item));
+          } catch (_) {}
         }
         _specializations = specList;
         _loadingOptions = false;
@@ -154,7 +168,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             doctor.clinics.any((c) => c.city == _appliedCity);
         if (!matchesCity) return false;
       }
-      if (_appliedSpecialization != null && _appliedSpecialization!.isNotEmpty) {
+      if (_appliedSpecialization != null &&
+          _appliedSpecialization!.isNotEmpty) {
         final specName = doctor.specialization?.name ?? '';
         if (specName != _appliedSpecialization) return false;
       }
@@ -182,7 +197,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       _appliedSpecialization = _filterSpecialization;
       _appliedEmergency = _filterEmergency;
       // If current doctor doesn't match new filter, reset selection
-      if (_selectedDoctor != null && !_filteredDoctors.any((d) => d.id == _selectedDoctor!.id)) {
+      if (_selectedDoctor != null &&
+          !_filteredDoctors.any((d) => d.id == _selectedDoctor!.id)) {
         _selectedDoctor = null;
         _selectedClinic = null;
       }
@@ -191,12 +207,17 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final maxDays = _selectedDoctor?.maxDaysAdvance ?? 30;
+    final lastDate = DateTime(today.year, today.month, today.day + maxDays);
+    final initialDate = _selectedDate.isBefore(today) || _selectedDate.isAfter(lastDate)
+        ? today
+        : _selectedDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: now,
-      lastDate: now.add(Duration(days: maxDays)),
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: lastDate,
     );
     if (picked != null) {
       setState(() => _selectedDate = picked);
@@ -213,16 +234,110 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
     setState(() => _availabilityLoading = true);
     try {
-      final response = await ApiClient.instance.get('/appointments/availability', query: {
+      final response =
+          await ApiClient.instance.get('/appointments/availability', query: {
         'date': DateFormat('yyyy-MM-dd').format(_selectedDate),
         'doctorId': doctor.id,
         'clinicId': clinic.id,
       });
-      if (mounted) setState(() => _availability = response.list.isEmpty ? null : response.list.first);
+      if (mounted) {
+        setState(() =>
+            _availability = response.list.isEmpty ? null : response.list.first);
+      }
     } catch (_) {
       if (mounted) setState(() => _availability = null);
     } finally {
       if (mounted) setState(() => _availabilityLoading = false);
+    }
+  }
+
+  Future<void> _addMemberForBooking() async {
+    final nameController = TextEditingController();
+    final relationController = TextEditingController();
+    var saving = false;
+    String? error;
+    final member = await showModalBottomSheet<FamilyMember>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) {
+          Future<void> save() async {
+            final name = nameController.text.trim();
+            final relation = relationController.text.trim();
+            if (name.isEmpty || relation.isEmpty) {
+              setModalState(
+                  () => error = 'Name and relationship are required.');
+              return;
+            }
+            setModalState(() {
+              saving = true;
+              error = null;
+            });
+            try {
+              final response = await ApiClient.instance.post('/family-members',
+                  body: {'name': name, 'relation': relation});
+              if (sheetContext.mounted) {
+                Navigator.of(sheetContext)
+                    .pop(FamilyMember.fromJson(response.map));
+              }
+            } catch (err) {
+              if (sheetContext.mounted) {
+                setModalState(() {
+                  error = err.toString();
+                  saving = false;
+                });
+              }
+            }
+          }
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.md,
+                AppSpacing.md,
+                MediaQuery.of(sheetContext).viewInsets.bottom + AppSpacing.md),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Add family member',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: AppSpacing.md),
+                  TextField(
+                      controller: nameController,
+                      decoration:
+                          const InputDecoration(labelText: 'Member name')),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(
+                      controller: relationController,
+                      decoration:
+                          const InputDecoration(labelText: 'Relationship')),
+                  if (error != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(error!,
+                        style: const TextStyle(
+                            color: AppColors.danger, fontSize: 12))
+                  ],
+                  const SizedBox(height: AppSpacing.md),
+                  ElevatedButton(
+                      onPressed: saving ? null : save,
+                      child: Text(saving ? 'Saving…' : 'Save member')),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    nameController.dispose();
+    relationController.dispose();
+    if (member != null && mounted) {
+      setState(() {
+        _familyMembers = [..._familyMembers, member];
+        _patientChoice = member.id;
+      });
     }
   }
 
@@ -231,6 +346,14 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final maxDays = _selectedDoctor!.maxDaysAdvance ?? 30;
+    final lastDate = DateTime(today.year, today.month, today.day + maxDays);
+    if (_selectedDate.isBefore(today) || _selectedDate.isAfter(lastDate)) {
+      setState(() => _error = 'Choose a date within $maxDays days from today for this doctor.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -244,8 +367,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         'doctorUserId': _selectedDoctor!.id,
         if (_selectedClinic != null) 'clinicId': _selectedClinic!.id,
         'appointmentDate': dateStr,
-        if (_reasonController.text.trim().isNotEmpty) 'reason': _reasonController.text.trim(),
-        if (_patientChoice != null && _patientChoice != 'self') 'familyMemberId': _patientChoice,
+        if (_reasonController.text.trim().isNotEmpty)
+          'reason': _reasonController.text.trim(),
+        if (_patientChoice != null && _patientChoice != 'self')
+          'familyMemberId': _patientChoice,
       });
 
       final jobId = postRes.map['jobId'] as String;
@@ -254,10 +379,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
       final result = await _pollBookingStatus(jobId);
 
       if (!mounted) return;
-      if (result.status == 'confirmed' && result.appointment?.status == 'pending_payment') {
+      if (result.status == 'confirmed' &&
+          result.appointment?.status == 'pending_payment') {
         setState(() => _pollingStatus = null);
         final paidAppointment = await Navigator.of(context).push<Appointment>(
-          MaterialPageRoute(builder: (_) => PaymentRequiredScreen(appointment: result.appointment!)),
+          MaterialPageRoute(
+              builder: (_) =>
+                  PaymentRequiredScreen(appointment: result.appointment!)),
         );
         if (mounted) {
           if (paidAppointment != null) {
@@ -275,14 +403,16 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         setState(() {
           _pollingStatus = null;
           _error = ApiException(
-            message: (result.error?['message'] as String?) ?? 'Booking failed — the slot may already be taken.',
+            message: (result.error?['message'] as String?) ??
+                'Booking failed — the slot may already be taken.',
           );
         });
       } else {
         setState(() {
           _pollingStatus = null;
           _error = ApiException(
-            message: 'Still processing — please check My Appointments in a moment.',
+            message:
+                'Still processing — please check My Appointments in a moment.',
           );
         });
       }
@@ -300,9 +430,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     final deadline = DateTime.now().add(const Duration(seconds: 40));
     var intervalMs = 1500;
     while (mounted && DateTime.now().isBefore(deadline)) {
-      final res = await ApiClient.instance.get('/appointments/booking-status/$jobId');
+      final res =
+          await ApiClient.instance.get('/appointments/booking-status/$jobId');
       final status = BookingStatus.fromJson(res.map);
-      if (status.status == 'confirmed' || status.status == 'failed') return status;
+      if (status.status == 'confirmed' || status.status == 'failed') {
+        return status;
+      }
       final aheadOfYou = status.aheadOfYou;
       if (aheadOfYou != null && aheadOfYou > 0) {
         if (mounted) {
@@ -315,13 +448,6 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     }
     return BookingStatus(jobId: jobId, status: 'timeout');
   }
-
-  Widget _slotCount(String label, dynamic value, {Color color = AppColors.textPrimary}) => Column(
-        children: [
-          Text('${value ?? 0}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +466,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     // 2. Booking Form State (matches PatientPages.jsx lines 378-400)
     final filtered = _filteredDoctors;
     final consultationFee = _selectedDoctor?.consultationFee ?? 0.0;
-    final platformFee = _platformCharges?.applyConvenienceFee == false ? 0.0 : (_platformCharges?.patientConvenienceFee ?? 0.0);
+    final platformFee = _platformCharges?.applyConvenienceFee == false
+        ? 0.0
+        : (_platformCharges?.patientConvenienceFee ?? 0.0);
     final gstPercent = _platformCharges?.gstPercent ?? 0.0;
 
     return Scaffold(
@@ -350,7 +478,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         children: [
           const PageHeader(
             title: 'Book an appointment',
-            subtitle: 'Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically.',
+            subtitle:
+                'Choose a verified doctor; the clinic, visit time, and queue token are assigned automatically.',
           ),
           const SizedBox(height: AppSpacing.sm),
 
@@ -383,16 +512,22 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     children: [
                       const Text(
                         'Filters',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary),
                       ),
                       TextButton(
                         onPressed: _clearFilters,
                         style: TextButton.styleFrom(
                           foregroundColor: AppColors.primaryDark,
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           minimumSize: Size.zero,
                         ),
-                        child: const Text('Clear', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        child: const Text('Clear',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 13)),
                       ),
                     ],
                   ),
@@ -407,13 +542,23 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             labelText: 'City',
                             filled: true,
                             fillColor: AppColors.surface,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide:
+                                    const BorderSide(color: AppColors.border)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide:
+                                    const BorderSide(color: AppColors.border)),
                           ),
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('All cities')),
-                            for (final c in _cities) DropdownMenuItem(value: c.name, child: Text(c.name)),
+                            const DropdownMenuItem(
+                                value: null, child: Text('All cities')),
+                            for (final c in _cities)
+                              DropdownMenuItem(
+                                  value: c.name, child: Text(c.name)),
                           ],
                           onChanged: (v) => setState(() => _filterCity = v),
                         ),
@@ -427,22 +572,34 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                             labelText: 'Specialization',
                             filled: true,
                             fillColor: AppColors.surface,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide:
+                                    const BorderSide(color: AppColors.border)),
+                            enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide:
+                                    const BorderSide(color: AppColors.border)),
                           ),
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('All specialties')),
-                            for (final s in _specializations) DropdownMenuItem(value: s.name, child: Text(s.name)),
+                            const DropdownMenuItem(
+                                value: null, child: Text('All specialties')),
+                            for (final s in _specializations)
+                              DropdownMenuItem(
+                                  value: s.name, child: Text(s.name)),
                           ],
-                          onChanged: (v) => setState(() => _filterSpecialization = v),
+                          onChanged: (v) =>
+                              setState(() => _filterSpecialization = v),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   InkWell(
-                    onTap: () => setState(() => _filterEmergency = !_filterEmergency),
+                    onTap: () =>
+                        setState(() => _filterEmergency = !_filterEmergency),
                     borderRadius: BorderRadius.circular(8),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -451,10 +608,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         children: [
                           Checkbox(
                             value: _filterEmergency,
-                            onChanged: (v) => setState(() => _filterEmergency = v ?? false),
+                            onChanged: (v) =>
+                                setState(() => _filterEmergency = v ?? false),
                             activeColor: AppColors.primary,
                           ),
-                          const Text('Emergency available', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          const Text('Emergency available',
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary)),
                         ],
                       ),
                     ),
@@ -465,15 +627,19 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryDark,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                     ),
-                    child: const Text('Apply filters', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text('Apply filters',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     '${filtered.length} doctor${filtered.length == 1 ? '' : 's'} match — pick one below.',
-                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -501,10 +667,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
               children: [
                 // 1. Doctor field
                 if (widget.preselectedDoctor != null) ...[
-                  const Text('Doctor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  const Text('Doctor',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary)),
                   const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
                       color: AppColors.surface,
                       borderRadius: BorderRadius.circular(10),
@@ -512,15 +683,26 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.verified, color: AppColors.primary, size: 20),
+                        const Icon(Icons.verified,
+                            color: AppColors.primary, size: 20),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(widget.preselectedDoctor!.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                              if (widget.preselectedDoctor!.specialization?.name != null)
-                                Text(widget.preselectedDoctor!.specialization!.name, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                              Text(widget.preselectedDoctor!.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15)),
+                              if (widget.preselectedDoctor!.specialization
+                                      ?.name !=
+                                  null)
+                                Text(
+                                    widget.preselectedDoctor!.specialization!
+                                        .name,
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary)),
                             ],
                           ),
                         ),
@@ -529,14 +711,23 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                 ] else ...[
                   DropdownButtonFormField<DoctorDirectoryItem>(
-                    initialValue: (_selectedDoctor != null && filtered.any((d) => d.id == _selectedDoctor!.id)) ? _selectedDoctor : null,
+                    initialValue: (_selectedDoctor != null &&
+                            filtered.any((d) => d.id == _selectedDoctor!.id))
+                        ? _selectedDoctor
+                        : null,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'Doctor',
                       filled: true,
                       fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: AppColors.border)),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: AppColors.border)),
                     ),
                     hint: const Text('Select a doctor'),
                     items: [
@@ -552,7 +743,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     onChanged: (d) {
                       setState(() {
                         _selectedDoctor = d;
-                        _selectedClinic = (d?.clinics.isNotEmpty == true) ? d!.clinics.first : null;
+                        _selectedDate = DateTime.now();
+                        _selectedClinic = (d?.clinics.isNotEmpty == true)
+                            ? d!.clinics.first
+                            : null;
                       });
                       _loadAvailability();
                     },
@@ -562,18 +756,50 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
                 if (_selectedDoctor != null && _selectedClinic != null) ...[
                   Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border)),
                     child: _availabilityLoading
-                        ? const Text('Checking slots…', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary))
+                        ? const Text('Checking slots…',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: AppColors.textSecondary))
                         : _availability == null
-                            ? const Text('No OPD slots configured for this date.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary))
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            ? const Text(
+                                'No OPD slots configured for this date.',
+                                textAlign: TextAlign.center,
+                                style:
+                                    TextStyle(color: AppColors.textSecondary))
+                            : Wrap(
+                                spacing: 12,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  _slotCount('Total', _availability!['totalSlots']),
-                                  _slotCount('Available', _availability!['availableSlots'], color: AppColors.success),
-                                  _slotCount('Booked', _availability!['bookedSlots'], color: AppColors.primary),
+                                  Text(
+                                      'Slots · ${DateFormat('yyyy-MM-dd').format(_selectedDate)}',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textSecondary)),
+                                  Text(
+                                      'Total ${_availability!['totalSlots'] ?? 0}',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600)),
+                                  Text(
+                                      'Available ${_availability!['availableSlots'] ?? 0}',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.success)),
+                                  Text(
+                                      'Booked ${_availability!['bookedSlots'] ?? 0}',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.primary)),
                                 ],
                               ),
                   ),
@@ -581,10 +807,15 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 ],
 
                 // 2. Clinic (Read-only, matching web)
-                const Text('Clinic', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const Text('Clinic',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
                 const SizedBox(height: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(10),
@@ -592,15 +823,25 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.apartment_outlined, size: 18, color: _selectedClinic != null ? AppColors.primary : AppColors.textSecondary),
+                      Icon(Icons.apartment_outlined,
+                          size: 18,
+                          color: _selectedClinic != null
+                              ? AppColors.primary
+                              : AppColors.textSecondary),
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: Text(
-                          _selectedClinic != null ? _selectedClinic!.name : 'Select a doctor first',
+                          _selectedClinic != null
+                              ? _selectedClinic!.name
+                              : 'Select a doctor first',
                           style: TextStyle(
                             fontSize: 14,
-                            color: _selectedClinic != null ? AppColors.textPrimary : AppColors.textSecondary,
-                            fontWeight: _selectedClinic != null ? FontWeight.w600 : FontWeight.normal,
+                            color: _selectedClinic != null
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                            fontWeight: _selectedClinic != null
+                                ? FontWeight.w600
+                                : FontWeight.normal,
                           ),
                         ),
                       ),
@@ -611,17 +852,23 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
 
                 // 3. Patient Dropdown
                 DropdownButtonFormField<String>(
+                  key: ValueKey(_patientChoice),
                   initialValue: _patientChoice,
                   isExpanded: true,
                   decoration: InputDecoration(
                     labelText: 'Patient',
                     filled: true,
                     fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppColors.border)),
                   ),
                   items: [
-                    const DropdownMenuItem(value: 'self', child: Text('Myself')),
+                    const DropdownMenuItem(
+                        value: 'self', child: Text('Myself')),
                     for (final f in _familyMembers)
                       DropdownMenuItem(
                         value: f.id,
@@ -633,16 +880,29 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   ],
                   onChanged: (v) => setState(() => _patientChoice = v),
                 ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _addMemberForBooking,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add member'),
+                  ),
+                ),
                 const SizedBox(height: AppSpacing.md),
 
                 // 4. Appointment date
-                const Text('Appointment date', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const Text('Appointment date',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary)),
                 const SizedBox(height: 6),
                 InkWell(
                   onTap: _pickDate,
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 13),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
@@ -653,9 +913,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       children: [
                         Text(
                           DateFormat('yyyy-MM-dd').format(_selectedDate),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary),
                         ),
-                        const Icon(Icons.calendar_today_outlined, size: 18, color: AppColors.primary),
+                        const Icon(Icons.calendar_today_outlined,
+                            size: 18, color: AppColors.primary),
                       ],
                     ),
                   ),
@@ -672,8 +936,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     alignLabelWithHint: true,
                     filled: true,
                     fillColor: Colors.white,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.border)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppColors.border)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppColors.border)),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
@@ -693,24 +961,39 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Consultation', style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
-                            Text('₹${consultationFee.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                            const Text('Consultation',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary)),
+                            Text('₹${consultationFee.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 15)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Platform charge', style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
-                            Text('₹${platformFee.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                            const Text('Platform charge',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary)),
+                            Text('₹${platformFee.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 15)),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Transaction charge', style: TextStyle(fontSize: 14, color: AppColors.textPrimary)),
-                            Text('${gstPercent.toStringAsFixed(0)}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                            const Text('Transaction charge',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary)),
+                            Text('${gstPercent.toStringAsFixed(0)}%',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 15)),
                           ],
                         ),
                       ],
@@ -731,12 +1014,19 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+                        const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppColors.primary)),
                         const SizedBox(width: AppSpacing.sm),
                         Flexible(
                           child: Text(
                             _pollingStatus!,
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primaryDark),
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.primaryDark),
                           ),
                         ),
                       ],
@@ -752,11 +1042,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     backgroundColor: AppColors.primaryDark,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                   child: Text(
                     _submitting ? 'Confirming…' : 'Confirm booking',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
               ],
@@ -784,13 +1076,13 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             subtitle: 'Your booking has been confirmed.',
           ),
           const SizedBox(height: AppSpacing.md),
-
           Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+              border:
+                  Border.all(color: AppColors.success.withValues(alpha: 0.3)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.04),
@@ -810,17 +1102,22 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                     color: AppColors.success.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.check, color: AppColors.success, size: 28),
+                  child: const Icon(Icons.check,
+                      color: AppColors.success, size: 28),
                 ),
                 const SizedBox(height: AppSpacing.md),
                 const Text(
                   'Booking confirmed',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '$doctorName · ${booked.appointmentDate}',
-                  style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                  style: const TextStyle(
+                      fontSize: 14, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Text(
@@ -835,7 +1132,10 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                 const SizedBox(height: 6),
                 const Text(
                   "You'll be seen in this order after check-in — track live queue status under My Appointments.",
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      height: 1.4),
                 ),
                 const SizedBox(height: AppSpacing.lg),
                 Container(
@@ -850,28 +1150,41 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Consultation amount', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                          Text('₹${totalAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text('Consultation amount',
+                              style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text('₹${totalAmount.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       const SizedBox(height: 8),
                       if (booked.paymentStatus == 'paid')
                         const Row(
                           children: [
-                            Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                            Icon(Icons.check_circle_outline,
+                                size: 16, color: AppColors.success),
                             SizedBox(width: 6),
-                            Text('Paid online', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success)),
+                            Text('Paid online',
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.success)),
                           ],
                         )
                       else if (booked.paymentStatus == 'partial')
                         const Row(
                           children: [
-                            Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+                            Icon(Icons.check_circle_outline,
+                                size: 16, color: AppColors.success),
                             SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 'Booking amount paid online — balance due at the clinic',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.success),
                               ),
                             ),
                           ],
@@ -879,7 +1192,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       else
                         const Text(
                           'No online payment was required for this booking.',
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
                         ),
                     ],
                   ),
@@ -891,10 +1205,12 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                       child: OutlinedButton.icon(
                         onPressed: () => showBookingSlipSheet(context, booked),
                         icon: const Icon(Icons.receipt_long, size: 18),
-                        label: const Text('View slip', style: TextStyle(fontWeight: FontWeight.w700)),
+                        label: const Text('View slip',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
                     ),
@@ -906,9 +1222,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                           backgroundColor: AppColors.primaryDark,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        child: const Text('Appointments', style: TextStyle(fontWeight: FontWeight.w700)),
+                        child: const Text('Appointments',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ),
                   ],

@@ -13,6 +13,8 @@ import { doctorCharge, isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useAppStore } from '../store/useAppStore'
 import { sequenceId, shortId, stableId } from '../lib/format'
 import { buildCsv, downloadCsv } from '../lib/csv'
+import apiClient from '../lib/apiClient'
+import { doctorAppointmentsCsv, fetchDoctorAppointmentsForRange, indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { buildStaffReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
@@ -44,9 +46,8 @@ const ErrorNote = ({ children }) => children ? <p role="alert" className="mb-4 r
 
 const STAFF_SERVICES = {
   doctor: [
-    ['Queue management', '/doctor/queue', 'ticket-check'], ['Appointments', '/doctor/appointments', 'calendar-days'], ['Consultation & EMR', '/doctor/emr', 'file-heart'], ['Analytics', '/doctor/analytics', 'chart-no-axes-combined'], ['Patient reviews', '/doctor/reviews', 'message-square-warning'],
-    ['Notifications', '/doctor/notifications', 'bell'], ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'],
-    ['Reports', '/doctor/reports', 'file-text'], ['My profile', '/doctor/profile', 'user-round'],
+    ['Queue management', '/doctor/queue', 'ticket-check'], ['Appointments', '/doctor/appointments', 'calendar-days'], ['Analytics', '/doctor/analytics', 'chart-no-axes-combined'], ['Patient reviews', '/doctor/reviews', 'message-square-warning'],
+    ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'],
   ],
   receptionist: [
     ['Walk-in registration', '/receptionist/walk-in', 'user-round'], ['Queue monitor', '/receptionist/queue', 'ticket-check'], ['Check-in', '/receptionist/check-in', 'clipboard-list'], ['Appointments', '/receptionist/appointments', 'calendar-days'], ['Doctor availability', '/receptionist/availability', 'clock3'], ['Payments', '/receptionist/payments', 'wallet-cards'],
@@ -177,6 +178,24 @@ const AppointmentTable = ({ data }) => {
       error={loadError}
       onRetry={load}
       rows={(data.appointments || [])}
+      mobileSummaryKeys={['bookingId', 'tokenNumber', 'appointmentDate', 'appointmentTime', 'patientName', 'status', 'paymentStatus', 'due']}
+      mobileSummary={(item) => <>
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <strong className="block truncate text-sm text-ink">{item.patient?.name || item.familyMember?.name || 'Patient'}</strong>
+            <span className="text-xs text-muted">Booking {shortId(item.id)}</span>
+          </div>
+          <StatusPill status={item.status} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted">
+          <span>{item.appointmentDate || 'Date not set'} · {item.appointmentTime || 'Time not set'}</span>
+          <span>{item.tokenNumber != null ? `Token #${item.tokenNumber}` : 'Token not assigned'}</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+          <span className="flex items-center gap-1 text-muted">Payment <StatusPill status={item.paymentStatus || 'pending'} /></span>
+          <span className="font-semibold text-ink">Due {item.fees?.due != null ? `₹${Number(item.fees.due).toFixed(2)}` : '—'}</span>
+        </div>
+      </>}
       columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me
@@ -261,7 +280,7 @@ export function DoctorDashboard({ data }) {
       await updateDoctorBookingPolicy(currentUser.id, {
         onlineBooking: !onDuty,
         allowRebooking: profile.allowRebooking !== false,
-        maxDaysAdvance: profile.maxDaysAdvance || 7,
+        maxDaysAdvance: profile.maxDaysAdvance ?? 30,
       })
       setOnDutyOverride(!onDuty)
     } catch (err) {
@@ -301,7 +320,7 @@ export function DoctorDashboard({ data }) {
           : 'Your account is pending admin verification — patients cannot find or book you until verification is complete.'}
       </p>
     )}
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="doctor-dashboard-stats grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="TODAY'S BOOKINGS" value={today} icon="◷" to="/doctor/appointments" />
       <StatCard label="WAITING PATIENTS" value={(data.queueTokens || []).filter((item) => item.status === 'waiting').length} icon="≡" to="/doctor/queue" />
       <StatCard label="TODAY'S REVENUE" value={`₹${doctorRevenue}`} icon="₹" to="/doctor/revenue" />
@@ -721,7 +740,9 @@ const opdEntryCsv = (rows) => buildCsv(['Id', 'Type', 'Clinic', 'Day/Date', 'Hou
 export function ClinicSchedule({ data }) {
   const currentUser = useAppStore((state) => state.currentUser)
   const profile = currentUser?.profile || {}
-  const [refreshedAt, setRefreshedAt] = useState(() => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
+  const [opdTiming, setOpdTiming] = useState({ start: '10:00', end: '18:00', slotMinutes: '15' })
+  const [doctorClinics, setDoctorClinics] = useState([])
+  const [refreshedAt, setRefreshedAt] = useState(null)
   const [savedPolicy, setSavedPolicy] = useState(false)
   const [savedOpd, setSavedOpd] = useState(false)
   const [savedClosing, setSavedClosing] = useState(false)
@@ -734,26 +755,41 @@ export function ClinicSchedule({ data }) {
   const deleteClinicClosure = useAppStore((state) => state.deleteClinicClosure)
   const fetchClinicHours = useAppStore((state) => state.fetchClinicHours)
   const fetchClinicClosures = useAppStore((state) => state.fetchClinicClosures)
+  const refreshCurrentUser = useAppStore((state) => state.refreshCurrentUser)
   const entries = data.opdEntries || []
+  const [startHours, startMinutes] = opdTiming.start.split(':').map(Number)
+  const [endHours, endMinutes] = opdTiming.end.split(':').map(Number)
+  const availableMinutes = (endHours * 60 + endMinutes) - (startHours * 60 + startMinutes)
+  const estimatedSlots = availableMinutes > 0 && Number(opdTiming.slotMinutes) >= 5
+    ? Math.floor(availableMinutes / Number(opdTiming.slotMinutes))
+    : 0
+  const loadOpdEntries = useCallback(async () => {
+    const clinics = await apiClient.get('/clinics', { params: { mine: true, pageSize: 100 } })
+    setDoctorClinics(clinics)
+    await Promise.all(clinics.flatMap((clinic) => [fetchClinicHours(clinic.id), fetchClinicClosures(clinic.id)]))
+  }, [fetchClinicHours, fetchClinicClosures])
 
   useEffect(() => {
-    // Clinic hours/closures are per-clinic resources (plan §1.5) — hydrate
-    // them for every clinic in the bulk-loaded directory this doctor could be
-    // scheduled at.
-    (data.clinics || []).forEach((clinic) => {
-      fetchClinicHours(clinic.id).catch(() => { })
-      fetchClinicClosures(clinic.id).catch(() => { })
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!currentUser?.id) return
+    loadOpdEntries()
+      .then(() => setRefreshedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })))
+      .catch((err) => setError(firstErrorMessage(err, 'Could not load OPD records.')))
+  }, [loadOpdEntries, currentUser?.id])
 
   if (!currentUser) return <Page title="OPD schedule"><EmptyState title="No doctor profile yet" message="Sign in as a doctor to manage clinic schedules." /></Page>
 
   const savePolicy = async (event) => {
     event.preventDefault()
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    const maxDaysAdvance = Number(values.maxDaysAdvance)
+    if (!Number.isInteger(maxDaysAdvance) || maxDaysAdvance < 1 || maxDaysAdvance > 365) {
+      setError('Enter a booking window from 1 to 365 days.')
+      setSavedPolicy(false)
+      return
+    }
     setSubmitting(true)
     setError('')
+    setSavedPolicy(false)
     try {
       // onlineBooking/allowRebooking/maxDaysAdvance are all required by the server (plan §1.4) —
       // onlineBooking isn't collected on this form, so carry the current value through.
@@ -762,7 +798,7 @@ export function ClinicSchedule({ data }) {
       await updateDoctorBookingPolicy(currentUser.id, {
         onlineBooking: profile.onlineBooking !== false,
         allowRebooking: values.allowRebooking === 'on',
-        maxDaysAdvance: Number(values.maxDaysAdvance) || 1,
+        maxDaysAdvance,
         maxOnlineBookingsPerDay: values.maxOnlineBookingsPerDay ? Number(values.maxOnlineBookingsPerDay) : null,
         // COMPLETENESS ADD (request: "doctor ek booking rule do jo booking online wala continues
         // token no jayega ya odd ya even patient ko mle" + follow-up "odd ya even select karne ka
@@ -791,7 +827,7 @@ export function ClinicSchedule({ data }) {
     // fields. `form` is a plain reference to the element, unaffected by the event finishing.
     const form = event.currentTarget
     const values = Object.fromEntries(new FormData(form).entries())
-    const clinic = (data.clinics || []).find((item) => item.name === values.clinicName)
+    const clinic = doctorClinics.find((item) => item.name === values.clinicName)
     if (!clinic) { setError('Choose a clinic before saving OPD timing.'); return }
     setSubmitting(true)
     setError('')
@@ -804,6 +840,7 @@ export function ClinicSchedule({ data }) {
       })
       setSavedOpd(true)
       form.reset()
+      setOpdTiming({ start: '10:00', end: '18:00', slotMinutes: '15' })
     } catch (err) {
       setError(firstErrorMessage(err, 'Could not save the OPD timing.'))
     } finally {
@@ -814,7 +851,7 @@ export function ClinicSchedule({ data }) {
     event.preventDefault()
     const form = event.currentTarget // see saveOpd's comment above — same currentTarget-after-await bug
     const values = Object.fromEntries(new FormData(form).entries())
-    const clinic = (data.clinics || []).find((item) => item.name === values.clinicName)
+    const clinic = doctorClinics.find((item) => item.name === values.clinicName)
     if (!clinic) { setError('Choose a clinic before adding a closing date.'); return }
     setSubmitting(true)
     setError('')
@@ -837,21 +874,32 @@ export function ClinicSchedule({ data }) {
       setError(firstErrorMessage(err, 'Could not remove that entry.'))
     }
   }
-  const refresh = () => setRefreshedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
-  const rows = entries.map((item, index) => ({ ...item, displayId: index + 1, clinicLabel: (data.clinics || []).find((clinic) => clinic.id === item.clinicId)?.name || '—' }))
+  const refresh = async () => {
+    setSubmitting(true)
+    setError('')
+    try {
+      await Promise.all([refreshCurrentUser(), loadOpdEntries()])
+      setRefreshedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
+    } catch (err) {
+      setError(firstErrorMessage(err, 'Could not refresh the OPD schedule.'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+  const rows = entries.filter((item) => doctorClinics.some((clinic) => clinic.id === item.clinicId)).map((item, index) => ({ ...item, displayId: index + 1, clinicLabel: doctorClinics.find((clinic) => clinic.id === item.clinicId)?.name || '—' }))
   const exportCsv = () => downloadCsv('opd-schedule.csv', opdEntryCsv(rows))
-  return <Page kicker="Production database" title="OPD schedule" subtitle="Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-xs font-semibold text-success"><span className="h-1.5 w-1.5 rounded-full bg-success" />Live · {refreshedAt}</span><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" onClick={refresh}>Refresh</Button><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" onClick={exportCsv}>Export CSV</Button></div>}>
+  return <Page kicker="Production database" title="OPD schedule" subtitle="Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-xs font-semibold text-success"><span className="h-1.5 w-1.5 rounded-full bg-success" />{refreshedAt ? `Updated · ${refreshedAt}` : 'Not refreshed yet'}</span><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" disabled={submitting} onClick={refresh}>{submitting ? 'Refreshing…' : 'Refresh'}</Button><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" onClick={exportCsv}>Export CSV</Button></div>}>
     <ErrorNote>{error}</ErrorNote>
     <div className="grid gap-5 lg:grid-cols-2">
-      <form onSubmit={savePolicy} className="rounded-card border border-border bg-white p-5 shadow-card">
+      <form key={`${profile.maxDaysAdvance ?? 30}:${profile.maxOnlineBookingsPerDay ?? ''}:${profile.allowRebooking}:${profile.tokenNumberingMode}:${profile.onlineTokenParity}`} onSubmit={savePolicy} className="rounded-card border border-border bg-white p-5 shadow-card">
         <h2 className="text-lg">Patient booking window</h2>
-        <p className="mt-1 text-sm text-muted">Control how far ahead patients can book and whether same-day rebooking is allowed.</p>
+        <p className="mt-1 text-sm text-muted">Set the booking date range. Patients also need OPD hours on the chosen weekday.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <FormField label="Days patients can book in advance" name="maxDaysAdvance" type="number" min="1" defaultValue={profile.maxDaysAdvance || 7} />
-          <label className="flex min-h-11 items-center gap-2 text-sm font-medium"><input type="checkbox" name="allowRebooking" defaultChecked={profile.allowRebooking !== false} /> Allow same-day rebooking</label>
+          <FormField label="Days patients can book in advance" name="maxDaysAdvance" type="number" min="1" max="365" step="1" required defaultValue={profile.maxDaysAdvance ?? 30} />
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium"><input type="checkbox" name="allowRebooking" defaultChecked={profile.allowRebooking !== false} /> Allow same-day online booking</label>
           <div className="sm:col-span-2">
             <FormField label="Max online bookings per day (optional)" name="maxOnlineBookingsPerDay" type="number" min="1" max="500" placeholder="No limit" defaultValue={profile.maxOnlineBookingsPerDay ?? ''} />
-            <p className="mt-1 text-xs text-muted">Caps only patients' own online bookings each day — leave blank for no limit. Walk-ins your receptionist registers at the desk are never counted or blocked by this.</p>
+            <p className="mt-1 text-xs text-muted">This is a cap, not extra slots: available bookings also depend on OPD hours and patient time. Walk-ins do not count toward this cap.</p>
           </div>
           <div className="sm:col-span-2">
             <FormField
@@ -877,12 +925,13 @@ export function ClinicSchedule({ data }) {
         <h2 className="text-lg">Add or update day-wise OPD</h2>
         <p className="mt-1 text-sm text-muted">Set opening hours and patient consultation duration for a clinic and day.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <FormField label="Clinic" name="clinicName" type="select" options={(data.clinics || []).map((clinic) => clinic.name)} required />
+          <FormField label="Clinic" name="clinicName" type="select" options={doctorClinics.map((clinic) => clinic.name)} required />
           <FormField label="Day" name="day" type="select" options={OPD_DAYS} required />
-          <FormField label="Opening time" name="start" type="time" defaultValue="10:00" required />
-          <FormField label="Closing time" name="end" type="time" defaultValue="18:00" required />
-          <FormField label="Patient time (minutes)" name="slotMinutes" type="number" min="5" defaultValue="15" />
+          <FormField label="Opening time" name="start" type="time" value={opdTiming.start} onChange={(event) => setOpdTiming((timing) => ({ ...timing, start: event.target.value }))} required />
+          <FormField label="Closing time" name="end" type="time" value={opdTiming.end} onChange={(event) => setOpdTiming((timing) => ({ ...timing, end: event.target.value }))} required />
+          <FormField label="Patient time (minutes)" name="slotMinutes" type="number" min="5" value={opdTiming.slotMinutes} onChange={(event) => setOpdTiming((timing) => ({ ...timing, slotMinutes: event.target.value }))} required />
         </div>
+        <p className="mt-2 text-xs text-muted">Estimated capacity: {estimatedSlots} slots for this clinic/day with these hours. The daily online cap does not create extra slots.</p>
         <Button type="submit" className="mt-4" disabled={submitting}>{submitting ? 'Saving…' : 'Save OPD timing'}</Button>
         {savedOpd && <p role="status" className="mt-3 text-sm font-semibold text-success">OPD timing saved.</p>}
       </form>
@@ -890,7 +939,7 @@ export function ClinicSchedule({ data }) {
         <h2 className="text-lg">Add a closing date</h2>
         <p className="mt-1 text-sm text-muted">Block a specific date so patients cannot book at this clinic.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <FormField label="Clinic" name="clinicName" type="select" options={(data.clinics || []).map((clinic) => clinic.name)} required />
+          <FormField label="Clinic" name="clinicName" type="select" options={doctorClinics.map((clinic) => clinic.name)} required />
           <FormField label="Date" name="date" type="date" required />
           <FormField label="Reason" name="reason" placeholder="Holiday, personal leave, etc." />
         </div>
@@ -914,7 +963,58 @@ export function ClinicSchedule({ data }) {
   </Page>
 }
 
-export function DoctorAppointments({ data }) { return <Page title="Appointments" subtitle="Manage scheduled patients and consultation status."><AppointmentTable data={data} /></Page> }
+export function DoctorAppointments({ data }) {
+  const [dateFrom, setDateFrom] = useState(indiaTodayDate)
+  const [dateTo, setDateTo] = useState(indiaTodayDate)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const [exportMessage, setExportMessage] = useState('')
+
+  const exportAppointments = async () => {
+    if (!dateFrom || !dateTo || exporting) return
+    if (dateFrom > dateTo) {
+      setExportError('Start date must be on or before end date.')
+      setExportMessage('')
+      return
+    }
+    setExporting(true)
+    setExportError('')
+    setExportMessage('')
+    try {
+      const rows = await fetchDoctorAppointmentsForRange(apiClient, dateFrom, dateTo)
+      if (rows.length === 0) {
+        setExportMessage('No appointments found in this date range.')
+      } else {
+        downloadCsv(`doctor-appointments-${dateFrom}-to-${dateTo}.csv`, doctorAppointmentsCsv(rows))
+        setExportMessage(`${rows.length} appointment${rows.length === 1 ? '' : 's'} downloaded.`)
+      }
+    } catch (err) {
+      setExportError(firstErrorMessage(err, 'Could not download appointments.'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return <Page title="Appointments" subtitle="Manage scheduled patients and consultation status.">
+    <div aria-label="Export appointments" className="mb-4 rounded-card border border-border bg-white p-3 shadow-card sm:p-4">
+      <div className="doctor-appointment-export-dates grid grid-cols-2 gap-2 sm:max-w-xl sm:gap-3">
+        <label className="min-w-0 text-xs font-semibold text-muted">Start date
+          <input aria-label="Start date" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm text-ink sm:px-3" />
+        </label>
+        <label className="min-w-0 text-xs font-semibold text-muted">End date
+          <input aria-label="End date" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm text-ink sm:px-3" />
+        </label>
+      </div>
+      <div className="mt-2 flex gap-2">
+        <Button type="button" tone="secondary" className="shrink-0 px-3" onClick={() => { const today = indiaTodayDate(); setDateFrom(today); setDateTo(today); setExportError(''); setExportMessage('') }}>Today</Button>
+        <Button type="button" className="min-w-0 flex-1 sm:flex-none" disabled={!dateFrom || !dateTo || exporting} onClick={exportAppointments}>{exporting ? 'Downloading…' : 'Download CSV'}</Button>
+      </div>
+    </div>
+    <ErrorNote>{exportError}</ErrorNote>
+    {exportMessage && <p role="status" className="mb-4 text-sm text-muted">{exportMessage}</p>}
+    <AppointmentTable data={data} />
+  </Page>
+}
 
 export function PatientHistory({ data }) {
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)

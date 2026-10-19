@@ -1041,7 +1041,7 @@ class _SpecializationsSection extends StatelessWidget {
                   crossAxisCount: crossAxisCount,
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
-                  mainAxisExtent: 122,
+                  mainAxisExtent: 108,
                 ),
                 itemBuilder: (context, i) {
                   final s = list[i];
@@ -1052,7 +1052,7 @@ class _SpecializationsSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     onTap: () => onTap(s.id),
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: const Color(0xFFE9E5E0)),
@@ -1077,13 +1077,13 @@ class _SpecializationsSection extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Container(
-                                width: 38,
-                                height: 38,
+                                width: 32,
+                                height: 32,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFBF1EC),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primaryDark, size: 20),
+                                child: Icon(_specializationIcons[i % _specializationIcons.length], color: AppColors.primaryDark, size: 18),
                               ),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1091,14 +1091,14 @@ class _SpecializationsSection extends StatelessWidget {
                                 children: [
                                   Text(
                                     s.name,
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppColors.textPrimary),
+                                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, height: 1.15, color: AppColors.textPrimary),
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
                                     '$count ${count == 1 ? 'doctor' : 'doctors'}',
-                                    style: const TextStyle(color: Color(0xFF6F6A64), fontSize: 11.5, fontWeight: FontWeight.w500),
+                                    style: const TextStyle(color: Color(0xFF6F6A64), fontSize: 11, fontWeight: FontWeight.w500),
                                   ),
                                 ],
                               ),

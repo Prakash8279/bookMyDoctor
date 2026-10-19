@@ -274,6 +274,9 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
     reviewCount: dp.reviewCount,
     emergencyAvailable: dp.emergencyAvailable,
     onlineBooking: dp.onlineBooking,
+    // The public booking screens use directory rows directly. This policy is not private and
+    // must be present on list rows as well as the single-doctor detail response.
+    maxDaysAdvance: dp.maxDaysAdvance ?? 30,
     clinics,
     // Weekly OPD hours for the primary (first) clinic — [{day:'Mon', hours:'10:00–18:00'}, ...],
     // sorted Sun->Sat. `scheduleSummary` is a ready-to-render one-liner for card views; both are
@@ -285,7 +288,6 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
   if (includeDetail) {
     shaped.bio = dp.bio ?? null;
     shaped.allowRebooking = dp.allowRebooking;
-    shaped.maxDaysAdvance = dp.maxDaysAdvance;
     shaped.maxOnlineBookingsPerDay = dp.maxOnlineBookingsPerDay ?? null;
     shaped.onlineBookingWindowStart = dp.onlineBookingWindowStart ?? null;
     shaped.onlineBookingWindowEnd = dp.onlineBookingWindowEnd ?? null;

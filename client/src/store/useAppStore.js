@@ -27,9 +27,9 @@ const upsertById = (list = [], item) => {
 // `opdEntries` is a client-side merged view of clinic hours (weekly recurring)
 // and clinic closures (one-off dates) — each real row gets a `kind` tag so
 // save/delete route to the correct endpoint pair (integration plan §1.5).
-const replaceOpdEntriesOfKind = (existing = [], freshRows, kind) => [
-  ...existing.filter((row) => row.kind !== kind),
-  ...freshRows.map((row) => ({ ...row, kind })),
+const replaceOpdEntriesOfKind = (existing = [], freshRows, kind, clinicId) => [
+  ...existing.filter((row) => row.kind !== kind || row.clinicId !== clinicId),
+  ...freshRows.map((row) => ({ ...row, clinicId, kind })),
 ]
 const upsertOpdEntry = (list = [], entry) => {
   const idx = list.findIndex((row) => row.id === entry.id && row.kind === entry.kind)
@@ -361,7 +361,9 @@ export const useAppStore = create(
             get().fetchSpecializations(),
             get().searchDoctors({ pageSize: 100 }),
             get().fetchClinics({}),
-            get().fetchReviews({}),
+            // Admins receive every status by default; the public directory must
+            // request approved rows explicitly for the homepage carousel.
+            get().fetchReviews({ status: 'approved' }),
           ])
         } finally {
           set({ dataLoading: false, dataLoaded: true })
@@ -438,6 +440,11 @@ export const useAppStore = create(
       // =====================================================================
       // /me
       // =====================================================================
+      refreshCurrentUser: async () => {
+        const me = await apiClient.get('/me')
+        set({ currentUser: me })
+        return me
+      },
       updateProfile: async (fields) => {
         const me = await apiClient.patch('/me', fields)
         set({ currentUser: me })
@@ -600,7 +607,16 @@ export const useAppStore = create(
       // booking-policy fields, full-replace, all 3 required by the server.
       updateDoctorBookingPolicy: async (id, fields) => {
         const doctor = await apiClient.patch(`/doctors/${id}`, fields)
-        set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
+        const policyFields = ['onlineBooking', 'allowRebooking', 'maxDaysAdvance', 'maxOnlineBookingsPerDay', 'tokenNumberingMode', 'onlineTokenParity']
+        const updatedPolicy = Object.fromEntries(policyFields
+          .map((field) => [field, doctor[field] !== undefined ? doctor[field] : fields[field]])
+          .filter(([, value]) => value !== undefined))
+        set((state) => ({
+          data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) },
+          currentUser: state.currentUser?.id === id
+            ? { ...state.currentUser, profile: { ...state.currentUser.profile, ...updatedPolicy } }
+            : state.currentUser,
+        }))
         return doctor
       },
       createDoctor: async (fields) => {
@@ -687,12 +703,12 @@ export const useAppStore = create(
       // client-side into `data.opdEntries`, each row tagged `kind`.
       fetchClinicHours: async (clinicId, filters = {}) => {
         const rows = await apiClient.get(`/clinics/${clinicId}/hours`, { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'hours') } }))
+        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'hours', clinicId) } }))
         return rows
       },
       fetchClinicClosures: async (clinicId, filters = {}) => {
         const rows = await apiClient.get(`/clinics/${clinicId}/closures`, { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'closure') } }))
+        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'closure', clinicId) } }))
         return rows
       },
       // Upsert by (doctorUserId, clinicId, weekday) server-side — calling

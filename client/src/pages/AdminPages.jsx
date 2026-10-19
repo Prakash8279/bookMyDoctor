@@ -302,7 +302,7 @@ export function DoctorVerification({ data }) {
       await updateDoctorBookingPolicy(editingDoctor.id, {
         onlineBooking: values.onlineBooking === 'on',
         allowRebooking: values.allowRebooking === 'on',
-        maxDaysAdvance: Number(values.maxDaysAdvance) || 1,
+        maxDaysAdvance: Number(values.maxDaysAdvance),
         maxOnlineBookingsPerDay: values.maxOnlineBookingsPerDay === '' ? null : Number(values.maxOnlineBookingsPerDay),
         // "Follow platform-wide hours" clears this doctor's override entirely (both null)
         // regardless of whatever the now-hidden time inputs still hold in the DOM — the
@@ -463,7 +463,7 @@ export function DoctorVerification({ data }) {
           <input type="checkbox" name="onlineBooking" defaultChecked={Boolean(editingDoctor.onlineBooking)} />
         </label>
         <label className="flex min-h-11 items-center justify-between gap-3 font-medium text-ink">
-          Allow rebooking
+          Allow same-day online booking
           <input type="checkbox" name="allowRebooking" defaultChecked={Boolean(editingDoctor.allowRebooking)} />
         </label>
         <FormField

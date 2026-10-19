@@ -329,7 +329,7 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
   void initState() {
     super.initState();
     final profile = context.read<AuthProvider>().profile;
-    _maxDaysCtrl = TextEditingController(text: '${profile?.maxDaysAdvance ?? 7}');
+    _maxDaysCtrl = TextEditingController(text: '${profile?.maxDaysAdvance ?? 30}');
     _maxOnlineCtrl = TextEditingController(text: profile?.maxOnlineBookingsPerDay?.toString() ?? '');
     _allowRebooking = profile?.allowRebooking != false;
     _tokenMode = profile?.tokenNumberingMode != 'alternate'
@@ -348,17 +348,27 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
     final auth = context.read<AuthProvider>();
     final doctorId = auth.user?.id;
     if (doctorId == null) return;
+    final maxDays = int.tryParse(_maxDaysCtrl.text.trim());
+    if (maxDays == null || maxDays < 1 || maxDays > 365) {
+      setState(() => _error = 'Enter a booking window from 1 to 365 days.');
+      return;
+    }
+    final maxOnlineText = _maxOnlineCtrl.text.trim();
+    final maxOnline = maxOnlineText.isEmpty ? null : int.tryParse(maxOnlineText);
+    if (maxOnlineText.isNotEmpty && (maxOnline == null || maxOnline < 1 || maxOnline > 500)) {
+      setState(() => _error = 'Enter a daily cap from 1 to 500, or leave it blank.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      final maxOnlineText = _maxOnlineCtrl.text.trim();
       await ApiClient.instance.patch('/doctors/$doctorId', body: {
         'onlineBooking': auth.profile?.onlineBooking ?? true,
         'allowRebooking': _allowRebooking,
-        'maxDaysAdvance': int.tryParse(_maxDaysCtrl.text.trim()) ?? 1,
-        'maxOnlineBookingsPerDay': maxOnlineText.isEmpty ? null : int.tryParse(maxOnlineText),
+        'maxDaysAdvance': maxDays,
+        'maxOnlineBookingsPerDay': maxOnline,
         'tokenNumberingMode': _tokenMode == 'sequential' ? 'sequential' : 'alternate',
         'onlineTokenParity': _tokenMode == 'alternate_even' ? 'even' : 'odd',
       });
@@ -379,7 +389,7 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Control how far ahead patients can book and whether same-day rebooking is allowed.',
+            'Set the booking date range. Patients also need OPD hours on the chosen weekday.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -392,7 +402,7 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
           const SizedBox(height: AppSpacing.sm),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Allow same-day rebooking'),
+            title: const Text('Allow same-day online booking'),
             value: _allowRebooking,
             onChanged: (v) => setState(() => _allowRebooking = v),
           ),
@@ -407,8 +417,8 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
           ),
           const SizedBox(height: AppSpacing.xs),
           const Text(
-            "Caps only patients' own online bookings each day — leave blank for no limit. "
-            'Walk-ins your receptionist registers at the desk are never counted or blocked by this.',
+            'This is a cap, not extra slots: available bookings also depend on OPD hours and patient time. '
+            'Walk-ins do not count toward this cap.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.sm),

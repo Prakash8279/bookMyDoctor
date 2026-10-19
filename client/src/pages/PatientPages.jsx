@@ -197,6 +197,12 @@ const todayStr = () => {
   return `${yyyy}-${mm}-${dd}`
 }
 
+const advanceDateStr = (startDate, days) => {
+  const [year, month, day] = startDate.split('-').map(Number)
+  const result = new Date(Date.UTC(year, month - 1, day + days))
+  return result.toISOString().slice(0, 10)
+}
+
 export function Booking({ data }) {
   const [params, setSearchParams] = useSearchParams()
   const [booked, setBooked] = useState(null)
@@ -204,6 +210,7 @@ export function Booking({ data }) {
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const createAppointment = useAppStore((state) => state.createAppointment)
+  const addFamilyMember = useAppStore((state) => state.addFamilyMember)
   const fetchAppointmentAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
   const bookingQueueInfo = useAppStore((state) => state.bookingQueueInfo)
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
@@ -216,6 +223,12 @@ export function Booking({ data }) {
   const checkoutMountedRef = useRef(true)
   const platformCharges = data.platformCharges
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
+  const [patientChoice, setPatientChoice] = useState('')
+  const [addingMember, setAddingMember] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [memberRelation, setMemberRelation] = useState('')
+  const [memberSaving, setMemberSaving] = useState(false)
+  const [memberError, setMemberError] = useState('')
   const [clockNowMs, setClockNowMs] = useState(Date.now())
   const paymentDeadlineMs = booked?.status === 'pending_payment' && booked.createdAt
     ? Date.parse(booked.createdAt) + 10 * 60 * 1000
@@ -267,6 +280,9 @@ export function Booking({ data }) {
   }
 
   const doctor = (data.doctors || []).find((item) => item.id === doctorId)
+  const earliestBookingDate = todayStr()
+  const doctorMaxDays = Math.min(365, Math.max(1, Number(doctor?.maxDaysAdvance) || 30))
+  const latestBookingDate = doctor ? advanceDateStr(earliestBookingDate, doctorMaxDays) : undefined
   // Clinic is never chosen by the patient — it's always the doctor's primary (first) clinic,
   // derived automatically the moment a doctor is picked (matches the mobile app's behaviour).
   const primaryClinic = doctor?.clinics?.[0] || null
@@ -275,6 +291,9 @@ export function Booking({ data }) {
   // doctor's next free slot on that date server-side. What the patient actually cares about is
   // their queue/token number, not a clock time.
   const [date, setDate] = useState(params.get('date') || todayStr())
+  useEffect(() => {
+    if (doctor && (date < earliestBookingDate || date > latestBookingDate)) setDate(earliestBookingDate)
+  }, [doctor, date, earliestBookingDate, latestBookingDate])
   const [availability, setAvailability] = useState({})
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   useEffect(() => {
@@ -354,12 +373,32 @@ export function Booking({ data }) {
     })
   }, [data, appliedDoctorFilters])
   const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters) }
+  const saveBookingMember = async () => {
+    if (!memberName.trim() || !memberRelation.trim()) {
+      setMemberError('Name and relationship are required.')
+      return
+    }
+    setMemberError('')
+    setMemberSaving(true)
+    try {
+      const member = await addFamilyMember({ name: memberName.trim(), relation: memberRelation.trim() })
+      setPatientChoice(member.id)
+      setMemberName('')
+      setMemberRelation('')
+      setAddingMember(false)
+    } catch (err) {
+      setMemberError(err.message || 'Could not add family member.')
+    } finally {
+      setMemberSaving(false)
+    }
+  }
   const submit = async (event) => {
     event.preventDefault()
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
-    const familyMember = values.patient && values.patient !== 'Myself'
-      ? (data.familyMembers || []).find((item) => `${item.name} · ${item.relation}` === values.patient)
-      : null
+    if (doctor && (values.date < earliestBookingDate || values.date > latestBookingDate)) {
+      setError(`Choose a date within ${doctorMaxDays} days from today for this doctor.`)
+      return
+    }
     setError('')
     setConfirming(true)
     try {
@@ -368,7 +407,7 @@ export function Booking({ data }) {
         clinicId: primaryClinic?.id,
         appointmentDate: values.date,
         reason: values.reason || '',
-        familyMemberId: familyMember?.id,
+        familyMemberId: values.patient && values.patient !== 'Myself' ? values.patient : undefined,
       })
       setBooked(appointment)
     } catch (bookingError) {
@@ -657,7 +696,7 @@ export function Booking({ data }) {
           </div>
 
           {/* Booking Form */}
-          <form onSubmit={submit} className="rounded-card border-2 border-primary-dark/30 bg-white p-6 shadow-card">
+          <form onSubmit={submit} className="rounded-card border-2 border-primary-dark/30 bg-white p-4 shadow-card sm:p-6">
             <h3 className="text-base font-bold font-sans text-ink mb-4 pb-3 border-b border-border">
               Appointment Details
             </h3>
@@ -699,25 +738,41 @@ export function Booking({ data }) {
                   {primaryClinic ? primaryClinic.name : 'Select a doctor first'}
                 </div>
               </div>
-              <FormField
-                label="Patient"
-                name="patient"
-                type="select"
-                options={['Myself', ...(data.familyMembers || []).map((item) => `${item.name} · ${item.relation}`)]}
-                required
-              />
+              <div>
+                <FormField
+                  label="Patient"
+                  name="patient"
+                  type="select"
+                  options={[{ value: 'Myself', label: 'Myself' }, ...(data.familyMembers || []).map((item) => ({ value: item.id, label: `${item.name} · ${item.relation}` }))]}
+                  value={patientChoice}
+                  onChange={(event) => setPatientChoice(event.target.value)}
+                  required
+                />
+                <button type="button" className="mt-1.5 text-xs font-semibold text-primary-dark hover:underline" aria-expanded={addingMember} aria-controls="booking-add-member" onClick={() => { setAddingMember((open) => !open); setMemberError('') }}>+ Add member</button>
+              </div>
+              {addingMember && <div id="booking-add-member" className="sm:col-span-2 grid gap-3 rounded-button border border-border bg-surface p-3 sm:grid-cols-2">
+                <FormField label="Member name" value={memberName} onChange={(event) => setMemberName(event.target.value)} />
+                <FormField label="Relationship" value={memberRelation} onChange={(event) => setMemberRelation(event.target.value)} />
+                {memberError && <p role="alert" className="text-xs text-error sm:col-span-2">{memberError}</p>}
+                <div className="flex gap-2 sm:col-span-2">
+                  <button type="button" disabled={memberSaving} onClick={saveBookingMember} className="touch-target rounded-button bg-primary-dark px-3 text-xs font-semibold text-white disabled:opacity-60">{memberSaving ? 'Saving…' : 'Save member'}</button>
+                  <button type="button" onClick={() => setAddingMember(false)} className="touch-target rounded-button border border-border px-3 text-xs font-semibold text-ink">Cancel</button>
+                </div>
+              </div>}
               <FormField
                 label="Appointment date"
                 name="date"
                 type="date"
                 required
                 value={date}
-                min={date && date < todayStr() ? date : todayStr()}
+                min={earliestBookingDate}
+                max={latestBookingDate}
                 onChange={(event) => setDate(event.target.value)}
               />
+              {doctor && <p className="text-xs text-muted">Booking available through {latestBookingDate} ({doctorMaxDays} days ahead).</p>}
               {primaryClinic && (() => {
                 const slots = availability[`${doctor.id}:${primaryClinic.id}`]
-                return <div className="sm:col-span-2 rounded-button border border-border bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Slot availability for {date}</p>{availabilityLoading ? <p className="mt-2 text-sm text-muted">Checking slots…</p> : slots ? <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div><strong className="block text-lg text-ink">{slots.totalSlots}</strong><span className="text-xs text-muted">Total</span></div><div><strong className="block text-lg text-success">{slots.availableSlots}</strong><span className="text-xs text-muted">Available</span></div><div><strong className="block text-lg text-primary-dark">{slots.bookedSlots}</strong><span className="text-xs text-muted">Booked</span></div></div> : <p className="mt-2 text-sm text-muted">No OPD slots configured for this date.</p>}</div>
+                return <div role="group" aria-label="Slot availability" className="sm:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-button border border-border bg-surface px-3 py-2 text-xs"><span className="font-semibold text-muted">Slots · {date}</span>{availabilityLoading ? <span className="text-muted">Checking…</span> : slots ? <><span>Total <strong className="text-ink">{slots.totalSlots}</strong></span><span>Available <strong className="text-success">{slots.availableSlots}</strong></span><span>Booked <strong className="text-primary-dark">{slots.bookedSlots}</strong></span></> : <span className="text-muted">No OPD slots configured.</span>}</div>
               })()}
               <div className="sm:col-span-2">
                 <FormField

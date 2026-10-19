@@ -24,7 +24,7 @@
  * config/redis (no real Redis in this sandbox either) — see tests/setupEnv.js's header comment.
  */
 jest.mock('../../../src/config/db', () => ({
-  user: { findUnique: jest.fn() },
+  user: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn() },
 }));
 jest.mock('../../../src/services/cacheService', () => ({
   getOrSet: jest.fn((key, ttlSeconds, fetchFn) => fetchFn()),
@@ -85,6 +85,19 @@ function buildDoctorRow(overrides = {}) {
     ...userOverrides,
   };
 }
+
+describe('doctorsService.listDoctors — public booking window', () => {
+  test('directory rows include the doctor’s advance limit without exposing contact details', async () => {
+    prisma.user.findMany.mockResolvedValue([buildDoctorRow({ doctorProfile: { maxDaysAdvance: 12 } })]);
+    prisma.user.count.mockResolvedValue(1);
+
+    const { rows } = await doctorsService.listDoctors({});
+
+    expect(rows[0].maxDaysAdvance).toBe(12);
+    expect(rows[0].email).toBeUndefined();
+    expect(rows[0].phone).toBeUndefined();
+  });
+});
 
 describe('doctorsService.getDoctorById — not-found / visibility', () => {
   test('throws DOCTOR_NOT_FOUND (404) when no such user exists', async () => {

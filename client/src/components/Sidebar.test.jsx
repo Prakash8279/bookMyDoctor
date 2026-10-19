@@ -59,6 +59,7 @@ describe('Sidebar', () => {
     )
     expect(screen.getByText('Doctor portal')).toBeInTheDocument()
     expect(screen.getByText('Doctor account')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Consultation & EMR' })).not.toBeInTheDocument()
   })
 
   it('uses "control panel" as the suffix for admin and superadmin roles', () => {
@@ -212,6 +213,16 @@ describe('PortalHeader', () => {
       </MemoryRouter>
     )
     expect(screen.getByRole('link', { name: 'Open profile' })).toHaveAttribute('href', '/doctor/profile')
+    expect(screen.getByRole('link', { name: 'Notifications' })).toHaveAttribute('href', '/doctor/notifications')
+  })
+
+  it('shows unread notification count in the doctor header', () => {
+    useAppStore.setState({ data: {
+      ...useAppStore.getState().data,
+      notifications: [{ id: 'n1', readAt: null }, { id: 'n2', readAt: '2026-10-19T00:00:00Z' }],
+    } })
+    render(<MemoryRouter><PortalHeader role="doctor" onMenu={() => {}} /></MemoryRouter>)
+    expect(screen.getByLabelText('1 unread notifications')).toBeInTheDocument()
   })
 
   it('links the mobile patient brand to the public homepage', () => {

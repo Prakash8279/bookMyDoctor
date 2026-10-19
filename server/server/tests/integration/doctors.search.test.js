@@ -83,6 +83,7 @@ describe('GET /doctors — public directory search', () => {
     expect(doctor.id).toBe('doctor-1');
     expect(doctor.name).toBe('Dr. Priya Sharma');
     expect(doctor.specialization).toEqual({ id: 'spec-1', name: 'Cardiology', icon: 'heart' });
+    expect(doctor.maxDaysAdvance).toBe(30);
   });
 
   test('never leaks email/phone/accountStatus to an unauthenticated caller (shapeDoctor contract, end-to-end)', async () => {

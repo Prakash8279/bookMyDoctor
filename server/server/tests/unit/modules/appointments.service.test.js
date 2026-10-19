@@ -705,6 +705,18 @@ describe('appointmentsService.enqueueBooking', () => {
 });
 
 describe('appointmentsService.getDoctorAvailability', () => {
+  test('does not offer slots beyond this doctor’s booking window', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      doctor: { name: 'Dr. Asha Rao', doctorProfile: { maxDaysAdvance: 1 } },
+      clinic: { name: 'Heart Care Clinic' },
+    }]);
+    const date = addDaysISO(TODAY, 2);
+    const result = await appointmentsService.getDoctorAvailability({ date, doctorId: DOCTOR_ID });
+    expect(result).toEqual([]);
+    expect(prisma.doctorClinicHours.findMany).not.toHaveBeenCalled();
+  });
   test('returns total, booked, and available slot counts for each doctor-clinic schedule', async () => {
     prisma.doctorClinic.findMany.mockResolvedValue([{
       doctorUserId: DOCTOR_ID,

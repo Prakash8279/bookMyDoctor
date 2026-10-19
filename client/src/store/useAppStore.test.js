@@ -65,6 +65,17 @@ describe('initial state', () => {
   })
 })
 
+describe('public directory', () => {
+  it('requests only approved reviews even when the current user is an admin', async () => {
+    apiClient.get.mockResolvedValue([])
+    useAppStore.setState({ currentUser: { id: 'admin-1', role: 'admin' } })
+
+    await useAppStore.getState().loadPublicDirectory()
+
+    expect(apiClient.get).toHaveBeenCalledWith('/reviews', { params: { status: 'approved' } })
+  })
+})
+
 describe('login / register / registerDoctor', () => {
   const PATIENT = { id: 'u1', name: 'Asha Mehta', email: 'asha@example.com', role: 'patient' }
 
@@ -555,8 +566,8 @@ describe('clinics', () => {
 
       const entries = useAppStore.getState().data.opdEntries
       expect(entries).toHaveLength(2)
-      expect(entries).toContainEqual({ id: 'row-1', weekday: 1, kind: 'hours' })
-      expect(entries).toContainEqual({ id: 'row-1', date: '2026-01-01', kind: 'closure' })
+      expect(entries).toContainEqual({ id: 'row-1', weekday: 1, clinicId: 'cl1', kind: 'hours' })
+      expect(entries).toContainEqual({ id: 'row-1', date: '2026-01-01', clinicId: 'cl1', kind: 'closure' })
     })
 
     it('re-fetching hours replaces only "hours" rows, leaving closures untouched', async () => {
@@ -564,7 +575,7 @@ describe('clinics', () => {
         data: {
           ...useAppStore.getState().data,
           opdEntries: [
-            { id: 'h1', kind: 'hours', weekday: 1 },
+            { id: 'h1', kind: 'hours', clinicId: 'cl1', weekday: 1 },
             { id: 'c1', kind: 'closure', date: '2026-01-01' },
           ],
         },
@@ -575,8 +586,22 @@ describe('clinics', () => {
 
       const entries = useAppStore.getState().data.opdEntries
       expect(entries).toContainEqual({ id: 'c1', kind: 'closure', date: '2026-01-01' })
-      expect(entries).toContainEqual({ id: 'h2', kind: 'hours', weekday: 2 })
+      expect(entries).toContainEqual({ id: 'h2', kind: 'hours', clinicId: 'cl1', weekday: 2 })
       expect(entries.find((e) => e.id === 'h1')).toBeUndefined()
+    })
+
+    it('loading another clinic preserves the first clinic’s OPD hours', async () => {
+      apiClient.get.mockImplementation((url) => Promise.resolve(
+        url === '/clinics/cl1/hours' ? [{ id: 'h1', weekday: 1 }] : [{ id: 'h2', weekday: 2 }]
+      ))
+
+      await useAppStore.getState().fetchClinicHours('cl1')
+      await useAppStore.getState().fetchClinicHours('cl2')
+
+      expect(useAppStore.getState().data.opdEntries).toEqual([
+        { id: 'h1', weekday: 1, clinicId: 'cl1', kind: 'hours' },
+        { id: 'h2', weekday: 2, clinicId: 'cl2', kind: 'hours' },
+      ])
     })
 
     it('deleteClinicHours() only removes the "hours" row, not a closure with the same id', async () => {

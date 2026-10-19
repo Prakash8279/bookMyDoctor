@@ -100,7 +100,7 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       await ApiClient.instance.patch('/doctors/$doctorId', body: {
         'onlineBooking': next,
         'allowRebooking': auth.profile?.allowRebooking ?? true,
-        'maxDaysAdvance': auth.profile?.maxDaysAdvance ?? 7,
+        'maxDaysAdvance': auth.profile?.maxDaysAdvance ?? 30,
       });
       if (mounted) {
         await context.read<AuthProvider>().refreshProfile();
