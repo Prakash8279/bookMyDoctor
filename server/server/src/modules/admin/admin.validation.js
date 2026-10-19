@@ -68,6 +68,19 @@ const updateBookingRules = [
     .optional({ values: 'null' })
     .matches(HHMM_RE)
     .withMessage('onlineBookingWindowEnd must be in 24-hour HH:MM format, or null to remove the window.'),
+  ...['advanceBookingWindowStart', 'advanceBookingWindowEnd'].map((field) => body(field)
+    .optional({ values: 'null' })
+    .matches(HHMM_RE)
+    .withMessage(`${field} must be in 24-hour HH:MM format, or null.`)),
+  body().custom((value) => {
+    const b = value || {};
+    const start = b.advanceBookingWindowStart;
+    const end = b.advanceBookingWindowEnd;
+    if (Object.hasOwn(b, 'advanceBookingWindowStart') !== Object.hasOwn(b, 'advanceBookingWindowEnd')) throw new Error('Send both advance booking time fields together.');
+    if ((start != null) !== (end != null)) throw new Error('Advance booking opening and closing times must be set together.');
+    if (start != null && start >= end) throw new Error('Advance booking opening time must be earlier than closing time.');
+    return true;
+  }),
   body('onlineBookingMaxAdvanceDays')
     .optional({ values: 'null' })
     .isInt({ min: 0, max: 365 })

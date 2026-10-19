@@ -859,51 +859,18 @@ async function runBookingJob(payload) {
     throw new ApiError(403, 'ONLINE_BOOKING_DISABLED', 'Online booking is disabled for this doctor at this clinic.');
   }
 
-  // Online-booking accessibility window — a DOCTOR-LEVEL override (doctorProfile.
-  // onlineBookingWindowStart/End, admin- or doctor-set via doctors.service.js#updateBookingSettings)
-  // takes precedence when this doctor has one; otherwise the PLATFORM-WIDE window
-  // (admin/superadmin managed, BookingRules singleton — admin.service.js#updateBookingRules)
-  // applies. Both levels are opt-in: no override AND no platform-wide window set means no
-  // restriction at all, "full time". Fetched only for online bookings — a walk-in never pays for
-  // the extra query, same exemption pattern as every check in this function keyed on `source`.
-  // `bookingRules` is reused just below for the platform-wide max-advance-days cap too (that cap
-  // has no per-doctor override — maxDaysAdvance already IS the per-doctor equivalent).
+  // Platform hours apply to every doctor; doctor-specific hours can only narrow them.
   let bookingRules = null;
   if (source === 'online') {
-    const hasDoctorWindow = doctorProfile.onlineBookingWindowStart && doctorProfile.onlineBookingWindowEnd;
-    bookingRules = hasDoctorWindow
-      ? null
-      : await prisma.bookingRules.findUnique({
-          where: { id: 1 },
-          select: { onlineBookingWindowStart: true, onlineBookingWindowEnd: true, onlineBookingMaxAdvanceDays: true },
-        });
-    const effectiveWindow = hasDoctorWindow
-      ? { start: doctorProfile.onlineBookingWindowStart, end: doctorProfile.onlineBookingWindowEnd }
-      : bookingRules && bookingRules.onlineBookingWindowStart && bookingRules.onlineBookingWindowEnd
-      ? { start: bookingRules.onlineBookingWindowStart, end: bookingRules.onlineBookingWindowEnd }
-      : null;
-    // The max-advance-days cap lives ONLY on the platform-wide row (no per-doctor override for
-    // it), so when this doctor HAS their own window override we still need `bookingRules`
-    // fetched for that cap check further below — fetch it now rather than skip it entirely.
-    if (hasDoctorWindow && bookingRules === null) {
-      bookingRules = await prisma.bookingRules.findUnique({
-        where: { id: 1 },
-        select: { onlineBookingMaxAdvanceDays: true },
-      });
-    }
-    if (effectiveWindow) {
-      // OPD and booking-window values are business-local wall-clock times. Zero-padded 24h HH:MM
-      // strings compare correctly with plain string operators. Doesn't support a window spanning
-      // midnight (e.g. "22:00"-"06:00") — both
-      // admin.validation.js#updateBookingRules and doctors.validation.js#patchDoctor require
-      // start < end at save time, so that case can never be saved in the first place.
+    bookingRules = await prisma.bookingRules.findUnique({ where: { id: 1 } });
+    require('../../utils/platformBookingHours').assertPlatformBookingHours(
+      bookingRules, dateStr, todayBusinessDateOnly().toISOString().slice(0, 10), currentBusinessTimeHHMM()
+    );
+    if (doctorProfile.onlineBookingWindowStart && doctorProfile.onlineBookingWindowEnd) {
       const nowHHMM = currentBusinessTimeHHMM();
-      if (nowHHMM < effectiveWindow.start || nowHHMM > effectiveWindow.end) {
-        throw new ApiError(
-          403,
-          'ONLINE_BOOKING_WINDOW_CLOSED',
-          `Online booking is only available between ${effectiveWindow.start} and ${effectiveWindow.end}. Please try again during that window, or contact the clinic directly.`
-        );
+      if (nowHHMM < doctorProfile.onlineBookingWindowStart || nowHHMM >= doctorProfile.onlineBookingWindowEnd) {
+        throw new ApiError(403, 'ONLINE_BOOKING_WINDOW_CLOSED',
+          `This doctor's online booking is available from ${doctorProfile.onlineBookingWindowStart} to ${doctorProfile.onlineBookingWindowEnd} IST.`);
       }
     }
   }

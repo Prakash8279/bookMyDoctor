@@ -854,12 +854,16 @@ model BookingRules {
   // Platform-wide online-booking accessibility window (admin/superadmin managed — see
   // AdminPages.jsx's "Booking rules" form and appointments.service.js#runBookingJob's
   // enforcement). Both NULL (the default) = online booking accepted around the clock ("full
-  // time"). Set both together to restrict online booking to a daily HH:MM-HH:MM window
+  // time"). These existing fields now govern TODAY bookings; the advance pair below governs
+  // future appointment dates. Both use business-local time, and closing is exclusive.
+  // Set both together to restrict online booking to a daily HH:MM-HH:MM window
   // platform-wide — e.g. "09:00"-"21:00". Only ever gates ONLINE bookings (source==='online');
   // walk-ins booked by staff at the clinic are never affected, same exemption pattern as every
   // other admin/doctor booking-policy flag in this app.
   onlineBookingWindowStart String? @map("online_booking_window_start") // "HH:MM", 24h
   onlineBookingWindowEnd   String? @map("online_booking_window_end")   // "HH:MM", 24h
+  advanceBookingWindowStart String? @map("advance_booking_window_start")
+  advanceBookingWindowEnd   String? @map("advance_booking_window_end")
   // Platform-wide cap on how many days ahead an ONLINE booking's appointment date may be — a
   // ROLLING window measured from "today" (not a fixed calendar date), so it never needs manual
   // bumping and can't silently expire if left unattended. NULL (default) = no platform-wide cap

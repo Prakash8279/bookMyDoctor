@@ -976,6 +976,16 @@ describe('appointmentsService.runBookingJob', () => {
   });
 
   // ── Doctor / clinic resolution ─────────────────────────────────────
+  test('platform advance hours cannot be bypassed by a doctor-specific booking window', async () => {
+    jest.useFakeTimers({ now: new Date(`${TODAY_STR}T06:00:00.000Z`) });
+    try {
+    mockUsers({ doctor: happyDoctor({ onlineBookingWindowStart: '00:00', onlineBookingWindowEnd: '23:59' }) });
+    prisma.bookingRules.findUnique.mockResolvedValue({ advanceBookingWindowStart: '00:00', advanceBookingWindowEnd: '00:01' });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'ONLINE_BOOKING_WINDOW_CLOSED' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+  });
+
   test('throws 404 DOCTOR_NOT_FOUND when the doctor does not exist, is inactive, or is unverified', async () => {
     mockUsers({ doctor: null });
     await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({

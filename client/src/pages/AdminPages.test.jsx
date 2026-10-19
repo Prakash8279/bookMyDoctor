@@ -640,6 +640,26 @@ describe('AuditLog', () => {
 })
 
 describe('PlatformSettings', () => {
+  it('saves separate booking hours for today and advance dates', async () => {
+    mockGetRoutes({
+      '/admin/system-settings': { platformName: 'BookADoctors' },
+      '/admin/booking-rules': { cancellationWindowHours: 2, maxBookingsPerPatient: 5, defaultSlotMinutes: 15 },
+    })
+    apiClient.put.mockResolvedValue({})
+    renderConnected(PlatformSettings, {})
+    fireEvent.click(await screen.findByLabelText(/Accept online bookings around the clock/i))
+    fireEvent.click(screen.getByLabelText(/Accept advance bookings around the clock/i))
+    fireEvent.change(screen.getByLabelText(/^Today booking opens at/), { target: { value: '07:00' } })
+    fireEvent.change(screen.getByLabelText(/^Today booking closes at/), { target: { value: '12:00' } })
+    fireEvent.change(screen.getByLabelText(/^Advance booking opens at/), { target: { value: '15:00' } })
+    fireEvent.change(screen.getByLabelText(/^Advance booking closes at/), { target: { value: '21:00' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save booking rules/i }))
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith('/admin/booking-rules', expect.objectContaining({
+      onlineBookingWindowStart: '07:00', onlineBookingWindowEnd: '12:00',
+      advanceBookingWindowStart: '15:00', advanceBookingWindowEnd: '21:00',
+    })))
+  })
+
   it('saves platform identity/maintenance settings with the real maintenanceMode field name', async () => {
     mockGetRoutes({
       '/admin/system-settings': { platformName: 'BookADoctors', maintenanceMode: false },

@@ -486,7 +486,7 @@ export function DoctorVerification({ data }) {
         />
         <div className="border-t border-border pt-4">
           <p className="text-sm font-semibold text-ink">Online booking hours (this doctor)</p>
-          <p className="mt-1 text-xs text-muted">Keep "Follow platform-wide hours" checked to use the platform's general online-booking window (Settings → Booking rules). Uncheck it to give THIS doctor their own hours instead — this overrides the platform-wide window just for them.</p>
+          <p className="mt-1 text-xs text-muted">Platform Today and Advance booking hours apply to every doctor. Keep "Follow platform-wide hours" checked for no additional restriction, or set narrower hours for this doctor.</p>
           <label className="mt-3 flex min-h-11 items-center gap-2 font-medium text-ink">
             <input type="checkbox" checked={followPlatformWindow} onChange={(event) => setFollowPlatformWindow(event.target.checked)} />
             Follow platform-wide hours
@@ -1329,6 +1329,7 @@ export function PlatformSettings() {
   // Defaults to "always open" (true) until real data arrives, then syncs to whatever's actually
   // saved — a fetched window (both times set) flips this off so the time fields show instead.
   const [alwaysOpen, setAlwaysOpen] = useState(true)
+  const [advanceAlwaysOpen, setAdvanceAlwaysOpen] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -1341,7 +1342,10 @@ export function PlatformSettings() {
   }, [fetchSystemSettings, fetchBookingRules])
 
   useEffect(() => {
-    if (bookingRules) setAlwaysOpen(!bookingRules.onlineBookingWindowStart)
+    if (bookingRules) {
+      setAlwaysOpen(!bookingRules.onlineBookingWindowStart)
+      setAdvanceAlwaysOpen(!bookingRules.advanceBookingWindowStart)
+    }
   }, [bookingRules])
 
   const save = async (event) => {
@@ -1386,6 +1390,8 @@ export function PlatformSettings() {
         // field presence.
         onlineBookingWindowStart: alwaysOpen ? null : (values.onlineBookingWindowStart || null),
         onlineBookingWindowEnd: alwaysOpen ? null : (values.onlineBookingWindowEnd || null),
+        advanceBookingWindowStart: advanceAlwaysOpen ? null : (values.advanceBookingWindowStart || null),
+        advanceBookingWindowEnd: advanceAlwaysOpen ? null : (values.advanceBookingWindowEnd || null),
         onlineBookingMaxAdvanceDays: values.onlineBookingMaxAdvanceDays === '' ? null : Number(values.onlineBookingMaxAdvanceDays),
       })
       setRulesSaved(true)
@@ -1422,15 +1428,27 @@ export function PlatformSettings() {
         <FormField label="Max bookings per patient" name="maxBookingsPerPatient" type="number" min="1" max="100" defaultValue={bookingRules?.maxBookingsPerPatient ?? 5} />
         <FormField label="Default slot length (minutes)" name="defaultSlotMinutes" type="number" min="5" max="120" defaultValue={bookingRules?.defaultSlotMinutes ?? 15} />
         <div className="border-t border-border pt-4">
-          <p className="text-sm font-semibold text-ink">Online booking hours</p>
+          <p className="text-sm font-semibold text-ink">Today booking hours (IST)</p>
           <p className="mt-1 text-xs text-muted">Platform-wide — controls when PATIENTS can make an online booking. Walk-ins registered by staff at the clinic are never affected.</p>
           <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={alwaysOpen} onChange={(event) => setAlwaysOpen(event.target.checked)} />
             Accept online bookings around the clock (full time)
           </label>
           {!alwaysOpen && <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <FormField label="Open from" name="onlineBookingWindowStart" type="time" defaultValue={bookingRules?.onlineBookingWindowStart || '09:00'} required={!alwaysOpen} />
-            <FormField label="Open until" name="onlineBookingWindowEnd" type="time" defaultValue={bookingRules?.onlineBookingWindowEnd || '21:00'} required={!alwaysOpen} />
+            <FormField label="Today booking opens at" name="onlineBookingWindowStart" type="time" defaultValue={bookingRules?.onlineBookingWindowStart || '09:00'} required={!alwaysOpen} />
+            <FormField label="Today booking closes at" name="onlineBookingWindowEnd" type="time" defaultValue={bookingRules?.onlineBookingWindowEnd || '21:00'} required={!alwaysOpen} />
+          </div>}
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="text-sm font-semibold text-ink">Advance booking hours (IST)</p>
+          <p className="mt-1 text-xs text-muted">For tomorrow and later dates, across all doctors. Booking stops exactly at closing time. Each doctor's advance-days limit still applies. Opening must be earlier than closing on the same day.</p>
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={advanceAlwaysOpen} onChange={(event) => setAdvanceAlwaysOpen(event.target.checked)} />
+            Accept advance bookings around the clock (full time)
+          </label>
+          {!advanceAlwaysOpen && <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <FormField label="Advance booking opens at" name="advanceBookingWindowStart" type="time" defaultValue={bookingRules?.advanceBookingWindowStart || '09:00'} required />
+            <FormField label="Advance booking closes at" name="advanceBookingWindowEnd" type="time" defaultValue={bookingRules?.advanceBookingWindowEnd || '21:00'} required />
           </div>}
         </div>
         <div className="border-t border-border pt-4">
