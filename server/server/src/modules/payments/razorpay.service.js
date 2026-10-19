@@ -824,6 +824,16 @@ async function finalizeProcessedRefund(refund, razorpayRefundId) {
         where: { id: refund.appointmentId },
         data: { paymentStatus: 'refunded' },
       });
+      // A fully returned booking payment cannot keep an active reservation.
+      // Keep completed/no-show history intact and never cancel a booking that
+      // still has another valid payment (for example a refunded duplicate).
+      const cancelled = await tx.appointment.updateMany({
+        where: { id: refund.appointmentId, status: { in: ['pending_payment', 'upcoming', 'confirmed'] } },
+        data: { status: 'cancelled' },
+      });
+      if (cancelled.count > 0) {
+        await tx.queueToken.deleteMany({ where: { appointmentId: refund.appointmentId } });
+      }
       await paymentHoldService.markHoldRefundedTx(tx, refund.appointmentId);
     }
     return payment;
@@ -833,6 +843,7 @@ async function finalizeProcessedRefund(refund, razorpayRefundId) {
     await Promise.allSettled([
       paymentsService.invalidatePaymentListCaches(paymentContext),
       appointmentsService.invalidateAppointmentListCaches(paymentContext),
+      require('../queue/queue.service').invalidateQueueListCaches(paymentContext),
     ]);
   }
 }

@@ -95,6 +95,8 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
     prisma.refund.findUnique.mockReset();
     prisma.refund.findFirst.mockReset();
     prisma.payment.findUnique.mockResolvedValue({ amount: 500 });
+    prisma.payment.count.mockResolvedValue(0);
+    prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
     prisma.refund.aggregate.mockResolvedValue({ _sum: { amount: 500 } });
     global.fetch = jest.fn();
     env.razorpay.keyId = 'rzp_test_sampleKeyId';
@@ -409,6 +411,34 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
       create: expect.objectContaining({ amount: 2, paymentId: 'payment-2', idempotencyKey: 'refund:gateway-event:rfnd_external' }),
     }));
     expect(prisma.payment.updateMany).toHaveBeenCalledWith({ where: { id: 'payment-2' }, data: { status: 'refunded' } });
+    expect(prisma.appointment.updateMany).toHaveBeenCalledWith({
+      where: { id: 'appt-2', status: { in: ['pending_payment', 'upcoming', 'confirmed'] } },
+      data: { status: 'cancelled' },
+    });
+    expect(prisma.queueToken.deleteMany).toHaveBeenCalledWith({ where: { appointmentId: 'appt-2' } });
+  });
+
+  test('a refunded duplicate payment leaves the original paid booking and queue active', async () => {
+    prisma.refund.findFirst.mockResolvedValue({ id: 'duplicate', paymentId: 'payment-1', appointmentId: 'appt-1', status: 'pending' });
+    prisma.payment.count.mockResolvedValue(1);
+    await razorpayService.handleRefundWebhookEvent({
+      event: 'refund.processed',
+      payload: { refund: { entity: { id: 'rfnd_duplicate', payment_id: 'pay_1' } } },
+    });
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+    expect(prisma.queueToken.deleteMany).not.toHaveBeenCalled();
+  });
+
+  test('a completed or already cancelled appointment does not lose its queue history', async () => {
+    prisma.refund.findFirst.mockResolvedValue({ id: 'finished', paymentId: 'payment-1', appointmentId: 'appt-1', status: 'pending' });
+    prisma.appointment.updateMany.mockResolvedValue({ count: 0 });
+    await razorpayService.handleRefundWebhookEvent({
+      event: 'refund.processed',
+      payload: { refund: { entity: { id: 'rfnd_finished', payment_id: 'pay_1' } } },
+    });
+    expect(prisma.appointment.update).toHaveBeenCalledWith({ where: { id: 'appt-1' }, data: { paymentStatus: 'refunded' } });
+    expect(prisma.queueToken.deleteMany).not.toHaveBeenCalled();
   });
 
   test('records a partial gateway refund without marking the entire payment refunded', async () => {
@@ -421,6 +451,8 @@ describe('Phase 4: Razorpay Cancellation & Refund Flow', () => {
     expect(prisma.refund.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'processed' }) }));
     expect(prisma.payment.updateMany).not.toHaveBeenCalled();
     expect(prisma.appointment.update).not.toHaveBeenCalled();
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+    expect(prisma.queueToken.deleteMany).not.toHaveBeenCalled();
   });
 
   test('a delayed failed event cannot downgrade an already processed refund', async () => {
