@@ -768,7 +768,7 @@ describe('WalkIn', () => {
     await screen.findByRole('option', { name: 'Dr. Kapoor' })
     fireEvent.change(screen.getByLabelText(/^Patient name/), { target: { value: 'Ravi Shah' } })
     fireEvent.change(screen.getByLabelText(/^Phone/), { target: { value: '9876543210' } })
-    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'Dr. Kapoor' } })
+    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'doc-1' } })
     fireEvent.click(screen.getByRole('button', { name: /Register and issue token/i }))
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/appointments', expect.objectContaining({
@@ -789,7 +789,7 @@ describe('WalkIn', () => {
     await screen.findByRole('option', { name: 'Dr. Kapoor' })
     fireEvent.change(screen.getByLabelText(/^Patient name/), { target: { value: 'Ravi Shah' } })
     fireEvent.change(screen.getByLabelText(/^Phone/), { target: { value: '9876543210' } })
-    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'Dr. Kapoor' } })
+    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'doc-1' } })
     fireEvent.click(screen.getByRole('button', { name: /Register and issue token/i }))
 
     expect(await screen.findByText('Doctor is fully booked for this date.')).toBeInTheDocument()
@@ -797,12 +797,22 @@ describe('WalkIn', () => {
 })
 
 describe('CheckIn', () => {
+  it('records a real arrival and updates the visible patient status', async () => {
+    const row = { id: 'arrive-1', appointmentDate: indiaTodayDate(), tokenNumber: 8, status: 'upcoming', paymentStatus: 'paid', patient: {name:'Arriving Patient'} }
+    mockGetRoutes({ '/appointments': [row] })
+    apiClient.post.mockResolvedValue({ ...row, checkedInAt: new Date().toISOString() })
+    renderConnected(CheckIn)
+    fireEvent.click(await screen.findByRole('button', {name:'Check in', exact:true}))
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/appointments/arrive-1/check-in', {}))
+    expect(await screen.findByText('Checked in')).toBeInTheDocument()
+    expect(screen.queryByRole('button',{name:'Check in', exact:true})).not.toBeInTheDocument()
+  })
   it('shows checked-in vs not-checked-in appointments without a manual check-in endpoint', () => {
     renderConnected(CheckIn, {
       data: {
         appointments: [
-          { id: 'a1', status: 'upcoming', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
-          { id: 'a2', status: 'confirmed', doctor: { name: 'Dr. Rao' } },
+          { id: 'a1', appointmentDate: indiaTodayDate(), tokenNumber: 1, status: 'upcoming', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
+          { id: 'a2', appointmentDate: indiaTodayDate(), tokenNumber: 2, status: 'confirmed', doctor: { name: 'Dr. Rao' } },
         ],
       },
     })

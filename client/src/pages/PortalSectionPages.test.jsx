@@ -178,7 +178,7 @@ describe('PortalPatients', () => {
     expect(screen.getByText('Asha Mehta')).toBeInTheDocument()
     expect(screen.getByText('9000000001')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText(/no dedicated patient directory/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Search clinic patient')).toBeInTheDocument()
   })
 })
 

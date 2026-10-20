@@ -16,6 +16,8 @@ import { buildCsv, downloadCsv } from '../lib/csv'
 import apiClient from '../lib/apiClient'
 import { doctorAppointmentsCsv, fetchDoctorAppointmentsForRange, indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
+import { usePolling } from '../hooks/usePolling'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 import { buildStaffReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
@@ -132,6 +134,9 @@ const derivePatients = (appointments = []) => {
 }
 
 const AppointmentTable = ({ data }) => {
+  const [dateFilter, setDateFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [page, setPage] = useState(1)
   const updateAppointmentStatus = useAppStore((state) => state.updateAppointmentStatus)
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   const [loading, setLoading] = useState(true)
@@ -142,8 +147,8 @@ const AppointmentTable = ({ data }) => {
   const load = useCallback(() => {
     setLoading(true)
     setLoadError('')
-    return fetchAppointments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load appointments.'))).finally(() => setLoading(false))
-  }, [fetchAppointments])
+    return fetchAppointments({ page, pageSize: 50, date: dateFilter || undefined, status: statusFilter || undefined }).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load appointments.'))).finally(() => setLoading(false))
+  }, [fetchAppointments, page, dateFilter, statusFilter])
   useEffect(() => { load() }, [load])
 
   const changeStatus = async (id, status) => {
@@ -172,12 +177,22 @@ const AppointmentTable = ({ data }) => {
   })
 
   return <>
+    <details className="mb-3 rounded-button border border-border bg-white p-3">
+      <summary className="cursor-pointer text-sm font-semibold">Appointment filters</summary>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <FormField label="Filter visit date" type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} />
+        <FormField label="Filter appointment status" type="select" options={['upcoming', 'pending_payment', 'confirmed', 'completed', 'cancelled', 'no_show']} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} />
+        <Button tone="secondary" onClick={() => { setDateFilter(''); setStatusFilter(''); setPage(1) }}>Clear filters</Button>
+      </div>
+    </details>
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable
       loading={loading}
       error={loadError}
       onRetry={load}
       rows={(data.appointments || [])}
+      pagination={data.appointments?.__pagination}
+      onPageChange={setPage}
       mobileSummaryKeys={['bookingId', 'tokenNumber', 'appointmentDate', 'appointmentTime', 'patientName', 'status', 'paymentStatus', 'due']}
       mobileSummary={(item) => <>
         <div className="flex min-w-0 items-start justify-between gap-2">
@@ -354,7 +369,7 @@ export function QueueManagement({ data, receptionist = false }) {
     setLoadError('')
     return fetchQueue({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.'))).finally(() => setLoading(false))
   }, [fetchQueue])
-  useEffect(() => { loadQueue() }, [loadQueue])
+  usePolling(loadQueue, { intervalMs: 15000 })
 
   // `GET /queue` is already scoped server-side (doctor sees only their own
   // tokens, receptionist only their clinic's) — no client-side doctor filter
@@ -963,7 +978,7 @@ export function ClinicSchedule({ data }) {
   </Page>
 }
 
-export function DoctorAppointments({ data }) {
+export function DoctorAppointments({ data, receptionist = false }) {
   const [dateFrom, setDateFrom] = useState(indiaTodayDate)
   const [dateTo, setDateTo] = useState(indiaTodayDate)
   const [exporting, setExporting] = useState(false)
@@ -985,7 +1000,7 @@ export function DoctorAppointments({ data }) {
       if (rows.length === 0) {
         setExportMessage('No appointments found in this date range.')
       } else {
-        downloadCsv(`doctor-appointments-${dateFrom}-to-${dateTo}.csv`, doctorAppointmentsCsv(rows))
+        downloadCsv(`${receptionist ? 'clinic' : 'doctor'}-appointments-${dateFrom}-to-${dateTo}.csv`, doctorAppointmentsCsv(rows))
         setExportMessage(`${rows.length} appointment${rows.length === 1 ? '' : 's'} downloaded.`)
       }
     } catch (err) {
@@ -995,7 +1010,7 @@ export function DoctorAppointments({ data }) {
     }
   }
 
-  return <Page title="Appointments" subtitle="Manage scheduled patients and consultation status.">
+  return <Page title="Appointments" subtitle={receptionist ? 'Manage scheduled and walk-in visits.' : 'Manage scheduled patients and consultation status.'}>
     <div aria-label="Export appointments" className="mb-4 rounded-card border border-border bg-white p-3 shadow-card sm:p-4">
       <div className="doctor-appointment-export-dates grid grid-cols-2 gap-2 sm:max-w-xl sm:gap-3">
         <label className="min-w-0 text-xs font-semibold text-muted">Start date
@@ -1084,35 +1099,49 @@ export function Analytics({ data, admin = false, embedded = false }) {
 }
 
 export function ReceptionDashboard({ data }) {
+  const [todayRecords, setTodayRecords] = useState(null)
+  const [todayQueue, setTodayQueue] = useState(null)
+  const [dashboardError, setDashboardError] = useState('')
+  usePolling(() => {
+    Promise.all([fetchAllClinicRows(apiClient, '/appointments', { date: indiaTodayDate() }), fetchAllClinicRows(apiClient, '/queue', { date: indiaTodayDate() })])
+      .then(([rows, tokens]) => { setTodayRecords(rows); setTodayQueue(tokens); setDashboardError('') })
+      .catch((err) => setDashboardError(firstErrorMessage(err, 'Could not refresh today’s clinic records.')))
+  }, { intervalMs: 30000 })
   const currentUser = useAppStore((state) => state.currentUser)
   const getClinic = useAppStore((state) => state.getClinic)
   // Same fix as WalkIn's Doctor dropdown below: "Assigned doctors" used to read `data.doctors`
   // (the platform-wide public directory) instead of this receptionist's own clinic team.
   const clinicId = currentUser?.profile?.clinicId
   const [clinicDoctors, setClinicDoctors] = useState([])
+  const [teamError, setTeamError] = useState('')
   useEffect(() => {
     let cancelled = false
+    setClinicDoctors([])
+    setTeamError('')
     if (!clinicId) return undefined
-    getClinic(clinicId).then((clinic) => { if (!cancelled) setClinicDoctors(clinic.doctors || []) }).catch(() => { })
+    getClinic(clinicId).then((clinic) => { if (!cancelled) setClinicDoctors(clinic.doctors || []) })
+      .catch((err) => { if (!cancelled) setTeamError(firstErrorMessage(err, 'Could not load assigned doctors.')) })
     return () => { cancelled = true }
   }, [clinicId, getClinic])
-  const today = new Date().toISOString().slice(0, 10)
-  const waiting = (data.queueTokens || []).filter((item) => item.status === 'waiting').length
-  const todaysPatients = (data.appointments || []).filter((item) => item.appointmentDate === today).length
-  const consultationsDone = (data.appointments || []).filter((item) => item.status === 'completed').length
-  const pendingPayments = (data.payments || []).filter((item) => String(item.status || '').toLowerCase() === 'pending').length
-  const recentRecords = [...(data.appointments || [])].reverse().slice(0, 6).map((item, index) => ({
+  const today = indiaTodayDate()
+  const todaysAppointments = (todayRecords || data.appointments || []).filter((item) => item.appointmentDate === today && !['cancelled', 'no_show', 'pending_payment'].includes(item.status))
+  const waiting = (todayQueue || data.queueTokens || []).filter((item) => item.status === 'waiting' && (!item.queueDate || item.queueDate.slice(0, 10) === today)).length
+  const todaysPatients = todaysAppointments.length
+  const consultationsDone = todaysAppointments.filter((item) => item.status === 'completed').length
+  const pendingPayments = todaysAppointments.filter((item) => !['paid', 'refunded'].includes(item.paymentStatus) && Number(item.fees?.due ?? item.fees?.consultationFee ?? 0) > 0).length
+  const recentRecords = [...(todayRecords || data.appointments || [])].sort((a, b) => `${b.appointmentDate || ''} ${b.appointmentTime || ''}`.localeCompare(`${a.appointmentDate || ''} ${a.appointmentTime || ''}`)).slice(0, 6).map((item) => ({
     id: item.id,
     time: `${item.appointmentDate || 'Today'} ${item.appointmentTime || ''}`.trim(),
     patient: item.patient?.name || 'Patient',
-    details: `Appointment #${index + 1}`,
+    details: `Appointment ${shortId(item.id)}`,
     status: item.status || 'upcoming',
   }))
   const firstName = (currentUser?.name || 'Reception').split(' ')[0]
   return <Page kicker="Production database" title={`Welcome, ${firstName}.`} subtitle="Your authenticated workspace is connected to live records." headingClassName="hidden lg:flex" action={<Link to="/receptionist/walk-in" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2 text-sm font-semibold text-white hover:bg-charcoal">Register walk-in</Link>}>
     <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {firstName}.</h1>
     <StaffServiceGrid role="receptionist" />
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <ErrorNote>{dashboardError}</ErrorNote>
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <StatCard label="TODAY'S PATIENTS" value={todaysPatients} icon="👥" to="/receptionist/patients" />
       <StatCard label="CONSULTATIONS DONE" value={consultationsDone} icon="✓" to="/receptionist/appointments" />
       <StatCard label="WAITING IN QUEUE" value={waiting} icon="≡" to="/receptionist/queue" />
@@ -1130,16 +1159,15 @@ export function ReceptionDashboard({ data }) {
     </div>
     <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="text-lg">Assigned doctors</h2>
+      <ErrorNote>{teamError}</ErrorNote>
       <div className="mt-4">{clinicDoctors.length ? <div className="grid gap-3 sm:grid-cols-2">{clinicDoctors.map((doctor) => <div className="rounded-button bg-surface p-4" key={doctor.doctorUserId}><p className="font-semibold">{doctor.name}</p><p className="text-sm text-muted">{doctor.specialization?.name || 'Specialization not added'}</p><div className="mt-2"><StatusPill status={doctor.onlineBooking ? 'active' : 'paused'} /></div></div>)}</div> : <EmptyState title="No doctors assigned" message="Doctors added to your clinic team will appear here." />}</div>
     </div>
   </Page>
 }
 
-// yyyy-mm-dd in the browser's own local time — same helper as PatientPages.jsx's Booking page
-// (not shared cross-file per this codebase's existing per-module convention).
+// Clinic operations use the India business date, regardless of the browser timezone.
 const walkInTodayStr = () => {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return indiaTodayDate()
 }
 
 // COMPLETENESS FIX (audit Priority 1 #2): this used to be a documented no-op — every submit just
@@ -1208,12 +1236,12 @@ export function WalkIn({ data }) {
           <FormField label="Patient name" name="name" required />
           <FormField label="Phone" name="phone" type="tel" placeholder="Used to find a returning patient" required />
           <FormField label="Patient email (optional)" name="email" type="email" />
-          <FormField label="Doctor" name="doctorLabel" type="select" options={clinicDoctors.map((doctor) => doctor.name)} value={clinicDoctors.find((doctor) => doctor.id === doctorId)?.name || ''} onChange={(event) => { const selected = clinicDoctors.find((doctor) => doctor.name === event.target.value); setDoctorId(selected?.id || '') }} required />
+          <FormField label="Doctor" name="doctorLabel" type="select" options={clinicDoctors.map((doctor) => ({ value: doctor.id, label: doctor.name }))} value={doctorId} onChange={(event) => setDoctorId(event.target.value)} required />
           <input type="hidden" name="doctor" value={doctorId} />
           {clinicError && <div className="sm:col-span-2"><ErrorNote>{clinicError}</ErrorNote></div>}
           {!clinicError && clinicId && !clinicDoctors.length && <p className="sm:col-span-2 text-sm text-muted">No doctors are assigned to your clinic yet — ask an admin to add one before registering a walk-in.</p>}
           {!clinicId && <p className="sm:col-span-2 text-sm text-muted">Your account isn't linked to a clinic yet — ask an admin to assign you to one.</p>}
-          <FormField label="Visit date" name="date" type="date" required defaultValue={walkInTodayStr()} />
+          <FormField label="Visit date" name="date" type="date" min={walkInTodayStr()} required defaultValue={walkInTodayStr()} />
           <FormField label="Slot time (optional)" name="time" type="time" placeholder="Leave blank to auto-assign the next slot" />
           <div className="sm:col-span-2"><FormField label="Reason for visit" name="reason" type="textarea" placeholder="Symptoms or follow-up details" /></div>
           <div className="sm:col-span-2"><ErrorNote>{error}</ErrorNote></div>
@@ -1228,21 +1256,42 @@ export function WalkIn({ data }) {
 }
 
 export function CheckIn({ data }) {
-  // No endpoint sets `checkedInAt` directly — derive check-in status from
-  // already-fetched appointments instead (Foundation notes / plan §5).
-  const checkedIn = (data.appointments || []).filter((item) => item.checkedInAt).map((item) => item.id)
-  return <Page title="Check-in / check-out">
-    <p className="mb-4 text-sm text-muted">Check-in status is set automatically by the booking/queue system — the current API has no manual check-in endpoint.</p>
-    <DataTable rows={(data.appointments || []).filter((item) => item.status === 'upcoming' || item.status === 'confirmed')} columns={[
+  const checkInAppointment = useAppStore((state) => state.checkInAppointment)
+  const fetchAppointments = useAppStore((state) => state.fetchAppointments)
+  const [busyId, setBusyId] = useState(null)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const today = indiaTodayDate()
+  const refresh = () => fetchAppointments({ date: today, allPages: true }).catch((err) => setError(firstErrorMessage(err, 'Could not refresh arrivals.')))
+  usePolling(refresh, { intervalMs: 30000 })
+  const rows = (data.appointments || []).filter((item) =>
+    item.appointmentDate === today && ['upcoming', 'confirmed'].includes(item.status) &&
+    item.paymentStatus !== 'refunded' && item.tokenNumber != null &&
+    `${item.patient?.name || ''} ${item.familyMember?.name || ''} ${item.patient?.phone || ''} ${item.tokenNumber}`.toLowerCase().includes(search.toLowerCase())
+  )
+  const arrive = async (id) => {
+    setBusyId(id); setError('')
+    try { await checkInAppointment(id) }
+    catch (err) { setError(firstErrorMessage(err, 'Could not check in this patient.')) }
+    finally { setBusyId(null) }
+  }
+  return <Page title="Patient check-in" subtitle="Mark arrival for today's issued tokens. Consultation completion remains in Queue monitor."
+    action={<Button tone="secondary" onClick={refresh}>Refresh</Button>}>
+    <FormField label="Search patient, phone or token" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <ErrorNote>{error}</ErrorNote>
+    <DataTable rows={rows} columns={[
+      { key: 'patient', label: 'Patient', render: (item) => item.familyMember?.name || item.patient?.name || '—' },
       { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
       { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
-      { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
-      { key: 'id', label: 'Status', render: (item) => checkedIn.includes(item.id) ? <StatusPill status="completed" /> : <span className="text-xs text-muted">Not checked in</span> },
+      { key: 'token', label: 'Token', render: (item) => `#${item.tokenNumber}` },
+      { key: 'status', label: 'Arrival', render: (item) => item.checkedInAt ? <span className="text-success">Checked in</span> : <span>Not checked in</span> },
+      { key: 'actions', label: 'Action', render: (item) => !item.checkedInAt && <Button disabled={busyId === item.id} onClick={() => arrive(item.id)}>{busyId === item.id ? 'Saving…' : 'Check in'}</Button> },
     ]} />
   </Page>
 }
 
 export function CashPayment({ data }) {
+  const [receiptPage, setReceiptPage] = useState(1)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -1264,7 +1313,7 @@ export function CashPayment({ data }) {
   // showed up here on its own. Refetch appointments after a successful save so the just-paid one
   // drops out of `unpaidAppointments` below immediately, instead of waiting for next login/reload.
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
-  const load = useCallback(() => { setLoading(true); setLoadError(''); return fetchPayments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load payments.'))).finally(() => setLoading(false)) }, [fetchPayments])
+  const load = useCallback(() => { setLoading(true); setLoadError(''); return Promise.all([fetchPayments({ allPages: true }), fetchAppointments({ allPages: true })]).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load payments.'))).finally(() => setLoading(false)) }, [fetchPayments, fetchAppointments])
   useEffect(() => { load() }, [load])
 
   const unpaidAppointments = (data.appointments || []).filter((item) =>
@@ -1351,7 +1400,8 @@ export function CashPayment({ data }) {
   }
 
   return <>
-    <Page title="Payments" subtitle="Record clinic collections and review receipts.">
+    <Page title="Payments" subtitle="Record clinic collections and review receipts." action={<Button tone="secondary" disabled={loading} onClick={load}>Refresh</Button>}>
+      <ErrorNote>{loadError}</ErrorNote>
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <StatCard label="PAID ONLINE AT BOOKING" value={`₹${bookingTotal}`} detail={`${bookingPayments.length} payment${bookingPayments.length === 1 ? '' : 's'} · paid before arrival`} icon="🌐" />
         <StatCard label="CASH COLLECTED AT CLINIC" value={`₹${cashTotal}`} detail={`${cashPayments.length} payment${cashPayments.length === 1 ? '' : 's'}`} icon="₹" />
@@ -1385,7 +1435,7 @@ export function CashPayment({ data }) {
           {saved && <p role="status" className="text-sm font-semibold text-success sm:col-span-2">Payment recorded.</p>}
         </div>
       </form>
-      <div className="mt-6"><DataTable loading={loading} error={loadError} onRetry={load} rows={clinicPayments} columns={[
+      <div className="mt-6"><DataTable loading={loading} error={loadError} onRetry={load} rows={clinicPayments.slice((receiptPage - 1) * 50, receiptPage * 50)} pagination={{ page: receiptPage, totalPages: Math.max(1, Math.ceil(clinicPayments.length / 50)) }} onPageChange={setReceiptPage} columns={[
         { key: 'id', label: 'Receipt', render: (item) => item.receiptNumber || shortId(item.id) },
         // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
         // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — 'Receipt' above is the
@@ -1421,4 +1471,4 @@ export function CashPayment({ data }) {
   </>
 }
 
-export function ReceptionAppointments({ data }) { return <Page title="Appointments" subtitle="Manage scheduled and walk-in visits."><AppointmentTable data={data} /></Page> }
+export function ReceptionAppointments({ data }) { return <DoctorAppointments data={data} receptionist /> }

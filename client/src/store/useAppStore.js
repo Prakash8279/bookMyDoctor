@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import apiClient, { getTokens, setTokens, clearTokens, registerUnauthorizedHandler } from '../lib/apiClient'
 
@@ -843,7 +844,9 @@ export const useAppStore = create(
         throw timeoutErr
       },
       fetchAppointments: async (filters = {}) => {
-        const rows = await apiClient.get('/appointments', { params: cleanParams(filters) })
+        const { allPages = false, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/appointments', cleanParams(params))
+          : await apiClient.get('/appointments', { params: cleanParams(params) })
         set((state) => ({ data: { ...state.data, appointments: rows } }))
         return rows
       },
@@ -859,6 +862,11 @@ export const useAppStore = create(
         return appointment
       },
       cancelAppointment: async (id) => get().updateAppointmentStatus(id, 'cancelled'),
+      checkInAppointment: async (id) => {
+        const appointment = await apiClient.post(`/appointments/${id}/check-in`, {})
+        set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
+        return appointment
+      },
 
       // =====================================================================
       // Queue
@@ -907,7 +915,9 @@ export const useAppStore = create(
       // Payments
       // =====================================================================
       fetchPayments: async (filters = {}) => {
-        const rows = await apiClient.get('/payments', { params: cleanParams(filters) })
+        const { allPages = false, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/payments', cleanParams(params))
+          : await apiClient.get('/payments', { params: cleanParams(params) })
         set((state) => ({ data: { ...state.data, payments: rows } }))
         return rows
       },

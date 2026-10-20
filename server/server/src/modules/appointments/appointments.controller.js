@@ -23,7 +23,7 @@ const getBookingStatus = asyncHandler(async (req, res) => {
 });
 
 const getAvailability = asyncHandler(async (req, res) => {
-  const rows = await appointmentsService.getDoctorAvailability(req.query);
+  const rows = await appointmentsService.getDoctorAvailability(req.query, req.user);
   return success(res, rows);
 });
 
@@ -53,7 +53,13 @@ const updateAppointmentStatus = asyncHandler(async (req, res) => {
   return success(res, appointment, { message: 'Appointment status updated' });
 });
 
+const checkInAppointment = asyncHandler(async (req, res) => {
+  const row = await appointmentsService.checkInAppointment(req.params.id, req.user);
+  return success(res, row, { message: 'Patient checked in.' });
+});
+
 module.exports = {
+  checkInAppointment,
   createAppointment,
   getBookingStatus,
   getAvailability,

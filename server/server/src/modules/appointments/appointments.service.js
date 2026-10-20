@@ -188,7 +188,12 @@ function generateSlotCandidates(startTime, endTime, slotMinutes) {
  * each doctor-clinic assignment because OPD hours are stored at that level. For today, elapsed
  * unbooked times are excluded from `availableSlots`; historical booked rows remain counted.
  */
-async function getDoctorAvailability({ date, doctorId, clinicId }) {
+async function getDoctorAvailability({ date, doctorId, clinicId }, requester) {
+  if (requester?.role === 'receptionist') {
+    const profile = await prisma.receptionistProfile.findUnique({ where: { userId: requester.id }, select: { clinicId: true } });
+    if (!profile?.clinicId) return [];
+    clinicId = profile.clinicId;
+  }
   const selectedDate = new Date(`${date}T00:00:00.000Z`);
   const today = todayBusinessDateOnly();
   if (selectedDate.getTime() < today.getTime()) {
@@ -1626,7 +1631,39 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
   return getAppointmentById(id, actor);
 }
 
+async function checkInAppointment(id, actor) {
+  if (!['doctor', 'receptionist', 'admin', 'superadmin'].includes(actor.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only clinic staff can check in patients.');
+  }
+  const row = await getVisibleAppointmentOrThrow(id, actor);
+  const today = todayBusinessDateOnly();
+  if (!['upcoming', 'confirmed'].includes(row.status) || row.paymentStatus === 'refunded' || row.tokenNumber == null) {
+    throw new ApiError(409, 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE', 'Only confirmed, non-cancelled bookings with an issued token can be checked in.');
+  }
+  if (formatDateOnly(row.appointmentDate) !== formatDateOnly(today)) {
+    throw new ApiError(409, 'CHECK_IN_DATE_MISMATCH', 'Check-in is available only on the appointment date (IST).');
+  }
+  if (row.checkedInAt) return getAppointmentById(id, actor);
+  const changed = await prisma.appointment.updateMany({
+    where: { id, status: { in: ['upcoming', 'confirmed'] }, paymentStatus: { not: 'refunded' },
+      tokenNumber: { not: null }, appointmentDate: today, checkedInAt: null },
+    data: { checkedInAt: new Date() },
+  });
+  if (!changed.count) {
+    const current = await getVisibleAppointmentOrThrow(id, actor);
+    if (!current.checkedInAt || !['upcoming', 'confirmed'].includes(current.status)) {
+      throw new ApiError(409, 'BOOKING_CHANGED', 'The booking changed. Refresh before checking in.');
+    }
+  }
+  await Promise.all([invalidateAppointmentListCaches(row), queueService.invalidateQueueListCaches(row)]);
+  if (changed.count) await activityLogService.log({ actorUserId: actor.id, actorRole: actor.role,
+    actionType: 'appointment.check_in', targetEntityType: 'appointment', targetEntityId: id,
+    description: 'Clinic staff marked the patient as arrived.' });
+  return getAppointmentById(id, actor);
+}
+
 module.exports = {
+  checkInAppointment,
   enqueueBooking,
   getBookingStatus,
   getDoctorAvailability,

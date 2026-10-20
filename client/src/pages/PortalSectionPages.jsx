@@ -11,6 +11,8 @@ import { formatDate, sequenceId, shortId, stableId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { usePolling } from '../hooks/usePolling'
+import apiClient from '../lib/apiClient'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 
 const Page = ({ title, subtitle, children, action }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal ${className}`} {...props}>{children}</button>
@@ -235,20 +237,31 @@ export function PortalAppointments({ data, role = 'patient' }) {
 }
 
 export function PortalPatients({ data }) {
+  const [allAppointments, setAllAppointments] = useState(null)
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    fetchAllClinicRows(apiClient, '/appointments').then((rows) => { if (!cancelled) setAllAppointments(rows) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Could not load clinic patients.') })
+    return () => { cancelled = true }
+  }, [])
+  const appointments = allAppointments || data.appointments || []
   // §6.7 — no /patients endpoint exists; derive a best-effort distinct
   // patient list from appointments already bulk-loaded for the receptionist
   // role.
   const patientMap = new Map()
-  for (const appointment of data.appointments || []) {
+  for (const appointment of appointments) {
     if (appointment.patient?.id) patientMap.set(appointment.patient.id, appointment.patient)
   }
   const patients = Array.from(patientMap.values()).map((patient) => ({
     ...patient,
-    appointmentCount: (data.appointments || []).filter((item) => item.patient?.id === patient.id).length,
+    appointmentCount: appointments.filter((item) => item.patient?.id === patient.id).length,
   }))
   return <Page title="Patient directory" subtitle="View patients connected to this clinic.">
-    <p className="mb-4 rounded-button border border-dashed border-border bg-surface px-3 py-2.5 text-sm text-muted">This list is built from appointments already loaded — the API has no dedicated patient directory (plan §6.7).</p>
-    <DataTable rows={patients} columns={[
+    <FormField label="Search clinic patient" placeholder="Patient name or phone" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <ErrorNote>{error}</ErrorNote>
+    <DataTable rows={patients.filter((patient) => `${patient.name || ''} ${patient.phone || ''}`.toLowerCase().includes(search.toLowerCase()))} columns={[
       { key: 'name', label: 'Patient' },
       // Front-desk data only — appointments.service.js#shapePatientRef deliberately never sends
       // gender/DOB/blood group/medical history to a receptionist caller, so only phone (useful

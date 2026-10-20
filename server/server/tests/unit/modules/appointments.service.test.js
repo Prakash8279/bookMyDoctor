@@ -76,7 +76,7 @@ jest.mock('@prisma/client', () => {
 });
 
 jest.mock('../../../src/config/db', () => ({
-  appointment: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
+  appointment: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   user: { findUnique: jest.fn(), findFirst: jest.fn() },
   receptionistProfile: { findUnique: jest.fn() },
   doctorClinic: { findMany: jest.fn(), findUnique: jest.fn() },
@@ -199,6 +199,60 @@ function fullAppointmentRow(overrides = {}) {
 // ═══════════════════════════════════════════════════════════════════════
 // C. getAppointmentById / getVisibleAppointmentOrThrow — visibility + fee/patient masking
 // ═══════════════════════════════════════════════════════════════════════
+describe('appointmentsService.checkInAppointment', () => {
+  const actor = { id: 'recep-1', role: 'receptionist' };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY }));
+    prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
+    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+  });
+  test('records today’s arrival atomically and returns the role-masked appointment', async () => {
+    const checked = fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date() });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY })).mockResolvedValue(checked);
+    const result = await appointmentsService.checkInAppointment('appt-1', actor);
+    expect(result.checkedInAt).toBeTruthy();
+    expect(prisma.appointment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'appt-1', checkedInAt: null, appointmentDate: TODAY }),
+      data: { checkedInAt: expect.any(Date) },
+    }));
+    expect(result.patient.medicalHistory).toBeUndefined();
+  });
+  test('patients cannot mark their own arrival through the staff endpoint', async () => {
+    await expect(appointmentsService.checkInAppointment('appt-1', { id: PATIENT_ID, role: 'patient' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test('cannot check in a different clinic’s booking', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'other' });
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_FOUND' });
+  });
+  test.each(['cancelled', 'no_show', 'pending_payment', 'completed'])('rejects %s bookings', async status => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, status }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE' });
+  });
+  test('does not allow check-in before the visit date', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'CHECK_IN_DATE_MISMATCH' });
+  });
+  test.each([{ paymentStatus: 'refunded' }, { tokenNumber: null }])('cannot check in refunded/tokenless booking %j', async fields => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, ...fields }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE' });
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test('a concurrent cancellation cannot be overwritten by check-in', async () => {
+    prisma.appointment.updateMany.mockResolvedValue({ count: 0 });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY }))
+      .mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, status: 'cancelled' }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'BOOKING_CHANGED' });
+  });
+  test('repeated check-in keeps the original arrival time', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date() }));
+    await appointmentsService.checkInAppointment('appt-1', actor);
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('appointmentsService.getAppointmentById — visibility (404-not-403 enumeration avoidance)', () => {
   test('throws 404 APPOINTMENT_NOT_FOUND when the row does not exist', async () => {
     prisma.appointment.findUnique.mockResolvedValue(null);
@@ -705,6 +759,19 @@ describe('appointmentsService.enqueueBooking', () => {
 });
 
 describe('appointmentsService.getDoctorAvailability', () => {
+  test('an unassigned receptionist cannot see availability from other clinics', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue(null);
+    expect(await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR }, { id: 'recep', role: 'receptionist' })).toEqual([]);
+  });
+  test('availability forces the receptionist’s assigned clinic even if another clinic is requested', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
+    prisma.doctorClinic.findMany.mockResolvedValue([]);
+    await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR, clinicId: 'other' }, { id: 'recep', role: 'receptionist' });
+    expect(prisma.doctorClinic.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ clinicId: CLINIC_ID }),
+    }));
+  });
+
   test('does not offer slots beyond this doctor’s booking window', async () => {
     prisma.doctorClinic.findMany.mockResolvedValue([{
       doctorUserId: DOCTOR_ID,

@@ -12,6 +12,9 @@ import { doctorCharge, isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate, sequenceId } from '../lib/format'
 import { buildCsv, downloadCsv } from '../lib/csv'
+import apiClient from '../lib/apiClient'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 
 const Page = ({ title, subtitle, action, kicker, children }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`btn-primary ${className}`} {...props}>{children}</button>
@@ -608,7 +611,7 @@ export function SimpleInbox({ data, title = 'Notifications' }) {
 }
 export function ReceptionAvailability({ data }) {
   const fetchAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
-  const [date, setDate] = useState(() => new Date().toLocaleDateString('en-CA'))
+  const [date, setDate] = useState(indiaTodayDate)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -624,7 +627,7 @@ export function ReceptionAvailability({ data }) {
   }, [date, fetchAvailability])
   const doctors = data.doctors || []
   const tableRows = rows.map((row) => ({ ...row, doctor: doctors.find((doctor) => doctor.id === row.doctorUserId) }))
-  return <Page title="Doctor availability" subtitle="See scheduled, available, and already booked slots for every doctor." action={<FormField label="Date" type="date" min={new Date().toLocaleDateString('en-CA')} value={date} onChange={(event) => setDate(event.target.value)} />}>
+  return <Page title="Doctor availability" subtitle="Slots for doctors at your assigned clinic." action={<FormField label="Date" type="date" min={indiaTodayDate()} value={date} onChange={(event) => setDate(event.target.value)} />}>
     <ErrorNote>{error}</ErrorNote>
     {loading ? <LoadingSkeleton /> : <DataTable rows={tableRows} columns={[
       { key: 'doctorName', label: 'Doctor' },
@@ -638,30 +641,48 @@ export function ReceptionAvailability({ data }) {
   </Page>
 }
 export function ReceptionReports({ data }) {
-  // `payment.fees`/`appointment.fees` are the role-masked nested objects now
-  // (plan §1.8/§1.12) — `doctorCharge` (lib/paymentVisibility.js) still
-  // reads flat `consultationFee`-style keys, so pass the `.fees` sub-objects
-  // through rather than the raw records.
-  const clinicPayments = (data.payments || []).map((payment) => {
-    const appointment = (data.appointments || []).find((item) => item.id === payment.appointment?.id)
+  const [records, setRecords] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const refresh = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const [appointments, payments] = await Promise.all([
+        fetchAllClinicRows(apiClient, '/appointments'), fetchAllClinicRows(apiClient, '/payments'),
+      ])
+      setRecords({ appointments, payments })
+    } catch (err) { setError(err.message || 'Could not load complete reports.') }
+    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { refresh() }, [refresh])
+  const appointments = records?.appointments || data.appointments || []
+  const clinicPayments = (records?.payments || data.payments || []).map((payment) => {
+    const appointment = appointments.find((item) => item.id === payment.appointment?.id)
     return { ...payment, appointment, doctorCharge: doctorCharge(payment.fees, appointment?.fees) }
   })
-  // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua
-  // cash ye proper way me", then "eshme ye show hona chahiye ki online booking ke time pe kitna
-  // payment hua hai and second clinic pe aake cash ya online ye v to confirm hona chahiye") — this
-  // stat row only ever showed "Cash collected". Now a three-way split matching CashPayment's own
-  // (StaffPages.jsx): paid online at booking (Razorpay, before the patient ever arrives) is money
-  // this clinic never had to collect at all, so it's kept out of "collected at clinic" — only cash
-  // and in-person online/upi/card taken at the counter count as that.
-  const bookingCollected = clinicPayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + Number(item.doctorCharge || 0), 0)
-  const cashCollected = clinicPayments.filter((item) => String(item.mode || '').toLowerCase() === 'cash' && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + Number(item.doctorCharge || 0), 0)
-  const onlineCollected = clinicPayments.filter((item) => String(item.mode || '').toLowerCase() !== 'cash' && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + Number(item.doctorCharge || 0), 0)
-  // `checkedIns` has no dedicated endpoint — derive from
-  // `appointment.checkedInAt` per plan §5.
-  const checkedInCount = (data.appointments || []).filter((item) => item.checkedInAt).length
-  return <Page title="Reception reports" subtitle="Export clinic appointment and flow records.">
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><StatCard label="Walk-ins" value={(data.queueTokens || []).length} icon="+" /><StatCard label="Check-ins" value={checkedInCount} icon="✓" /><StatCard label="Paid online at booking" value={`₹${bookingCollected}`} icon="🌐" /><StatCard label="Cash collected" value={`₹${cashCollected}`} icon="₹" /><StatCard label="Online collected at clinic" value={`₹${onlineCollected}`} icon="📶" /></div>
-    <div className="mt-5"><DataTable rows={clinicPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'receiptNumber', label: 'Receipt' }, { key: 'mode', label: 'Mode' }, { key: 'doctorCharge', label: 'Doctor charge', render: (item) => `₹${item.doctorCharge}` }]} /></div>
+  const collected = clinicPayments.filter((item) => !['refunded', 'failed', 'pending'].includes(item.status))
+  const sum = (rows) => rows.reduce((total, item) => total + Number(item.doctorCharge || 0), 0)
+  const bookingCollected = sum(collected.filter(isOnlineBookingPayment))
+  const cashCollected = sum(collected.filter((item) => item.mode === 'cash' && !isOnlineBookingPayment(item)))
+  const onlineCollected = sum(collected.filter((item) => item.mode !== 'cash' && !isOnlineBookingPayment(item)))
+  return <Page title="Reception reports" subtitle="All-time clinic collections. Refunded and failed payments are excluded from totals."
+    action={<ToneButton disabled={loading} onClick={refresh}>{loading ? 'Loading…' : 'Refresh complete report'}</ToneButton>}>
+    <ErrorNote>{error}</ErrorNote>
+    {loading && <p role="status" className="mb-3 text-sm text-muted">Loading all report pages…</p>}
+    <Link to="/receptionist/appointments" className="mb-3 inline-block text-sm font-semibold text-primary-dark">Download appointments by date range →</Link>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <StatCard label="Walk-ins" value={appointments.filter((item) => item.source === 'walk_in' && !['cancelled', 'no_show'].includes(item.status)).length} icon="+" />
+      <StatCard label="Check-ins" value={appointments.filter((item) => item.checkedInAt).length} icon="✓" />
+      <StatCard label="Paid online at booking" value={`₹${bookingCollected}`} icon="🌐" />
+      <StatCard label="Cash collected" value={`₹${cashCollected}`} icon="₹" />
+      <StatCard label="Online collected at clinic" value={`₹${onlineCollected}`} icon="📶" />
+    </div>
+    <div className="mt-5"><DataTable rows={clinicPayments} columns={[
+      { key: 'createdAt', label: 'Date', render: (item) => formatDate(item.createdAt) },
+      { key: 'receiptNumber', label: 'Receipt' }, { key: 'mode', label: 'Mode' },
+      { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
+      { key: 'doctorCharge', label: 'Doctor charge', render: (item) => `₹${item.doctorCharge}` },
+    ]} /></div>
   </Page>
 }
 const superAdminLinks = [
