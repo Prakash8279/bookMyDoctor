@@ -54,6 +54,40 @@ form,
 }
 
 /* Long IDs, e-mail addresses and URLs should wrap instead of widening a card/page. */
+/* The Google iframe has an intrinsic pixel width. Auth grid items must be
+   shrinkable before it loads, otherwise its width expands the entire form. */
+main.auth-page {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+}
+.auth-form-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+.auth-box {
+  min-width: 0;
+  width: 100%;
+  max-width: 470px;
+}
+.auth-box .form-field {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.auth-box :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+.google-sign-in,
+.google-sign-in__button {
+  min-width: 0;
+  contain: inline-size;
+}
+.auth-box .form-help {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+@media (max-width: 780px) {
+  main.auth-page { grid-template-columns: minmax(0, 1fr); }
+}
+
 p,
 li,
 dd,
