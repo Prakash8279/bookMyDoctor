@@ -397,7 +397,7 @@ export function Login() {
             text="continue_with"
           />
           
-          <div className="oauth-divider"><span>or sign in with</span></div>
+          <div className="oauth-divider"><span>or use your email</span></div>
 
           {notice && !error && <p role="status" className="form-message success">{notice}</p>}
           {error && <p role="alert" className="form-message error">{error}</p>}

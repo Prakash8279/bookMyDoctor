@@ -18,6 +18,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled = false, te
   useEffect(() => {
     let disposed = false
     const mountElement = mountRef.current
+    let resizeObserver
 
     async function renderGoogleButton() {
       if (!isGoogleSignInConfigured()) {
@@ -42,17 +43,30 @@ export function GoogleSignInButton({ onCredential, onError, disabled = false, te
           },
         })
 
-        mountElement.replaceChildren()
-        const width = Math.min(400, Math.max(200, Math.round(mountElement.getBoundingClientRect().width) || 320))
-        google.accounts.id.renderButton(mountElement, {
+        let previousWidth = 0
+        const render = () => {
+          if (disposed) return
+          const width = Math.min(400, Math.max(200, Math.round(mountElement.getBoundingClientRect().width) || 320))
+          if (width === previousWidth) return
+          previousWidth = width
+          mountElement.replaceChildren()
+          google.accounts.id.renderButton(mountElement, {
           type: 'standard',
           theme: 'outline',
-          size: 'large',
+          // Google's medium button uses the generic label rather than exposing
+          // a remembered account name/email in a two-line personalized card.
+          size: 'medium',
           text,
-          shape: 'rectangular',
+          shape: 'pill',
           logo_alignment: 'left',
           width,
-        })
+          })
+        }
+        render()
+        if (typeof ResizeObserver !== 'undefined') {
+          resizeObserver = new ResizeObserver(render)
+          resizeObserver.observe(mountElement)
+        }
       } catch (error) {
         if (disposed) return
         const friendlyError = error instanceof Error ? error : new Error('Google sign-in could not be started. Please try again.')
@@ -64,14 +78,15 @@ export function GoogleSignInButton({ onCredential, onError, disabled = false, te
     renderGoogleButton()
     return () => {
       disposed = true
+      resizeObserver?.disconnect()
       mountElement?.replaceChildren()
     }
   }, [text])
 
   return (
     <div className="google-sign-in" aria-busy={disabled}>
-      <div className="google-sign-in__button" ref={mountRef} style={disabled ? { pointerEvents: 'none' } : undefined} />
-      {disabled && <div className="google-sign-in__busy">Signing in…</div>}
+      <div className="google-sign-in__button" ref={mountRef} inert={disabled ? true : undefined} style={disabled ? { pointerEvents: 'none' } : undefined} />
+      {disabled && <div className="google-sign-in__busy" role="status">Signing in…</div>}
       {setupError && <p className="google-sign-in__error" role="alert">{setupError}</p>}
     </div>
   )
