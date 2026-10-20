@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { DataTable } from '../components/DataTable'
+import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
@@ -15,6 +15,7 @@ import { buildCsv, downloadCsv } from '../lib/csv'
 import apiClient from '../lib/apiClient'
 import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
+import { AdminPeriodSummary } from '../components/AdminPeriodSummary'
 
 const Page = ({ title, subtitle, action, kicker, children }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`btn-primary ${className}`} {...props}>{children}</button>
@@ -263,7 +264,7 @@ export function DoctorClinics({ data }) {
     bookingDisabled: member.onlineBooking === false,
   })))
   const exportCsv = () => downloadCsv('clinic-settings.csv', clinicRecordsCsv(rows))
-  return <Page kicker="Production database" title="Clinic settings" subtitle="Manage clinic details and see every doctor practising at the clinic." action={<div className="flex flex-wrap items-center gap-2"><ToneButton type="button" onClick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</ToneButton><ToneButton type="button" tone="dark" onClick={exportCsv}>Export CSV</ToneButton></div>}>
+  return <Page kicker="Production database" title="Clinic settings" subtitle="Manage clinic details and see every doctor practising at the clinic." action={<div className="flex flex-wrap items-center gap-2"><ToneButton type="button" onClick={load} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</ToneButton><ToneButton type="button" tone="dark" disabled={loading || Boolean(listError)} onClick={exportCsv}>Export CSV</ToneButton></div>}>
     <ErrorNote>{listError}</ErrorNote>
     <form onSubmit={saveClinic} className="rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="text-lg">Clinic information</h2>
@@ -696,6 +697,7 @@ const superAdminLinks = [
 ]
 
 export function SuperAdminDashboard({ data }) {
+  const [range, setRange] = useState(() => ({ from: indiaTodayDate(), to: indiaTodayDate() }))
   const fetchDashboardStats = useAppStore((state) => state.fetchDashboardStats)
   const fetchReceptionists = useAppStore((state) => state.fetchReceptionists)
   const fetchActivityLog = useAppStore((state) => state.fetchActivityLog)
@@ -722,14 +724,14 @@ export function SuperAdminDashboard({ data }) {
   const pendingClinics = (data.clinics || []).filter((clinic) => clinic.approvalStatus === 'pending').length
   return <Page title="Super Admin control center" subtitle="One clear place to manage the complete BookADoctors platform.">
     <ErrorNote>{error}</ErrorNote>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <AdminPeriodSummary dateRange={range} onDateRangeChange={setRange} />
+    <div className="admin-dashboard-stats grid grid-cols-2 gap-3">
       <Link to="/super-admin/entities"><StatCard label="Doctors & clinics" value={`${stats?.verifiedDoctorsCount ?? (data.doctors || []).length} / ${(data.clinics || []).length}`} detail="Doctors / clinics" icon="🏥" /></Link>
       <Link to="/super-admin/entities"><StatCard label="Platform users" value={users} detail="Patients, doctors, staff" icon="♧" /></Link>
-      <Link to="/super-admin/revenue"><StatCard label="Monthly revenue" value={`₹${Number(stats?.monthlyRevenue || 0).toLocaleString('en-IN')}`} detail="From platform-recorded payments" icon="₹" /></Link>
     </div>
     {pendingClinics > 0 && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-card border border-gold/40 bg-gold/10 p-4"><div><p className="font-semibold text-charcoal">{pendingClinics} clinic approval{pendingClinics === 1 ? '' : 's'} waiting for review</p><p className="mt-1 text-sm text-charcoal/70">Review clinic submissions before making them available.</p></div><Link to="/super-admin/entities" className="touch-target inline-flex items-center rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white">Review approvals</Link></div>}
     <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{superAdminLinks.map(([label, path, description, icon]) => <Link key={path} to={path} className="rounded-card border border-border bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:border-primary"><div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-button bg-primary-light text-lg">{icon}</span><div><h2 className="text-lg">{label}</h2><p className="mt-1 text-sm leading-5 text-muted">{description}</p></div></div></Link>)}</div>
-    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><div className="flex items-center justify-between gap-3"><div><h2 className="text-lg">Recent activity</h2><p className="mt-1 text-sm text-muted">Latest platform actions.</p></div><Link to="/super-admin/security" className="text-sm font-semibold text-primary-dark">View all</Link></div>{(data.activity || []).length ? <div className="mt-4 space-y-2">{(data.activity || []).slice(0, 5).map((item) => <div className="flex flex-wrap items-center justify-between gap-2 rounded-button bg-surface px-3 py-2.5 text-sm" key={item.id}><span>{item.description || item.actionType}</span><span className="text-xs text-muted">{formatDate(item.createdAt)}</span></div>)}</div> : <EmptyState title="No activity yet" message="Actions taken in this panel will appear here." />}</div>
+    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Recent activity</h2><DataTable dateRange={range} onDateRangeChange={setRange} rows={data.activity || []} columns={[{ key: 'createdAt', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'description', label: 'Action', render: (item) => item.description || item.actionType }]} /></div>
     <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Role workspaces</h2><p className="mt-1 text-sm text-muted">Super Admin can inspect every role workspace without leaving this login.</p><div className="mt-4 flex flex-wrap gap-2">{[['Admin operations', '/admin/dashboard'], ['Doctor workspace', '/doctor/dashboard'], ['Reception desk', '/receptionist/dashboard'], ['Patient view', '/patient/dashboard']].map(([label, path]) => <Link key={path} to={path} className="touch-target inline-flex items-center rounded-button border border-border bg-white px-3.5 py-2 text-sm font-semibold text-ink hover:border-primary">{label}</Link>)}</div></div>
   </Page>
 }

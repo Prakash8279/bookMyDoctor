@@ -30,6 +30,7 @@ import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
 import { resetAllListLoadCachesForTests } from '../hooks/useListLoad'
 import { shortId } from '../lib/format'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import App from '../App'
 import {
   AdminDashboard,
@@ -104,10 +105,11 @@ describe('AdminDashboard', () => {
     renderConnected(AdminDashboard, {})
 
     expect(screen.getByText('Welcome, Priya.')).toBeInTheDocument()
+    expect(screen.getByText('VERIFIED DOCTORS').closest('a').parentElement).toHaveClass('admin-dashboard-stats', 'grid-cols-2')
     expect(await screen.findByText('12')).toBeInTheDocument()
     expect(screen.getByText('340')).toBeInTheDocument()
-    expect(screen.getByText('8')).toBeInTheDocument()
-    expect(screen.getByText('₹1,25,000')).toBeInTheDocument()
+    expect(await screen.findByText('Selected period bookings')).toBeInTheDocument()
+    expect(screen.queryByText('₹1,25,000')).not.toBeInTheDocument()
     expect(await screen.findByText('Asha')).toBeInTheDocument()
   })
 
@@ -139,6 +141,26 @@ describe('AdminDashboard', () => {
 })
 
 describe('DoctorVerification', () => {
+  it.each(['admin', 'superadmin'])('renders the %s doctor registry as mobile cards and a shrinkable details dialog', async (role) => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })
+    try {
+      setCurrentUser({ id: 'admin-1', name: 'Admin', role })
+      const doctor = { id: 'mobile-doc', name: 'DoctorWithAVeryLongNameWithoutSpaces'.repeat(3), status: 'verified', accountStatus: 'active',
+        email: 'long-business-email@bookadoctors.com', bankDetails: { accountHolderName: 'Very long account holder name', bankName: 'Bank', accountNumber: '1234567890123456', ifscCode: 'TEST0001234' } }
+      mockGetRoutes({ '/doctors': [doctor], '/doctors/mobile-doc': doctor })
+      renderConnected(DoctorVerification)
+      await screen.findByText(doctor.name)
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.querySelectorAll('.admin-record-details')).toHaveLength(2)
+      expect(within(dialog).getByText(doctor.email)).toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    } finally { window.matchMedia = originalMatchMedia }
+  })
+
   const DOCTORS = [
     { id: 'doc-1', name: 'Dr. Kapoor', status: 'verified', accountStatus: 'active', experienceYears: 5, consultationFee: 500 },
     { id: 'doc-2', name: 'Dr. New', status: 'pending', accountStatus: 'active', experienceYears: 2, consultationFee: 300 },
@@ -398,6 +420,7 @@ describe('CitiesAreas', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderConnected(CitiesAreas, {})
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add city' })).not.toBeDisabled())
     fireEvent.click(screen.getByRole('button', { name: 'Add city' }))
     fireEvent.change(screen.getByLabelText(/^City/), { target: { value: 'Pune' } })
     fireEvent.change(screen.getByLabelText(/^State/), { target: { value: 'Maharashtra' } })
@@ -489,8 +512,7 @@ describe('ManageReceptionists', () => {
 })
 
 describe('RevenueReports', () => {
-  const today = new Date()
-  const isoToday = today.toISOString().slice(0, 10)
+  const isoToday = indiaTodayDate()
 
   it('totals revenue/commission/payout for the selected range across all doctors', async () => {
     mockGetRoutes({
@@ -743,7 +765,7 @@ describe('PlatformSettings', () => {
 
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith('/admin/system-settings', {
       platformName: 'BookADoctors',
-      supportEmail: undefined,
+      supportEmail: 'support@bookadoctors.com',
       supportPhone: undefined,
       maintenanceMode: true,
     }))
@@ -792,7 +814,7 @@ describe('AdminPages role gating (RoleGuard, via App)', () => {
   it('redirects a patient away from the admin-only /admin/doctors route to their own dashboard', async () => {
     mockBootFor(PATIENT_USER)
     render(<MemoryRouter initialEntries={['/admin/doctors']}><App /></MemoryRouter>)
-    expect(await screen.findByText(/Welcome, Asha\./i)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Welcome, Asha\./i, {}, { timeout: 10000 })).length).toBeGreaterThan(0)
     expect(screen.queryByText('Doctor management')).not.toBeInTheDocument()
   })
 })

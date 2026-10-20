@@ -11,7 +11,9 @@
  * @returns {string}
  */
 export function csvCell(value) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`
+  const text = String(value ?? '')
+  const safe = /^[\p{Cc}\s]*[=+\-@]/u.test(text) ? `'${text}` : text
+  return `"${safe.replace(/"/g, '""')}"`
 }
 
 /**

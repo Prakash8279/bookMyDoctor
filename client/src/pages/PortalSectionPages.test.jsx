@@ -187,6 +187,7 @@ describe('Specializations', () => {
     apiClient.post.mockResolvedValue({ id: 'spec-2', name: 'Dermatology' })
     renderConnected(Specializations, {})
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add specialization' })).not.toBeDisabled())
     fireEvent.click(screen.getByRole('button', { name: 'Add specialization' }))
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Dermatology' } })
     fireEvent.click(screen.getByRole('button', { name: /Save specialization/i }))

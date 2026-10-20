@@ -1,5 +1,17 @@
 import { expect, it, vi } from 'vitest'
 import { fetchAllClinicRows } from './clinicWorkspace'
+it('rejects missing records even when pagination incorrectly reports the final page', async () => {
+  const rows = [{ id: 1 }]
+  rows.__pagination = { page: 1, totalPages: 1, total: 2 }
+  await expect(fetchAllClinicRows({ get: async () => rows }, '/payments')).rejects.toThrow('Record count changed')
+})
+it('rejects changing totals instead of producing a mixed-snapshot export', async () => {
+  const first = [{ id: 1 }]
+  first.__pagination = { page: 1, totalPages: 2, total: 2 }
+  const last = [{ id: 2 }]
+  last.__pagination = { page: 2, totalPages: 2, total: 3 }
+  await expect(fetchAllClinicRows({ get: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(last) }, '/payments')).rejects.toThrow('Record count changed')
+})
 it('rejects truncated server data instead of exporting it as complete', async () => {
   const rows = [{id:1}]
   rows.__truncated = true

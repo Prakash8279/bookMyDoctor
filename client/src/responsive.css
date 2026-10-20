@@ -593,6 +593,76 @@ label,
   }
 }
 
+/* Admin and super-admin retain desktop navigation, but use a drawer through
+   tablet widths so its 288px sidebar cannot squeeze forms and registries. */
+@media (max-width: 1023px) {
+  .admin-portal .portal-header {
+    padding-inline: 0.75rem;
+  }
+
+  .admin-portal .portal-header > div:last-child {
+    flex-shrink: 0;
+  }
+
+  .admin-portal .portal-header > div:last-child > div {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .admin-dashboard-stats > a,
+  .admin-dashboard-stats > a > article {
+    min-width: 0;
+    height: 100%;
+  }
+
+  .admin-dashboard-stats > a.block,
+  .admin-dashboard-stats article {
+    padding: 0.75rem;
+  }
+
+  .admin-dashboard-stats :is(article, a) > div > p {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .admin-dashboard-stats :is(article, a) > div > span {
+    flex: 0 0 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .admin-dashboard-stats :is(article, a) > p:first-of-type {
+    margin-top: 0.5rem;
+    font-size: 1.125rem;
+    line-height: 1.3;
+  }
+
+  .admin-portal .portal-content :is(.flex.gap-2, .flex.gap-3) {
+    flex-wrap: wrap;
+  }
+
+  .admin-portal .page-heading__action > .flex {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-portal .page-heading__action > .flex > :is(button, a) {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .admin-record-details > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (min-width: 768px) and (max-width: 1023px) {
   .portal-content {
     padding: 1.25rem !important;

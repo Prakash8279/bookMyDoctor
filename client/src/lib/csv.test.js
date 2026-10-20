@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildCsv, csvCell, downloadCsv } from './csv'
 
 describe('csvCell', () => {
+  it('prevents spreadsheet formula injection, including leading whitespace', () => {
+    expect(csvCell('=1+1')).toBe('"\'=1+1"')
+    expect(csvCell(' \t@SUM(A1)')).toBe('"\' \t@SUM(A1)"')
+  })
   it('wraps a value in double quotes', () => {
     expect(csvCell('hello')).toBe('"hello"')
   })

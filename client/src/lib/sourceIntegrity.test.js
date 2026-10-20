@@ -11,6 +11,8 @@ describe('source integrity', () => {
     expect(css).toMatch(/\.portal-content :is\(\.data-scroll, \.overflow-x-auto\)\s*\{[^}]*max-width: 100%;[^}]*min-width: 0;/)
     expect(css).toMatch(/\.portal-content dl > \.flex > dt\s*\{[^}]*max-width: 45%;[^}]*flex-shrink: 1;/)
     expect(css).toContain('.portal-profile-photo-copy')
+    expect(css).toMatch(/\.admin-portal \.page-heading__action > \.flex\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+    expect(css).toMatch(/\.admin-record-details > \*\s*\{[^}]*min-width: 0;[^}]*overflow-wrap: anywhere;/)
   })
   it('does not append standalone undefined expressions to AdminPages', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/pages/AdminPages.jsx'), 'utf8')

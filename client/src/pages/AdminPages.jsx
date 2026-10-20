@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DataTable } from '../components/DataTable'
+import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
@@ -18,11 +18,14 @@ import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
 import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
+import { AdminPeriodSummary } from '../components/AdminPeriodSummary'
+import { indiaRecordDate } from '../lib/adminRecords'
 const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
 const ErrorNote =({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
 
 export function AdminDashboard({ data }) {
+  const [range, setRange] = useState(() => ({ from: indiaTodayDate(), to: indiaTodayDate() }))
   const fetchDashboardStats = useAppStore((state) => state.fetchDashboardStats)
   // Admin/superadmin's post-login bulk load does NOT fetch appointments (plan
   // §4.2 admin branch) — this page needs them for "recent live records", so
@@ -63,8 +66,10 @@ export function AdminDashboard({ data }) {
   // shortId() from lib/format (hash-derived, e.g. '#5b4a') is kept elsewhere for
   // record-referencing text (receipts, booking-slip content) where a stable identifier tied to
   // the actual record still matters.
-  const recentRecords = [...(data.appointments || [])].reverse().slice(0, 6).map((item, index) => ({
-    id: sequenceId(index),
+  const recentRecords = [...(data.appointments || [])].reverse().map((item, index) => ({
+    appointmentDate: item.appointmentDate,
+    id: item.id,
+    displayId: sequenceId(index),
     // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar admin
     // ke") — 'id' above is just this widget's own row sequence number (DC01, DC02...), never the
     // real booking id. Kept as its own field (not reusing 'id') so the Time/ID column above can
@@ -94,12 +99,11 @@ export function AdminDashboard({ data }) {
     >
       <ErrorNote>{error}</ErrorNote>
       {/* Stat Cards Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="admin-dashboard-stats grid grid-cols-2 gap-3">
         <StatCard label="VERIFIED DOCTORS" value={stats ? stats.verifiedDoctorsCount : '—'} icon="🩺" to="/admin/doctors" />
         <StatCard label="REGISTERED PATIENTS" value={stats ? stats.registeredPatientsCount : '—'} icon="👥" to="/admin/patients" />
-        <StatCard label="TODAY'S BOOKINGS" value={stats ? stats.todaysBookingsCount : '—'} icon="📅" to="/admin/appointments" />
-        <StatCard label="MONTHLY REVENUE" value={stats ? `₹${Number(stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}` : '—'} icon="🧾" to="/admin/revenue" />
       </div>
+      <AdminPeriodSummary dateRange={range} onDateRangeChange={setRange} />
 
       {/* Recent Live Records & Quick Actions */}
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
@@ -109,13 +113,15 @@ export function AdminDashboard({ data }) {
             <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span>
           </div>
           <DataTable
+            dateField="appointmentDate"
+            dateRange={range} onDateRangeChange={setRange}
             loading={recordsLoading}
             error={recordsError}
             onRetry={loadRecords}
             rows={recentRecords}
             columns={[
-              { key: 'id', label: 'Time / ID', render: (item) => `#${item.id}` },
-              { key: 'bookingId', label: 'Booking ID' },
+              { key: 'id', label: 'Time / ID', render: (item) => `#${item.displayId}` },
+              { key: 'bookingId', label: 'Booking ID', exportValue: (item) => item.id },
               { key: 'patient', label: 'Patient / User' },
               { key: 'details', label: 'Details' },
               { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }
@@ -322,7 +328,7 @@ export function DoctorVerification({ data }) {
   const allDoctors = data.doctors || []
   const pendingDoctors = allDoctors.filter((item) => (item.status || 'verified') === 'pending')
 
-  return <Page kicker="Production database" title="Doctor management" subtitle="Create, verify, enable, and disable doctor accounts." action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={load}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" onClick={exportCsv}>Export CSV</Button></div>}>
+  return <Page kicker="Production database" title="Doctor management" subtitle="Create, verify, enable, and disable doctor accounts." action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={load}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" disabled={loading || Boolean(listError)} onClick={exportCsv}>Export CSV</Button></div>}>
     <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="mb-4 text-lg">Create doctor account</h2>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -402,7 +408,7 @@ export function DoctorVerification({ data }) {
       {viewingDoctor && <div className="space-y-3 text-sm">
         <div className="flex items-center justify-between"><span className="font-semibold text-ink">Verification status</span><StatusPill status={viewingDoctor.status || 'verified'} /></div>
         <div className="flex items-center justify-between"><span className="font-semibold text-ink">Login status</span><StatusPill status={viewingDoctor.accountStatus || 'active'} /></div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+        <dl className="admin-record-details grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2">
           <dt className="text-muted">Email</dt><dd className="break-all font-medium text-ink">{viewingDoctor.email || '—'}</dd>
           <dt className="text-muted">Phone</dt><dd className="font-medium text-ink">{viewingDoctor.phone || '—'}</dd>
           <dt className="text-muted">City</dt><dd className="font-medium text-ink">{viewingDoctor.city || '—'}</dd>
@@ -442,7 +448,7 @@ export function DoctorVerification({ data }) {
         <div>
           <h3 className="font-semibold text-ink">Bank details</h3>
           {viewingDoctor.bankDetails
-            ? <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-button border border-border px-3 py-2">
+            ? <dl className="admin-record-details mt-2 grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-x-3 gap-y-1.5 rounded-button border border-border px-3 py-2">
                 <dt className="text-muted">Account holder</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.accountHolderName || '—'}</dd>
                 <dt className="text-muted">Bank</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.bankName || '—'}</dd>
                 <dt className="text-muted">Account number</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.accountNumber || '—'}</dd>
@@ -651,6 +657,9 @@ export function ManageClinics({ data }) {
 }
 
 export function CitiesAreas({ data }) {
+  const fetchCities = useAppStore((state) => state.fetchCities)
+  const fetchAreas = useAppStore((state) => state.fetchAreas)
+  const { loading, error: listError, refresh } = useListLoad('admin:geography', () => Promise.all([fetchCities(), fetchAreas()]))
   const [mode, setMode] = useState(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -708,7 +717,7 @@ export function CitiesAreas({ data }) {
     return { id: area.id, cityId: area.cityId, name: area.name, state: city?.state || '—', type: 'area' }
   })
 
-  return <Page title="Cities & areas" subtitle="Maintain supported locations and pincodes." action={<div className="flex gap-2"><Button onClick={() => setMode(mode === 'city' ? null : 'city')}>Add city</Button><Button tone="secondary" onClick={() => setMode(mode === 'area' ? null : 'area')}>Add service area</Button></div>}>
+  return <Page title="Cities & areas" subtitle="Maintain supported locations and pincodes." action={<div className="flex gap-2"><Button disabled={loading} onClick={() => setMode(mode === 'city' ? null : 'city')}>Add city</Button><Button disabled={loading} tone="secondary" onClick={() => setMode(mode === 'area' ? null : 'area')}>Add service area</Button></div>}>
     <ErrorNote>{error}</ErrorNote>
     {mode === 'city' && <form onSubmit={saveCity} className="mb-5 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card sm:grid-cols-2"><FormField label="City" name="city" required /><FormField label="State" name="state" required /><Button type="submit" className="sm:col-span-2" disabled={submitting}>{submitting ? 'Saving…' : 'Save city'}</Button></form>}
     {mode === 'area' && <form onSubmit={saveArea} className="mb-5 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card sm:grid-cols-3">
@@ -721,7 +730,7 @@ export function CitiesAreas({ data }) {
       <Button type="submit" className="sm:col-span-3" disabled={submitting}>{submitting ? 'Saving…' : 'Save area'}</Button>
     </form>}
     <DataTable
-      rows={[...cityRows, ...areaRows]}
+      loading={loading} error={listError} onRetry={refresh} rows={[...cityRows, ...areaRows]}
       columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'name', label: 'Name' },
@@ -813,7 +822,7 @@ export function ManagePatients({ data }) {
   return <Page
     title="Patient management"
     subtitle="Every registered patient account — not just ones seen in a booking or payment."
-    action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={() => load({ search: search.trim() || undefined })}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" onClick={exportCsv}>Export CSV</Button></div>}
+    action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={() => load({ search: search.trim() || undefined })}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" disabled={loading || Boolean(listError)} onClick={exportCsv}>Export CSV</Button></div>}
   >
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <span className="rounded-full bg-primary-light px-3 py-1.5 text-sm font-semibold text-primary-dark">{patients.length} registered patient{patients.length === 1 ? '' : 's'}</span>
@@ -948,29 +957,30 @@ const parsePaymentDate = (value) => {
 
 export function RevenueReports({ data, doctorOnly = false }) {
   const fetchPayments = useAppStore((state) => state.fetchPayments)
+  const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   // `currentUser` lives at the top level of the store, not inside `data`.
   const currentUser = useAppStore((state) => state.currentUser)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [fromDate, setFromDate] = useState(() => `${indiaTodayDate().slice(0, 7)}-01`)
+  const [fromDate, setFromDate] = useState(indiaTodayDate)
   const [toDate, setToDate] = useState(indiaTodayDate)
   const [doctorFilter, setDoctorFilter] = useState('all')
 
   const load = () => {
     setLoading(true)
     setLoadError('')
-    return fetchPayments({ allPages: true }).catch((err) => setLoadError(err.message || 'Could not load payment records.')).finally(() => setLoading(false))
+    return Promise.all([fetchPayments({ allPages: true }), ...(!doctorOnly ? [fetchAppointments({ allPages: true })] : [])]).catch((err) => setLoadError(err.message || 'Could not load report records.')).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setLoadError('')
-    fetchPayments({ allPages: true })
+    Promise.all([fetchPayments({ allPages: true }), ...(!doctorOnly ? [fetchAppointments({ allPages: true })] : [])])
       .catch((err) => { if (!cancelled) setLoadError(err.message || 'Could not load payment records.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [fetchPayments])
+  }, [fetchPayments, fetchAppointments, doctorOnly])
 
   // The whole revenue-report derivation (filtering, per-payment fee shaping, the doctor-wise
   // grouping, and the payment-mode breakdown) previously ran unmemoized on every render of this
@@ -1056,6 +1066,14 @@ export function RevenueReports({ data, doctorOnly = false }) {
     return { selectedDoctor, payments, reportPayments, revenuePayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
   }, [data.doctors, data.payments, currentUser, doctorOnly, doctorFilter, fromDate, toDate])
   const periodLabel = `${fromDate || 'Start'} to ${toDate || 'End'}`
+  const rangeAnalytics = useMemo(() => {
+    const appointments = (data.appointments || []).filter((row) => !invalidRange && row.appointmentDate >= fromDate && row.appointmentDate <= toDate
+      && (doctorFilter === 'all' || row.doctor?.name === doctorFilter))
+    const days = [...new Set([...appointments.map((row) => row.appointmentDate), ...reportPayments.map((row) => indiaRecordDate(row.createdAt))])].filter(Boolean).sort()
+    return { labels: days, appointments: days.map((day) => appointments.filter((row) => row.appointmentDate === day).length),
+      revenue: days.map((day) => revenuePayments.filter((row) => indiaRecordDate(row.createdAt) === day).reduce((sum, row) => sum + row.reportAmount, 0)),
+      total: appointments.length, completed: appointments.filter((row) => row.status === 'completed').length, cancelled: appointments.filter((row) => row.status === 'cancelled').length }
+  }, [data.appointments, fromDate, toDate, invalidRange, doctorFilter, reportPayments, revenuePayments])
   const downloadExcel = () => {
     const escape = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const doctorRows = byDoctor.map((item) => `<tr><td>${escape(item.doctor)}</td><td>${item.payments}</td><td>${escape(money(item.revenue))}</td></tr>`).join('')
@@ -1075,7 +1093,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     <div className={doctorOnly ? 'grid grid-cols-2 gap-3' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'}><StatCard label="Selected range revenue" value={money(total)} detail={`${revenuePayments.length} payment${revenuePayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail="Per successful revenue payment" icon="≈" />{!doctorOnly && <><StatCard label="Platform commission" value={money(commission)} detail="Platform charges and taxes" icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail="Consultation charges collected" icon="✓" /></>}</div>
     <p className="mt-2 text-xs text-muted">Totals include paid, positive {doctorOnly ? 'consultation charges' : 'collections'} only. Refunded, failed, pending and zero-share records are excluded from totals, but remain in payment history.</p>
     <div className={doctorOnly ? "mt-4" : "mt-6 grid gap-5 lg:grid-cols-2"}>{!doctorOnly && <section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section>}<section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid gap-2 min-[420px]:grid-cols-3 sm:gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div>{!doctorOnly && <div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div>}</section></div>
-    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
+    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable dateField={false} loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
       // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
       // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — this table (shared by
       // admin's "Revenue reports" and, via the doctorOnly prop, the doctor's own "My revenue
@@ -1090,7 +1108,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       // booking-time Razorpay payment apart from one collected in person at the clinic.
       { key: 'mode', label: 'Mode', render: (item) => <span className="inline-flex items-center gap-1.5">{item.mode}<PaymentSourceBadge payment={item} /></span> },
       { key: 'reportAmount', label: 'Amount', render: (item) => money(item.reportAmount) }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /></div>
-    {!doctorOnly && <div className="mt-6"><Analytics data={data} admin /></div>}
+    {!doctorOnly && !loading && !loadError && <div className="mt-6"><Analytics data={{ ...data, analytics: rangeAnalytics }} admin /></div>}
   </Page>
 }
 export function Complaints({ data }) {
@@ -1300,7 +1318,7 @@ export function AuditLog({ data }) {
     return () => { cancelled = true }
   }, [fetchActivityLog])
 
-  return <Page title="Activity logs" subtitle="Audit important platform actions." action={<div className="flex flex-wrap items-center gap-2"><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><Button tone="secondary" onClick={() => window.alert('CSV export is available for this browser session.')}>Export CSV</Button></div>}>
+  return <Page title="Activity logs" subtitle="Audit important platform actions." action={<button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button>}>
     <DataTable
       loading={loading}
       error={error}

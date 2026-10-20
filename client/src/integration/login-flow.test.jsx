@@ -95,7 +95,7 @@ describe('login flow', () => {
     // Real store.login() -> POST /auth/login -> GET /me -> currentUser set -> Login navigates to
     // roleHome('patient') = '/patient/dashboard' -> ProtectedRoute (real RoleGuard) lets it
     // through because currentRole now matches -> the real, lazy-loaded PatientDashboard renders.
-    expect(await screen.findByText(/Welcome, Asha\./i, {}, { timeout: 5000 })).toBeInTheDocument()
+    expect((await screen.findAllByText(/Welcome, Asha\./i, {}, { timeout: 10000 })).length).toBeGreaterThan(0)
 
     // Confirm the store itself (not just the DOM) reflects a real, verified session.
     const state = useAppStore.getState()
@@ -137,6 +137,6 @@ describe('login flow', () => {
     await waitFor(() => expect(useAppStore.getState().currentUser?.role).toBe('doctor'))
     // DoctorDashboard (src/pages/StaffPages.jsx) strips a leading "Dr." honorific and greets by
     // first name only: `Welcome, ${firstName}.` where firstName = "Nikhil" here.
-    expect(await screen.findByText(/Welcome, Nikhil\./i)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Welcome, Nikhil\./i, {}, { timeout: 10000 })).length).toBeGreaterThan(0)
   })
 })

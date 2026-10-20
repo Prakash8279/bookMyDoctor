@@ -95,7 +95,26 @@ describe('public directory', () => {
 
     await useAppStore.getState().loadPublicDirectory()
 
-    expect(apiClient.get).toHaveBeenCalledWith('/reviews', { params: { status: 'approved' } })
+    expect(apiClient.get).toHaveBeenCalledWith('/reviews', { params: { status: 'approved', page: 1, pageSize: 100 } })
+  })
+})
+
+describe('complete admin directories and exports', () => {
+  it.each(['admin', 'superadmin'])('loads every page for %s without changing an explicit paged request', async (role) => {
+    useAppStore.setState({ currentUser: { id: 'admin-1', role } })
+    const methods = ['searchDoctors', 'fetchClinics', 'fetchReceptionists', 'fetchPatients', 'fetchAppointments', 'fetchPayments', 'fetchActivityLog', 'fetchComplaints', 'fetchContactRequests', 'fetchReviews', 'fetchBroadcastHistory', 'fetchRefunds', 'fetchReconciliation']
+    apiClient.get.mockImplementation(async (path, { params }) => {
+      const rows = [{ id: `${path}-${params.page}` }]
+      Object.defineProperty(rows, '__pagination', { value: { page: params.page, totalPages: 2 } })
+      return rows
+    })
+    for (const method of methods) {
+      const rows = await useAppStore.getState()[method]()
+      expect(rows, method).toHaveLength(2)
+      expect(apiClient.get.mock.lastCall[1].params).toEqual({ page: 2, pageSize: 100 })
+    }
+    await useAppStore.getState().fetchPatients({ page: 2, pageSize: 20 })
+    expect(apiClient.get.mock.lastCall[1].params).toEqual({ page: 2, pageSize: 20 })
   })
 })
 
