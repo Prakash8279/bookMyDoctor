@@ -52,7 +52,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   // Form selections
   DoctorDirectoryItem? _selectedDoctor;
   ClinicSummary? _selectedClinic;
-  String? _patientChoice = 'self';
+  String? _patientChoice;
   DateTime _selectedDate = DateTime.now();
   final _reasonController = TextEditingController();
   Map<String, dynamic>? _availability;
@@ -254,6 +254,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   Future<void> _addMemberForBooking() async {
     final nameController = TextEditingController();
     final relationController = TextEditingController();
+    final bloodController = TextEditingController();
+    DateTime? dateOfBirth;
+    String? gender;
     var saving = false;
     String? error;
     final member = await showModalBottomSheet<FamilyMember>(
@@ -264,9 +267,9 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
           Future<void> save() async {
             final name = nameController.text.trim();
             final relation = relationController.text.trim();
-            if (name.isEmpty || relation.isEmpty) {
+            if (name.isEmpty || relation.isEmpty || dateOfBirth == null || gender == null || bloodController.text.trim().isEmpty) {
               setModalState(
-                  () => error = 'Name and relationship are required.');
+                  () => error = 'Name, relationship, date of birth, gender and blood group are required.');
               return;
             }
             setModalState(() {
@@ -275,7 +278,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
             });
             try {
               final response = await ApiClient.instance.post('/family-members',
-                  body: {'name': name, 'relation': relation});
+                  body: {'name': name, 'relation': relation, 'dateOfBirth': DateFormat('yyyy-MM-dd').format(dateOfBirth!), 'gender': gender, 'bloodGroup': bloodController.text.trim()});
               if (sheetContext.mounted) {
                 Navigator.of(sheetContext)
                     .pop(FamilyMember.fromJson(response.map));
@@ -308,12 +311,28 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                   TextField(
                       controller: nameController,
                       decoration:
-                          const InputDecoration(labelText: 'Member name')),
+                          const InputDecoration(labelText: 'Member name *')),
                   const SizedBox(height: AppSpacing.sm),
                   TextField(
                       controller: relationController,
                       decoration:
-                          const InputDecoration(labelText: 'Relationship')),
+                          const InputDecoration(labelText: 'Relationship * (Self for yourself)')),
+                  const SizedBox(height: AppSpacing.sm),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showDatePicker(context: sheetContext, initialDate: dateOfBirth ?? DateTime(2000), firstDate: DateTime(1900), lastDate: DateTime.now());
+                      if (picked != null && sheetContext.mounted) setModalState(() => dateOfBirth = picked);
+                    },
+                    child: Text(dateOfBirth == null ? 'Date of birth *' : DateFormat('dd MMM yyyy').format(dateOfBirth!)),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  DropdownButtonFormField<String>(
+                    initialValue: gender, decoration: const InputDecoration(labelText: 'Gender *'),
+                    items: [for (final option in ['Female', 'Male', 'Other', 'Prefer not to say']) DropdownMenuItem(value: option, child: Text(option))],
+                    onChanged: (value) => setModalState(() => gender = value),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextField(controller: bloodController, maxLength: 10, decoration: const InputDecoration(labelText: 'Blood group *', hintText: 'B+ or Unknown')),
                   if (error != null) ...[
                     const SizedBox(height: AppSpacing.sm),
                     Text(error!,
@@ -333,6 +352,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     );
     nameController.dispose();
     relationController.dispose();
+    bloodController.dispose();
     if (member != null && mounted) {
       setState(() {
         _familyMembers = [..._familyMembers, member];
@@ -342,7 +362,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
   }
 
   bool get _canSubmit =>
-      _selectedDoctor != null && _patientChoice != null && !_submitting;
+      _selectedDoctor != null && _familyMembers.any((m) => m.id == _patientChoice && m.name.trim().isNotEmpty && m.relation.trim().isNotEmpty && (m.dateOfBirth ?? '').isNotEmpty && (m.gender ?? '').isNotEmpty && (m.bloodGroup ?? '').isNotEmpty) && !_submitting;
 
   Future<void> _submit() async {
     if (!_canSubmit) return;
@@ -369,8 +389,7 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
         'appointmentDate': dateStr,
         if (_reasonController.text.trim().isNotEmpty)
           'reason': _reasonController.text.trim(),
-        if (_patientChoice != null && _patientChoice != 'self')
-          'familyMemberId': _patientChoice,
+        'familyMemberId': _patientChoice,
       });
 
       final jobId = postRes.map['jobId'] as String;
@@ -867,9 +886,8 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
                         borderSide: const BorderSide(color: AppColors.border)),
                   ),
                   items: [
-                    const DropdownMenuItem(
-                        value: 'self', child: Text('Myself')),
                     for (final f in _familyMembers)
+                      if (f.name.trim().isNotEmpty && f.relation.trim().isNotEmpty && (f.dateOfBirth ?? '').isNotEmpty && (f.gender ?? '').isNotEmpty && (f.bloodGroup ?? '').isNotEmpty)
                       DropdownMenuItem(
                         value: f.id,
                         child: Text(

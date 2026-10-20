@@ -432,7 +432,7 @@ async function updateQueueStatus(id, targetStatus, actor) {
   await prisma.$transaction(async (tx) => {
     // Use the same appointment row lock as payment recording: payment/refund and
     // clinical progression must not race on different snapshots of the balance.
-    await tx.$queryRaw`SELECT id FROM appointments WHERE id = ${row.appointmentId}::uuid FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM appointments WHERE id = ${row.appointmentId} FOR UPDATE`;
     const fresh = await tx.appointment.findUnique({ where: { id: row.appointmentId }, select: { status: true, paymentStatus: true, totalAmount: true } });
     if (!isClinicPaymentComplete(fresh) || ['cancelled', 'no_show', 'pending_payment', 'completed'].includes(fresh?.status)) {
       throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Booking or payment changed. Refresh before continuing.');

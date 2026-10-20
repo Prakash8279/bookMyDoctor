@@ -4,15 +4,13 @@
  * numeric ranges). Business-rule validation (e.g. ownership) belongs in the service layer.
  */
 const { body, param, query } = require('express-validator');
-
-const OPT_NULLABLE = { values: 'null' };
+const { businessDateOnly, formatDateOnly } = require('../../utils/dateOnly');
 
 // `.optional()` with no options only skips a chain when the field is `undefined` — so an
 // explicit JSON `null` still reaches `.custom()` below and fails it, producing a clean
 // per-field 422 message, and `.bail()` stops the chain there so the type-specific validator
-// after it never runs on a `null` value. Used only for fields backed by a NOT NULL column
-// (name/relation), where null must be a shape error rather than treated as "clear it" the way
-// OPT_NULLABLE fields elsewhere in this chain (backing nullable columns) legitimately allow.
+// after it never runs on a `null` value. Existing records may have missing legacy details,
+// but updates must never explicitly clear required profile fields.
 function rejectNull(fieldName) {
   return body(fieldName)
     .optional()
@@ -33,14 +31,15 @@ const create = [
   // Free string — the schema has no closed enum for `relation`, so validation doesn't invent one.
   body('relation').trim().notEmpty().withMessage('relation is required.').isLength({ max: 50 }),
   body('dateOfBirth')
-    .optional({ values: 'falsy' })
-    .isISO8601()
+    .notEmpty().withMessage('dateOfBirth is required.').bail()
+    .isISO8601({ strict: true })
     .withMessage('dateOfBirth must be a valid date (YYYY-MM-DD).')
+    .bail()
     .toDate()
-    .custom((value) => value <= new Date())
+    .custom((value) => formatDateOnly(value) <= businessDateOnly())
     .withMessage('dateOfBirth cannot be in the future.'),
-  body('gender').optional({ values: 'falsy' }).isString().isLength({ max: 30 }),
-  body('bloodGroup').optional({ values: 'falsy' }).isString().isLength({ max: 10 }),
+  body('gender').isString().withMessage('gender is required.').bail().trim().notEmpty().withMessage('gender is required.').isLength({ max: 30 }),
+  body('bloodGroup').isString().withMessage('bloodGroup is required.').bail().trim().notEmpty().withMessage('bloodGroup is required.').isLength({ max: 10 }),
 ];
 
 const update = [
@@ -51,14 +50,16 @@ const update = [
   rejectNull('name').trim().isLength({ min: 1, max: 150 }),
   rejectNull('relation').trim().isLength({ min: 1, max: 50 }),
   body('dateOfBirth')
-    .optional(OPT_NULLABLE)
-    .isISO8601()
+    .optional()
+    .notEmpty().withMessage('dateOfBirth cannot be empty.').bail()
+    .isISO8601({ strict: true })
     .withMessage('dateOfBirth must be a valid date (YYYY-MM-DD).')
+    .bail()
     .toDate()
-    .custom((value) => value <= new Date())
+    .custom((value) => formatDateOnly(value) <= businessDateOnly())
     .withMessage('dateOfBirth cannot be in the future.'),
-  body('gender').optional(OPT_NULLABLE).isString().isLength({ max: 30 }),
-  body('bloodGroup').optional(OPT_NULLABLE).isString().isLength({ max: 10 }),
+  rejectNull('gender').isString().bail().trim().isLength({ min: 1, max: 30 }),
+  rejectNull('bloodGroup').isString().bail().trim().isLength({ min: 1, max: 10 }),
 ];
 
 const remove = [param('id').isUUID().withMessage('id must be a valid id.')];

@@ -63,7 +63,7 @@ const roleLabelFor = (role) => ROLE_LABELS[role] || (role.charAt(0).toUpperCase(
 const roleSuffixFor = (role) => (role === 'admin' || role === 'superadmin' ? 'control panel' : 'portal')
 
 export function Sidebar({ role, open, onClose, onLogout }) {
-  const items = menu[role] || []
+  const items = (menu[role] || []).filter(([, path]) => !(['patient', 'receptionist'].includes(role) && path.endsWith('/notifications')))
   const currentUser = useAppStore((state) => state.currentUser)
   const roleLabel = roleLabelFor(role)
   const displayName = currentUser?.name || `${roleLabel} account`
@@ -113,7 +113,7 @@ export function PortalHeader({ role, onMenu, showMenu = true }) {
   return <header className="portal-header sticky top-0 z-20 flex min-h-16 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur md:px-7">
     {showMenu ? <><button onClick={onMenu} className="touch-target grid place-items-center rounded-button md:hidden" aria-label="Open navigation"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button><div className="hidden min-w-0 md:block"><p className="text-base text-charcoal">{pageLabel}</p></div></> : <><Link to="/" className="flex min-w-0 items-center gap-2.5 lg:hidden" aria-label="BookADoctors public home"><span className="brand-mark h-9 w-9"><img src={brandLogoUrl} alt="" className="h-full w-full rounded-[12px] object-cover" /></span><span className="truncate font-sans text-base text-charcoal sm:text-lg">BookADoctors</span></Link><div className="hidden min-w-0 lg:block"><p className="text-base text-charcoal">{pageLabel}</p></div></>}
     <div className="flex items-center gap-2 sm:gap-3">
-      {role === 'doctor' && <Link to="/doctor/notifications" aria-label="Notifications" title="Notifications" className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border bg-white text-primary-dark"><NavIcon name="bell" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary-dark px-1 text-[10px] font-bold text-white" aria-label={`${unreadCount} unread notifications`}>{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>}
+      {['doctor', 'patient', 'receptionist'].includes(role) && <Link to={`/${role}/notifications`} aria-label="Notifications" title="Notifications" className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border bg-white text-primary-dark"><NavIcon name="bell" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary-dark px-1 text-[10px] font-bold text-white" aria-label={`${unreadCount} unread notifications`}>{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>}
       <Link to={profilePath} aria-label="Open profile" title={displayName} className="grid h-9 w-9 overflow-hidden place-items-center rounded-full bg-primary-light font-semibold uppercase text-primary-dark">{currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${displayName} profile`} className="h-full w-full object-cover" /> : initials}</Link>
       <div className="hidden min-w-0 sm:block"><p className="truncate text-sm font-bold text-charcoal">{displayName}</p><p className="text-xs text-muted">{roleLabel} {roleSuffixFor(role)}</p></div>
     </div>

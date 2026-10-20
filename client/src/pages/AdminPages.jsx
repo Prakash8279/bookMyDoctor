@@ -17,6 +17,7 @@ import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
 const ErrorNote =({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
@@ -930,6 +931,13 @@ export function ManageReceptionists({ data }) {
 const parsePaymentDate = (value) => {
   if (!value) return null
   const text = String(value)
+  if (/T/.test(text)) {
+    const instant = new Date(text)
+    if (Number.isNaN(instant.getTime())) return null
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant)
+    const part = (type) => Number(parts.find((item) => item.type === type)?.value)
+    return new Date(part('year'), part('month') - 1, part('day'))
+  }
   const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
   const slash = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
@@ -937,7 +945,6 @@ const parsePaymentDate = (value) => {
   const parsed = new Date(text)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
-const dateInputValue = (date) =>`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 export function RevenueReports({ data, doctorOnly = false }) {
   const fetchPayments = useAppStore((state) => state.fetchPayments)
@@ -945,22 +952,21 @@ export function RevenueReports({ data, doctorOnly = false }) {
   const currentUser = useAppStore((state) => state.currentUser)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const today = new Date()
-  const [fromDate, setFromDate] = useState(() => dateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)))
-  const [toDate, setToDate] = useState(() => dateInputValue(today))
+  const [fromDate, setFromDate] = useState(() => `${indiaTodayDate().slice(0, 7)}-01`)
+  const [toDate, setToDate] = useState(indiaTodayDate)
   const [doctorFilter, setDoctorFilter] = useState('all')
 
   const load = () => {
     setLoading(true)
     setLoadError('')
-    return fetchPayments({}).catch((err) => setLoadError(err.message || 'Could not load payment records.')).finally(() => setLoading(false))
+    return fetchPayments({ allPages: true }).catch((err) => setLoadError(err.message || 'Could not load payment records.')).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setLoadError('')
-    fetchPayments({})
+    fetchPayments({ allPages: true })
       .catch((err) => { if (!cancelled) setLoadError(err.message || 'Could not load payment records.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -974,8 +980,8 @@ export function RevenueReports({ data, doctorOnly = false }) {
   // `paymentModeBreakdown` is computed a single time and reused.
   const {
     selectedDoctor,
-    payments,
     reportPayments,
+    revenuePayments,
     total,
     average,
     commission,
@@ -988,9 +994,8 @@ export function RevenueReports({ data, doctorOnly = false }) {
     cashTotal,
     onlineTotal,
   } = useMemo(() => {
-    const currentDoctor = (data.doctors || []).find((doctor) => doctor.id === currentUser?.id) || (data.doctors || []).find((doctor) => doctor.name === currentUser?.name) || null
-    const selectedDoctor = doctorOnly ? (currentDoctor?.name || 'all') : doctorFilter
-    const sourcePayments = doctorOnly ? (currentDoctor ? (data.payments || []).filter((payment) => payment.doctor?.id === currentDoctor.id) : []) : (data.payments || [])
+    const selectedDoctor = doctorOnly ? (currentUser?.name || 'My practice') : doctorFilter
+    const sourcePayments = doctorOnly ? (currentUser?.id ? (data.payments || []).filter((payment) => payment.doctor?.id === currentUser.id) : []) : (data.payments || [])
     const start = parsePaymentDate(fromDate)
     const end = parsePaymentDate(toDate)
     if (start) start.setHours(0, 0, 0, 0)
@@ -1000,7 +1005,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       const date = parsePaymentDate(payment.createdAt)
       const name = payment.doctor?.name || 'Unassigned'
       const inPeriod = !invalidRange && date && start && end ? date >= start && date <= end : false
-      return inPeriod && (selectedDoctor === 'all' || name === selectedDoctor)
+      return inPeriod && (doctorOnly || selectedDoctor === 'all' || name === selectedDoctor)
     })
     // Money fields come pre-masked/pre-computed by role from the server (plan
     // §1.8/§1.12) — doctor/receptionist only ever get `fees.consultationFee`,
@@ -1010,12 +1015,16 @@ export function RevenueReports({ data, doctorOnly = false }) {
       ...item,
       reportAmount: Number(doctorOnly ? (item.fees?.consultationFee ?? 0) : (item.fees?.amount ?? 0)),
     }))
-    const total = reportPayments.reduce((sum, item) => sum + item.reportAmount, 0)
-    const average = reportPayments.length ? total / reportPayments.length : 0
-    const commission = doctorOnly ? 0 : reportPayments.reduce((sum, item) => sum + Number(item.fees?.commission ?? 0), 0)
-    const clinicPayout = doctorOnly ? total : reportPayments.reduce((sum, item) => sum + Number(item.fees?.clinicPayout ?? 0), 0)
+    // Keep all receipts in history, but only actual successful collections contribute to revenue.
+    // A platform-only receipt can have a zero doctor share; it must not dilute the doctor's average.
+    const revenuePayments = reportPayments.filter((item) => String(item.status).toLowerCase() === 'paid'
+      && Number.isFinite(item.reportAmount) && item.reportAmount > 0)
+    const total = revenuePayments.reduce((sum, item) => sum + item.reportAmount, 0)
+    const average = revenuePayments.length ? total / revenuePayments.length : 0
+    const commission = doctorOnly ? 0 : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.commission ?? 0), 0)
+    const clinicPayout = doctorOnly ? total : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.clinicPayout ?? 0), 0)
     const doctorNames = [...new Set([...(data.doctors || []).map((doctor) => doctor.name), ...sourcePayments.map((item) => item.doctor?.name).filter(Boolean)])]
-    const byDoctor = Object.values(reportPayments.reduce((groups, item) => {
+    const byDoctor = Object.values(revenuePayments.reduce((groups, item) => {
       const name = item.doctor?.name || 'Unassigned'
       const group = groups[name] || { id: name, doctor: name, payments: 0, revenue: 0 }
       group.payments += 1
@@ -1032,7 +1041,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     // see lib/paymentVisibility.js's isOnlineBookingPayment for how the two are told apart). Now
     // tracks amount + count per literal mode (for the detail list) AND a three-way rollup: paid
     // online at booking, cash collected at the clinic, and online collected at the clinic.
-    const paymentModeBreakdown = reportPayments.reduce((buckets, item) => {
+    const paymentModeBreakdown = revenuePayments.reduce((buckets, item) => {
       const mode = item.mode || 'Other'
       const bucket = buckets[mode] || { mode, count: 0, amount: 0 }
       bucket.count += 1
@@ -1041,17 +1050,17 @@ export function RevenueReports({ data, doctorOnly = false }) {
       return buckets
     }, {})
     const isCashMode = (mode) => String(mode || '').toLowerCase() === 'cash'
-    const bookingTotal = reportPayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + item.reportAmount, 0)
-    const cashTotal = reportPayments.filter((item) => isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
-    const onlineTotal = reportPayments.filter((item) => !isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
-    return { selectedDoctor, payments, reportPayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
+    const bookingTotal = revenuePayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + item.reportAmount, 0)
+    const cashTotal = revenuePayments.filter((item) => isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
+    const onlineTotal = revenuePayments.filter((item) => !isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
+    return { selectedDoctor, payments, reportPayments, revenuePayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
   }, [data.doctors, data.payments, currentUser, doctorOnly, doctorFilter, fromDate, toDate])
   const periodLabel = `${fromDate || 'Start'} to ${toDate || 'End'}`
   const downloadExcel = () => {
     const escape = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const doctorRows = byDoctor.map((item) => `<tr><td>${escape(item.doctor)}</td><td>${item.payments}</td><td>${escape(money(item.revenue))}</td></tr>`).join('')
     const paymentRows = reportPayments.map((item) => `<tr><td>${escape(item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '')}</td><td>${escape(item.doctor?.name || 'Unassigned')}</td><td>${escape(item.receiptNumber || '')}</td><td>${escape(item.mode || 'Other')}</td><td>${escape(money(item.reportAmount))}</td><td>${escape(item.status || '')}</td></tr>`).join('')
-    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookADoctors Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Payments</td><td>${payments.length}</td></tr><tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr></table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
+    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookADoctors Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Successful revenue payments</td><td>${revenuePayments.length}</td></tr>${doctorOnly ? '' : `<tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr>`}</table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><p>Totals include paid, positive amounts only. Refunded, failed, pending and zero-share receipts remain in history but are excluded from revenue.</p><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -1060,11 +1069,12 @@ export function RevenueReports({ data, doctorOnly = false }) {
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="flex flex-wrap items-end gap-2"><label className="text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label><label className="text-xs font-semibold text-muted">To<input aria-label="Revenue end date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal">Download Excel</button></div>}>
+  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap"><label className="min-w-0 text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label><label className="min-w-0 text-xs font-semibold text-muted">To<input aria-label="Revenue end date" min={fromDate} type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} disabled={loading || invalidRange || Boolean(loadError)} className="touch-target col-span-2 inline-flex items-center justify-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50">Download Excel</button></div>}>
     {invalidRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
     <ErrorNote>{loadError}</ErrorNote>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Selected range revenue" value={money(total)} detail={`${reportPayments.length} payment${reportPayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail={periodLabel} icon="≈" /><StatCard label="Platform commission" value={doctorOnly ? '—' : money(commission)} detail={doctorOnly ? 'Shown to admin only' : 'Convenience/emergency/GST charges'} icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail={doctorOnly ? 'Your consultation charges' : "Full consultation fee (doctor's share)"} icon="✓" /></div>
-    <div className="mt-6 grid gap-5 lg:grid-cols-2"><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid grid-cols-3 gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div><div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div></section></div>
+    <div className={doctorOnly ? 'grid grid-cols-2 gap-3' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'}><StatCard label="Selected range revenue" value={money(total)} detail={`${revenuePayments.length} payment${revenuePayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail="Per successful revenue payment" icon="≈" />{!doctorOnly && <><StatCard label="Platform commission" value={money(commission)} detail="Platform charges and taxes" icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail="Consultation charges collected" icon="✓" /></>}</div>
+    <p className="mt-2 text-xs text-muted">Totals include paid, positive {doctorOnly ? 'consultation charges' : 'collections'} only. Refunded, failed, pending and zero-share records are excluded from totals, but remain in payment history.</p>
+    <div className={doctorOnly ? "mt-4" : "mt-6 grid gap-5 lg:grid-cols-2"}>{!doctorOnly && <section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section>}<section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid grid-cols-3 gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div>{!doctorOnly && <div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div>}</section></div>
     <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
       // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
       // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — this table (shared by
@@ -1080,7 +1090,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       // booking-time Razorpay payment apart from one collected in person at the clinic.
       { key: 'mode', label: 'Mode', render: (item) => <span className="inline-flex items-center gap-1.5">{item.mode}<PaymentSourceBadge payment={item} /></span> },
       { key: 'reportAmount', label: 'Amount', render: (item) => money(item.reportAmount) }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /></div>
-    <div className="mt-6"><Analytics data={data} admin /></div>
+    {!doctorOnly && <div className="mt-6"><Analytics data={data} admin /></div>}
   </Page>
 }
 export function Complaints({ data }) {

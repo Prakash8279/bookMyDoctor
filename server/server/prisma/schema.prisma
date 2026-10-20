@@ -519,6 +519,8 @@ model Appointment {
   clinic           Clinic?            @relation(fields: [clinicId], references: [id])
   appointmentDate  DateTime           @map("appointment_date") @db.Date
   appointmentTime  String             @map("appointment_time") // "HH:MM", paired with a partial unique index — see manual_sql
+  isEstimatedTime Boolean            @default(false) @map("is_estimated_time")
+  estimatedVisitAt DateTime?          @map("estimated_visit_at")
   reason           String?
   isEmergency      Boolean            @default(false) @map("is_emergency")
   status           AppointmentStatus  @default(upcoming)

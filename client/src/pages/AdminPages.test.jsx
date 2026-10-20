@@ -9,6 +9,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
+// Report tests verify collections and table output; jsdom does not implement canvas layout.
+vi.mock('react-chartjs-2', () => ({ Line: () => <div />, Bar: () => <div /> }))
+
 vi.mock('../lib/apiClient', () => ({
   default: {
     get: vi.fn(),
@@ -516,9 +519,75 @@ describe('RevenueReports', () => {
 
     const revenueCard = (await screen.findByText('Selected range revenue')).closest('article')
     expect(within(revenueCard).getByText('₹500')).toBeInTheDocument()
-    const commissionCard = screen.getByText('Platform commission').closest('article')
-    expect(within(commissionCard).getByText('—')).toBeInTheDocument()
+    expect(screen.queryByText('Platform commission')).not.toBeInTheDocument()
+    expect(screen.queryByText('Clinic payout')).not.toBeInTheDocument()
+    expect(screen.queryByText('Doctor-wise revenue')).not.toBeInTheDocument()
+    expect(screen.queryByText('Platform analytics')).not.toBeInTheDocument()
     expect(screen.queryByText('Dr. Rao')).not.toBeInTheDocument()
+  })
+
+  it('excludes refunds, pending and zero doctor-share receipts from counts and average but preserves history', async () => {
+    setCurrentUser({ id: 'doc-1', name: 'Dr. Kapoor' })
+    const receipt = { createdAt: isoToday, doctor: { id: 'doc-1', name: 'Dr. Kapoor' }, mode: 'cash', status: 'paid', fees: { consultationFee: 500 } }
+    mockGetRoutes({ '/payments': [
+      { ...receipt, id: 'paid-1' }, { ...receipt, id: 'paid-2' },
+      { ...receipt, id: 'zero', mode: 'online', transactionRef: 'pay_platform', fees: { consultationFee: 0 } },
+      { ...receipt, id: 'refunded', receiptNumber: 'REFUNDED-RECEIPT', status: 'refunded' },
+      { ...receipt, id: 'pending', status: 'pending' },
+    ] })
+    renderConnected(RevenueReports, { doctorOnly: true })
+    await waitFor(() => expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('₹1,000')).toBeInTheDocument())
+    expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('2 payments')).toBeInTheDocument()
+    expect(within(screen.getByText('Average payment').closest('article')).getByText('₹500')).toBeInTheDocument()
+    expect(screen.getByText('REFUNDED-RECEIPT')).toBeInTheDocument()
+    expect(screen.queryByText('₹333.33')).not.toBeInTheDocument()
+  })
+
+  it('scopes doctor payments by authenticated ID without depending on a loaded doctor directory', async () => {
+    setCurrentUser({ id: 'doc-1', name: 'Same name' })
+    mockGetRoutes({ '/payments': [
+      { id: 'own', createdAt: isoToday, doctor: { id: 'doc-1', name: 'Old name' }, status: 'paid', fees: { consultationFee: 500 } },
+      { id: 'other', createdAt: isoToday, doctor: { id: 'doc-2', name: 'Same name' }, status: 'paid', fees: { consultationFee: 900 } },
+    ] })
+    renderConnected(RevenueReports, { doctorOnly: true })
+    await waitFor(() => expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('₹500')).toBeInTheDocument())
+    expect(screen.queryByText('₹900')).not.toBeInTheDocument()
+  })
+
+  it('loads all payment pages and excludes refunded amounts from admin totals too', async () => {
+    const row = { createdAt: isoToday, doctor: { id: 'doc-1', name: 'Doctor' }, status: 'paid', mode: 'cash', fees: { amount: 10, commission: 1, clinicPayout: 9 } }
+    apiClient.get.mockImplementation((url, { params } = {}) => Promise.resolve(url !== '/payments' ? [] : params.page === 1
+      ? Array.from({ length: 100 }, (_, i) => ({ ...row, id: `payment-${i}` }))
+      : [{ ...row, id: 'last' }, { ...row, id: 'refunded', status: 'refunded', fees: { amount: 5000, commission: 500, clinicPayout: 4500 } }]))
+    renderConnected(RevenueReports)
+    await waitFor(() => expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('₹1,010')).toBeInTheDocument())
+    expect(apiClient.get).toHaveBeenCalledWith('/payments', { params: { page: 2, pageSize: 100 } })
+    expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('101 payments')).toBeInTheDocument()
+    expect(within(screen.getByText('Platform commission').closest('article')).getByText('₹101')).toBeInTheDocument()
+  })
+
+  it('filters timestamped receipts using the India calendar day', async () => {
+    setCurrentUser({ id: 'doc-1', name: 'Doctor' })
+    const row = { doctor: { id: 'doc-1', name: 'Doctor' }, status: 'paid', fees: { consultationFee: 500 } }
+    mockGetRoutes({ '/payments': [
+      { ...row, id: 'india-next-day', createdAt: '2026-10-20T20:00:00Z' },
+      { ...row, id: 'previous-day', createdAt: '2026-10-20T18:00:00Z' },
+    ] })
+    renderConnected(RevenueReports, { doctorOnly: true })
+    fireEvent.change(screen.getByLabelText('Revenue start date'), { target: { value: '2026-10-21' } })
+    fireEvent.change(screen.getByLabelText('Revenue end date'), { target: { value: '2026-10-21' } })
+    await waitFor(() => expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('₹500')).toBeInTheDocument())
+    expect(within(screen.getByText('Selected range revenue').closest('article')).getByText('1 payment')).toBeInTheDocument()
+  })
+
+  it('disables export for an invalid date range', async () => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(RevenueReports)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Download Excel' })).not.toBeDisabled())
+    fireEvent.change(screen.getByLabelText('Revenue start date'), { target: { value: '2026-10-22' } })
+    fireEvent.change(screen.getByLabelText('Revenue end date'), { target: { value: '2026-10-21' } })
+    expect(screen.getByRole('button', { name: 'Download Excel' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('From date must be before To date.')
   })
 
   // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua

@@ -708,6 +708,11 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
 // A. enqueueBooking / getBookingStatus
 // ═══════════════════════════════════════════════════════════════════════
 describe('appointmentsService.enqueueBooking', () => {
+  test('rejects a patient booking without an explicitly selected member profile', async () => {
+    await expect(appointmentsService.enqueueBooking({ doctorUserId: DOCTOR_ID, appointmentDate: TOMORROW_STR }, { id: PATIENT_ID, role: 'patient' }))
+      .rejects.toMatchObject({ code: 'PATIENT_PROFILE_REQUIRED' });
+    expect(bookingQueue.enqueueBookingJob).not.toHaveBeenCalled();
+  });
   test('a patient booking always derives patientUserId/source from req.user, never the request body', async () => {
     bookingQueue.enqueueBookingJob.mockResolvedValue({ id: 'job-1' });
 
@@ -836,6 +841,27 @@ describe('appointmentsService.getDoctorAvailability', () => {
     expect(prisma.appointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ status: { notIn: ['cancelled', 'no_show'] } }),
     }));
+  });
+
+  test('quota availability counts online bookings and valid holds across clinics, not OPD duration or walk-ins', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID,
+      doctor: { name: 'Doctor', doctorProfile: { maxOnlineBookingsPerDay: 5 } }, clinic: { name: 'Clinic' },
+    }]);
+    prisma.doctorClinicHours.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, startTime: '10:00', endTime: '10:05', slotMinutes: 5,
+    }]);
+    prisma.doctorClinicClosure.findMany.mockResolvedValue([]);
+    const row = { doctorUserId: DOCTOR_ID, clinicId: 'other-clinic', source: 'online' };
+    prisma.appointment.findMany.mockResolvedValue([
+      { ...row, status: 'confirmed' },
+      { ...row, status: 'pending_payment', paymentHolds: [{ id: 'active' }] },
+      { ...row, status: 'pending_payment', paymentHolds: [] },
+      { ...row, source: 'walk_in', status: 'confirmed' },
+    ]);
+    const [result] = await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR });
+    expect(result).toMatchObject({ totalSlots: 5, bookedSlots: 2, availableSlots: 3 });
+    expect(prisma.appointment.findMany.mock.calls[0][0].where).not.toHaveProperty('clinicId');
   });
 
   test('returns zero slots when the doctor-clinic schedule is closed for the date', async () => {
@@ -982,7 +1008,7 @@ describe('appointmentsService.runBookingJob', () => {
       appointmentTime: '10:00',
       reason: 'Fever',
       isEmergency: false,
-      familyMemberId: null,
+      familyMemberId: overrides.source === 'walk_in' ? null : 'fam-1',
       patientUserId: PATIENT_ID,
       patientName: null,
       patientPhone: null,
@@ -1007,6 +1033,7 @@ describe('appointmentsService.runBookingJob', () => {
 
   function mockHappyPathBase() {
     mockUsers();
+    prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: PATIENT_ID, name: 'Patient', relation: 'Self', dateOfBirth: new Date('2000-01-01'), gender: 'Male', bloodGroup: 'Unknown' });
     prisma.doctorClinic.findUnique.mockResolvedValue({ onlineBooking: true });
     prisma.clinic.findUnique.mockImplementation(({ where }) =>
       Promise.resolve({ id: where.id, approvalStatus: 'active', emergencyAvailable: true })
@@ -1031,6 +1058,7 @@ describe('appointmentsService.runBookingJob', () => {
 
     tx = {
       $executeRaw: jest.fn().mockResolvedValue(undefined),
+      doctorClinicClosure: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ max: 0 }]),
       appointment: {
         count: jest.fn().mockResolvedValue(0),
@@ -1196,6 +1224,17 @@ describe('appointmentsService.runBookingJob', () => {
     });
   });
 
+  test('rejects a queued booking if its doctor-clinic date is closed while waiting for the transaction lock', async () => {
+    tx.doctorClinicClosure.findFirst.mockResolvedValue({ id: 'new-closure' });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'CLINIC_CLOSED_THAT_DATE' });
+    expect(tx.doctorClinicClosure.findFirst).toHaveBeenCalledWith({
+      where: { doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, closedDate: new Date(`${TOMORROW_STR}T00:00:00.000Z`) },
+      select: { id: true },
+    });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+    expect(tx.paymentHold.create).not.toHaveBeenCalled();
+  });
+
   test('throws 400 CLINIC_CLOSED_THAT_DATE when a closure row exists for that date', async () => {
     prisma.doctorClinicClosure.findFirst.mockResolvedValue({ id: 'closure-1' });
     await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({
@@ -1217,6 +1256,15 @@ describe('appointmentsService.runBookingJob', () => {
   });
 
   // ── Family member / patient / receptionist scoping ──────────────────
+  test('rejects legacy self bookings without a member even if they reach the worker directly', async () => {
+    await expect(appointmentsService.runBookingJob(basePayload({ familyMemberId: null }))).rejects.toMatchObject({ code: 'PATIENT_PROFILE_REQUIRED' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+  });
+  test.each(['name', 'relation', 'dateOfBirth', 'gender', 'bloodGroup'])('blocks an owned but incomplete member missing %s', async (field) => {
+    prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: PATIENT_ID, name: 'Patient', relation: 'Self', dateOfBirth: new Date('2000-01-01'), gender: 'Male', bloodGroup: 'Unknown', [field]: null });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'PATIENT_PROFILE_INCOMPLETE' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+  });
   test('throws 404 FAMILY_MEMBER_NOT_FOUND when the family member does not belong to the booking patient', async () => {
     prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: 'someone-else' });
     await expect(
@@ -1487,6 +1535,27 @@ describe('appointmentsService.runBookingJob', () => {
     await expect(
       appointmentsService.runBookingJob(basePayload({ appointmentTime: undefined }))
     ).rejects.toMatchObject({ statusCode: 409, code: 'NO_SLOTS_AVAILABLE' });
+  });
+
+  test.each([[0, '10:05'], [1, '10:10'], [4, '10:25']])('quota booking with %i occupied gets approximate call %s, not a physical slot', async (occupied, expectedTime) => {
+    mockUsers({ doctor: happyDoctor({ maxOnlineBookingsPerDay: 5 }) });
+    prisma.doctorClinicHours.findUnique.mockResolvedValue({ status: 'active', startTime: '10:00', endTime: '10:10', slotMinutes: 5 });
+    tx.appointment.count.mockResolvedValue(occupied);
+    await appointmentsService.runBookingJob(basePayload({ appointmentTime: '23:59' }));
+    expect(tx.appointment.create.mock.calls[0][0].data).toMatchObject({
+      appointmentTime: expectedTime, isEstimatedTime: true, estimatedVisitAt: expect.any(Date),
+    });
+    expect(tx.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  test('estimated call retains the next calendar day when quota crosses midnight', async () => {
+    mockUsers({ doctor: happyDoctor({ maxOnlineBookingsPerDay: 5 }) });
+    prisma.doctorClinicHours.findUnique.mockResolvedValue({ status: 'active', startTime: '23:55', endTime: '23:59', slotMinutes: 5 });
+    tx.appointment.count.mockResolvedValue(1);
+    await appointmentsService.runBookingJob(basePayload());
+    const data = tx.appointment.create.mock.calls[0][0].data;
+    expect(data.appointmentTime).toBe('00:05');
+    expect(data.estimatedVisitAt.toISOString()).toBe(`${TOMORROW_STR}T18:35:00.000Z`);
   });
 
   test('the fast-fail daily online-booking cap check rejects an obviously-full day before any lock/OPD work', async () => {

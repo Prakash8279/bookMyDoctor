@@ -1,3 +1,4 @@
+import { appointmentTimeLabel } from '../lib/appointmentTime'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
@@ -203,7 +204,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
         { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
-        { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+        { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
         { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
         { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
         { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
@@ -225,14 +226,14 @@ export function PortalAppointments({ data, role = 'patient' }) {
     <DataTable rows={rows} columns={[
       { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
       { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
-      { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+      { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
       { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
       { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
       { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
       { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || item.familyMember?.name || '—' },
       { key: 'clinicName', label: 'Clinic', render: (item) => item.clinic?.name || '—' },
       { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
-      { key: 'actionCol', label: 'Actions', render: (item) => role === 'patient' ? <button onClick={() => window.alert(`${item.doctor?.name || 'Doctor'}\n${item.clinic?.name || 'Clinic'}\n${item.appointmentDate || ''} · ${item.appointmentTime || ''}\nStatus: ${item.status}`)} className="touch-target text-sm font-semibold text-primary-dark">Details</button> : statusActions(item) },
+      { key: 'actionCol', label: 'Actions', render: (item) => role === 'patient' ? <button onClick={() => window.alert(`${item.doctor?.name || 'Doctor'}\n${item.clinic?.name || 'Clinic'}\n${item.appointmentDate || ''} · ${appointmentTimeLabel(item)}\nStatus: ${item.status}`)} className="touch-target text-sm font-semibold text-primary-dark">Details</button> : statusActions(item) },
     ]} />
   </Page>
 }

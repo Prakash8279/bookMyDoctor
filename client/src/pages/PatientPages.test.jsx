@@ -7,7 +7,7 @@
 // PATCH/POST/PUT/DELETE that updates the store is actually visible on screen, exactly as in the
 // real app.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -135,7 +135,8 @@ describe('PatientDashboard', () => {
     expect(screen.getAllByText('Welcome, Asha.')).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Patient services' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Patient services' }).querySelectorAll('a')).toHaveLength(7)
+    expect(screen.getByRole('region', { name: 'Patient services' }).querySelectorAll('a')).toHaveLength(6)
+    expect(within(screen.getByRole('region', { name: 'Patient services' })).queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Quick clinic booking' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Medical records' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Help & policies' }))
@@ -188,6 +189,19 @@ describe('PatientDashboard', () => {
 // Booking
 // =====================================================================
 describe('Booking', () => {
+  it('removes Myself and excludes incomplete profiles for Google-login users too', () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [{ id: 'incomplete', name: 'Google User', relation: 'Self' }], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+    expect(screen.queryByRole('option', { name: 'Myself' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Google User · Self' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Patient/)).toBeRequired()
+    fireEvent.click(screen.getByRole('button', { name: /Add member/ }))
+    for (const label of [/^Member name/, /^Relationship/, /^Member date of birth/, /^Member gender/, /^Member blood group/]) {
+      expect(screen.getByLabelText(label)).toBeRequired()
+    }
+    expect(screen.getByText(/relationship “Self”/)).toBeInTheDocument()
+  })
+
   const DOCTOR = {
     id: 'doc-1',
     name: 'Dr. Asha Rao',
@@ -195,11 +209,11 @@ describe('Booking', () => {
     minBookingAdvanceAmount: 100,
     clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic' }],
   }
-  const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son' }
+  const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }
   const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: false, emergencyFee: 0, gstPercent: 5 }
 
   it('limits the date picker to the selected doctor’s saved advance-booking days', () => {
-    seedData({ doctors: [{ ...DOCTOR, maxDaysAdvance: 5 }], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [{ ...DOCTOR, maxDaysAdvance: 5 }], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
     const dateField = screen.getByLabelText(/Appointment date/i)
     const earliest = dateField.getAttribute('min')
@@ -210,7 +224,7 @@ describe('Booking', () => {
   })
 
   it('opens the compact filter panel and closes it after applying filters', () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     const toggle = screen.getByRole('button', { name: 'Filters' })
@@ -231,7 +245,7 @@ describe('Booking', () => {
   })
 
   it("shows the doctor's primary clinic and fee preview once a doctor is chosen", () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     const { container } = renderConnected(Booking, {}, { route: '/patient/book' })
 
     expect(screen.getByText('Select a doctor first')).toBeInTheDocument()
@@ -253,22 +267,25 @@ describe('Booking', () => {
   })
 
   it('adds a family member during booking and selects the new patient', async () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
-    apiClient.post.mockResolvedValueOnce({ id: 'fam-new', name: 'Rohan', relation: 'Son' })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    apiClient.post.mockResolvedValueOnce({ id: 'fam-new', name: 'Rohan', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' })
     renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
 
     fireEvent.click(screen.getByRole('button', { name: /Add member/i }))
-    fireEvent.change(screen.getByLabelText('Member name'), { target: { value: 'Rohan' } })
-    fireEvent.change(screen.getByLabelText('Relationship'), { target: { value: 'Son' } })
+    fireEvent.change(screen.getByLabelText(/^Member name/), { target: { value: 'Rohan' } })
+    fireEvent.change(screen.getByLabelText(/^Relationship/), { target: { value: 'Son' } })
+    fireEvent.change(screen.getByLabelText(/^Member date of birth/), { target: { value: '2010-05-01' } })
+    fireEvent.change(screen.getByLabelText(/^Member gender/), { target: { value: 'Male' } })
+    fireEvent.change(screen.getByLabelText(/^Member blood group/), { target: { value: 'B+' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save member' }))
 
-    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/family-members', { name: 'Rohan', relation: 'Son' }))
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/family-members', { name: 'Rohan', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }))
     await waitFor(() => expect(screen.getByLabelText(/^Patient/)).toHaveValue('fam-new'))
-    expect(screen.queryByLabelText('Member name')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Member name/)).not.toBeInTheDocument()
   })
 
   it('shows slot counts in one compact summary', async () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     apiClient.get.mockImplementation((url) => url === '/appointments/availability'
       ? Promise.resolve([{ doctorUserId: 'doc-1', clinicId: 'clinic-1', totalSlots: 32, availableSlots: 16, bookedSlots: 16 }])
       : Promise.resolve([]))
@@ -278,6 +295,25 @@ describe('Booking', () => {
     await waitFor(() => expect(summary).toHaveTextContent('Total 32'))
     expect(summary).toHaveTextContent('Available 16')
     expect(summary).toHaveTextContent('Booked 16')
+  })
+
+  it('blocks confirmation for a closing date and enables it again on an open date', async () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    let closed = true
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/appointments/availability'
+      ? [{ doctorUserId: 'doc-1', clinicId: 'clinic-1', totalSlots: closed ? 0 : 50,
+        availableSlots: closed ? 0 : 50, bookedSlots: 0, closed }] : []))
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeDisabled())
+    expect(screen.getByRole('alert')).toHaveTextContent('selected closing date')
+    expect(apiClient.post).not.toHaveBeenCalled()
+    closed = false
+    const input = document.querySelector('input[name="date"]')
+    const next = new Date(`${input.value}T12:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    fireEvent.change(input, { target: { value: next.toISOString().slice(0, 10) } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm booking' })).not.toBeDisabled())
+    expect(screen.queryByText(/selected closing date/)).not.toBeInTheDocument()
   })
 
   it('confirms a booking with the selected doctor, clinic, date, and family member', async () => {
@@ -337,7 +373,7 @@ describe('Booking', () => {
   it('shows the server-provided error message when booking fails, without losing the form', async () => {
     vi.useFakeTimers()
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) =>
         url === '/appointments' ? Promise.resolve({ jobId: 'job-2', status: 'queued' }) : Promise.resolve({})
       )
@@ -348,7 +384,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
 
       await act(async () => {
@@ -371,7 +407,7 @@ describe('Booking', () => {
       consultationFee: 700,
       clinics: [{ id: 'clinic-2', name: 'Apex Multi-speciality Clinic' }],
     }
-    seedData({ doctors: [DOCTOR, DOCTOR_2], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR, DOCTOR_2], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     // Both doctors are initially displayed
@@ -423,7 +459,7 @@ describe('Booking', () => {
       consultationFee: 600,
       clinics: [{ id: 'clinic-a', name: 'Alpha Clinic' }],
     }
-    seedData({ doctors: [DOCTOR_A, DOCTOR_B], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR_A, DOCTOR_B], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     // Select Sorted by -> Clinic Name (A to Z)
@@ -460,7 +496,7 @@ describe('Booking', () => {
       consultationFee: 500,
       clinics: [{ id: 'clinic-2', name: 'Clinic 2' }],
     }
-    seedData({ doctors: [OLDER_DOCTOR, NEWER_DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [OLDER_DOCTOR, NEWER_DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     const cards = screen.getAllByRole('heading', { level: 4 })
@@ -478,7 +514,7 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url, _payload) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-3', status: 'queued' })
         if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
@@ -500,7 +536,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -556,7 +592,7 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-5', status: 'queued' })
         if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
@@ -579,7 +615,7 @@ describe('Booking', () => {
       })
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -617,7 +653,7 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-4', status: 'queued' })
         // Server order amount reflects fees.minBookingAmount (¥33.60 below), NOT the doctor's raw
@@ -646,7 +682,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -1063,6 +1099,29 @@ describe('BookingHistory', () => {
 describe('Family', () => {
   const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }
 
+  it.each(['Full name', 'Relationship', 'Date of birth', 'Gender', 'Blood group'])('requires %s before saving a family member', (label) => {
+    seedData({ familyMembers: [FAMILY_MEMBER] })
+    renderConnected(Family)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const field = screen.getByLabelText(new RegExp(`^${label}`))
+    expect(field).toBeRequired()
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.submit(field.closest('form'))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('are required')
+  })
+
+  it('rejects future date of birth without submitting to the API', () => {
+    seedData({ familyMembers: [FAMILY_MEMBER] })
+    renderConnected(Family)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const field = screen.getByLabelText(/^Date of birth/)
+    fireEvent.change(field, { target: { value: '2999-01-01' } })
+    fireEvent.submit(field.closest('form'))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('cannot be in the future')
+  })
+
   it('adds a new family member with the entered details', async () => {
     seedData({ familyMembers: [] })
     apiClient.post.mockResolvedValue({ id: 'fam-2', name: 'Meera Mehta', relation: 'Daughter' })
@@ -1070,15 +1129,18 @@ describe('Family', () => {
     renderConnected(Family)
     fireEvent.change(screen.getByLabelText(/^Full name/), { target: { value: 'Meera Mehta' } })
     fireEvent.change(screen.getByLabelText(/^Relationship/), { target: { value: 'Daughter' } })
+    fireEvent.change(screen.getByLabelText(/^Date of birth/), { target: { value: '2010-05-01' } })
+    fireEvent.change(screen.getByLabelText(/^Gender/), { target: { value: 'Female' } })
+    fireEvent.change(screen.getByLabelText(/^Blood group/), { target: { value: 'B+' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith('/family-members', {
         name: 'Meera Mehta',
         relation: 'Daughter',
-        dateOfBirth: undefined,
-        gender: undefined,
-        bloodGroup: undefined,
+        dateOfBirth: '2010-05-01',
+        gender: 'Female',
+        bloodGroup: 'B+',
       })
     )
     expect(await screen.findByText('Meera Mehta')).toBeInTheDocument()

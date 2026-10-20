@@ -516,6 +516,19 @@ describe('DoctorProfileEdit', () => {
 })
 
 describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)', () => {
+  it('keeps appointment filters directly visible without a collapsible dropdown', async () => {
+    mockGetRoutes({ '/appointments': [] })
+    renderConnected(DoctorAppointments, { data: { appointments: [] } })
+    const filters = screen.getByRole('region', { name: 'Appointment filters' })
+    expect(filters.tagName).toBe('SECTION')
+    expect(within(filters).getByLabelText('Filter visit date')).toBeVisible()
+    expect(within(filters).getByLabelText('Filter appointment status')).toBeVisible()
+    expect(filters.querySelector('details, summary')).toBeNull()
+    fireEvent.change(within(filters).getByLabelText('Filter visit date'), { target: { value: '2026-10-22' } })
+    fireEvent.click(within(filters).getByRole('button', { name: 'Clear filters' }))
+    expect(within(filters).getByLabelText('Filter visit date')).toHaveValue('')
+  })
+
   const APPOINTMENTS = [
     { id: 'a1', status: 'upcoming', paymentStatus:'paid', tokenNumber: 1, patient: { name: 'Asha' } },
     { id: 'a2', status: 'confirmed', paymentStatus:'paid', tokenNumber: 2, patient: { name: 'Ben' } },
@@ -728,6 +741,7 @@ describe('ReceptionDashboard', () => {
     })
     expect(screen.getAllByText('Welcome, Meera.')).toHaveLength(2)
     expect(screen.getByRole('region', { name: 'Receptionist services' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Walk-in registration' })[0]).toHaveAttribute('href', '/receptionist/walk-in')
     expect(await screen.findByText('Dr. Kapoor')).toBeInTheDocument()
   })
@@ -1109,6 +1123,66 @@ describe('CashPayment', () => {
 })
 
 describe('ClinicSchedule', () => {
+  const editableHours = { id: 'hours-1', kind: 'hours', clinicId: 'mine', weekday: 1,
+    startTime: '10:00', endTime: '18:00', slotMinutes: 15, status: 'active' }
+  const renderEditableSchedule = () => {
+    setCurrentUser({ id: 'doc-1', name: 'Doctor', profile: { maxOnlineBookingsPerDay: 50,
+      maxDaysAdvance: 7, allowRebooking: false, onlineBooking: true, tokenNumberingMode: 'alternate', onlineTokenParity: 'even' } })
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/clinics' ? [{ id: 'mine', name: 'Own Clinic' }]
+      : url === '/clinics/mine/hours' ? [editableHours] : []))
+    useAppStore.setState((state) => ({ data: { ...state.data, opdEntries: [editableHours] } }))
+    renderConnected(ClinicSchedule)
+  }
+
+  it('shows the saved daily slot quota in live records and opens prefilled editing', async () => {
+    renderEditableSchedule()
+    expect(await screen.findByRole('columnheader', { name: 'Online slots' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '50' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText(/Edit opening time/)).toHaveValue('10:00')
+    expect(screen.getByLabelText(/Edit closing time/)).toHaveValue('18:00')
+    expect(screen.getByLabelText(/Edit patient minutes/)).toHaveValue(15)
+    expect(screen.getByLabelText('Edit daily online slots')).toHaveValue(50)
+  })
+
+  it('updates the selected OPD record without changing the booking policy', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText(/Edit patient minutes/), { target: { value: '5' } })
+    apiClient.put.mockImplementation((url, fields) => Promise.resolve({ ...editableHours, ...fields }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save timing' }))
+    expect(await screen.findByText('OPD timing updated.')).toBeInTheDocument()
+    expect(apiClient.put).toHaveBeenCalledWith('/clinics/mine/hours', {
+      weekday: 1, startTime: '10:00', endTime: '18:00', slotMinutes: 5,
+    })
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('cell', { name: '5 min' })).toBeInTheDocument()
+  })
+
+  it('saves daily slots from live records, preserves other policies and refreshes the count', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Edit daily online slots'), { target: { value: '60' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save slots' }))
+    expect(await screen.findByText('Daily online slots updated for all days and clinics.')).toBeInTheDocument()
+    expect(apiClient.patch).toHaveBeenCalledWith('/doctors/doc-1', {
+      onlineBooking: true, allowRebooking: false, maxDaysAdvance: 7, maxOnlineBookingsPerDay: 60,
+      tokenNumberingMode: 'alternate', onlineTokenParity: 'even',
+    })
+    expect(screen.getByRole('cell', { name: '60' })).toBeInTheDocument()
+    expect(apiClient.put).not.toHaveBeenCalled()
+  })
+
+  it('does not show a successful slot update when saving fails', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    apiClient.patch.mockRejectedValue(new Error('Could not save slots.'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save slots' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save slots.')
+    expect(screen.queryByText('Daily online slots updated for all days and clinics.')).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '50' })).toBeInTheDocument()
+  })
+
   it('shows an empty state when there is no signed-in doctor', () => {
     setCurrentUser(null)
     renderConnected(ClinicSchedule, { data: {} })
@@ -1169,9 +1243,9 @@ describe('ClinicSchedule', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/clinics', { params: { mine: true, pageSize: 100 } })
     expect(apiClient.get).toHaveBeenCalledWith('/clinics/mine/hours', { params: {} })
     expect(apiClient.get).not.toHaveBeenCalledWith('/clinics/other/hours', expect.anything())
-    expect(screen.getByText(/Estimated capacity: 32 slots/)).toBeInTheDocument()
+    expect(screen.getByText(/time-based capacity is 32/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(/Patient time \(minutes\)/), { target: { value: '30' } })
-    expect(screen.getByText(/Estimated capacity: 16 slots/)).toBeInTheDocument()
+    expect(screen.getByText(/time-based capacity is 16/)).toBeInTheDocument()
   })
 
   // COMPLETENESS ADD tests (request: "doctor ek booking rule do jo booking online wala continues

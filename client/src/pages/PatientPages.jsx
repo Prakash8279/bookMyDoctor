@@ -1,3 +1,4 @@
+import { appointmentTimeLabel } from '../lib/appointmentTime'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
@@ -31,7 +32,6 @@ const PATIENT_SERVICES = [
   ['Queue tracker', '/patient/queue', 'ticket-check'],
   ['Payments', '/patient/payments', 'credit-card'],
   ['Family members', '/patient/family', 'users-round'],
-  ['Notifications', '/patient/notifications', 'bell'],
   ['My profile', '/patient/profile', 'user-round'],
 ]
 
@@ -102,7 +102,7 @@ export function PatientDashboard({ data }) {
 
       <section className="rounded-card border border-border bg-white p-5 shadow-card lg:mt-6">
         <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg">Recent live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span></div>
-        <DataTable rows={userAppointments.slice(0, 5)} columns={[{ key: 'date', label: 'Time / ID', render: (item) => `${item.appointmentDate || 'Today'} ${item.appointmentTime || ''}` }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' }, { key: 'clinic', label: 'Details', render: (item) => item.clinic?.name || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} />
+        <DataTable rows={userAppointments.slice(0, 5)} columns={[{ key: 'date', label: 'Time / ID', render: (item) => `${item.appointmentDate || 'Today'} ${appointmentTimeLabel(item)}` }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' }, { key: 'clinic', label: 'Details', render: (item) => item.clinic?.name || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} />
       </section>
 
       {/* Active Appointment & Live Queue Widget */}
@@ -118,7 +118,7 @@ export function PatientDashboard({ data }) {
               </div>
 
               <h2 className="mt-4 text-2xl font-bold font-sans text-ink">{upcoming.doctor?.name || '—'}</h2>
-              <p className="mt-1 text-sm text-muted">{upcoming.clinic?.name || '—'} · {upcoming.appointmentDate}, {upcoming.appointmentTime}</p>
+              <p className="mt-1 text-sm text-muted">{upcoming.clinic?.name || '—'} · {upcoming.appointmentDate}, {appointmentTimeLabel(upcoming)}</p>
 
               <div className="mt-5 grid grid-cols-2 gap-3 text-xs sm:text-sm">
                 <div className="rounded-button border border-border bg-surface p-3">
@@ -224,9 +224,14 @@ export function Booking({ data }) {
   const platformCharges = data.platformCharges
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
   const [patientChoice, setPatientChoice] = useState('')
+  const completeMembers = (data.familyMembers || []).filter((member) =>
+    ['name', 'relation', 'dateOfBirth', 'gender', 'bloodGroup'].every((field) => String(member[field] || '').trim()))
   const [addingMember, setAddingMember] = useState(false)
   const [memberName, setMemberName] = useState('')
   const [memberRelation, setMemberRelation] = useState('')
+  const [memberDob, setMemberDob] = useState('')
+  const [memberGender, setMemberGender] = useState('')
+  const [memberBloodGroup, setMemberBloodGroup] = useState('')
   const [memberSaving, setMemberSaving] = useState(false)
   const [memberError, setMemberError] = useState('')
   const [clockNowMs, setClockNowMs] = useState(Date.now())
@@ -296,9 +301,11 @@ export function Booking({ data }) {
   }, [doctor, date, earliestBookingDate, latestBookingDate])
   const [availability, setAvailability] = useState({})
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const selectedDateClosed = !availabilityLoading && availability[`${doctorId}:${primaryClinic?.id}`]?.closed === true
   useEffect(() => {
     let cancelled = false
     setAvailabilityLoading(true)
+    setAvailability({})
     fetchAppointmentAvailability({ date })
       .then((rows) => {
         if (cancelled) return
@@ -374,17 +381,24 @@ export function Booking({ data }) {
   }, [data, appliedDoctorFilters])
   const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters) }
   const saveBookingMember = async () => {
-    if (!memberName.trim() || !memberRelation.trim()) {
-      setMemberError('Name and relationship are required.')
+    if (!memberName.trim() || !memberRelation.trim() || !memberDob || !memberGender || !memberBloodGroup.trim()) {
+      setMemberError('Name, relationship, date of birth, gender and blood group are required.')
+      return
+    }
+    if (memberDob > todayStr()) {
+      setMemberError('Date of birth cannot be in the future.')
       return
     }
     setMemberError('')
     setMemberSaving(true)
     try {
-      const member = await addFamilyMember({ name: memberName.trim(), relation: memberRelation.trim() })
+      const member = await addFamilyMember({ name: memberName.trim(), relation: memberRelation.trim(), dateOfBirth: memberDob, gender: memberGender, bloodGroup: memberBloodGroup.trim() })
       setPatientChoice(member.id)
       setMemberName('')
       setMemberRelation('')
+      setMemberDob('')
+      setMemberGender('')
+      setMemberBloodGroup('')
       setAddingMember(false)
     } catch (err) {
       setMemberError(err.message || 'Could not add family member.')
@@ -394,7 +408,15 @@ export function Booking({ data }) {
   }
   const submit = async (event) => {
     event.preventDefault()
+    if (selectedDateClosed) {
+      setError('This doctor is unavailable at this clinic on the selected closing date. Please choose another date.')
+      return
+    }
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    if (!completeMembers.some((member) => member.id === values.patient)) {
+      setError('Select a patient with complete details, or add a member first.')
+      return
+    }
     if (doctor && (values.date < earliestBookingDate || values.date > latestBookingDate)) {
       setError(`Choose a date within ${doctorMaxDays} days from today for this doctor.`)
       return
@@ -407,7 +429,7 @@ export function Booking({ data }) {
         clinicId: primaryClinic?.id,
         appointmentDate: values.date,
         reason: values.reason || '',
-        familyMemberId: values.patient && values.patient !== 'Myself' ? values.patient : undefined,
+        familyMemberId: values.patient,
       })
       setBooked(appointment)
     } catch (bookingError) {
@@ -743,16 +765,20 @@ export function Booking({ data }) {
                   label="Patient"
                   name="patient"
                   type="select"
-                  options={[{ value: 'Myself', label: 'Myself' }, ...(data.familyMembers || []).map((item) => ({ value: item.id, label: `${item.name} · ${item.relation}` }))]}
+                  options={completeMembers.map((item) => ({ value: item.id, label: `${item.name} · ${item.relation}` }))}
                   value={patientChoice}
                   onChange={(event) => setPatientChoice(event.target.value)}
                   required
                 />
+                <p className="mt-1 text-xs text-muted">Select a complete patient profile. For yourself, add your details with relationship “Self”. Incomplete profiles must be updated in Family members.</p>
                 <button type="button" className="mt-1.5 text-xs font-semibold text-primary-dark hover:underline" aria-expanded={addingMember} aria-controls="booking-add-member" onClick={() => { setAddingMember((open) => !open); setMemberError('') }}>+ Add member</button>
               </div>
               {addingMember && <div id="booking-add-member" className="sm:col-span-2 grid gap-3 rounded-button border border-border bg-surface p-3 sm:grid-cols-2">
-                <FormField label="Member name" value={memberName} onChange={(event) => setMemberName(event.target.value)} />
-                <FormField label="Relationship" value={memberRelation} onChange={(event) => setMemberRelation(event.target.value)} />
+                <FormField label="Member name" value={memberName} onChange={(event) => setMemberName(event.target.value)} required />
+                <FormField label="Relationship" value={memberRelation} onChange={(event) => setMemberRelation(event.target.value)} required />
+                <FormField label="Member date of birth" type="date" max={todayStr()} value={memberDob} onChange={(event) => setMemberDob(event.target.value)} required />
+                <FormField label="Member gender" type="select" options={['Female', 'Male', 'Other', 'Prefer not to say']} value={memberGender} onChange={(event) => setMemberGender(event.target.value)} required />
+                <FormField label="Member blood group" placeholder="e.g. B+ or Unknown" maxLength={10} value={memberBloodGroup} onChange={(event) => setMemberBloodGroup(event.target.value)} required />
                 {memberError && <p role="alert" className="text-xs text-error sm:col-span-2">{memberError}</p>}
                 <div className="flex gap-2 sm:col-span-2">
                   <button type="button" disabled={memberSaving} onClick={saveBookingMember} className="touch-target rounded-button bg-primary-dark px-3 text-xs font-semibold text-white disabled:opacity-60">{memberSaving ? 'Saving…' : 'Save member'}</button>
@@ -813,7 +839,8 @@ export function Booking({ data }) {
               </div>
             )}
 
-            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={confirming}>
+            {selectedDateClosed && <p role="alert" className="mt-3 text-sm font-semibold text-error">This doctor is unavailable at this clinic on the selected closing date. Please choose another date.</p>}
+            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={confirming || selectedDateClosed}>
               {confirming ? 'Confirming…' : 'Confirm booking'}
             </Button>
           </form>
@@ -1190,7 +1217,7 @@ export function PatientAppointments({ data, history = false }) {
   // 'ID' column is just this page's own row sequence number (#1, #2...), not the real booking
   // id a patient would need to reference at the clinic counter or read off the slip. Same
   // shortId(appointment.id) format already used for "Booking ID" on the Payments table below.
-  const exportCsv = () => downloadCsv('my-appointments.csv', buildCsv(['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes'], records.map(({ appointment, payment, displayFee, paid, due, status, mode }, index) => [sequenceId(index), shortId(appointment.id), appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '', appointment.appointmentDate || '', appointment.appointmentTime || '', appointment.doctor?.name || '', appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '', appointment.clinic?.name || '', appointment.status || '', status, mode, paymentReference(payment), displayFee, paid, due, appointment.reason || appointment.notes || ''])))
+  const exportCsv = () => downloadCsv('my-appointments.csv', buildCsv(['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes'], records.map(({ appointment, payment, displayFee, paid, due, status, mode }, index) => [sequenceId(index), shortId(appointment.id), appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '', appointment.appointmentDate || '', appointmentTimeLabel(appointment), appointment.doctor?.name || '', appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '', appointment.clinic?.name || '', appointment.status || '', status, mode, paymentReference(payment), displayFee, paid, due, appointment.reason || appointment.notes || ''])))
   const submitReview = async (event) => {
     event.preventDefault()
     const appointment = completed.find((item) => item.id === selectedReviewId)
@@ -1271,14 +1298,14 @@ export function PatientAppointments({ data, history = false }) {
             </button>
           ))}
         </div>
-        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.appointmentTime || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
+        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointmentTimeLabel(appointment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
         <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
         {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
         <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
+      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointmentTimeLabel(appointment)}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
@@ -1308,8 +1335,12 @@ export function Family({ data }) {
   const closeForm = () => { setEditingId(null); setMember(emptyMember) }
   const save = async (event) => {
     event.preventDefault()
-    if (!member.name.trim() || !member.relation.trim()) return
-    const values = { name: member.name.trim(), relation: member.relation.trim(), dateOfBirth: member.dateOfBirth || undefined, gender: member.gender || undefined, bloodGroup: member.bloodGroup || undefined }
+    if (!member.name.trim() || !member.relation.trim() || !member.dateOfBirth || !member.gender || !member.bloodGroup.trim()) {
+      setError('Full name, relationship, date of birth, gender and blood group are required.')
+      return
+    }
+    if (member.dateOfBirth > todayStr()) { setError('Date of birth cannot be in the future.'); return }
+    const values = { name: member.name.trim(), relation: member.relation.trim(), dateOfBirth: member.dateOfBirth, gender: member.gender, bloodGroup: member.bloodGroup.trim() }
     setError('')
     setSaving(true)
     try {
@@ -1346,7 +1377,7 @@ export function Family({ data }) {
     }
   }
   return <Page title="Family members" subtitle="Manage dependents for appointment booking." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>
-    <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">{editingId ? 'Edit family member' : 'Add family member'}</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Full name" value={member.name} onChange={update('name')} required /><FormField label="Relationship" value={member.relation} onChange={update('relation')} required /><FormField label="Date of birth" type="date" value={member.dateOfBirth} onChange={update('dateOfBirth')} /><FormField label="Gender" type="select" options={['Female', 'Male', 'Other', 'Prefer not to say']} value={member.gender} onChange={update('gender')} /><FormField label="Blood group" placeholder="e.g. B+" value={member.bloodGroup} onChange={update('bloodGroup')} /><div className="flex items-end gap-2"><Button type="submit" disabled={saving}>{saving ? 'Saving…' : (editingId ? 'Update member' : 'Add member')}</Button>{editingId && <button type="button" className="touch-target rounded-button border border-border px-4 text-sm font-semibold text-ink" onClick={closeForm}>Cancel</button>}</div></div>{error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}</form>
+    <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">{editingId ? 'Edit family member' : 'Add family member'}</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Full name" value={member.name} onChange={update('name')} required /><FormField label="Relationship" value={member.relation} onChange={update('relation')} required /><FormField label="Date of birth" type="date" max={todayStr()} required value={member.dateOfBirth} onChange={update('dateOfBirth')} /><FormField label="Gender" type="select" required options={['Female', 'Male', 'Other', 'Prefer not to say']} value={member.gender} onChange={update('gender')} /><FormField label="Blood group" required maxLength={10} placeholder="e.g. B+ or Unknown" value={member.bloodGroup} onChange={update('bloodGroup')} /><div className="flex items-end gap-2"><Button type="submit" disabled={saving}>{saving ? 'Saving…' : (editingId ? 'Update member' : 'Add member')}</Button>{editingId && <button type="button" className="touch-target rounded-button border border-border px-4 text-sm font-semibold text-ink" onClick={closeForm}>Cancel</button>}</div></div>{error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}</form>
     <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">Live records</h2><span className="text-sm font-semibold text-muted">{(data.familyMembers || []).length} record(s)</span></div>{isMobile ? <ul className="grid gap-3">{(data.familyMembers || []).map((item, index) => <li key={item.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm">
       {/* RESPONSIVE-CARDS FIX (user request: "patient and receptionist and admin panel ko fully
           resposive bnao mobile view v best ho") — same stacked label/value card treatment as

@@ -826,8 +826,8 @@ function shapeClosure(row) {
  * No unique constraint exists in the schema for (doctorUserId, clinicId, closedDate), so a
  * true DB-level upsert isn't available — implemented as findFirst-then-create/update inside a
  * transaction, treated as an upsert-by-that-triple to avoid silent duplicate closure rows.
- * This narrows, but does not fully eliminate, a race between two concurrent identical requests
- * (no partial unique index backs it, unlike the appointments slot guard).
+ * The doctor-day advisory lock serializes closure writes with booking creation and prevents
+ * duplicate closure rows from concurrent requests for the same date.
  * @param {string} clinicId
  * @param {object} body
  * @param {{id:string, role:string}} actor
@@ -839,6 +839,8 @@ async function upsertClosure(clinicId, body, actor) {
   const { closedDate, reason } = body;
 
   const row = await prisma.$transaction(async (tx) => {
+    const dateStr = closedDate.toISOString().slice(0, 10);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`doctor-day:${doctorUserId}:${dateStr}`}))`;
     const existing = await tx.doctorClinicClosure.findFirst({
       where: { doctorUserId, clinicId, closedDate },
     });
@@ -862,6 +864,7 @@ async function upsertClosure(clinicId, body, actor) {
     description: `Set closure for doctor ${doctorUserId} on ${closedDate.toISOString().slice(0, 10)}`,
   });
 
+  await invalidateClinicCaches(clinicId, doctorUserId);
   return shapeClosure(row);
 }
 
@@ -912,6 +915,7 @@ async function deleteClosureRow(clinicId, closureId, actor) {
     targetEntityId: clinicId,
     description: `Deleted closure entry ${closureId}`,
   });
+  await invalidateClinicCaches(clinicId, row.doctorUserId);
 }
 
 module.exports = {

@@ -251,8 +251,9 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
   }
 
   Future<void> _submit() async {
-    if (_nameController.text.trim().isEmpty || _relationController.text.trim().isEmpty) {
-      setState(() => _error = 'Name and relation are required');
+    if (_nameController.text.trim().isEmpty || _relationController.text.trim().isEmpty ||
+        _dateOfBirth == null || _gender == null || _bloodGroup == null) {
+      setState(() => _error = 'Name, relation, date of birth, gender and blood group are required');
       return;
     }
     setState(() {
@@ -298,14 +299,14 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.md),
           if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name')),
+          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name *')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _relationController, decoration: const InputDecoration(labelText: 'Relation (e.g. Son, Mother)')),
+          TextField(controller: _relationController, decoration: const InputDecoration(labelText: 'Relation (e.g. Son, Mother) *')),
           const SizedBox(height: AppSpacing.md),
           OutlinedButton.icon(
             onPressed: _pickDob,
             icon: const Icon(Icons.cake_outlined, size: 18),
-            label: Text(_dateOfBirth == null ? 'Date of birth (optional)' : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
+            label: Text(_dateOfBirth == null ? 'Date of birth *' : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
           ),
           const SizedBox(height: AppSpacing.md),
           // PARITY FIX (mobile parity audit — Patient panel): web's Family form
@@ -314,7 +315,7 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
           // three lowercase options with no "Prefer not to say" choice.
           DropdownButtonFormField<String>(
             initialValue: _gender,
-            decoration: const InputDecoration(labelText: 'Gender (optional)'),
+            decoration: const InputDecoration(labelText: 'Gender *'),
             items: [
               for (final option in _genderOptions) DropdownMenuItem(value: option, child: Text(option)),
             ],
@@ -323,7 +324,7 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
             initialValue: _bloodGroup,
-            decoration: const InputDecoration(labelText: 'Blood group (optional)'),
+            decoration: const InputDecoration(labelText: 'Blood group *'),
             items: const [
               DropdownMenuItem(value: 'A+', child: Text('A+')),
               DropdownMenuItem(value: 'A-', child: Text('A-')),
@@ -333,6 +334,7 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
               DropdownMenuItem(value: 'AB-', child: Text('AB-')),
               DropdownMenuItem(value: 'O+', child: Text('O+')),
               DropdownMenuItem(value: 'O-', child: Text('O-')),
+              DropdownMenuItem(value: 'Unknown', child: Text('Unknown')),
             ],
             onChanged: (v) => setState(() => _bloodGroup = v),
           ),

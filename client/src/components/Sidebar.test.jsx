@@ -225,6 +225,20 @@ describe('PortalHeader', () => {
     expect(screen.getByLabelText('1 unread notifications')).toBeInTheDocument()
   })
 
+  it.each(['patient', 'receptionist'])('shows the %s notification bell and unread count in the header', (role) => {
+    useAppStore.setState({ data: { ...useAppStore.getState().data,
+      notifications: [{ id: 'unread', readAt: null }, { id: 'read', readAt: '2026-10-21' }],
+    } })
+    render(<MemoryRouter><PortalHeader role={role} showMenu={false} onMenu={() => {}} /></MemoryRouter>)
+    expect(screen.getByRole('link', { name: 'Notifications' })).toHaveAttribute('href', `/${role}/notifications`)
+    expect(screen.getByLabelText('1 unread notifications')).toBeInTheDocument()
+  })
+
+  it.each(['patient', 'receptionist'])('removes the duplicate notification option from the %s sidebar', (role) => {
+    render(<MemoryRouter><Sidebar role={role} open onClose={() => {}} onLogout={() => {}} /></MemoryRouter>)
+    expect(screen.queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
+  })
+
   it('links the mobile patient brand to the public homepage', () => {
     render(
       <MemoryRouter>

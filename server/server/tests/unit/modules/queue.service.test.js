@@ -267,6 +267,7 @@ describe('queueService.updateQueueStatus — sequential transition rules', () =>
     tx.appointment.findUnique.mockResolvedValue({status:'upcoming',paymentStatus:'refunded',totalAmount:500});
     await expect(queueService.updateQueueStatus('q1','called',{id:'doc-A',role:'doctor'})).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
     expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls[0][0].join('')).not.toContain('::uuid');
     expect(tx.queueToken.update).not.toHaveBeenCalled();
   });
 

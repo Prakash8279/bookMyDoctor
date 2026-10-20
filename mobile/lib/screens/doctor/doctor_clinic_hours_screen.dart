@@ -244,7 +244,7 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
                               title: Text(_weekdayNames[weekday]),
                               subtitle: h == null
                                   ? const Text('Not set', style: TextStyle(color: AppColors.textSecondary))
-                                  : Text('${h.startTime} – ${h.endTime} · ${h.slotMinutes} min slots · ${h.status}'),
+                                  : Text('${h.startTime} – ${h.endTime} · ${h.slotMinutes} min per patient (approx.) · ${h.status}'),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -417,7 +417,7 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
           ),
           const SizedBox(height: AppSpacing.xs),
           const Text(
-            'This is a cap, not extra slots: available bookings also depend on OPD hours and patient time. '
+            'This is your total daily online slots across clinics. Patient minutes only estimate call times; OPD duration does not reduce this count. Leave blank for time-based capacity. '
             'Walk-ins do not count toward this cap.',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
