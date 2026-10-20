@@ -855,7 +855,7 @@ describe('CashPayment', () => {
       },
     })
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
@@ -887,7 +887,7 @@ describe('CashPayment', () => {
     // No summary before an appointment is picked.
     expect(screen.queryByText(/Consultation fee/)).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     expect(screen.getByText('Consultation fee: ₹500')).toBeInTheDocument()
     expect(screen.getByText(/Paid so far: ₹0 · Due now: ₹500/)).toBeInTheDocument()
 
@@ -919,7 +919,7 @@ describe('CashPayment', () => {
       },
     })
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     expect(screen.getByText(/already been paid online/)).toBeInTheDocument()
     expect(screen.getByText(/Due now: ₹400/)).toBeInTheDocument()
   })
@@ -940,7 +940,7 @@ describe('CashPayment', () => {
 
     // The full UUID must never appear in the dropdown.
     expect(screen.queryByText(/5c1a256d-3583-4400-9dd5-498660ebf63b/)).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#f63b · Rahul Verma · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '5c1a256d-3583-4400-9dd5-498660ebf63b' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
@@ -978,7 +978,7 @@ describe('CashPayment', () => {
     apiClient.post.mockResolvedValue({ id: 'pay-1' })
     renderConnected(CashPayment)
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Rahul Verma · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 

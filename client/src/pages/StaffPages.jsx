@@ -367,7 +367,7 @@ export function QueueManagement({ data, receptionist = false }) {
   const loadQueue = useCallback(() => {
     setLoading(true)
     setLoadError('')
-    return fetchQueue({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.'))).finally(() => setLoading(false))
+    return fetchQueue({ allPages: true }).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.'))).finally(() => setLoading(false))
   }, [fetchQueue])
   usePolling(loadQueue, { intervalMs: 15000 })
 
@@ -1103,7 +1103,7 @@ export function ReceptionDashboard({ data }) {
   const [todayQueue, setTodayQueue] = useState(null)
   const [dashboardError, setDashboardError] = useState('')
   usePolling(() => {
-    Promise.all([fetchAllClinicRows(apiClient, '/appointments', { date: indiaTodayDate() }), fetchAllClinicRows(apiClient, '/queue', { date: indiaTodayDate() })])
+    return Promise.all([fetchAllClinicRows(apiClient, '/appointments', { date: indiaTodayDate() }), fetchAllClinicRows(apiClient, '/queue', { date: indiaTodayDate() })])
       .then(([rows, tokens]) => { setTodayRecords(rows); setTodayQueue(tokens); setDashboardError('') })
       .catch((err) => setDashboardError(firstErrorMessage(err, 'Could not refresh today’s clinic records.')))
   }, { intervalMs: 30000 })
@@ -1141,6 +1141,7 @@ export function ReceptionDashboard({ data }) {
     <h1 className="mb-4 text-xl font-semibold text-charcoal lg:hidden">Welcome, {firstName}.</h1>
     <StaffServiceGrid role="receptionist" />
     <ErrorNote>{dashboardError}</ErrorNote>
+    <p className="mb-3 text-xs text-muted" role="status">{dashboardError ? 'Refresh failed — totals may be outdated.' : todayRecords ? 'Clinic records refreshed automatically every 30 seconds.' : 'Loading current clinic records…'}</p>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <StatCard label="TODAY'S PATIENTS" value={todaysPatients} icon="👥" to="/receptionist/patients" />
       <StatCard label="CONSULTATIONS DONE" value={consultationsDone} icon="✓" to="/receptionist/appointments" />
@@ -1149,8 +1150,8 @@ export function ReceptionDashboard({ data }) {
     </div>
     <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
       <div className="rounded-card border border-border bg-white p-5 shadow-card">
-        <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold font-sans text-ink">Recent live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span></div>
-        {recentRecords.length ? <DataTable rows={recentRecords} columns={[{ key: 'time', label: 'Time / ID' }, { key: 'patient', label: 'Patient / User' }, { key: 'details', label: 'Details' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /> : <EmptyState title="No live records yet" message="Walk-ins and bookings will appear here as they happen." />}
+        <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold font-sans text-ink">Recent live records</h2><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${dashboardError ? 'bg-error/10 text-error' : 'bg-success/10 text-success'}`}>{dashboardError ? 'Refresh failed' : todayRecords ? 'Connected' : 'Connecting…'}</span></div>
+        {dashboardError ? <p className="text-sm text-error">Records could not be refreshed. Displayed totals may be outdated.</p> : recentRecords.length ? <DataTable rows={recentRecords} columns={[{ key: 'time', label: 'Time / ID' }, { key: 'patient', label: 'Patient / User' }, { key: 'details', label: 'Details' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /> : <EmptyState title="No live records yet" message="Walk-ins and bookings will appear here as they happen." />}
       </div>
       <div className="rounded-card border border-border bg-white p-5 shadow-card">
         <h2 className="mb-3 text-lg font-bold font-sans text-ink">Quick actions</h2>
@@ -1320,7 +1321,7 @@ export function CashPayment({ data }) {
     !['cancelled', 'no_show'].includes(item.status) &&
     !['paid', 'refunded'].includes(item.paymentStatus)
   )
-  const appointmentLabel = (item) => `${shortId(item.id)} · ${item.patient?.name || 'Patient'} · ₹${item.fees?.consultationFee ?? 0}`
+  const appointmentLabel = (item) => `${shortId(item.id)} · ${item.patient?.name || 'Patient'} · ₹${item.fees?.due ?? item.fees?.consultationFee ?? 0}`
   const selectedAppointment = unpaidAppointments.find((item) => item.id === appointmentId)
   // Doctor/receptionist fee masking exposes ONLY consultationFee (plan §1.8/§1.12) —
   // flatten it through the existing `doctorCharge` helper's expected shape. Also cross-reference
@@ -1409,7 +1410,7 @@ export function CashPayment({ data }) {
       </div>
       <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map(appointmentLabel)} value={selectedAppointment ? appointmentLabel(selectedAppointment) : ''} onChange={(event) => { const index = event.target.selectedIndex - 1; setAppointmentId(unpaidAppointments[index]?.id || '') }} required />
+          <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map((item) => ({ value: item.id, label: appointmentLabel(item) }))} value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} required />
           <input type="hidden" name="appointment" value={appointmentId} />
           <FormField label="Payment method" name="method" type="select" options={['Cash', 'Upi', 'Card', 'Online']} required />
           {/* DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist

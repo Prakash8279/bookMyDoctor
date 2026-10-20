@@ -1651,7 +1651,9 @@ async function checkInAppointment(id, actor) {
   });
   if (!changed.count) {
     const current = await getVisibleAppointmentOrThrow(id, actor);
-    if (!current.checkedInAt || !['upcoming', 'confirmed'].includes(current.status)) {
+    if (!current.checkedInAt || !['upcoming', 'confirmed'].includes(current.status) ||
+      current.paymentStatus === 'refunded' || current.tokenNumber == null ||
+      formatDateOnly(current.appointmentDate) !== formatDateOnly(today)) {
       throw new ApiError(409, 'BOOKING_CHANGED', 'The booking changed. Refresh before checking in.');
     }
   }

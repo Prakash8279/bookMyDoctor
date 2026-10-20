@@ -332,7 +332,7 @@ describe('PortalSectionPages role gating (RoleGuard, via App)', () => {
   it('redirects a doctor away from the patient-only /patient/queue route to their own dashboard', async () => {
     mockBootFor(DOCTOR_USER)
     render(<MemoryRouter initialEntries={['/patient/queue']}><App /></MemoryRouter>)
-    expect(await screen.findByText(/Welcome, Nikhil\./i)).toBeInTheDocument()
+    expect(await screen.findAllByText(/Welcome, Nikhil\./i)).toHaveLength(2)
     expect(screen.queryByText('Live queue tracker')).not.toBeInTheDocument()
   })
 })

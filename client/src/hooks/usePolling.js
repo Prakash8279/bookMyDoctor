@@ -34,19 +34,36 @@ export function usePolling(loadFn, { intervalMs = 15000, enabled = true } = {}) 
   useEffect(() => {
     if (!enabled) return undefined
 
-    loadFnRef.current()
+    let running = false
+    let disposed = false
+    const run = () => {
+      if (disposed || running) return
+      running = true
+      try {
+        const result = loadFnRef.current()
+        if (result && typeof result.then === 'function') {
+          // Callers display their own load errors. A failed poll must still release
+          // the lock, allowing the next scheduled refresh to recover.
+          Promise.resolve(result).catch(() => {}).finally(() => { running = false })
+        } else running = false
+      } catch {
+        running = false
+      }
+    }
+    run()
 
     const tick = () => {
-      if (!document.hidden) loadFnRef.current()
+      if (!document.hidden) run()
     }
     const interval = setInterval(tick, intervalMs)
 
     const onVisibilityChange = () => {
-      if (!document.hidden) loadFnRef.current()
+      if (!document.hidden) run()
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
 
     return () => {
+      disposed = true
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }

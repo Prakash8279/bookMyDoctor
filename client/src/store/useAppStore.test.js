@@ -43,6 +43,29 @@ afterEach(() => {
 })
 
 describe('initial state', () => {
+  it.each(['fetchAppointments', 'fetchPayments', 'fetchQueue'])('%s ignores an older request finishing after a newer filter', async (action) => {
+    let finishOld
+    apiClient.get.mockReturnValueOnce(new Promise((resolve) => { finishOld = resolve }))
+      .mockResolvedValueOnce([{id:'new'}])
+    const old = useAppStore.getState()[action]({date:'2026-10-19'})
+    await useAppStore.getState()[action]({date:'2026-10-20'})
+    finishOld([{id:'old'}])
+    await old
+    const key = {fetchAppointments:'appointments',fetchPayments:'payments',fetchQueue:'queueTokens'}[action]
+    expect(useAppStore.getState().data[key]).toEqual([{id:'new'}])
+  })
+
+  it.each(['fetchAppointments', 'fetchPayments', 'fetchQueue'])('%s cannot restore a prior session’s clinic data', async (action) => {
+    useAppStore.setState({currentUser:{id:'reception-1',role:'receptionist'}})
+    let finish
+    apiClient.get.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const pending = useAppStore.getState()[action]()
+    useAppStore.setState({currentUser:null,isAuthenticated:false})
+    finish([{id:'private-clinic-record'}])
+    await pending
+    const key = {fetchAppointments:'appointments',fetchPayments:'payments',fetchQueue:'queueTokens'}[action]
+    expect(useAppStore.getState().data[key]).toEqual([])
+  })
   it('starts signed out with an unverified session and the default data shape', () => {
     const state = useAppStore.getState()
     expect(state.currentUser).toBeNull()

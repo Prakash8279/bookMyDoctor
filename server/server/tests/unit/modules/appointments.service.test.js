@@ -251,6 +251,12 @@ describe('appointmentsService.checkInAppointment', () => {
     await appointmentsService.checkInAppointment('appt-1', actor);
     expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
   });
+  test.each([{ paymentStatus: 'refunded' }, { tokenNumber: null }, { appointmentDate: new Date('2000-01-01') }])('rejects an already-arrived booking that changed concurrently: %j', async fields => {
+    prisma.appointment.updateMany.mockResolvedValue({ count: 0 });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY }))
+      .mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date(), ...fields }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'BOOKING_CHANGED' });
+  });
 });
 
 describe('appointmentsService.getAppointmentById — visibility (404-not-403 enumeration avoidance)', () => {

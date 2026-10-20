@@ -166,6 +166,11 @@ const initialState = {
 
 }
 
+// Only the newest list request for this resource/session may update its shared cache.
+// Navigation and slow networks can otherwise overwrite a newer filter or restore
+// clinic data after logout. Writes also invalidate outstanding list snapshots.
+const clinicRequestVersion = { appointments: 0, payments: 0, queueTokens: 0 }
+
 export const useAppStore = create(
   persist(
     (set, get) => ({
@@ -844,10 +849,14 @@ export const useAppStore = create(
         throw timeoutErr
       },
       fetchAppointments: async (filters = {}) => {
+        const version = ++clinicRequestVersion.appointments
+        const user = get().currentUser
         const { allPages = false, ...params } = filters
         const rows = allPages ? await fetchAllClinicRows(apiClient, '/appointments', cleanParams(params))
           : await apiClient.get('/appointments', { params: cleanParams(params) })
-        set((state) => ({ data: { ...state.data, appointments: rows } }))
+        if (version === clinicRequestVersion.appointments && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, appointments: rows } }))
+        }
         return rows
       },
       fetchAppointmentAvailability: async (filters) => apiClient.get('/appointments/availability', { params: cleanParams(filters) }),
@@ -858,12 +867,14 @@ export const useAppStore = create(
       },
       updateAppointmentStatus: async (id, status) => {
         const appointment = await apiClient.patch(`/appointments/${id}/status`, { status })
+        clinicRequestVersion.appointments += 1
         set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
         return appointment
       },
       cancelAppointment: async (id) => get().updateAppointmentStatus(id, 'cancelled'),
       checkInAppointment: async (id) => {
         const appointment = await apiClient.post(`/appointments/${id}/check-in`, {})
+        clinicRequestVersion.appointments += 1
         set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
         return appointment
       },
@@ -872,8 +883,14 @@ export const useAppStore = create(
       // Queue
       // =====================================================================
       fetchQueue: async (filters = {}) => {
-        const rows = await apiClient.get('/queue', { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, queueTokens: rows } }))
+        const version = ++clinicRequestVersion.queueTokens
+        const user = get().currentUser
+        const { allPages = false, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/queue', cleanParams(params))
+          : await apiClient.get('/queue', { params: cleanParams(params) })
+        if (version === clinicRequestVersion.queueTokens && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, queueTokens: rows } }))
+        }
         return rows
       },
       // Patient-only (GET /queue/mine/:appointmentId — see queue.service.js#getMyQueueStatus).
@@ -890,6 +907,7 @@ export const useAppStore = create(
       // must pass that exact string, not the mock's `'in consultation'`.
       setQueueTokenStatus: async (id, status) => {
         const token = await apiClient.patch(`/queue/${id}/status`, { status })
+        clinicRequestVersion.queueTokens += 1
         set((state) => ({ data: { ...state.data, queueTokens: upsertById(state.data.queueTokens, token) } }))
         // Completing a token cascades server-side to the linked appointment's
         // status — refetch is left to the page (fetchAppointments on demand)
@@ -915,10 +933,14 @@ export const useAppStore = create(
       // Payments
       // =====================================================================
       fetchPayments: async (filters = {}) => {
+        const version = ++clinicRequestVersion.payments
+        const user = get().currentUser
         const { allPages = false, ...params } = filters
         const rows = allPages ? await fetchAllClinicRows(apiClient, '/payments', cleanParams(params))
           : await apiClient.get('/payments', { params: cleanParams(params) })
-        set((state) => ({ data: { ...state.data, payments: rows } }))
+        if (version === clinicRequestVersion.payments && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, payments: rows } }))
+        }
         return rows
       },
       fetchRefunds: async (filters = {}) => {
@@ -941,6 +963,7 @@ export const useAppStore = create(
       // read-only.
       createPayment: async (fields) => {
         const payment = await apiClient.post('/payments', fields)
+        clinicRequestVersion.payments += 1
         set((state) => ({ data: { ...state.data, payments: [payment, ...(state.data.payments || [])] } }))
         return payment
       },

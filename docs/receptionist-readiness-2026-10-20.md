@@ -18,9 +18,18 @@
 - Automated service/UI regression tests and the production web build are the release checks; no fake production patient, payment, refund or consultation is created as a smoke test.
 - Reports show all-time gross doctor-charge collections, excluding fully refunded/failed/pending payments; they are not a bank-settlement or partial-refund accounting statement.
 - Complete-record reads stop with an explicit error above 1,000 pages rather than silently returning a partial report. Large-clinic load/concurrency benchmarking is not claimed.
-- Four pre-existing frontend role-gating cases are excluded from the focused regression run; this is not a claim that the entire frontend suite passes.
+- The senior-review follow-up includes StaffPages role-gating tests without excluding them. This is not a claim that the entire frontend suite passes.
 - No new Android/iOS binary or Play Store release is included.
 
 ## Staff acceptance checklist
 
 Using an existing receptionist account assigned to a real clinic: verify clinic doctors, select a valid existing booking for today's check-in, observe queue progression, review the unpaid dropdown and receipts, and download a chosen date range. Perform real collections only for actual money received. Admin must assign unassigned receptionist accounts to the correct clinic.
+
+## Senior-review follow-up
+
+- Serialize promise-returning polling callbacks, including reception dashboard refreshes, to avoid overlapping slow requests; failed polls release their lock.
+- Shared clinic appointment/payment/queue list responses cannot overwrite a newer request or repopulate data after the session changes. Staff writes invalidate outstanding list snapshots.
+- Payment selection uses the full booking ID as the option value, independent of display labels; the label uses the actual remaining balance when supplied.
+- Preserve server truncation metadata and reject incomplete full-record reads; honor explicit server pagination even when a page contains fewer than 100 rows. Offset pagination remains a live view, not a transactional export snapshot.
+- Recheck refund, token and visit date when a concurrent check-in changed the row. Backend cache invalidation is already best-effort; no new Redis failure semantics are required.
+- Surface stale dashboard totals when refresh fails. No production booking/payment mutation is part of release verification.

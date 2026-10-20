@@ -1,5 +1,23 @@
 import { expect, it, vi } from 'vitest'
 import { fetchAllClinicRows } from './clinicWorkspace'
+it('rejects truncated server data instead of exporting it as complete', async () => {
+  const rows = [{id:1}]
+  rows.__truncated = true
+  await expect(fetchAllClinicRows({get:async()=>rows}, '/queue')).rejects.toThrow('server limit')
+})
+it('continues short pages when server metadata says more pages exist', async () => {
+  const first = [{id:1}]
+  first.__pagination = {page:1,totalPages:2}
+  const last = [{id:2}]
+  last.__pagination = {page:2,totalPages:2}
+  const api = {get:vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(last)}
+  expect(await fetchAllClinicRows(api, '/appointments')).toHaveLength(2)
+})
+it('rejects a repeated page rather than silently duplicating clinic records', async () => {
+  const rows = [{id:1}]
+  rows.__pagination = {page:1,totalPages:2}
+  await expect(fetchAllClinicRows({get:async()=>rows}, '/appointments')).rejects.toThrow('pagination changed')
+})
 it('loads every clinic-scoped page and retains the selected dates', async () => {
   const api = { get: vi.fn().mockResolvedValueOnce(Array.from({length:100}, (_,id) => ({id}))).mockResolvedValueOnce([{id:101}]) }
   const rows = await fetchAllClinicRows(api, '/appointments', {date:'2026-10-20'})

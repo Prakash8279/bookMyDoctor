@@ -196,6 +196,9 @@ apiClient.interceptors.response.use(
     // can read `result.__pagination` without it polluting `...spread` usage or `Object.keys` on
     // array results.
     const data = body?.data
+    if (body && body.truncated !== undefined && data && typeof data === 'object') {
+      Object.defineProperty(data, '__truncated', { value: body.truncated, enumerable: false, configurable: true })
+    }
     if (body && body.pagination !== undefined) {
       try {
         Object.defineProperty(data, '__pagination', { value: body.pagination, enumerable: false, configurable: true })
