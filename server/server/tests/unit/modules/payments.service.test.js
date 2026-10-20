@@ -255,6 +255,13 @@ describe('payments.service.createPaymentForAppointment — authorization orderin
 });
 
 describe('payments.service.createPaymentForAppointment — appointment state guards', () => {
+  test.each(['cash', 'online'])('refunded bookings reject new staff collections via %s', async (mode) => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ paymentStatus: 'refunded' }));
+    await expect(paymentsService.createPaymentForAppointment('appt-1', ADMIN, mode, 'new-reference'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'APPOINTMENT_NOT_PAYABLE' });
+    expect(tx.payment.create).not.toHaveBeenCalled();
+  });
   test('409 PAYMENT_ALREADY_RECORDED when paymentStatus is already "paid"', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ paymentStatus: 'paid' }));

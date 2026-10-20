@@ -331,6 +331,10 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       // example an old checkout tab completed after a retry). Never lose that captured payment:
       // persist it and immediately refund it below. Offline staff entries still fail normally.
       const alreadyPaidByAnotherTransaction = appointment.paymentStatus === 'paid';
+      if (requester.role !== 'patient' &&
+          (['cancelled', 'no_show'].includes(appointment.status) || appointment.paymentStatus === 'refunded')) {
+        throw new ApiError(409, 'APPOINTMENT_NOT_PAYABLE', 'Cannot collect payment for a cancelled, no-show or refunded booking.');
+      }
       if (alreadyPaidByAnotherTransaction && (mode !== 'online' || !transactionRef)) {
         throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
       }
@@ -348,7 +352,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         cannotConfirmBooking = true;
         refundOnlyDuplicatePayment = true;
         cannotConfirmReason = 'This appointment was already paid through a different payment attempt.';
-      } else if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
+      } else if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
         cannotConfirmBooking = true;
         cannotConfirmReason = `Appointment status is already "${appointment.status}".`;
       } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {

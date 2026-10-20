@@ -813,6 +813,29 @@ describe('CheckIn', () => {
 })
 
 describe('CashPayment', () => {
+  it('excludes cancelled, no-show and refunded bookings from collections but preserves receipt history', async () => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(CashPayment, { data: {
+      appointments: [
+        { id: 'active', status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Active Patient' } },
+        { id: 'partial', status: 'completed', paymentStatus: 'partial', patient: { name: 'Balance Due' } },
+        { id: 'cancel', status: 'cancelled', paymentStatus: 'pending', patient: { name: 'Cancelled Patient' } },
+        { id: 'noshow', status: 'no_show', paymentStatus: 'pending', patient: { name: 'No Show Patient' } },
+        { id: 'refund', status: 'upcoming', paymentStatus: 'refunded', patient: { name: 'Refunded Patient' } },
+        { id: 'paid', status: 'confirmed', paymentStatus: 'paid', patient: { name: 'Paid Patient' } },
+      ],
+      payments: [{ id: 'refunded-pay', status: 'refunded', mode: 'online', transactionRef: 'pay_returned', fees: { consultationFee: 500 } }],
+    } })
+    const select = screen.getByLabelText(/^Unpaid appointment/)
+    expect(select).toHaveTextContent('Active Patient')
+    expect(select).toHaveTextContent('Balance Due')
+    expect(select).not.toHaveTextContent('Cancelled Patient')
+    expect(select).not.toHaveTextContent('No Show Patient')
+    expect(select).not.toHaveTextContent('Refunded Patient')
+    expect(select).not.toHaveTextContent('Paid Patient')
+    expect(screen.getByText('PAID ONLINE AT BOOKING').closest('article')).toHaveTextContent('0 payments')
+    expect(await screen.findByText('refunded')).toBeInTheDocument()
+  })
   it('records a cash payment for the selected unpaid appointment', async () => {
     mockGetRoutes({ '/payments': [] })
     apiClient.post.mockResolvedValue({ id: 'pay-1' })

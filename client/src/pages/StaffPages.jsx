@@ -1267,7 +1267,10 @@ export function CashPayment({ data }) {
   const load = useCallback(() => { setLoading(true); setLoadError(''); return fetchPayments({}).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load payments.'))).finally(() => setLoading(false)) }, [fetchPayments])
   useEffect(() => { load() }, [load])
 
-  const unpaidAppointments = (data.appointments || []).filter((item) => item.paymentStatus !== 'paid')
+  const unpaidAppointments = (data.appointments || []).filter((item) =>
+    !['cancelled', 'no_show'].includes(item.status) &&
+    !['paid', 'refunded'].includes(item.paymentStatus)
+  )
   const appointmentLabel = (item) => `${shortId(item.id)} · ${item.patient?.name || 'Patient'} · ₹${item.fees?.consultationFee ?? 0}`
   const selectedAppointment = unpaidAppointments.find((item) => item.id === appointmentId)
   // Doctor/receptionist fee masking exposes ONLY consultationFee (plan §1.8/§1.12) —
@@ -1294,10 +1297,11 @@ export function CashPayment({ data }) {
   // collects and records in person at the counter (cash, or UPI/card/online taken there). Now a
   // three-way split: paid online at booking vs collected at the clinic (cash vs online), using
   // isOnlineBookingPayment (lib/paymentVisibility.js) to tell the two "online" cases apart.
-  const bookingPayments = clinicPayments.filter(isOnlineBookingPayment)
+  const collectedPayments = clinicPayments.filter((item) => !['refunded', 'failed', 'pending'].includes(item.status))
+  const bookingPayments = collectedPayments.filter(isOnlineBookingPayment)
   const isCashMode = (item) => String(item.mode || '').toLowerCase() === 'cash'
-  const cashPayments = clinicPayments.filter((item) => isCashMode(item) && !isOnlineBookingPayment(item))
-  const clinicOnlinePayments = clinicPayments.filter((item) => !isCashMode(item) && !isOnlineBookingPayment(item))
+  const cashPayments = collectedPayments.filter((item) => isCashMode(item) && !isOnlineBookingPayment(item))
+  const clinicOnlinePayments = collectedPayments.filter((item) => !isCashMode(item) && !isOnlineBookingPayment(item))
   const bookingTotal = bookingPayments.reduce((sum, item) => sum + Number(item.clinicAmount || 0), 0)
   const cashTotal = cashPayments.reduce((sum, item) => sum + Number(item.clinicAmount || 0), 0)
   const clinicOnlineTotal = clinicOnlinePayments.reduce((sum, item) => sum + Number(item.clinicAmount || 0), 0)
@@ -1312,7 +1316,11 @@ export function CashPayment({ data }) {
     event.preventDefault()
     const form = event.currentTarget // see StaffPages' saveOpd comment — currentTarget-after-await bug
     const values = Object.fromEntries(new FormData(form).entries())
-    const appointment = (data.appointments || []).find((item) => item.id === values.appointment)
+    const appointment = unpaidAppointments.find((item) => item.id === values.appointment)
+    if (!appointment) {
+      setError('Choose an unpaid, non-cancelled appointment before recording a payment.')
+      return
+    }
     setSubmitting(true)
     setError('')
     try {
