@@ -223,6 +223,11 @@ describe('appointmentsService.checkInAppointment', () => {
     await expect(appointmentsService.checkInAppointment('appt-1', { id: PATIENT_ID, role: 'patient' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
   });
+  test.each(['pending','partial'])('does not check in a %s balance', async paymentStatus => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({appointmentDate:TODAY,paymentStatus}));
+    await expect(appointmentsService.checkInAppointment('appt-1',actor)).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
   test('cannot check in a different clinic’s booking', async () => {
     prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'other' });
     await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_FOUND' });
@@ -1306,9 +1311,8 @@ describe('appointmentsService.runBookingJob', () => {
     );
 
     const apptData = tx.appointment.create.mock.calls[0][0].data;
-    const tokenData = tx.queueToken.create.mock.calls[0][0].data;
     expect(apptData.status).toBe('upcoming');
-    expect(tokenData.status).toBe('waiting');
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
     expect(notificationsService.notifySystemEventSafe).toHaveBeenCalledTimes(2);
     expect(result.appointmentId).toBe('appt-new');
   });
@@ -1345,7 +1349,7 @@ describe('appointmentsService.runBookingJob', () => {
 
     expect(result.tokenNumber).toBe(8);
     expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(8);
-    expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(8);
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
   });
 
   // ── Token-numbering rule (request: "doctor ek booking rule do jo booking online wala
@@ -1363,7 +1367,7 @@ describe('appointmentsService.runBookingJob', () => {
 
       expect(result.tokenNumber).toBe(1);
       expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(1);
-      expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(1);
+      expect(tx.queueToken.create).not.toHaveBeenCalled();
     });
 
     test('a WALK-IN booking gets the first EVEN token (2) when no even-parity token exists yet that day', async () => {
@@ -1376,7 +1380,7 @@ describe('appointmentsService.runBookingJob', () => {
 
       expect(result.tokenNumber).toBe(2);
       expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(2);
-      expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(2);
+      expect(tx.queueToken.create).not.toHaveBeenCalled();
     });
 
     test('the next ONLINE booking continues the odd sequence (existing odd max + 2), independent of the even sequence', async () => {
@@ -1674,6 +1678,11 @@ describe('appointmentsService.updateAppointmentStatus', () => {
     await expect(
       appointmentsService.updateAppointmentStatus('appt-1', 'confirmed', { id: PATIENT_ID, role: 'patient' })
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+  test.each(['confirmed','completed','no_show'])('blocks %s on an unpaid booking even for admin', async target => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({appointmentDate:TODAY,status:'upcoming',paymentStatus:'partial'}));
+    await expect(appointmentsService.updateAppointmentStatus('appt-1',target,{id:'admin-1',role:'admin'})).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

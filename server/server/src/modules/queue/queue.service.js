@@ -16,6 +16,7 @@
  */
 const prisma = require('../../config/db');
 const ApiError = require('../../utils/ApiError');
+const { isClinicPaymentComplete, clinicPaymentWhere } = require('../../utils/clinicPaymentGate');
 const activityLogService = require('../../services/activityLogService');
 const cacheService = require('../../services/cacheService');
 const notificationsService = require('../notifications/notifications.service');
@@ -98,6 +99,8 @@ const QUEUE_SELECT = {
       id: true,
       status: true,
       source: true,
+      paymentStatus: true,
+      totalAmount: true,
       // Full row fetched (phone + clinical profile) — masked down per-role in
       // shapeQueuePatientRef below, mirroring appointments.service.js#shapePatientRef.
       patient: {
@@ -184,7 +187,7 @@ function shapeQueueListRow(row, patientsAhead, estimatedWaitMinutes, role) {
 async function getMyQueueStatus(appointmentId, requester) {
   const appointment = await prisma.appointment.findUnique({
     where: { id: appointmentId },
-    select: { id: true, patientUserId: true, status: true },
+    select: { id: true, patientUserId: true, status: true, paymentStatus: true, totalAmount: true },
   });
   // 404, not 403 — same enumeration-avoidance posture used throughout this codebase (see
   // appointments.service.js#getVisibleAppointmentOrThrow and this module's own
@@ -193,7 +196,7 @@ async function getMyQueueStatus(appointmentId, requester) {
     throw new ApiError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
   }
 
-  if (appointment.status === 'pending_payment' || appointment.status === 'cancelled') {
+  if (['pending_payment', 'cancelled', 'no_show'].includes(appointment.status) || !isClinicPaymentComplete(appointment)) {
     return { token: null, status: null, nowServing: null, patientsAhead: null, estimatedWaitMinutes: null };
   }
 
@@ -202,7 +205,7 @@ async function getMyQueueStatus(appointmentId, requester) {
     select: { tokenNumber: true, status: true, queueDate: true, doctorUserId: true },
   });
 
-  if (!token) {
+  if (!token || token.status === 'on_hold') {
     // Either this appointment never reached the queue (pending_payment/on_hold — payment still
     // outstanding) or it was cancelled/no_show before ever being called — either way, nothing to
     // show yet. Not an error: the frontend's "no active queue" placeholder is the right response.
@@ -214,7 +217,8 @@ async function getMyQueueStatus(appointmentId, requester) {
   // still waiting on their own payment has nothing "ahead" of them in a queue they haven't
   // actually joined yet.
   const dayTokens = await prisma.queueToken.findMany({
-    where: { doctorUserId: token.doctorUserId, queueDate: token.queueDate, status: { not: 'on_hold' } },
+    where: { doctorUserId: token.doctorUserId, queueDate: token.queueDate, status: { not: 'on_hold' },
+      appointment: { is: { ...clinicPaymentWhere(), status: { notIn: ['pending_payment', 'cancelled', 'no_show'] } } } },
     select: { tokenNumber: true, status: true },
     orderBy: { tokenNumber: 'asc' },
   });
@@ -300,7 +304,8 @@ async function listQueue({ date, page, pageSize }, actor) {
     // or act on. They flip to 'waiting' (and start appearing) the moment payment is recorded — see
     // payments.service.js#createPaymentForAppointment. QUEUE_ORDER above already excludes
     // 'on_hold' so updateQueueStatus can never manually transition one either.
-    const where = { queueDate, status: { not: 'on_hold' } };
+    const where = { queueDate, status: { not: 'on_hold' },
+      appointment: { is: { ...clinicPaymentWhere(), status: { notIn: ['pending_payment', 'cancelled', 'no_show'] } } } };
 
     if (actor.role === 'doctor') {
       where.doctorUserId = actor.id;
@@ -383,6 +388,13 @@ async function listQueue({ date, page, pageSize }, actor) {
 async function updateQueueStatus(id, targetStatus, actor) {
   const row = await getVisibleQueueTokenOrThrow(id, actor);
 
+  if (!isClinicPaymentComplete(row.appointment)) {
+    throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Complete the remaining clinic payment before calling, starting or completing this visit.');
+  }
+  if (['cancelled', 'no_show', 'pending_payment'].includes(row.appointment?.status)) {
+    throw new ApiError(409, 'APPOINTMENT_NOT_ACTIVE', 'This booking is not active. Refresh the queue.');
+  }
+
   const currentIndex = QUEUE_ORDER.indexOf(row.status);
   const targetIndex = QUEUE_ORDER.indexOf(targetStatus);
   if (currentIndex === -1 || targetIndex !== currentIndex + 1) {
@@ -418,6 +430,13 @@ async function updateQueueStatus(id, targetStatus, actor) {
     !TERMINAL_APPOINTMENT_STATUSES.includes(appointmentStatus);
 
   await prisma.$transaction(async (tx) => {
+    // Use the same appointment row lock as payment recording: payment/refund and
+    // clinical progression must not race on different snapshots of the balance.
+    await tx.$queryRaw`SELECT id FROM appointments WHERE id = ${row.appointmentId}::uuid FOR UPDATE`;
+    const fresh = await tx.appointment.findUnique({ where: { id: row.appointmentId }, select: { status: true, paymentStatus: true, totalAmount: true } });
+    if (!isClinicPaymentComplete(fresh) || ['cancelled', 'no_show', 'pending_payment', 'completed'].includes(fresh?.status)) {
+      throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Booking or payment changed. Refresh before continuing.');
+    }
     await tx.queueToken.update({ where: { id }, data: { status: targetStatus } });
 
     if (shouldCascadeComplete) {

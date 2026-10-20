@@ -551,13 +551,16 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         },
       });
 
-      if (appointment.status === 'pending_payment') {
+      if (isFullPayment && appointment.status !== 'completed') {
         await tx.queueToken.upsert({
           where: { appointmentId: appointment.id },
           create: { appointmentId: appointment.id, doctorUserId: appointment.doctorUserId, clinicId: appointment.clinicId,
             tokenNumber, status: 'waiting', queueDate: appointment.appointmentDate },
-          update: { tokenNumber, status: 'waiting' },
+          update: { tokenNumber },
         });
+        await tx.queueToken.updateMany({ where: { appointmentId: appointment.id, status: 'on_hold' }, data: { status: 'waiting' } });
+      }
+      if (appointment.status === 'pending_payment') {
         await paymentHoldService.confirmHoldTx(tx, appointment.id, gatewayOrderId);
       }
 
@@ -633,6 +636,8 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
     }
   }
 
+  // Both online capture and reception collections can admit a fully paid visit.
+  await cacheService.invalidate('cache:queue:list:*');
   return prisma.payment.findUnique({ where: { id: result.id }, select: PAYMENT_SELECT });
 }
 

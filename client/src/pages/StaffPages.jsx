@@ -18,6 +18,7 @@ import { doctorAppointmentsCsv, fetchDoctorAppointmentsForRange, indiaTodayDate 
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { usePolling } from '../hooks/usePolling'
 import { fetchAllClinicRows } from '../lib/clinicWorkspace'
+import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 import { buildStaffReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
@@ -268,9 +269,10 @@ const AppointmentTable = ({ data }) => {
           key: 'actionCol',
           label: 'Actions',
           render: (item) => <div className="flex flex-wrap gap-2">
-            {item.status === 'upcoming' && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Confirm'}</button>}
-            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Complete'}</button>}
-            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'no_show')} className="touch-target text-xs font-semibold text-muted disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'No-show'}</button>}
+            {!clinicPaymentComplete(item) && !['cancelled', 'no_show', 'completed'].includes(item.status) && <span className="text-xs font-semibold text-warning">Payment required</span>}
+            {item.status === 'upcoming' && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Confirm'}</button>}
+            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Complete'}</button>}
+            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'no_show')} className="touch-target text-xs font-semibold text-muted disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'No-show'}</button>}
             {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={cancellingId === item.id} onClick={() => cancelAppointment(item)} className="touch-target text-xs font-semibold text-error disabled:opacity-50">{cancellingId === item.id ? 'Saving…' : 'Cancel'}</button>}
           </div>,
         },
@@ -1248,7 +1250,7 @@ export function WalkIn({ data }) {
           <div className="sm:col-span-2"><ErrorNote>{error}</ErrorNote></div>
           <Button type="submit" disabled={confirming} className="sm:col-span-2">{confirming ? 'Registering…' : 'Register and issue token'}</Button>
           {confirming && bookingQueueInfo?.aheadOfYou > 0 && <p className="sm:col-span-2 text-sm text-muted">{bookingQueueInfo.aheadOfYou} booking(s) ahead — assigning a token…</p>}
-          {booked && <p role="status" className="sm:col-span-2 text-sm font-semibold text-success">Registered — token #{booked.tokenNumber ?? '—'} issued for {booked.patient?.name || 'the patient'}.</p>}
+          {booked && <p role="status" className="sm:col-span-2 text-sm font-semibold text-success">Registered — token #{booked.tokenNumber ?? '—'} for {booked.patient?.name || 'the patient'}. {clinicPaymentComplete(booked) ? 'Ready for the queue.' : 'Collect the full remaining payment to admit this visit to the queue.'}</p>}
         </div>
       </form>
     </div>
@@ -1267,7 +1269,7 @@ export function CheckIn({ data }) {
   usePolling(refresh, { intervalMs: 30000 })
   const rows = (data.appointments || []).filter((item) =>
     item.appointmentDate === today && ['upcoming', 'confirmed'].includes(item.status) &&
-    item.paymentStatus !== 'refunded' && item.tokenNumber != null &&
+    clinicPaymentComplete(item) && item.tokenNumber != null &&
     `${item.patient?.name || ''} ${item.familyMember?.name || ''} ${item.patient?.phone || ''} ${item.tokenNumber}`.toLowerCase().includes(search.toLowerCase())
   )
   const arrive = async (id) => {

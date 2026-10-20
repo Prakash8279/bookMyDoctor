@@ -335,6 +335,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
 
     expect(tx.payment.create.mock.calls[0][0].data.amount.toString()).toBe('100');
     expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('partial');
+    expect(tx.queueToken.upsert).not.toHaveBeenCalled();
   });
 
   // buildAppointmentRow's default fixture has no `doctor` relation at all, so
@@ -353,6 +354,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
 
     expect(tx.payment.create.mock.calls[0][0].data.amount.toString()).toBe('513.6'); // 613.6 - 100
     expect(tx.appointment.update.mock.calls[0][0].data.paymentStatus).toBe('paid'); // fully covers the balance
+    expect(tx.queueToken.upsert).toHaveBeenCalledWith(expect.objectContaining({create:expect.objectContaining({status:'waiting'})}));
   });
 
   // MIN-BOOKING-REMAINDER FIX (superadmin request: "309 kyu bach raha hai 300 bachna chahiye") —
@@ -467,7 +469,7 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     expect(tx.refund.upsert).toHaveBeenCalled();
   });
 
-  test('an ordinary payment on an already-upcoming appointment does NOT touch appointment.status or queue tokens', async () => {
+  test('a full collection admits an already-upcoming appointment without changing appointment.status', async () => {
     const tx = makeTx();
     tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({ status: 'upcoming' }));
     prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
@@ -475,7 +477,15 @@ describe('payments.service.createPaymentForAppointment — fee copy, amount, and
     await paymentsService.createPaymentForAppointment('appt-1', ADMIN, 'cash', null);
 
     expect(tx.appointment.update.mock.calls[0][0].data.status).toBeUndefined();
-    expect(tx.queueToken.updateMany).not.toHaveBeenCalled();
+    expect(tx.queueToken.upsert).toHaveBeenCalledWith(expect.objectContaining({create:expect.objectContaining({status:'waiting'})}));
+    expect(tx.queueToken.updateMany).toHaveBeenCalledWith({where:{appointmentId:'appt-1',status:'on_hold'},data:{status:'waiting'}});
+  });
+  test('settling a historical completed visit never reopens its queue entry', async () => {
+    const tx = makeTx();
+    tx.appointment.findUnique.mockResolvedValue(buildAppointmentRow({status:'completed'}));
+    prisma.payment.findUnique.mockResolvedValue(buildPaymentRow());
+    await paymentsService.createPaymentForAppointment('appt-1',ADMIN,'cash',null);
+    expect(tx.queueToken.upsert).not.toHaveBeenCalled();
   });
 
   // ACCOUNTING FIX regression test (multi-agent payment audit — critical): a 'partial' appointment

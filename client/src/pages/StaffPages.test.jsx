@@ -517,8 +517,8 @@ describe('DoctorProfileEdit', () => {
 
 describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)', () => {
   const APPOINTMENTS = [
-    { id: 'a1', status: 'upcoming', tokenNumber: 1, patient: { name: 'Asha' } },
-    { id: 'a2', status: 'confirmed', tokenNumber: 2, patient: { name: 'Ben' } },
+    { id: 'a1', status: 'upcoming', paymentStatus:'paid', tokenNumber: 1, patient: { name: 'Asha' } },
+    { id: 'a2', status: 'confirmed', paymentStatus:'paid', tokenNumber: 2, patient: { name: 'Ben' } },
     { id: 'a3', status: 'completed', tokenNumber: 3, patient: { name: 'Chitra' } },
   ]
 
@@ -599,6 +599,17 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     expect(within(chitraRow).queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('keeps unpaid bookings visible but locks confirm and complete until collection', async () => {
+    mockGetRoutes({'/appointments':[{...APPOINTMENTS[0],paymentStatus:'partial',clinicPaymentComplete:false}]})
+    renderConnected(DoctorAppointments,{})
+    expect(await screen.findByText('Asha')).toBeInTheDocument()
+    expect(screen.getByText('Payment required')).toBeInTheDocument()
+    expect(screen.getByRole('button',{name:'Confirm'})).toBeDisabled()
+    expect(screen.getByRole('button',{name:'Complete'})).toBeDisabled()
+    expect(screen.getByRole('button',{name:'Cancel'})).toBeEnabled()
+    fireEvent.click(screen.getByRole('button',{name:'Complete'}))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+  })
   it('confirms an upcoming appointment via PATCH /appointments/:id/status', async () => {
     mockGetRoutes({ '/appointments': APPOINTMENTS })
     apiClient.patch.mockResolvedValue({ ...APPOINTMENTS[0], status: 'confirmed' })
@@ -777,7 +788,7 @@ describe('WalkIn', () => {
       patientPhone: '9876543210',
     })))
     // The poll sleeps ~1.7s between attempts (real timers) before resolving 'confirmed'.
-    expect(await screen.findByText(/token #42 issued for Ravi Shah/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText(/token #42 for Ravi Shah/, {}, { timeout: 3000 })).toBeInTheDocument()
   }, 10000)
 
   it('shows an inline error when registration fails', async () => {
@@ -811,8 +822,8 @@ describe('CheckIn', () => {
     renderConnected(CheckIn, {
       data: {
         appointments: [
-          { id: 'a1', appointmentDate: indiaTodayDate(), tokenNumber: 1, status: 'upcoming', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
-          { id: 'a2', appointmentDate: indiaTodayDate(), tokenNumber: 2, status: 'confirmed', doctor: { name: 'Dr. Rao' } },
+          { id: 'a1', appointmentDate: indiaTodayDate(), tokenNumber: 1, status: 'upcoming', paymentStatus:'paid', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
+          { id: 'a2', appointmentDate: indiaTodayDate(), tokenNumber: 2, status: 'confirmed', paymentStatus:'paid', doctor: { name: 'Dr. Rao' } },
         ],
       },
     })

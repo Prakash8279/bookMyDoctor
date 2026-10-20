@@ -13,6 +13,7 @@ import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { usePolling } from '../hooks/usePolling'
 import apiClient from '../lib/apiClient'
 import { fetchAllClinicRows } from '../lib/clinicWorkspace'
+import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 
 const Page = ({ title, subtitle, children, action }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal ${className}`} {...props}>{children}</button>
@@ -168,8 +169,8 @@ export function PortalAppointments({ data, role = 'patient' }) {
   // always fail with a 409 on one of these, so show Cancel instead of those two.
   const statusActions = (item) => <div className="flex gap-2">
     {item.status === 'pending_payment' && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'cancelled')} className="touch-target text-xs font-semibold text-error">Cancel</button>}
-    {item.status !== 'pending_payment' && item.status !== 'confirmed' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark">Confirm</button>}
-    {item.status !== 'pending_payment' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark">Complete</button>}
+    {item.status !== 'pending_payment' && item.status !== 'confirmed' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">Confirm</button>}
+    {item.status !== 'pending_payment' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">Complete</button>}
   </div>
   if (role === 'admin') {
     return <Page

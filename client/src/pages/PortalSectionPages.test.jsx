@@ -113,8 +113,8 @@ describe('QueueTracker', () => {
 describe('PortalAppointments', () => {
   const APPOINTMENTS = [
     { id: 'a1', status: 'pending_payment', patient: { name: 'Asha' } },
-    { id: 'a2', status: 'confirmed', patient: { name: 'Ben' } },
-    { id: 'a3', status: 'upcoming', patient: { name: 'Chitra' } },
+    { id: 'a2', status: 'confirmed', paymentStatus:'paid', patient: { name: 'Ben' } },
+    { id: 'a3', status: 'upcoming', paymentStatus:'paid', patient: { name: 'Chitra' } },
   ]
 
   it('admin view: a pending_payment booking can only be cancelled, never confirmed/completed', async () => {

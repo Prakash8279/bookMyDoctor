@@ -16,6 +16,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const prisma = require('../../config/db');
 const ApiError = require('../../utils/ApiError');
+const { isClinicPaymentComplete, clinicPaymentWhere } = require('../../utils/clinicPaymentGate');
 const activityLogService = require('../../services/activityLogService');
 const lockService = require('../../services/lockService');
 const cacheService = require('../../services/cacheService');
@@ -475,6 +476,7 @@ function shapeAppointment(row, role, commissionPercent) {
       ? null
       : row.tokenNumber,
     paymentStatus: row.paymentStatus,
+    clinicPaymentComplete: isClinicPaymentComplete(row),
     paymentMethod: row.paymentMethod,
     fees: shapeFees(row, role, commissionPercent),
     notes: row.notes,
@@ -1204,7 +1206,7 @@ async function runBookingJob(payload) {
         throw err;
       }
 
-      if (!requiresPrepayment) await tx.queueToken.create({
+      if (!requiresPrepayment && Number(totalAmount) <= 0) await tx.queueToken.create({
         data: {
           appointmentId: created.id,
           doctorUserId,
@@ -1443,6 +1445,9 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
   }
 
   // ── "Complete" cannot happen before the visit's own day ─────────────────
+  if (['confirmed', 'completed', 'no_show'].includes(targetStatus) && !isClinicPaymentComplete(row)) {
+    throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Complete the remaining clinic payment before confirming or completing this visit.');
+  }
   // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj complete
   // nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — a booking for a future
   // date had no guard anywhere against being marked 'completed' early: not here, not in
@@ -1528,6 +1533,11 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
         where: { appointmentId: id, status: 'PENDING' },
         data: { status: 'CANCELLED' },
       });
+    } else if (['confirmed', 'completed', 'no_show'].includes(targetStatus)) {
+      const updated = await tx.appointment.updateMany({
+        where: { id, status: row.status, ...clinicPaymentWhere() }, data: { status: targetStatus },
+      });
+      if (!updated.count) throw new ApiError(409, 'BOOKING_CHANGED', 'Booking or payment changed. Refresh before continuing.');
     } else {
       await tx.appointment.update({ where: { id }, data: { status: targetStatus } });
     }
@@ -1640,19 +1650,22 @@ async function checkInAppointment(id, actor) {
   if (!['upcoming', 'confirmed'].includes(row.status) || row.paymentStatus === 'refunded' || row.tokenNumber == null) {
     throw new ApiError(409, 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE', 'Only confirmed, non-cancelled bookings with an issued token can be checked in.');
   }
+  if (!isClinicPaymentComplete(row)) {
+    throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Complete the remaining clinic payment before check-in.');
+  }
   if (formatDateOnly(row.appointmentDate) !== formatDateOnly(today)) {
     throw new ApiError(409, 'CHECK_IN_DATE_MISMATCH', 'Check-in is available only on the appointment date (IST).');
   }
   if (row.checkedInAt) return getAppointmentById(id, actor);
   const changed = await prisma.appointment.updateMany({
-    where: { id, status: { in: ['upcoming', 'confirmed'] }, paymentStatus: { not: 'refunded' },
+    where: { id, status: { in: ['upcoming', 'confirmed'] }, ...clinicPaymentWhere(),
       tokenNumber: { not: null }, appointmentDate: today, checkedInAt: null },
     data: { checkedInAt: new Date() },
   });
   if (!changed.count) {
     const current = await getVisibleAppointmentOrThrow(id, actor);
     if (!current.checkedInAt || !['upcoming', 'confirmed'].includes(current.status) ||
-      current.paymentStatus === 'refunded' || current.tokenNumber == null ||
+      !isClinicPaymentComplete(current) || current.tokenNumber == null ||
       formatDateOnly(current.appointmentDate) !== formatDateOnly(today)) {
       throw new ApiError(409, 'BOOKING_CHANGED', 'The booking changed. Refresh before checking in.');
     }
