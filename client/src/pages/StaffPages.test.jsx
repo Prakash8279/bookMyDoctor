@@ -740,8 +740,14 @@ describe('ReceptionDashboard', () => {
       },
     })
     expect(screen.getAllByText('Welcome, Meera.')).toHaveLength(2)
+    const patientCard = screen.getByRole('link', { name: /TODAY'S PATIENTS/ })
+    expect(patientCard.parentElement).toHaveClass('receptionist-dashboard-stats', 'grid-cols-2')
+    expect(patientCard.parentElement.querySelectorAll('a')).toHaveLength(4)
     expect(screen.getByRole('region', { name: 'Receptionist services' })).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'Doctor availability' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'My profile' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).getAllByRole('link')).toHaveLength(7)
     expect(screen.getAllByRole('link', { name: 'Walk-in registration' })[0]).toHaveAttribute('href', '/receptionist/walk-in')
     expect(await screen.findByText('Dr. Kapoor')).toBeInTheDocument()
   })
@@ -848,6 +854,30 @@ describe('CheckIn', () => {
 })
 
 describe('CashPayment', () => {
+  it.each(['rahul', 'abcd', '9876'])('searches unpaid appointments by name, booking ID or token: %s', (query) => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(CashPayment, { data: { appointments: [
+      { id: 'booking-abcd', tokenNumber: 9876, status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Account Owner' }, familyMember: { name: 'Rahul Verma' }, fees: { due: 500 } },
+      { id: 'other-booking', tokenNumber: 1234, status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Anita' } },
+      { id: 'cancelled-booking', tokenNumber: 9876, status: 'cancelled', paymentStatus: 'pending', patient: { name: 'Cancelled Rahul' } },
+    ], payments: [] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Select Unpaid appointment' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search unpaid appointments' }), { target: { value: query } })
+    const list = screen.getByRole('listbox')
+    expect(within(list).getByRole('option', { name: '#abcd · Rahul Verma · Token #9876 · ₹500' })).toBeInTheDocument()
+    expect(within(list).queryByText(/Anita|Cancelled Rahul/)).not.toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('option'))
+    expect(screen.getByLabelText(/^Unpaid appointment/)).toHaveValue('booking-abcd')
+  })
+
+  it('shows a no-results message without clearing the selected booking', () => {
+    renderConnected(CashPayment, { data: { appointments: [{ id: 'booking-abcd', tokenNumber: 8, patient: { name: 'Rahul' }, paymentStatus: 'pending' }] } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'booking-abcd' } })
+    fireEvent.click(screen.getByRole('button', { name: /#abcd · Rahul · Token #8/ }))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'not-present' } })
+    expect(screen.getByText('No matching appointments.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Unpaid appointment/)).toHaveValue('booking-abcd')
+  })
   it('excludes cancelled, no-show and refunded bookings from collections but preserves receipt history', async () => {
     mockGetRoutes({ '/payments': [] })
     renderConnected(CashPayment, { data: {
@@ -1008,8 +1038,8 @@ describe('CashPayment', () => {
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', expect.anything()))
-    await waitFor(() => expect(screen.queryByText('#a1 · Rahul Verma · ₹500')).not.toBeInTheDocument())
-    expect(screen.getByText('#a2 · Rahul Verma · ₹500')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('#a1 · Rahul Verma · Token not assigned · ₹500')).not.toBeInTheDocument())
+    expect(screen.getByText('#a2 · Rahul Verma · Token not assigned · ₹500')).toBeInTheDocument()
   })
 
   // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua

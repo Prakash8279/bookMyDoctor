@@ -545,7 +545,7 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-button bg-surface p-3">
           <span className="grid h-16 w-16 shrink-0 overflow-hidden place-items-center rounded-full bg-primary-light text-lg font-bold text-primary-dark">{current.photoUrl ? <img src={current.photoUrl} alt="Profile" className="h-full w-full object-cover" /> : (current.name || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-          <div className="min-w-[11rem] flex-1">
+          <div className="portal-profile-photo-copy min-w-0 flex-1">
             <span className="mb-1.5 block text-sm font-medium text-ink">Profile photo</span>
             <label htmlFor="portal-profile-photo" className={`inline-flex min-h-10 max-w-full items-center justify-center rounded-button border border-primary-dark px-3 py-2 text-sm font-semibold transition-colors ${uploadingPhoto ? 'cursor-wait bg-primary-light text-primary-dark opacity-70' : 'cursor-pointer bg-white text-primary-dark hover:bg-primary-light'}`}>
               <input id="portal-profile-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} disabled={uploadingPhoto} className="sr-only" />

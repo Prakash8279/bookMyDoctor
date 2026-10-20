@@ -32,12 +32,16 @@ function normalizeOptions(options) {
   return options.map((option) => (typeof option === 'object' && option !== null ? option : { value: option, label: option }))
 }
 
-export function Select({ label, options = [], required = false, name, id, placeholder, disabled = false, className = '', value, defaultValue, onChange, includeBlank = true, ...rest }) {
+export function Select({ label, options = [], required = false, name, id, placeholder, disabled = false, className = '', value, defaultValue, onChange, includeBlank = true, searchable = false, searchPlaceholder = 'Search options…', searchLabel = 'Search options', ...rest }) {
   const normalized = normalizeOptions(options)
   const isControlled = value !== undefined
   const [internalValue, setInternalValue] = useState(defaultValue ?? '')
   const currentValue = isControlled ? value : internalValue
   const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLocaleLowerCase()
+  const visibleOptions = searchable && query ? normalized.filter((option) =>
+    `${option.label} ${option.value} ${option.searchText || ''}`.toLocaleLowerCase().includes(query)) : normalized
   const wrapperRef = useRef(null)
   const selectRef = useRef(null)
   const reactId = useId()
@@ -69,9 +73,10 @@ export function Select({ label, options = [], required = false, name, id, placeh
     }
     if (!isControlled) setInternalValue(nextValue)
     setOpen(false)
+    setSearch('')
   }
 
-  return <div className={`relative ${className}`} ref={wrapperRef}>
+  return <div className={`relative min-w-0 max-w-full ${className}`} ref={wrapperRef}>
     {isControlled
       ? <select ref={selectRef} id={selectId} name={name} required={required} disabled={disabled} value={value} onChange={onChange} className="sr-only" {...rest}>
           {includeBlank && <option value="">{placeholderText}</option>}
@@ -82,12 +87,16 @@ export function Select({ label, options = [], required = false, name, id, placeh
           {normalized.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>}
     <button type="button" className="flex min-h-11 w-full items-center justify-between gap-2 rounded-button border border-border bg-white px-3 text-left text-sm outline-none focus:border-primary-dark disabled:opacity-60" onClick={() => !disabled && setOpen((wasOpen) => !wasOpen)} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} aria-label={rest['aria-label']}>
-      <span className={`truncate ${selected ? 'text-ink' : 'text-muted'}`}>{selected ? selected.label : placeholderText}</span>
+      <span className={`min-w-0 flex-1 truncate ${selected ? 'text-ink' : 'text-muted'}`}>{selected ? selected.label : placeholderText}</span>
       <span aria-hidden="true" className="shrink-0 text-muted">▾</span>
     </button>
-    {open && <ul role="listbox" className="absolute left-0 right-0 z-20 mt-1 max-h-60 overflow-y-auto rounded-button border border-border bg-white text-sm shadow-card">
-      {includeBlank && <li role="option" aria-selected={!currentValue} className={`cursor-pointer px-3 py-2.5 hover:bg-primary-light/40 ${!currentValue ? 'bg-primary-light/60 font-semibold' : ''}`} onClick={() => commit('')}>{placeholderText}</li>}
-      {normalized.map((option) => <li key={option.value} role="option" aria-selected={String(option.value) === String(currentValue)} className={`cursor-pointer px-3 py-2.5 hover:bg-primary-light/40 ${String(option.value) === String(currentValue) ? 'bg-primary-light/60 font-semibold' : ''}`} onClick={() => commit(option.value)}>{option.label}</li>)}
-    </ul>}
+    {open && <div className="absolute left-0 right-0 z-20 mt-1 min-w-0 max-w-full rounded-button border border-border bg-white shadow-card">
+      {searchable && <div className="border-b border-border p-2"><input type="search" aria-label={searchLabel} placeholder={searchPlaceholder} value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault() }} className="min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-3 text-sm" /></div>}
+      <ul role="listbox" className="min-w-0 max-w-full max-h-60 overflow-x-hidden overflow-y-auto whitespace-normal [overflow-wrap:anywhere] rounded-button bg-white text-sm">
+        {includeBlank && !query && <li role="option" aria-selected={!currentValue} className={`cursor-pointer px-3 py-2.5 hover:bg-primary-light/40 ${!currentValue ? 'bg-primary-light/60 font-semibold' : ''}`} onClick={() => commit('')}>{placeholderText}</li>}
+        {visibleOptions.map((option) => <li key={option.value} role="option" aria-selected={String(option.value) === String(currentValue)} className={`cursor-pointer px-3 py-2.5 hover:bg-primary-light/40 ${String(option.value) === String(currentValue) ? 'bg-primary-light/60 font-semibold' : ''}`} onClick={() => commit(option.value)}>{option.label}</li>)}
+      </ul>
+      {searchable && visibleOptions.length === 0 && <p role="status" className="px-3 py-3 text-sm text-muted">No matching appointments.</p>}
+    </div>}
   </div>
 }

@@ -53,8 +53,8 @@ const STAFF_SERVICES = {
     ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'],
   ],
   receptionist: [
-    ['Walk-in registration', '/receptionist/walk-in', 'user-round'], ['Queue monitor', '/receptionist/queue', 'ticket-check'], ['Check-in', '/receptionist/check-in', 'clipboard-list'], ['Appointments', '/receptionist/appointments', 'calendar-days'], ['Doctor availability', '/receptionist/availability', 'clock3'], ['Payments', '/receptionist/payments', 'wallet-cards'],
-    ['Patients', '/receptionist/patients', 'users-round'], ['Reports', '/receptionist/reports', 'chart-no-axes-combined'], ['My profile', '/receptionist/profile', 'user-round'],
+    ['Walk-in registration', '/receptionist/walk-in', 'user-round'], ['Queue monitor', '/receptionist/queue', 'ticket-check'], ['Check-in', '/receptionist/check-in', 'clipboard-list'], ['Appointments', '/receptionist/appointments', 'calendar-days'], ['Payments', '/receptionist/payments', 'wallet-cards'],
+    ['Patients', '/receptionist/patients', 'users-round'], ['Reports', '/receptionist/reports', 'chart-no-axes-combined'],
   ],
 }
 
@@ -642,7 +642,7 @@ export function DoctorProfileEdit({ data }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-button bg-surface p-3">
           <span className="grid h-16 w-16 shrink-0 overflow-hidden place-items-center rounded-full bg-primary-light text-lg font-bold text-primary-dark">{photo ? <img src={photo} alt="Doctor profile preview" className="h-full w-full object-cover" /> : 'DR'}</span>
-          <div className="min-w-[11rem] flex-1">
+          <div className="portal-profile-photo-copy min-w-0 flex-1">
             <span className="mb-1.5 block text-sm font-medium text-ink">Profile photo</span>
             <label htmlFor="doctor-profile-photo" className={`inline-flex min-h-10 max-w-full items-center justify-center rounded-button border border-primary-dark px-3 py-2 text-sm font-semibold transition-colors ${uploadingPhoto ? 'cursor-wait bg-primary-light text-primary-dark opacity-70' : 'cursor-pointer bg-white text-primary-dark hover:bg-primary-light'}`}>
               <input id="doctor-profile-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} disabled={uploadingPhoto} className="sr-only" />
@@ -1219,7 +1219,7 @@ export function ReceptionDashboard({ data }) {
     <StaffServiceGrid role="receptionist" />
     <ErrorNote>{dashboardError}</ErrorNote>
     <p className="mb-3 text-xs text-muted" role="status">{dashboardError ? 'Refresh failed — totals may be outdated.' : todayRecords ? 'Clinic records refreshed automatically every 30 seconds.' : 'Loading current clinic records…'}</p>
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+    <div className="receptionist-dashboard-stats grid grid-cols-2 gap-3 xl:grid-cols-4">
       <StatCard label="TODAY'S PATIENTS" value={todaysPatients} icon="👥" to="/receptionist/patients" />
       <StatCard label="CONSULTATIONS DONE" value={consultationsDone} icon="✓" to="/receptionist/appointments" />
       <StatCard label="WAITING IN QUEUE" value={waiting} icon="≡" to="/receptionist/queue" />
@@ -1398,7 +1398,7 @@ export function CashPayment({ data }) {
     !['cancelled', 'no_show'].includes(item.status) &&
     !['paid', 'refunded'].includes(item.paymentStatus)
   )
-  const appointmentLabel = (item) => `${shortId(item.id)} · ${item.patient?.name || 'Patient'} · ₹${item.fees?.due ?? item.fees?.consultationFee ?? 0}`
+  const appointmentLabel = (item) => `${shortId(item.id)} · ${item.familyMember?.name || item.patient?.name || 'Patient'} · Token ${item.tokenNumber != null ? `#${item.tokenNumber}` : 'not assigned'} · ₹${item.fees?.due ?? item.fees?.consultationFee ?? 0}`
   const selectedAppointment = unpaidAppointments.find((item) => item.id === appointmentId)
   // Doctor/receptionist fee masking exposes ONLY consultationFee (plan §1.8/§1.12) —
   // flatten it through the existing `doctorCharge` helper's expected shape. Also cross-reference
@@ -1487,7 +1487,7 @@ export function CashPayment({ data }) {
       </div>
       <form onSubmit={save} className="max-w-2xl rounded-card border border-border bg-white p-5 shadow-card">
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField label="Unpaid appointment" name="appointmentLabel" type="select" options={unpaidAppointments.map((item) => ({ value: item.id, label: appointmentLabel(item) }))} value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} required />
+          <FormField label="Unpaid appointment" name="appointmentLabel" type="select" searchable searchLabel="Search unpaid appointments" searchPlaceholder="Name, booking ID or token number" options={unpaidAppointments.map((item) => ({ value: item.id, label: appointmentLabel(item), searchText: `${item.patient?.name || ''} ${item.familyMember?.name || ''} ${item.id} ${shortId(item.id)} ${item.tokenNumber ?? ''}` }))} value={appointmentId} onChange={(event) => setAppointmentId(event.target.value)} required />
           <input type="hidden" name="appointment" value={appointmentId} />
           <FormField label="Payment method" name="method" type="select" options={['Cash', 'Upi', 'Card', 'Online']} required />
           {/* DUE-AMOUNT VISIBILITY FIX (user request: "jab payment minimum hua hai to receptionist

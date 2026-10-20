@@ -30,23 +30,79 @@ form,
   min-width: 0;
 }
 
+/* A scrolling table must shrink with its card, never set the page's intrinsic width. */
+.portal-content :is(.data-scroll, .overflow-x-auto) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
+}
+
 /* CSS Grid items default to min-width:auto. A text field or file picker can
    therefore force a nominally one-column mobile grid wider than its card,
    leaving the control's right border clipped by the viewport. Keep every
    portal grid/form child shrinkable; individual data tables remain scrollable
    through their existing .data-scroll wrapper. */
 .portal-content .grid > *,
+.portal-content .flex > *,
 .portal-content form > *,
 .portal-content label {
   min-width: 0;
   max-width: 100%;
 }
 
-.portal-content :is(input, select, textarea) {
+.portal-content :is(input, select, textarea):not(.sr-only) {
   min-width: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+/* Keep the real control behind a custom dropdown/file button visually hidden.
+   Giving it width:100% defeats sr-only and can scroll the viewport on focus. */
+.portal-content :is(input, select, textarea).sr-only {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  max-width: 1px;
+  padding: 0;
+  border-width: 0;
+}
+
+.portal-content input:is([type='date'], [type='time'], [type='datetime-local']) {
+  min-inline-size: 0;
+}
+
+.portal-content input::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: start;
+}
+
+.portal-record-actions,
+.portal-record-actions > .flex {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.portal-record-actions :is(button, a) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Patient payments/family/notifications also have hand-written definition-list
+   cards. A shrink-0 label must not consume the entire row beside a long value. */
+.portal-content dl > .flex > dt {
+  min-width: 0;
+  max-width: 45%;
+  flex-shrink: 1;
+  overflow-wrap: anywhere;
+}
+
+.portal-content dl > .flex > dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .portal-content input:is([type='checkbox'], [type='radio']) {
@@ -388,7 +444,7 @@ label,
     flex: 1 1 auto;
   }
 
-  .page-heading__action :is(input, select) {
+  .page-heading__action :is(input, select):not(.sr-only) {
     width: 100%;
   }
 
@@ -397,36 +453,51 @@ label,
     padding: 1rem;
   }
 
-  .portal-content :is(.grid-cols-2, .grid-cols-3) {
-    grid-template-columns: minmax(0, 1fr);
+  .portal-content form button {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
+
+  .portal-profile-photo-copy {
+    flex-basis: 11rem;
+    min-width: 0;
+  }
+
+  /* Let Tailwind's responsive grid classes choose column counts. Overriding
+     grid-cols-2/3 here breaks sm:col-span-2 children at 640–767px by creating
+     implicit columns, and stacks intentionally compact stats/date controls. */
 
   .portal-content .doctor-appointment-export-dates {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .portal-content .doctor-dashboard-stats {
+  .portal-content .doctor-dashboard-stats,
+  .portal-content .receptionist-dashboard-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
   }
 
-  .doctor-dashboard-stats > a {
+  .doctor-dashboard-stats > a,
+  .receptionist-dashboard-stats > a {
     min-width: 0;
     padding: 0.75rem;
   }
 
-  .doctor-dashboard-stats > a > div > p {
+  .doctor-dashboard-stats > a > div > p,
+  .receptionist-dashboard-stats > a > div > p {
     font-size: 0.6875rem;
     line-height: 1.25;
   }
 
-  .doctor-dashboard-stats > a > div > span {
+  .doctor-dashboard-stats > a > div > span,
+  .receptionist-dashboard-stats > a > div > span {
     width: 1.75rem;
     height: 1.75rem;
     flex: 0 0 1.75rem;
   }
 
-  .doctor-dashboard-stats > a > p {
+  .doctor-dashboard-stats > a > p,
+  .receptionist-dashboard-stats > a > p {
     margin-top: 0.5rem;
     font-size: 1.375rem;
     line-height: 1.2;
@@ -437,7 +508,7 @@ label,
   }
 
   .portal-content .data-scroll {
-    margin-inline: -0.25rem;
+    margin-inline: 0;
     padding-bottom: 0.25rem;
   }
 
