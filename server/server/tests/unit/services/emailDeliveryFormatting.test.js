@@ -25,11 +25,17 @@ test('a plain notification is delivered as branded HTML plus complete plain text
   expect(transport.sendMail).toHaveBeenLastCalledWith(expect.objectContaining({
     from:'BookADoctors <noreply@bookadoctors.com>',replyTo:'support@bookadoctors.com',
     html:expect.stringContaining('CDR-EXAMPLE'),text:expect.stringContaining('Receipt number: CDR-EXAMPLE'),
+    attachments:[expect.objectContaining({cid:'bookadoctors-brand-logo@bookadoctors.com',contentType:'image/png',contentDisposition:'inline',content:expect.any(Buffer)})],
   }));
 });
 test('already-formatted OTP markup is preserved, not wrapped twice', async () => {
   const message = authOtpTemplate({email:'patient@example.test',otp:'123456',purpose:'register'});
   await sendVerificationEmail({to:'patient@example.test',...message});
   const transport = nodemailer.testTransport;
-  expect(transport.sendMail).toHaveBeenLastCalledWith(expect.objectContaining({html:message.html,text:message.text}));
+  expect(transport.sendMail).toHaveBeenLastCalledWith(expect.objectContaining({html:message.html,text:message.text,
+    attachments:[expect.objectContaining({cid:'bookadoctors-brand-logo@bookadoctors.com'})]}));
+});
+test('does not attach unrelated artwork to a caller-supplied HTML message without a CID', async () => {
+  await sendEmail({to:'patient@example.test',subject:'Custom message',text:'Plain',html:'<p>Custom content</p>'});
+  expect(nodemailer.testTransport.sendMail.mock.calls.at(-1)[0].attachments).toBeUndefined();
 });

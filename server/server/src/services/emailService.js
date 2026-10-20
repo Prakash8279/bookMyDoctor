@@ -9,6 +9,7 @@ const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
 const env = require('../config/env');
 const { notificationTemplate } = require('./emailTemplates');
+const { EMAIL_LOGO_CID, emailLogoAttachment } = require('./emailBrandAsset');
 
 let cachedTransporter = null;
 
@@ -64,6 +65,7 @@ const smtpProvider = {
       subject,
       text,
       html: html || text,
+      ...(html?.includes(`cid:${EMAIL_LOGO_CID}`) ? { attachments: [emailLogoAttachment()] } : {}),
     });
     logger.info(`[email:smtp] message sent to=${to} messageId=${info.messageId}`);
     return info;

@@ -1,3 +1,6 @@
+const { EMAIL_LOGO_CID } = require('./emailBrandAsset');
+const LOGO_IMAGE = `<img src="cid:${EMAIL_LOGO_CID}" alt="BookADoctors logo" width="44" height="40" style="display:block;width:44px;height:40px;border:0;outline:none;text-decoration:none;">`;
+
 const BRAND = {
   name: 'BookADoctors',
   website: 'https://bookadoctors.com',
@@ -37,7 +40,7 @@ function authOtpTemplate({ email, otp, purpose }) {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f1ed;padding:24px 12px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #eadfd8;border-radius:16px;overflow:hidden;">
-        <tr><td style="background:${BRAND.dark};padding:22px 28px;color:#ffffff;font-size:22px;font-weight:700;">${BRAND.name}</td></tr>
+        <tr><td style="background:${BRAND.dark};padding:22px 24px;"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td width="44"><a href="${BRAND.website}" style="text-decoration:none;">${LOGO_IMAGE}</a></td><td style="padding-left:12px;color:#ffffff;font-size:22px;font-weight:700;">${BRAND.name}</td></tr></table></td></tr>
         <tr><td style="padding:30px 28px;">
           <h1 style="margin:0 0 14px;font-size:24px;line-height:1.25;color:${BRAND.dark};">${title}</h1>
           <p style="margin:0 0 22px;font-size:15px;line-height:1.65;color:#4b5563;">${intro}</p>
@@ -86,7 +89,7 @@ function notificationTemplate({ email, subject, text, type = 'system', details =
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f5f2ef"><tr><td align="center" style="padding:24px 12px;">
 <!--[if mso]><table role="presentation" width="600"><tr><td><![endif]-->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #e8e1dc;border-radius:16px;overflow:hidden;">
-<tr><td bgcolor="${BRAND.dark}" style="padding:22px 24px;border-top:5px solid ${BRAND.primary};"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td width="42" align="center" bgcolor="${BRAND.primary}" style="width:42px;height:42px;border-radius:12px;color:#ffffff;font-size:28px;font-weight:700;">+</td><td style="padding-left:12px;"><a href="${BRAND.website}" style="color:#ffffff;text-decoration:none;font-size:22px;line-height:1.4;font-weight:700;">${BRAND.name}</a><div style="color:#d8cec7;font-size:11px;line-height:1.6;">Care without the waiting room.</div></td></tr></table></td></tr>
+<tr><td bgcolor="${BRAND.dark}" style="padding:22px 24px;border-top:5px solid ${BRAND.primary};"><table role="presentation" cellspacing="0" cellpadding="0"><tr><td width="44"><a href="${BRAND.website}" style="text-decoration:none;">${LOGO_IMAGE}</a></td><td style="padding-left:12px;"><a href="${BRAND.website}" style="color:#ffffff;text-decoration:none;font-size:22px;line-height:1.4;font-weight:700;">${BRAND.name}</a><div style="color:#d8cec7;font-size:11px;line-height:1.6;">Care without the waiting room.</div></td></tr></table></td></tr>
 <tr><td style="padding:26px 24px 24px;"><p style="margin:0 0 10px;color:${BRAND.primary};font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;">${category}</p><h1 style="margin:0 0 18px;color:${BRAND.dark};font-size:25px;line-height:1.3;font-weight:700;overflow-wrap:anywhere;">${escapeHtml(subject)}</h1>${paragraphs}${amountBlock}${detailBlock}
 <table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0 18px;"><tr><td bgcolor="${BRAND.primary}" align="center" style="border-radius:9px;"><a href="${escapeHtml(url)}" style="display:inline-block;padding:14px 22px;border:1px solid ${BRAND.primary};border-radius:9px;color:#ffffff;font-size:14px;line-height:1.4;font-weight:700;text-decoration:none;">Open BookADoctors &rarr;</a></td></tr></table>
 <p style="margin:0;font-size:12px;line-height:1.7;color:#81786f;">View the latest status securely in your account. If the button does not open, visit <a href="${BRAND.website}/login" style="color:${BRAND.primary};">bookadoctors.com/login</a>.</p></td></tr>
