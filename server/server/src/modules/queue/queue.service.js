@@ -501,6 +501,12 @@ async function updateQueueStatus(id, targetStatus, actor) {
       title: 'Your turn — token called',
       body: `Your token #${row.tokenNumber} has been called. Please proceed to the doctor's room.`,
       type: 'queue',
+      emailActionPath: '/patient/queue',
+      emailDetails: [
+        { label: 'Token called', value: `#${row.tokenNumber}` },
+        { label: 'Visit date', value: formatDateOnly(row.queueDate) },
+        { label: 'Next step', value: "Please proceed to the doctor's room." },
+      ],
     });
   }
 

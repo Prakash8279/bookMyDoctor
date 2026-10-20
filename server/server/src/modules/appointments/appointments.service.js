@@ -1277,6 +1277,13 @@ async function runBookingJob(payload) {
             title: 'Booking confirmed',
             body: `Your appointment on ${dateStr} is confirmed. Token number #${result.tokenNumber}.`,
             type: 'appointment',
+            emailActionPath: '/patient/appointments',
+            emailDetails: [
+              { label: 'Booking reference', value: result.appointmentId },
+              { label: 'Visit date', value: dateStr },
+              { label: 'Booking token', value: `#${result.tokenNumber}` },
+              { label: 'Before joining the queue', value: 'Any remaining clinic payment must be completed.' },
+            ],
           }),
           notificationsService.notifySystemEventSafe(doctorUserId, {
             title: 'New booking',
@@ -1634,6 +1641,13 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
         title: 'Appointment cancelled',
         body: `Your appointment on ${formatDateOnly(row.appointmentDate)} (token #${row.tokenNumber}) has been cancelled by the clinic. Please contact the clinic for details.`,
         type: 'appointment',
+        emailActionPath: '/patient/appointments',
+        emailDetails: [
+          { label: 'Booking reference', value: row.id },
+          { label: 'Visit date', value: formatDateOnly(row.appointmentDate) },
+          { label: 'Visit time (IST)', value: row.appointmentTime },
+          { label: 'Status', value: 'Cancelled' },
+        ],
       });
     }
   }

@@ -586,6 +586,14 @@ describe('payments.service.createPaymentForAppointment — notifications', () =>
       'patient-1',
       expect.objectContaining({ title: 'Payment received' })
     );
+    const message = notificationsService.notifySystemEventSafe.mock.calls[0][1];
+    expect(message.emailAmount).toBe('₹613.60');
+    expect(message.emailActionPath).toBe('/patient/payments');
+    expect(message.emailDetails).toEqual(expect.arrayContaining([
+      expect.objectContaining({label:'Receipt number',value:expect.any(String)}),
+      {label:'Payment status',value:'Paid in full'},
+      {label:'Booking reference',value:'appt-1'},
+    ]));
   });
 });
 

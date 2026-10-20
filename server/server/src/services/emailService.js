@@ -8,6 +8,7 @@
 const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
 const env = require('../config/env');
+const { notificationTemplate } = require('./emailTemplates');
 
 let cachedTransporter = null;
 
@@ -101,10 +102,11 @@ function hasLiveEmailTransport() {
  * Best-effort, never throws — email delivery (real or placeholder) is always a side effect.
  * @param {{to?:string|null, subject:string, text:string, html?:string}} message
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, type, details, actionPath, amount }) {
   if (!to) return; // no address on file — silently skip
   try {
-    return await resolveProvider().send({ to, subject, text, html });
+    const formatted = html ? { subject, text, html } : notificationTemplate({ email: to, subject, text, type, details, actionPath, amount });
+    return await resolveProvider().send({ to, ...formatted });
   } catch (err) {
     logger.warn(`[email] sendEmail failed for ${to}: ${err.message}`);
   }
@@ -123,7 +125,8 @@ async function sendVerificationEmail({ to, subject, text, html }) {
   }
 
   try {
-    return await resolveProvider().send({ to, subject, text, html });
+    const formatted = html ? { subject, text, html } : notificationTemplate({ email: to, subject, text, type: 'system' });
+    return await resolveProvider().send({ to, ...formatted });
   } catch (err) {
     logger.warn(`[email:verification] delivery failed: ${err.message}`);
     throw err;

@@ -54,6 +54,15 @@ const notificationsService = require('../../../src/modules/notifications/notific
 const ADMIN = { id: 'admin-1', role: 'admin' };
 
 describe('notificationsService.notifySystemEvent', () => {
+  test('passes receipt details only to email, leaving push and stored inbox body unchanged', async () => {
+    prisma.notification.create.mockResolvedValue({id:'n-email'});
+    prisma.notificationRecipient.create.mockResolvedValue({});
+    prisma.user.findUnique.mockResolvedValue({email:'patient@example.test'});
+    await notificationsService.notifySystemEvent('user-1',{title:'Payment received',body:'Received',type:'payment',emailAmount:'₹500.00',emailDetails:[{label:'Receipt',value:'R-1'}],emailActionPath:'/patient/payments'});
+    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({type:'payment',amount:'₹500.00',details:[{label:'Receipt',value:'R-1'}],actionPath:'/patient/payments'}));
+    expect(prisma.notification.create).toHaveBeenCalledWith({data:{title:'Payment received',body:'Received',type:'payment',audience:'single_user',targetUserId:'user-1',senderUserId:null}});
+    expect(pushService.sendPush).toHaveBeenCalledWith('user-1',{title:'Payment received',body:'Received'});
+  });
   test('writes the in-app notification+recipient scoped to exactly the given userId, then fans out email+push', async () => {
     prisma.notification.create.mockResolvedValue({ id: 'notif-1' });
     prisma.notificationRecipient.create.mockResolvedValue({});
@@ -65,7 +74,7 @@ describe('notificationsService.notifySystemEvent', () => {
       data: { title: 'Hi', body: 'Body', type: 'system', audience: 'single_user', targetUserId: 'user-1', senderUserId: null },
     });
     expect(prisma.notificationRecipient.create).toHaveBeenCalledWith({ data: { notificationId: 'notif-1', userId: 'user-1' } });
-    expect(emailService.sendEmail).toHaveBeenCalledWith({ to: 'user@example.com', subject: 'Hi', text: 'Body' });
+    expect(emailService.sendEmail).toHaveBeenCalledWith({ to: 'user@example.com', subject: 'Hi', text: 'Body', type:'system' });
     expect(pushService.sendPush).toHaveBeenCalledWith('user-1', { title: 'Hi', body: 'Body' });
     expect(cacheService.invalidate).toHaveBeenCalledWith('cache:notifications:mylist:user-1:*');
   });
@@ -76,7 +85,7 @@ describe('notificationsService.notifySystemEvent', () => {
     prisma.user.findUnique.mockRejectedValue(new Error('db down'));
 
     await expect(notificationsService.notifySystemEvent('user-1', { title: 'Hi', body: 'Body' })).resolves.toBeUndefined();
-    expect(emailService.sendEmail).toHaveBeenCalledWith({ to: undefined, subject: 'Hi', text: 'Body' });
+    expect(emailService.sendEmail).toHaveBeenCalledWith({ to: undefined, subject: 'Hi', text: 'Body', type:'system' });
     expect(pushService.sendPush).toHaveBeenCalled();
   });
 });

@@ -27,8 +27,9 @@ describe('emailService.sendEmail', () => {
     await sendEmail({ to: 'user@example.com', subject: 'Hello', text: 'Body text' });
 
     expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('to=user@example.com subject="Hello" body="Body text"')
+      expect.stringContaining('to=user@example.com subject="Hello" body="BookADoctors')
     );
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Body text'));
   });
 
   test('an unrecognized EMAIL_PROVIDER value falls back to the log provider rather than throwing', async () => {

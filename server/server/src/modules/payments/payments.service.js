@@ -274,6 +274,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           status: true,
           source: true,
           appointmentDate: true,
+          appointmentTime: true,
           patientUserId: true,
           doctorUserId: true,
           clinicId: true,
@@ -285,7 +286,8 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           emergencyFee: true,
           gstAmount: true,
           totalAmount: true,
-          doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true, tokenNumberingMode: true, onlineTokenParity: true } } } },
+          clinic: { select: { name: true } },
+          doctor: { select: { name: true, doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true, tokenNumberingMode: true, onlineTokenParity: true } } } },
         },
       });
 
@@ -569,6 +571,9 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         doctorUserId: appointment.doctorUserId,
         tokenNumber,
         chargedAmount: chargedAmount.toString(),
+        receiptNumber, appointmentId: appointment.id, appointmentDate: appointment.appointmentDate,
+        appointmentTime: appointment.appointmentTime, doctorName: appointment.doctor?.name,
+        clinicName: appointment.clinic?.name, paymentComplete: isFullPayment, mode,
         justConfirmedBooking: appointment.status === 'pending_payment',
       };
 
@@ -616,8 +621,25 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
   }
 
   if (notifyContext) {
+    const paymentEmail = {
+      emailAmount: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(notifyContext.chargedAmount)),
+      emailActionPath: '/patient/payments',
+      emailDetails: [
+        { label: 'Receipt number', value: notifyContext.receiptNumber },
+        { label: 'Booking reference', value: notifyContext.appointmentId },
+        { label: 'Doctor', value: notifyContext.doctorName },
+        { label: 'Clinic', value: notifyContext.clinicName },
+        { label: 'Visit date', value: notifyContext.appointmentDate ? new Date(notifyContext.appointmentDate).toISOString().slice(0, 10) : null },
+        { label: 'Visit time (IST)', value: notifyContext.appointmentTime },
+        { label: 'Booking token', value: notifyContext.tokenNumber != null ? `#${notifyContext.tokenNumber}` : null },
+        { label: 'Payment method', value: { cash: 'Cash at clinic', upi: 'UPI at clinic', card: 'Card at clinic', online: 'Online payment' }[notifyContext.mode] || notifyContext.mode },
+        { label: 'Payment status', value: notifyContext.paymentComplete ? 'Paid in full' : 'Advance received — clinic balance pending' },
+        { label: 'Queue admission', value: notifyContext.paymentComplete ? 'Payment cleared for queue admission on the visit date' : 'Complete the remaining clinic payment before joining the queue' },
+      ],
+    };
     if (notifyContext.justConfirmedBooking) {
       await notificationsService.notifySystemEventSafe(notifyContext.patientUserId, {
+        ...paymentEmail,
         title: 'Payment received — booking confirmed',
         body: `Payment of Rs.${notifyContext.chargedAmount} received. Your booking is confirmed, token number #${notifyContext.tokenNumber}.`,
         type: 'payment',
@@ -629,6 +651,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       });
     } else {
       await notificationsService.notifySystemEventSafe(notifyContext.patientUserId, {
+        ...paymentEmail,
         title: 'Payment received',
         body: `Rs.${notifyContext.chargedAmount} was recorded against your appointment (token #${notifyContext.tokenNumber}).`,
         type: 'payment',
