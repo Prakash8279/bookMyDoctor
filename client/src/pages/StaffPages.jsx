@@ -1545,7 +1545,7 @@ export function CashPayment({ data }) {
         { key: 'actions', label: 'Actions', render: (item) => <button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewReceipt(item)} disabled={receipt.loading}>{receipt.loading ? 'Opening…' : '👁 View receipt'}</button> },
       ]} /></div>
     </Page>
-    <PdfPreviewModal preview={receipt.preview} onClose={receipt.close} title="Payment receipt preview" />
+    <PdfPreviewModal preview={receipt.preview} error={receipt.error} onClose={receipt.close} title="Payment receipt preview" />
   </>
 }
 

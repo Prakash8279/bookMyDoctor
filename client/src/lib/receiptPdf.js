@@ -26,6 +26,39 @@ import { formatDate, formatMoneyPlain, shortId } from './format'
 import { loadBrandLogoRgb } from './brandLogo'
 import { theme } from './theme'
 import { isOnlineBookingPayment } from './paymentVisibility'
+import { appointmentTimeLabel } from './appointmentTime'
+
+// Conservative Helvetica width bound, including long unbroken references and explicit lines.
+export function wrapReceiptText(value, width, size = 10) {
+  const charWidth = (char) => {
+    if (/\s/.test(char)) return 0.3
+    if ('W@'.includes(char)) return 1.05
+    if ('Mm'.includes(char)) return 0.95
+    if (char === 'w') return 0.85
+    if ('ilI.,:;!|\'`'.includes(char)) return 0.32
+    if ('frt()[]'.includes(char)) return 0.45
+    return /[A-Z]/.test(char) ? 0.8 : 0.65
+  }
+  return String(value == null || value === '' ? '-' : value).split(/\r?\n/).flatMap((paragraph) => {
+    const lines = []
+    let rest = paragraph.trim()
+    while (rest) {
+      let measured = 0
+      let limit = 0
+      while (limit < rest.length && measured + charWidth(rest[limit]) * size <= width) {
+        measured += charWidth(rest[limit]) * size
+        limit += 1
+      }
+      if (limit === rest.length) { lines.push(rest); break }
+      limit = Math.max(1, limit)
+      const space = rest.lastIndexOf(' ', limit)
+      const end = space > 0 ? space : limit
+      lines.push(rest.slice(0, end))
+      rest = rest.slice(end).trimStart()
+    }
+    return lines.length ? lines : ['']
+  })
+}
 
 // COMPLETENESS ADD (request: "online booking ke time pe kitna payment hua hai and second clinic pe
 // aake cash ya online ye v to confirm hona chahiye", then "... pdf mr v ye aana chahiye") — the
@@ -42,8 +75,7 @@ const BRAND_TINT = hexToRgb01('#f5e9e3') // theme's primaryLight — the totals-
 
 function issuedNowLines() {
   const now = new Date()
-  const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-  return `${formatDate(now)}, ${time}`
+  return `${now.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' })} IST`
 }
 
 /**
@@ -61,11 +93,19 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
   const rightX = doc.pageWidth - marginX
   const pageBottom = doc.pageHeight - 50
   let y = 50
+  let page = 1
+
+  function pageNumber() {
+    doc.text(marginX, doc.pageHeight - 24, `BookADoctors | Page ${page}`, { size: 8 })
+  }
 
   function ensureSpace(next) {
     if (y + next > pageBottom) {
+      pageNumber()
       doc.addPage()
-      y = 50
+      page += 1
+      doc.text(marginX, 35, `${title} - ${subtitle || 'Document'} (continued)`, { size: 11, bold: true, color: BRAND })
+      y = 60
     }
   }
 
@@ -83,49 +123,70 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
   y += 18
 
   meta.forEach((line) => {
-    doc.text(marginX, y, line, { size: 9 })
-    y += 13
+    wrapReceiptText(line, rightX - marginX, 9).forEach((text) => {
+      ensureSpace(13)
+      doc.text(marginX, y, text, { size: 9 })
+      y += 13
+    })
   })
   y += 8
 
   sections.forEach((section) => {
-    ensureSpace(24)
+    ensureSpace(50)
     doc.text(marginX, y, section.heading, { size: 12, bold: true, color: BRAND })
     y += 16
     section.rows.forEach(([label, value]) => {
-      ensureSpace(16)
-      doc.text(marginX + 4, y, `${label}:`, { size: 10 })
-      doc.text(marginX + 160, y, value === null || value === undefined || value === '' ? '-' : String(value), { size: 10 })
-      y += 15
+      const labels = wrapReceiptText(`${label}:`, 146)
+      const values = wrapReceiptText(value, rightX - marginX - 160)
+      const count = Math.max(labels.length, values.length)
+      ensureSpace(Math.min(count * 13 + 4, 65))
+      for (let i = 0; i < count; i += 1) {
+        ensureSpace(15)
+        if (labels[i]) doc.text(marginX + 4, y, labels[i], { size: 10 })
+        if (values[i]) doc.text(marginX + 160, y, values[i], { size: 10 })
+        y += 13
+      }
+      y += 3
     })
-    y += 8
+    y += 5
     doc.line(marginX, y, rightX, y, { gray: 0.85 })
-    y += 10
+    y += 7
   })
 
   if (totalRows.length) {
-    const boxHeight = totalRows.length * 17 + 12
+    const totals = totalRows.map(([label, value, emphasize]) => ({
+      labels: wrapReceiptText(label, rightX - marginX - 184, emphasize ? 12 : 10),
+      values: wrapReceiptText(value, 140, emphasize ? 12 : 10), emphasize,
+    }))
+    const boxHeight = totals.reduce((height, row) => height + Math.max(row.labels.length, row.values.length) * 17, 12)
     ensureSpace(boxHeight + 10)
     doc.rect(marginX, y, rightX - marginX, boxHeight, { fill: true, fillColor: BRAND_TINT, strokeColor: BRAND })
     let ty = y + 18
-    totalRows.forEach(([label, value, emphasize]) => {
-      doc.text(marginX + 12, ty, label, { size: emphasize ? 12 : 10, bold: !!emphasize, color: emphasize ? BRAND : undefined })
-      doc.text(rightX - 160, ty, String(value), { size: emphasize ? 12 : 10, bold: !!emphasize, color: emphasize ? BRAND : undefined })
-      ty += 17
+    totals.forEach(({ labels, values, emphasize }) => {
+      for (let i = 0; i < Math.max(labels.length, values.length); i += 1) {
+        const style = { size: emphasize ? 12 : 10, bold: !!emphasize, color: emphasize ? BRAND : undefined }
+        if (labels[i]) doc.text(marginX + 12, ty, labels[i], style)
+        if (values[i]) doc.text(rightX - 160, ty, values[i], style)
+        ty += 17
+      }
     })
     y += boxHeight + 16
   }
 
   if (footer.length) {
-    ensureSpace(footer.length * 11 + 14)
+    ensureSpace(40)
     doc.line(marginX, y, rightX, y, { gray: 0.85 })
     y += 14
     footer.forEach((line) => {
-      doc.text(marginX, y, line, { size: 8 })
-      y += 11
+      wrapReceiptText(line, rightX - marginX, 8).forEach((text) => {
+        ensureSpace(12)
+        doc.text(marginX, y, text, { size: 8 })
+        y += 11
+      })
     })
   }
 
+  pageNumber()
   return doc
 }
 
@@ -135,13 +196,18 @@ export async function renderReceiptDocument({ title, subtitle, meta = [], sectio
  * included since the appointments.service.js#APPOINTMENT_INCLUDE fix that added them for exactly
  * this purpose).
  */
-export function buildBookingSlipSections({ appointment, fee, paid, due, patientName, patientNumber }) {
+export function buildBookingSlipSections({ appointment, fee, paid, due, patientName, patientNumber, payment }) {
   return {
     title: 'BookADoctors',
     subtitle: 'Booking Slip',
     meta: [`Booking ID: ${shortId(appointment.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', patientName], ['Patient ID', patientNumber != null ? `DCP${patientNumber}` : undefined]] },
+      { heading: 'Patient', rows: [
+        ['Name', appointment.familyMember?.name || patientName || appointment.patient?.name],
+        ['Patient ID', patientNumber != null ? `DCP${patientNumber}` : undefined],
+        ...(appointment.familyMember ? [['Relationship', appointment.familyMember.relation], ['Booked by', appointment.patient?.name]] : []),
+        ...(appointment.patient?.phone ? [['Contact phone', appointment.patient.phone]] : []),
+      ] },
       {
         heading: 'Doctor',
         rows: [
@@ -168,10 +234,15 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
           // asks "aapki booking id kya hai" at the counter. Same shortId(appointment.id) format
           // used everywhere else in the app (e.g. PatientPages.jsx's Payments table).
           ['Booking ID', shortId(appointment.id)],
+          ['Full booking reference', appointment.id],
           ['Date', formatDate(appointment.appointmentDate)],
-          ['Time', appointment.appointmentTime],
+          ['Time', appointmentTimeLabel(appointment)],
           ['Token number', appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : 'Not yet assigned'],
           ['Status', appointment.status],
+          ['Payment status', appointment.paymentStatus || payment?.status || 'Not recorded'],
+          ...(payment?.mode || appointment.paymentMethod ? [['Payment method', payment?.mode || appointment.paymentMethod]] : []),
+          ...(payment?.transactionRef || payment?.transactionId ? [['Transaction reference', payment.transactionRef || payment.transactionId]] : []),
+          ...(appointment.reason || appointment.notes ? [['Visit notes', appointment.reason || appointment.notes]] : []),
         ],
       },
     ],
@@ -197,7 +268,7 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
       ['Paid', formatMoneyPlain(paid)],
       ['Due', formatMoneyPlain(due), true],
     ],
-    footer: ['This is a computer-generated booking slip from BookADoctors.', 'Please carry a valid photo ID to your appointment.'],
+    footer: ['This is a computer-generated booking slip from BookADoctors.', 'Visit times are approximate; follow your live queue for updates.', 'A pending payment slip is not proof of payment or a confirmed token.', 'Please carry a valid photo ID to your appointment.'],
   }
 }
 
@@ -207,9 +278,10 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
  * this in an in-page preview and lets the browser's object URL double as the download link's href.
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
-export async function buildBookingSlipPdfBlob({ appointment, fee, paid, due, patientName, patientNumber }) {
-  const doc = await renderReceiptDocument(buildBookingSlipSections({ appointment, fee, paid, due, patientName, patientNumber }))
-  return { blob: doc.toBlob(), filename: `booking-slip-${shortId(appointment.id)}.pdf` }
+export async function buildBookingSlipPdfBlob(options) {
+  const document = buildBookingSlipSections(options)
+  const doc = await renderReceiptDocument(document)
+  return { blob: doc.toBlob(), filename: `booking-slip-${shortId(options.appointment.id)}.pdf`, document }
 }
 
 /**
@@ -304,7 +376,7 @@ export function buildPatientReceiptSections(item) {
     subtitle: 'Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', item.patientName], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
+      { heading: 'Patient', rows: [['Name', appointment?.familyMember?.name || item.patientName || item.patient?.name], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
       {
         heading: 'Doctor',
         rows: [
@@ -328,7 +400,8 @@ export function buildPatientReceiptSections(item) {
         heading: 'Appointment',
         rows: [
           ['Date', appointment ? formatDate(appointment.appointmentDate) : undefined],
-          ['Time', appointment?.appointmentTime],
+          ['Booking ID', appointment?.id || item.appointmentId],
+          ['Time', appointment ? appointmentTimeLabel(appointment) : undefined],
           ['Token number', appointment?.tokenNumber != null ? `#${appointment.tokenNumber}` : undefined],
         ],
       },
@@ -345,8 +418,9 @@ export function buildPatientReceiptSections(item) {
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
 export async function buildPatientReceiptPdfBlob(item) {
-  const doc = await renderReceiptDocument(buildPatientReceiptSections(item))
-  return { blob: doc.toBlob(), filename: `receipt-${item.receiptNumber || shortId(item.id)}.pdf` }
+  const document = buildPatientReceiptSections(item)
+  const doc = await renderReceiptDocument(document)
+  return { blob: doc.toBlob(), filename: `receipt-${item.receiptNumber || shortId(item.id)}.pdf`, document }
 }
 
 /**
@@ -366,7 +440,7 @@ export function buildStaffReceiptSections(item) {
     subtitle: 'Clinic Payment Receipt',
     meta: [`Receipt No: ${item.receiptNumber || shortId(item.id)}`, `Issued: ${issuedNowLines()}`],
     sections: [
-      { heading: 'Patient', rows: [['Name', item.patient?.name], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
+      { heading: 'Patient', rows: [['Name', appointment?.familyMember?.name || item.patient?.name], ['Patient ID', item.patient?.patientNumber != null ? `DCP${item.patient.patientNumber}` : undefined]] },
       {
         heading: 'Doctor',
         rows: [
@@ -389,7 +463,8 @@ export function buildStaffReceiptSections(item) {
         heading: 'Appointment',
         rows: [
           ['Date', appointment ? formatDate(appointment.appointmentDate) : undefined],
-          ['Time', appointment?.appointmentTime],
+          ['Booking ID', appointment?.id || item.appointmentId],
+          ['Time', appointment ? appointmentTimeLabel(appointment) : undefined],
           ['Token number', appointment?.tokenNumber != null ? `#${appointment.tokenNumber}` : undefined],
         ],
       },
@@ -399,7 +474,7 @@ export function buildStaffReceiptSections(item) {
           ['Payment date', formatDate(item.createdAt)],
           ['Mode', item.mode],
           ['Payment source', paymentSourceLabel(item)],
-          ['UTR / Transaction ref', item.transactionRef],
+          ['UTR / Transaction ref', item.transactionRef || item.transactionId],
           ...(item.payerUpiId ? [['UPI ID', item.payerUpiId]] : []),
           ['Status', item.status],
         ],
@@ -408,7 +483,7 @@ export function buildStaffReceiptSections(item) {
     totalRows: [['Consultation fee collected', formatMoneyPlain(item.fees?.consultationFee ?? item.clinicAmount), true]],
     footer: [
       'This is a computer-generated receipt from BookADoctors.',
-      'Amount shown is the consultation fee only, per this platform’s clinic-staff fee-visibility policy.',
+      'Amount shown is the consultation fee collected by the clinic.',
     ],
   }
 }
@@ -420,6 +495,7 @@ export function buildStaffReceiptSections(item) {
  * @returns {Promise<{blob: Blob, filename: string}>}
  */
 export async function buildStaffReceiptPdfBlob(item) {
-  const doc = await renderReceiptDocument(buildStaffReceiptSections(item))
-  return { blob: doc.toBlob(), filename: `receipt-${item.receiptNumber || shortId(item.id)}.pdf` }
+  const document = buildStaffReceiptSections(item)
+  const doc = await renderReceiptDocument(document)
+  return { blob: doc.toBlob(), filename: `receipt-${item.receiptNumber || shortId(item.id)}.pdf`, document }
 }

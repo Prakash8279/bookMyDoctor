@@ -71,7 +71,10 @@ export function loadBrandLogoRgb() {
         return
       }
       const image = new Image()
+      // A blocked image request must never leave View slip stuck on Opening indefinitely.
+      const timeout = setTimeout(() => resolve(null), 3000)
       image.onload = () => {
+        clearTimeout(timeout)
         try {
           ctx.drawImage(image, 0, 0, RASTER_SIZE, RASTER_SIZE)
           const { data } = ctx.getImageData(0, 0, RASTER_SIZE, RASTER_SIZE)
@@ -82,7 +85,7 @@ export function loadBrandLogoRgb() {
           resolve(null)
         }
       }
-      image.onerror = () => resolve(null)
+      image.onerror = () => { clearTimeout(timeout); resolve(null) }
       image.src = logoUrl
     } catch {
       resolve(null)

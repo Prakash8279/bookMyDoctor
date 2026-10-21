@@ -1113,12 +1113,12 @@ describe('CashPayment', () => {
     fireEvent.click(await screen.findByRole('button', { name: /View receipt/ }))
 
     const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
-    const iframe = preview.querySelector('iframe')
-    expect(iframe).toBeTruthy()
-    expect(iframe.getAttribute('src')).toMatch(/^blob:/)
+    expect(preview.querySelector('iframe')).toBeNull()
+    expect(screen.getByRole('article', { name: 'Document contents' })).toBeInTheDocument()
 
     const downloadLink = screen.getByRole('link', { name: /Download/ })
-    expect(downloadLink.getAttribute('href')).toBe(iframe.getAttribute('src'))
+    expect(downloadLink.getAttribute('href')).toMatch(/^blob:/)
+    expect(screen.getByRole('link', { name: 'Open PDF' })).toHaveAttribute('href', downloadLink.getAttribute('href'))
     expect(downloadLink.getAttribute('download')).toMatch(/^receipt-.*\.pdf$/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))

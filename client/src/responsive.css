@@ -534,6 +534,16 @@ label,
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
+  .pdf-preview-backdrop.app-modal-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .receipt-preview {
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .pdf-preview-header {
     align-items: stretch;
     flex-direction: column;
