@@ -47,6 +47,7 @@ describe('SiteFooter', () => {
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: 'Cancellation & Refund' })).toHaveAttribute('href', '/cancellation-refund-policy')
+    expect(screen.getByRole('link', { name: 'Shipping & Exchange' })).toHaveAttribute('href', '/shipping-exchange-policy')
     expect(screen.getByRole('link', { name: 'Accessibility' })).toHaveAttribute('href', '/accessibility')
   })
 })

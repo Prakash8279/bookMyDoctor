@@ -43,6 +43,7 @@ const SearchResults = lazyNamed(() => import('./pages/PublicPages'), 'SearchResu
 const TermsOfService = lazyNamed(() => import('./pages/TermsOfService'), 'TermsOfService')
 const PrivacyPolicy = lazyNamed(() => import('./pages/PrivacyPolicy'), 'PrivacyPolicy')
 const CancellationRefundPolicy = lazyNamed(() => import('./pages/CancellationRefundPolicy'), 'CancellationRefundPolicy')
+const ShippingExchangePolicy = lazyNamed(() => import('./pages/ShippingExchangePolicy'), 'ShippingExchangePolicy')
 const AccountDeletion = lazyNamed(() => import('./pages/AccountDeletion'), 'AccountDeletion')
 const Accessibility = lazyNamed(() => import('./pages/Accessibility'), 'Accessibility')
 
@@ -196,6 +197,7 @@ export default function App() {
     <Route path="/privacy-policy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/privacypolicy" element={publicPage(<PrivacyPolicy />)} />
     <Route path="/cancellation-refund-policy" element={publicPage(<CancellationRefundPolicy />)} />
+    <Route path="/shipping-exchange-policy" element={publicPage(<ShippingExchangePolicy />)} />
     <Route path="/accessibility" element={publicPage(<Accessibility />)} />
     <Route path="/delete-account" element={publicPage(<AccountDeletion />)} />
     <Route path="/account-deletion" element={publicPage(<AccountDeletion />)} />

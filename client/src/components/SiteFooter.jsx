@@ -98,7 +98,7 @@ export function SiteFooter() {
     <div className="container footer-bottom">
       <span>© 2026 BookADoctors. All rights reserved.</span>
       <span>
-        <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · <Link to="/cancellation-refund-policy">Cancellation &amp; Refund</Link> · <Link to="/accessibility">Accessibility</Link>
+        <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link> · <Link to="/cancellation-refund-policy">Cancellation &amp; Refund</Link> · <Link to="/shipping-exchange-policy">Shipping &amp; Exchange</Link> · <Link to="/accessibility">Accessibility</Link>
       </span>
     </div>
   </footer>
