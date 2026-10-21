@@ -7,6 +7,9 @@ describe('payment waiting screen', () => {
   it('shows a one-minute countdown without claiming success or inventing a token', () => {
     render(<MemoryRouter><PaymentVerification verification={{ phase: 'verifying', secondsLeft: 60 }} /></MemoryRouter>)
     expect(screen.getByRole('timer')).toHaveTextContent('1:00')
+    expect(screen.getByRole('heading', { name: 'Thank you!' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Please wait while we check your payment.' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('booking confirmation and token number will appear automatically')
     expect(screen.getByRole('status')).toHaveTextContent('Please do not pay again')
     expect(screen.queryByText(/Payment successful|Token #/)).not.toBeInTheDocument()
   })
