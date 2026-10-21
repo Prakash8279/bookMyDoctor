@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
+import { usePaymentVerification } from './usePaymentVerification'
 
 // PENDING-PAYMENT RESUME FIX (multi-agent senior-dev payment audit, "payment sahi nahi hua hai"):
 // before this hook existed, the ONLY place in the app that could ever pay for a `pending_payment`
@@ -21,8 +22,7 @@ import { loadRazorpayScript } from '../lib/loadRazorpayScript'
 // failure, so a lost response doesn't wrongly tell the patient to pay again.
 export function useRazorpayPayment() {
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
-  const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
-  const getAppointment = useAppStore((state) => state.getAppointment)
+  const confirmation = usePaymentVerification()
   const [payingId, setPayingId] = useState(null) // the appointment id currently mid-flow, or null
   const [paymentError, setPaymentError] = useState('')
   const checkoutRef = useRef(null)
@@ -77,30 +77,17 @@ export function useRazorpayPayment() {
           setPayingId(null)
         } },
         handler: async (response) => {
+          if (!mountedRef.current) return
           window.clearTimeout(expiryTimerRef.current)
           checkoutRef.current = null
-          try {
-            const { appointment: updated } = await verifyRazorpayPayment({
+          setPaymentError('')
+          await confirmation.start({
               appointmentId: appointment.id,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
-            })
-            onUpdated?.(updated)
-          } catch (verifyError) {
-            try {
-              const fresh = await getAppointment(appointment.id)
-              if (fresh && fresh.status !== 'pending_payment') {
-                onUpdated?.(fresh)
-                return
-              }
-            } catch {
-              /* couldn't even re-check — fall through to showing the original error below */
-            }
-            setPaymentError(verifyError.message)
-          } finally {
-            setPayingId(null)
-          }
+            }, onUpdated)
+          if (mountedRef.current) setPayingId(null)
         },
       })
       checkout.on('payment.failed', (failure) => {
@@ -124,5 +111,5 @@ export function useRazorpayPayment() {
     }
   }
 
-  return { payNow, payingId, paymentError, setPaymentError }
+  return { payNow, payingId, paymentError, setPaymentError, verification: confirmation.verification, retryVerification: confirmation.retry }
 }

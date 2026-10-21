@@ -43,6 +43,7 @@ jest.mock('../../../src/services/cacheService', () => ({
 jest.mock('../../../src/config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 jest.mock('../../../src/services/emailService', () => ({ sendEmail: jest.fn().mockResolvedValue(undefined) }));
 jest.mock('../../../src/services/pushService', () => ({ sendPush: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../../src/jobs/notificationQueue', () => ({ enqueueNotification: jest.fn().mockResolvedValue({ id: 'job' }) }));
 
 const prisma = require('../../../src/config/db');
 const logger = require('../../../src/config/logger');
@@ -54,14 +55,23 @@ const notificationsService = require('../../../src/modules/notifications/notific
 const ADMIN = { id: 'admin-1', role: 'admin' };
 
 describe('notificationsService.notifySystemEvent', () => {
+  test('payment notification returns after durable enqueue even if SMTP would never resolve', async () => {
+    prisma.notification.create.mockResolvedValue({ id: 'n-fast' });
+    prisma.notificationRecipient.create.mockResolvedValue({});
+    emailService.sendEmail.mockImplementationOnce(() => new Promise(() => {}));
+    await expect(notificationsService.notifySystemEvent('user-1', { title: 'Payment received', body: 'Confirmed', type: 'payment' })).resolves.toBeUndefined();
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    emailService.sendEmail.mockReset().mockResolvedValue(undefined);
+  });
   test('passes receipt details only to email, leaving push and stored inbox body unchanged', async () => {
     prisma.notification.create.mockResolvedValue({id:'n-email'});
     prisma.notificationRecipient.create.mockResolvedValue({});
     prisma.user.findUnique.mockResolvedValue({email:'patient@example.test'});
     await notificationsService.notifySystemEvent('user-1',{title:'Payment received',body:'Received',type:'payment',emailAmount:'₹500.00',emailDetails:[{label:'Receipt',value:'R-1'}],emailActionPath:'/patient/payments'});
-    expect(emailService.sendEmail).toHaveBeenCalledWith(expect.objectContaining({type:'payment',amount:'₹500.00',details:[{label:'Receipt',value:'R-1'}],actionPath:'/patient/payments'}));
+    expect(require('../../../src/jobs/notificationQueue').enqueueNotification).toHaveBeenCalledWith('n-email','user-1',{emailAmount:'₹500.00',emailDetails:[{label:'Receipt',value:'R-1'}],emailActionPath:'/patient/payments'});
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
     expect(prisma.notification.create).toHaveBeenCalledWith({data:{title:'Payment received',body:'Received',type:'payment',audience:'single_user',targetUserId:'user-1',senderUserId:null}});
-    expect(pushService.sendPush).toHaveBeenCalledWith('user-1',{title:'Payment received',body:'Received'});
+    expect(pushService.sendPush).not.toHaveBeenCalled();
   });
   test('writes the in-app notification+recipient scoped to exactly the given userId, then fans out email+push', async () => {
     prisma.notification.create.mockResolvedValue({ id: 'notif-1' });

@@ -17,6 +17,13 @@ afterEach(() => {
 });
 
 describe('emailService.sendEmail', () => {
+  test('queue delivery opts into errors so failed email jobs can retry', async () => {
+    jest.resetModules();
+    jest.doMock('../../../src/config/logger', () => ({ info: jest.fn(() => { throw new Error('delivery failure'); }), warn: jest.fn(), error: jest.fn() }));
+    const { sendEmail: queuedEmail } = require('../../../src/services/emailService');
+    await expect(queuedEmail({ to: 'user@example.test', subject: 'S', text: 'T', throwOnError: true })).rejects.toThrow('delivery failure');
+    jest.dontMock('../../../src/config/logger');
+  });
   test('silently no-ops (never logs, never throws) when there is no `to` address', async () => {
     await expect(sendEmail({ to: null, subject: 'S', text: 'T' })).resolves.toBeUndefined();
     await expect(sendEmail({ subject: 'S', text: 'T' })).resolves.toBeUndefined();

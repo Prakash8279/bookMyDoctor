@@ -54,6 +54,7 @@ async function shutdown(signal) {
     }
 
     try {
+      await require('./jobs/notificationQueue').closeNotificationQueue();
       await prisma.$disconnect();
     } catch (disconnectErr) {
       logger.error(`[server] Error disconnecting Prisma: ${disconnectErr.message}`);

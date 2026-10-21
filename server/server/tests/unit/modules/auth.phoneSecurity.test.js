@@ -2,6 +2,7 @@
  * Security unit tests for Phone Normalization, Duplicate Phone Prevention,
  * and Account Takeover Guards in Auth.
  */
+jest.mock('../../../src/config/redis', () => ({})); // Auth unit tests must never open real Redis connections.
 jest.mock('../../../src/config/db', () => ({
   user: {
     findUnique: jest.fn(),

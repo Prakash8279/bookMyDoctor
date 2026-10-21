@@ -17,6 +17,8 @@ import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/rece
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
 import { PaymentConfirmation } from '../components/PaymentConfirmation'
+import { PaymentVerification } from '../components/PaymentVerification'
+import { isConfirmedPayment, usePaymentVerification } from '../hooks/usePaymentVerification'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
 import { PatientNavIcon } from '../components/PatientNavIcon'
 
@@ -214,7 +216,7 @@ export function Booking({ data }) {
   const fetchAppointmentAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
   const bookingQueueInfo = useAppStore((state) => state.bookingQueueInfo)
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
-  const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
+  const confirmation = usePaymentVerification()
   const getAppointment = useAppStore((state) => state.getAppointment)
   const currentUser = useAppStore((state) => state.currentUser) || {}
   const [payingNow, setPayingNow] = useState(false)
@@ -262,6 +264,35 @@ export function Booking({ data }) {
       checkoutRef.current = null
     }
   }, [])
+
+  // UPI app-switches can lose Checkout's browser callback. The signed webhook still updates
+  // the booking; reconcile that authoritative state on return, without starting another charge.
+  useEffect(() => {
+    if (!booked?.id || booked.status !== 'pending_payment' || confirmation.verification) return undefined
+    let cancelled = false
+    let running = false
+    const refresh = async () => {
+      if (cancelled || running || document.hidden) return
+      running = true
+      try {
+        const fresh = await getAppointment(booked.id)
+        if (!cancelled && isConfirmedPayment(fresh)) {
+          setBooked(fresh)
+          setShowPaymentConfirmation(true)
+        }
+      } catch { /* A read failure never means payment failed. */ }
+      finally { running = false }
+    }
+    const interval = setInterval(refresh, 3000)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [booked?.id, booked?.status, confirmation.verification, getAppointment])
 
   useEffect(() => {
     const qDoctor = params.get('doctorId') || params.get('doctor') || ''
@@ -489,42 +520,19 @@ export function Booking({ data }) {
         theme: { color: '#ad5d3b' },
         modal: { ondismiss: () => { checkoutRef.current = null; setPayingNow(false) } },
         handler: async (response) => {
+          if (!checkoutMountedRef.current) return
           checkoutRef.current = null
-          try {
-            // Backend returns the authoritative, freshly re-fetched appointment (status may have
-            // just flipped pending_payment -> upcoming, with the reserved token now visible) — trust
-            // that instead of guessing the new shape ourselves.
-            const { appointment } = await verifyRazorpayPayment({
+          setPaymentError('')
+          await confirmation.start({
               appointmentId: booked.id,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
+            }, (appointment) => {
+              setBooked(appointment)
+              setShowPaymentConfirmation(true)
             })
-            setBooked(appointment)
-            setShowPaymentConfirmation(appointment?.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(appointment.status))
-          } catch (verifyError) {
-            // RESUME/RECONCILE FIX (senior-dev payment audit, "payment sahi nahi hua hai"): this
-            // handler only ever fires after Razorpay has already captured the payment — a failure
-            // in THIS call (request timeout, dropped connection, a transient server error after the
-            // backend's own transaction actually committed) does not mean the money wasn't taken.
-            // Re-check the appointment's real status before showing a scary "payment failed"
-            // message: if it already moved off pending_payment, the payment WAS recorded despite
-            // this call failing, and telling the patient to pay again here would risk a double
-            // charge.
-            try {
-              const fresh = await getAppointment(booked.id)
-              if (fresh && fresh.status !== 'pending_payment') {
-                setBooked(fresh)
-                setShowPaymentConfirmation(fresh.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(fresh.status))
-                return
-              }
-            } catch {
-              /* couldn't even re-check — fall through to showing the original error below */
-            }
-            setPaymentError(verifyError.message)
-          } finally {
-            setPayingNow(false)
-          }
+          if (checkoutMountedRef.current) setPayingNow(false)
         },
       })
       checkout.on('payment.failed', (failure) => {
@@ -540,6 +548,7 @@ export function Booking({ data }) {
       setPayingNow(false)
     }
   }
+  if (confirmation.verification) return <PaymentVerification verification={confirmation.verification} onRetry={confirmation.retry} />
   if (booked) {
     if (showPaymentConfirmation) return <PaymentConfirmation appointment={booked} />
     if (booked.status === 'cancelled') {
@@ -1086,7 +1095,7 @@ export function PatientAppointments({ data, history = false }) {
   // patient left the one-shot post-booking screen — see hooks/useRazorpayPayment.js's header
   // comment for the full failure scenario. This list now offers "Resume payment"/"Cancel" for
   // any pending_payment row it renders.
-  const { payNow, payingId, paymentError } = useRazorpayPayment()
+  const { payNow, payingId, paymentError, verification, retryVerification } = useRazorpayPayment()
   const [cancelError, setCancelError] = useState('')
   const { deletingId: cancellingId, remove: cancelPendingBooking } = useDeleteWithConfirm({
     deleteFn: (appointment) => cancelAppointment(appointment.id),
@@ -1264,6 +1273,7 @@ export function PatientAppointments({ data, history = false }) {
     return records
   }, [records, statusFilter])
 
+  if (verification) return <PaymentVerification verification={verification} onRetry={retryVerification} />
   if (confirmedPayment) return <PaymentConfirmation appointment={confirmedPayment} onClose={() => setConfirmedPayment(null)} />
 
   return <>
