@@ -9,6 +9,7 @@ describe('receipt completeness and PDF wrapping', () => {
     familyMember: { name: 'Anita Sharma', relation: 'Mother' },
     doctor: { name: 'Dr. Priya Sharma', doctorNumber: 1, specialization: { name: 'General Physician' } },
     clinic: { name: 'BookADoctors Demo Clinic', address: 'First floor, opposite Central Hospital, Main Road, Andheri West, Mumbai, Maharashtra 400053', phone: '022-12345678' },
+    createdAt: '2026-10-20T20:40:05Z',
     appointmentDate: '2026-10-21', appointmentTime: '10:05', isEstimatedTime: true,
     estimatedVisitAt: '2026-10-21T04:35:00.000Z', tokenNumber: 1, status: 'confirmed', paymentStatus: 'partial',
     reason: 'Follow-up consultation. Please bring previous prescriptions and test results.',
@@ -22,6 +23,7 @@ describe('receipt completeness and PDF wrapping', () => {
     expect(rows).toContainEqual(['Name', 'Anita Sharma'])
     expect(rows).toContainEqual(['Booked by', 'Account owner'])
     expect(rows).toContainEqual(['Full booking reference', appointment.id])
+    expect(rows).toContainEqual(['Booked on (IST)', '21/10/2026 02:10:05 IST'])
     expect(rows).toContainEqual(['Time', 'Approx. 10:05'])
     expect(rows).toContainEqual(['Payment status', 'partial'])
     expect(rows).toContainEqual(['Transaction reference', options.payment.transactionRef])
@@ -57,6 +59,8 @@ describe('receipt completeness and PDF wrapping', () => {
         fees: { consultationFee: 500, convenienceFee: 25, gstAmount: 3, amount: 528 }, appointment,
       }
       for (const [name, spec] of [['patient-receipt', buildPatientReceiptSections(payment)], ['clinic-receipt', buildStaffReceiptSections(payment)]]) {
+        expect(spec.sections.find((section) => section.heading === 'Appointment').rows).toContainEqual(['Booked on (IST)', '21/10/2026 02:10:05 IST'])
+        expect(spec.sections.find((section) => section.heading === 'Payment').rows).toContainEqual(['Payment date/time (IST)', '21/10/2026 10:30:00 IST'])
         writeFileSync(join(process.env.PDF_QA_DIR, `${name}.pdf`), (await renderReceiptDocument(spec)).toBytes())
       }
     }

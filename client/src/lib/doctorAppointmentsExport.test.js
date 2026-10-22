@@ -24,13 +24,15 @@ describe('doctor appointment export', () => {
 
   it('exports full booking data safely for spreadsheets', () => {
     const csv = doctorAppointmentsCsv([{
-      id: 'booking-1', tokenNumber: 4, appointmentDate: '2026-10-19', appointmentTime: '10:00',
+      id: 'booking-1', createdAt: '2026-10-18T20:00:05Z', tokenNumber: 4, appointmentDate: '2026-10-19', appointmentTime: '10:00',
       doctor: { doctorNumber: 'DCD1', name: 'Dr. Asha' },
       patient: { patientNumber: 'DCP2', name: 'Kiran', phone: '9000000001' },
       clinic: { name: 'Main Clinic' }, status: 'confirmed', paymentStatus: 'paid',
       fees: { consultationFee: 500, due: 0 }, reason: '=HYPERLINK("bad")',
     }])
     expect(csv).toContain('"booking-1"')
+    expect(csv).toContain('"Booked on (IST)"')
+    expect(csv).toContain('"19/10/2026 01:30:05 IST"')
     expect(csv).toContain('"DCP2"')
     expect(csv).toContain('"500.00"')
     expect(csv).toContain('"\'=HYPERLINK(""bad"")"')

@@ -1131,6 +1131,16 @@ describe('payments.service.getPaymentById / getVisiblePaymentOrThrow — visibil
 });
 
 describe('payments.service.listPayments — forced role scoping and pagination', () => {
+  test('includes original booking creation time without conflating payment time or widening role scope', async () => {
+    const bookingCreatedAt = new Date('2026-10-21T20:40:05Z');
+    prisma.payment.findMany.mockResolvedValue([buildPaymentRow({ appointment: { id: 'appt-1', createdAt: bookingCreatedAt } })]);
+    prisma.payment.count.mockResolvedValue(1);
+    const result = await paymentsService.listPayments({}, DOCTOR);
+    expect(prisma.payment.findMany.mock.calls[0][0].select.appointment.select.createdAt).toBe(true);
+    expect(prisma.payment.findMany.mock.calls[0][0].where.doctorUserId).toBe('doctor-1');
+    expect(result.rows[0].appointment).toEqual({ id: 'appt-1', createdAt: bookingCreatedAt });
+    expect(Object.prototype.hasOwnProperty.call(result.rows[0].fees, 'commission')).toBe(false);
+  });
   beforeEach(() => {
     prisma.payment.findMany.mockResolvedValue([]);
     prisma.payment.count.mockResolvedValue(0);

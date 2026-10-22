@@ -111,6 +111,12 @@ describe('QueueTracker', () => {
 })
 
 describe('PortalAppointments', () => {
+  it('shows booking creation date and time in the shared admin registry', async () => {
+    mockGetRoutes({ '/appointments': [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00' }] })
+    renderConnected(PortalAppointments, { role: 'admin' })
+    expect(await screen.findByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('2026-10-25')).toBeInTheDocument()
+  })
   const APPOINTMENTS = [
     { id: 'a1', status: 'pending_payment', patient: { name: 'Asha' } },
     { id: 'a2', status: 'confirmed', paymentStatus:'paid', patient: { name: 'Ben' } },

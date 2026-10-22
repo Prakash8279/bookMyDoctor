@@ -32,7 +32,32 @@ function findRow(section, label) {
   return row ? row[1] : undefined
 }
 
+describe('receipt booking and payment timestamps', () => {
+  it.each([buildPatientReceiptSections, buildStaffReceiptSections])('keeps booking, payment and visit times distinct', (build) => {
+    const document = build({
+      id: 'payment-timestamps', createdAt: '2026-10-22T05:00:06Z',
+      appointment: { id: 'booking-timestamps', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00' },
+      fees: { consultationFee: 500, amount: 500 }, amount: 500,
+    })
+    expect(findRow(findSection(document, 'Appointment'), 'Booked on (IST)')).toBe('22/10/2026 02:10:05 IST')
+    expect(findRow(findSection(document, 'Appointment'), 'Time')).toBe('10:00')
+    expect(findRow(findSection(document, 'Payment'), 'Payment date/time (IST)')).toBe('22/10/2026 10:30:06 IST')
+  })
+  it.each([buildPatientReceiptSections, buildStaffReceiptSections])('does not substitute payment time for missing booking time', (build) => {
+    const document = build({ id: 'standalone', createdAt: '2026-10-22T05:00:06Z', fees: {}, amount: 0 })
+    expect(findRow(findSection(document, 'Appointment'), 'Booked on (IST)')).toBe('Not recorded')
+  })
+})
+
 describe('buildBookingSlipSections', () => {
+  it('keeps booking creation separate from the visit date and slip generation date', () => {
+    const document = buildBookingSlipSections({ appointment: {
+      id: 'booking-timestamp', createdAt: '2026-10-21T20:40:05Z',
+      appointmentDate: '2026-10-25', appointmentTime: '10:00',
+    }, fee: 500, paid: 500, due: 0, patientName: 'Test Patient' })
+    expect(findRow(findSection(document, 'Appointment'), 'Booked on (IST)')).toBe('22/10/2026 02:10:05 IST')
+    expect(findRow(findSection(document, 'Appointment'), 'Time')).toBe('10:00')
+  })
   const appointment = {
     id: 'appt_9f8e7d6c5b4a',
     doctor: { name: 'Dr. Asha Rao', specialization: { name: 'Cardiology' } },

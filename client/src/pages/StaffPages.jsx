@@ -12,6 +12,8 @@ import { theme } from '../lib/theme'
 import { doctorCharge, isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useAppStore } from '../store/useAppStore'
 import { sequenceId, shortId, stableId } from '../lib/format'
+import { bookingCreatedAtLabel } from '../lib/appointmentTime'
+import { doctorDashboardToday } from '../lib/doctorDashboard'
 import { buildCsv, downloadCsv } from '../lib/csv'
 import apiClient from '../lib/apiClient'
 import { doctorAppointmentsCsv, fetchDoctorAppointmentsForRange, indiaTodayDate } from '../lib/doctorAppointmentsExport'
@@ -200,6 +202,7 @@ const AppointmentTable = ({ data }) => {
           <div className="min-w-0">
             <strong className="block truncate text-sm text-ink">{item.patient?.name || item.familyMember?.name || 'Patient'}</strong>
             <span className="text-xs text-muted">Booking {shortId(item.id)}</span>
+            <span className="mt-1 block text-xs text-muted">Booked on: {bookingCreatedAtLabel(item)}</span>
           </div>
           <StatusPill status={item.status} />
         </div>
@@ -222,6 +225,7 @@ const AppointmentTable = ({ data }) => {
         // below), so one column here covers both roles. Same shortId() format used everywhere
         // else in the app.
         { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
+        { key: 'createdAt', label: 'Booked on (IST)', render: bookingCreatedAtLabel },
         { key: 'tokenNumber', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'appointmentDate', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'appointmentTime', label: 'Time', render: (item) => item.appointmentTime || '—' },
@@ -310,13 +314,22 @@ export function DoctorDashboard({ data }) {
   // server-side to this doctor (plan §1.8/§1.9/§1.12) — no client-side
   // doctorId filtering needed or possible (those fields aren't even in the
   // real row shapes any more).
-  const doctorAppointments = data.appointments || []
-  const doctorPayments = data.payments || []
-  const today = doctorAppointments.filter((item) => item.status !== 'completed').length
-  const doctorRevenue = doctorPayments.reduce((sum, item) => sum + doctorCharge({ consultationFee: item.fees?.consultationFee }, {}), 0)
-  const recentRecords = [...doctorAppointments].reverse().slice(0, 6).map((item) => ({
+  const [dashboardDate, setDashboardDate] = useState(indiaTodayDate)
+  useEffect(() => {
+    // A dashboard left open overnight must not continue showing yesterday's data.
+    const refreshDate = () => setDashboardDate(indiaTodayDate())
+    const timer = window.setInterval(refreshDate, 30000)
+    document.addEventListener('visibilitychange', refreshDate)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', refreshDate)
+    }
+  }, [])
+  const daily = doctorDashboardToday(data, dashboardDate)
+  const recentRecords = daily.recentRecords.map((item) => ({
     id: item.id,
-    time: `${item.appointmentDate || 'Today'} ${item.appointmentTime || ''}`.trim(),
+    time: `${item.appointmentDate} ${item.appointmentTime || ''}`.trim(),
+    bookedOn: bookingCreatedAtLabel(item),
     patient: item.patient?.name || 'Patient',
     details: item.clinic?.name || '—',
     status: item.status || 'upcoming',
@@ -337,16 +350,17 @@ export function DoctorDashboard({ data }) {
           : 'Your account is pending admin verification — patients cannot find or book you until verification is complete.'}
       </p>
     )}
+    <p className="mb-2 text-xs text-muted">Today: {dashboardDate} (IST). Bookings use the visit date; revenue uses the payment received date.</p>
     <div className="doctor-dashboard-stats grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard label="TODAY'S BOOKINGS" value={today} icon="◷" to="/doctor/appointments" />
-      <StatCard label="WAITING PATIENTS" value={(data.queueTokens || []).filter((item) => item.status === 'waiting').length} icon="≡" to="/doctor/queue" />
-      <StatCard label="TODAY'S REVENUE" value={`₹${doctorRevenue}`} icon="₹" to="/doctor/revenue" />
-      <StatCard label="PATIENT RATING" value={profile.rating || 0} icon="★" to="/doctor/reviews" />
+      <StatCard label="TODAY'S BOOKINGS" value={daily.bookings} icon="◷" to="/doctor/appointments" />
+      <StatCard label="WAITING PATIENTS" value={daily.waiting} icon="≡" to="/doctor/queue" />
+      <StatCard label="TODAY'S REVENUE" value={`₹${daily.revenue}`} icon="₹" to="/doctor/revenue" />
+      <StatCard label="COMPLETED TODAY" value={daily.completed} icon="✓" to="/doctor/appointments" />
     </div>
     <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
       <div className="rounded-card border border-border bg-white p-5 shadow-card">
-        <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold font-sans text-ink">Recent live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span></div>
-        {recentRecords.length ? <DataTable rows={recentRecords} columns={[{ key: 'time', label: 'Time / ID' }, { key: 'patient', label: 'Patient / User' }, { key: 'details', label: 'Details' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /> : <EmptyState title="No live records yet" message="Consultations will appear here as they happen." />}
+        <div className="mb-3 flex items-center justify-between"><h2 className="text-lg font-bold font-sans text-ink">Today's live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Today · IST</span></div>
+        {recentRecords.length ? <DataTable rows={recentRecords} columns={[{ key: 'time', label: 'Visit date / time' }, { key: 'bookedOn', label: 'Booked on (IST)' }, { key: 'patient', label: 'Patient / User' }, { key: 'details', label: 'Details' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /> : <EmptyState title="No appointments today" message="Only appointments scheduled for today appear here." />}
       </div>
       <div className="rounded-card border border-border bg-white p-5 shadow-card">
         <h2 className="mb-3 text-lg font-bold font-sans text-ink">Quick actions</h2>
@@ -1413,7 +1427,7 @@ export function CashPayment({ data }) {
     // data.appointments list — every payment row already carries `appointment: {id}` straight
     // from the API (payments.service.js#shapePayment), unmasked for every role.
     bookingId: payment.appointment?.id || null,
-    appointment: (data.appointments || []).find((item) => item.id === payment.appointment?.id),
+    appointment: (data.appointments || []).find((item) => item.id === payment.appointment?.id) || payment.appointment,
   }))
   // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua
   // cash ye proper way me", then "eshme ye show hona chahiye ki online booking ke time pe kitna

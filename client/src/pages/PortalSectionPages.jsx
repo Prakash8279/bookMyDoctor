@@ -1,4 +1,4 @@
-import { appointmentTimeLabel } from '../lib/appointmentTime'
+import { appointmentTimeLabel, bookingCreatedAtLabel } from '../lib/appointmentTime'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
@@ -201,13 +201,14 @@ export function PortalAppointments({ data, role = 'patient' }) {
     >
       {invalidDateRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
       <ErrorNote>{actionError}</ErrorNote>
-      <DataTable loading={loading} error={listError} onRetry={() => load(filters)} rows={rows} columns={[
+      <DataTable dateField={false} loading={loading} error={listError} onRetry={() => load(filters)} rows={rows} columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar
         // admin ke") — 'ID' above is just this row's own display sequence number (DC01, DC02...),
         // not the real booking id. Same shortId() format already used on doctor/receptionist's
         // Appointments table and every payment table fixed earlier in this series.
         { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
+        { key: 'createdAt', label: 'Booked on (IST)', render: bookingCreatedAtLabel },
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
         { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
@@ -231,6 +232,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable rows={rows} columns={[
       { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
+      { key: 'createdAt', label: 'Booked on (IST)', render: bookingCreatedAtLabel },
       { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
       { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
       { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { bookingCreatedAtLabel } from '../lib/appointmentTime'
 
 export function PaymentConfirmation({ appointment, onClose }) {
   const [showToken, setShowToken] = useState(false)
@@ -14,6 +15,7 @@ export function PaymentConfirmation({ appointment, onClose }) {
       <div aria-hidden="true" className="mx-auto grid size-14 place-items-center rounded-full bg-success/10 text-3xl text-success">✓</div>
       <h2 className="mt-3 text-xl font-semibold">{showToken ? 'Booking confirmed' : 'Payment successful'}</h2>
       <p className="mt-2 text-sm text-muted">{appointment.doctor?.name || 'Doctor'} · {appointment.appointmentDate}</p>
+      <p className="mt-1 text-xs text-muted">Booked on: {bookingCreatedAtLabel(appointment)}</p>
       {showToken ? <>
         <p className="mt-5 text-4xl font-bold text-primary-dark">Token #{appointment.tokenNumber}</p>
         {appointment.paymentStatus === 'paid' ? <p className="mt-3 text-sm font-semibold text-success">✓ Paid online</p> : <p className="mt-3 text-sm font-semibold text-success">✓ Booking amount paid online — balance due at the clinic</p>}

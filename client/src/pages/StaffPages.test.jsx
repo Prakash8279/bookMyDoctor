@@ -8,7 +8,7 @@
 // this is what lets an action (e.g. a queue status PATCH) that updates the store actually be
 // observed re-rendering the page, exactly as it would in the real app.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -93,6 +93,36 @@ function setCurrentUser(user) {
 }
 
 describe('DoctorDashboard', () => {
+  it('shows zero and no live records when there is only historical data', () => {
+    renderConnected(DoctorDashboard, { data: {
+      appointments: [{ id: 'old', appointmentDate: '2020-01-01', status: 'cancelled', patient: { name: 'Historical Patient' } }],
+      payments: [{ status: 'paid', createdAt: '2020-01-01T04:30:00Z', fees: { consultationFee: 1501 } }],
+      queueTokens: [{ queueDate: '2020-01-01', status: 'waiting' }],
+    } })
+    expect(within(screen.getByText("TODAY'S BOOKINGS").closest('a')).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByText('WAITING PATIENTS').closest('a')).getByText('0')).toBeInTheDocument()
+    expect(screen.getByText('₹0')).toBeInTheDocument()
+    expect(screen.getByText('No appointments today')).toBeInTheDocument()
+    expect(screen.queryByText('Historical Patient')).not.toBeInTheDocument()
+  })
+
+  it('switches the dashboard date at India midnight while left open', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-10-21T18:29:50Z'))
+      renderConnected(DoctorDashboard, { data: { appointments: [
+        { id: 'yesterday', appointmentDate: '2026-10-21', status: 'confirmed', patient: { name: 'Before midnight' } },
+        { id: 'today', appointmentDate: '2026-10-22', status: 'confirmed', patient: { name: 'After midnight' } },
+      ] } })
+      expect(screen.getByText('Before midnight')).toBeInTheDocument()
+      expect(screen.queryByText('After midnight')).not.toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(30000) })
+      expect(screen.queryByText('Before midnight')).not.toBeInTheDocument()
+      expect(screen.getByText('After midnight')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   const DOCTOR = {
     id: 'doc-1',
     name: 'Dr. Nikhil Rao',
@@ -102,9 +132,9 @@ describe('DoctorDashboard', () => {
   it('greets the doctor by first name (honorific stripped) and renders live stats', () => {
     setCurrentUser(DOCTOR)
     const data = {
-      appointments: [{ id: 'a1', status: 'upcoming' }, { id: 'a2', status: 'completed' }],
-      queueTokens: [{ id: 'q1', status: 'waiting' }, { id: 'q2', status: 'completed' }],
-      payments: [{ fees: { consultationFee: 500 } }, { fees: { consultationFee: 300 } }],
+      appointments: [{ id: 'a1', appointmentDate: indiaTodayDate(), status: 'upcoming' }, { id: 'a2', appointmentDate: indiaTodayDate(), status: 'completed' }],
+      queueTokens: [{ id: 'q1', queueDate: indiaTodayDate(), status: 'waiting' }, { id: 'q2', queueDate: indiaTodayDate(), status: 'completed' }],
+      payments: [{ createdAt: new Date().toISOString(), status: 'paid', fees: { consultationFee: 500 } }, { createdAt: new Date().toISOString(), status: 'paid', fees: { consultationFee: 300 } }],
     }
     renderConnected(DoctorDashboard, { data })
 
@@ -116,13 +146,14 @@ describe('DoctorDashboard', () => {
     expect(screen.queryByRole('link', { name: 'My profile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Help & policies' })).toBeInTheDocument()
-    // TODAY'S BOOKINGS counts non-completed appointments only (1 of the 2 seeded).
+    // Today's valid bookings include completed visits, not cancelled or unpaid holds.
     const bookingsCard = screen.getByText("TODAY'S BOOKINGS").closest('a')
-    expect(within(bookingsCard).getByText('1')).toBeInTheDocument()
+    expect(within(bookingsCard).getByText('2')).toBeInTheDocument()
     expect(bookingsCard.parentElement).toHaveClass('doctor-dashboard-stats')
     expect(bookingsCard.parentElement.querySelectorAll(':scope > a')).toHaveLength(4)
     expect(screen.getByText('₹800')).toBeInTheDocument()
-    expect(screen.getByText('4.6')).toBeInTheDocument()
+    expect(screen.queryByText('4.6')).not.toBeInTheDocument()
+    expect(within(screen.getByText('COMPLETED TODAY').closest('a')).getByText('1')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -516,6 +547,12 @@ describe('DoctorProfileEdit', () => {
 })
 
 describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)', () => {
+  it.each([DoctorAppointments, ReceptionAppointments])('shows original booking timestamp separately from the visit', async (Component) => {
+    mockGetRoutes({ '/appointments': [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00', patient: { name: 'Time Test' } }] })
+    renderConnected(Component, {})
+    expect(await screen.findByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('2026-10-25')).toBeInTheDocument()
+  })
   it('keeps appointment filters directly visible without a collapsible dropdown', async () => {
     mockGetRoutes({ '/appointments': [] })
     renderConnected(DoctorAppointments, { data: { appointments: [] } })
@@ -1092,6 +1129,17 @@ describe('CashPayment', () => {
   // Receipt action must open an in-page preview rather than save a file immediately, with the
   // download action inside it.
   it('View receipt opens an in-page PDF preview instead of downloading immediately, with a Download action inside it', async () => {
+    renderConnected(CashPayment, { data: { appointments: [], payments: [{
+      id: 'pay-booking-time', createdAt: '2026-10-22T05:00:06Z', mode: 'cash', status: 'paid',
+      fees: { consultationFee: 500 }, appointment: { id: 'old-booking', createdAt: '2026-10-21T20:40:05Z' },
+    }] } })
+    fireEvent.click(await screen.findByRole('button', { name: /View receipt/ }))
+    const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
+    expect(within(preview).getByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(within(preview).getByText('22/10/2026 10:30:06 IST')).toBeInTheDocument()
+  })
+
+  it('opens a complete clinic receipt preview with a Download action', async () => {
     mockGetRoutes({ '/payments': [] })
     renderConnected(CashPayment, {
       data: {

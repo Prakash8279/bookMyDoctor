@@ -26,7 +26,7 @@ import { formatDate, formatMoneyPlain, shortId } from './format'
 import { loadBrandLogoRgb } from './brandLogo'
 import { theme } from './theme'
 import { isOnlineBookingPayment } from './paymentVisibility'
-import { appointmentTimeLabel } from './appointmentTime'
+import { appointmentTimeLabel, bookingCreatedAtLabel } from './appointmentTime'
 
 // Conservative Helvetica width bound, including long unbroken references and explicit lines.
 export function wrapReceiptText(value, width, size = 10) {
@@ -235,6 +235,7 @@ export function buildBookingSlipSections({ appointment, fee, paid, due, patientN
           // used everywhere else in the app (e.g. PatientPages.jsx's Payments table).
           ['Booking ID', shortId(appointment.id)],
           ['Full booking reference', appointment.id],
+          ['Booked on (IST)', bookingCreatedAtLabel(appointment)],
           ['Date', formatDate(appointment.appointmentDate)],
           ['Time', appointmentTimeLabel(appointment)],
           ['Token number', appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : 'Not yet assigned'],
@@ -363,7 +364,7 @@ export function buildPatientReceiptSections(item) {
   }
 
   const paymentRows = [
-    ['Payment date', formatDate(item.createdAt)],
+    ['Payment date/time (IST)', bookingCreatedAtLabel(item)],
     ['Mode', item.mode],
     ['Payment source', paymentSourceLabel(item)],
     ['UTR / Transaction ref', item.transactionId || item.transactionRef],
@@ -401,6 +402,7 @@ export function buildPatientReceiptSections(item) {
         rows: [
           ['Date', appointment ? formatDate(appointment.appointmentDate) : undefined],
           ['Booking ID', appointment?.id || item.appointmentId],
+          ['Booked on (IST)', appointment ? bookingCreatedAtLabel(appointment) : 'Not recorded'],
           ['Time', appointment ? appointmentTimeLabel(appointment) : undefined],
           ['Token number', appointment?.tokenNumber != null ? `#${appointment.tokenNumber}` : undefined],
         ],
@@ -464,6 +466,7 @@ export function buildStaffReceiptSections(item) {
         rows: [
           ['Date', appointment ? formatDate(appointment.appointmentDate) : undefined],
           ['Booking ID', appointment?.id || item.appointmentId],
+          ['Booked on (IST)', appointment ? bookingCreatedAtLabel(appointment) : 'Not recorded'],
           ['Time', appointment ? appointmentTimeLabel(appointment) : undefined],
           ['Token number', appointment?.tokenNumber != null ? `#${appointment.tokenNumber}` : undefined],
         ],
@@ -471,7 +474,7 @@ export function buildStaffReceiptSections(item) {
       {
         heading: 'Payment',
         rows: [
-          ['Payment date', formatDate(item.createdAt)],
+          ['Payment date/time (IST)', bookingCreatedAtLabel(item)],
           ['Mode', item.mode],
           ['Payment source', paymentSourceLabel(item)],
           ['UTR / Transaction ref', item.transactionRef || item.transactionId],

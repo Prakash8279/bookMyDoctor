@@ -1,4 +1,4 @@
-import { appointmentTimeLabel } from './appointmentTime'
+import { appointmentTimeLabel, bookingCreatedAtLabel } from './appointmentTime'
 import { buildCsv } from './csv'
 
 export function indiaTodayDate() {
@@ -18,9 +18,9 @@ const spreadsheetSafe = (value) => {
 const money = (value) => value == null ? '' : Number(value).toFixed(2)
 
 export function doctorAppointmentsCsv(appointments) {
-  const headers = ['Booking ID', 'Token', 'Date', 'Time', 'Doctor ID', 'Doctor', 'Patient ID', 'Patient', 'Phone', 'Clinic', 'Status', 'Payment status', 'Payment method', 'Consultation fee (INR)', 'Due (INR)', 'Notes']
+  const headers = ['Booking ID', 'Booked on (IST)', 'Token', 'Date', 'Time', 'Doctor ID', 'Doctor', 'Patient ID', 'Patient', 'Phone', 'Clinic', 'Status', 'Payment status', 'Payment method', 'Consultation fee (INR)', 'Due (INR)', 'Notes']
   const rows = appointments.map((item) => [
-    item.id, item.tokenNumber, item.appointmentDate, appointmentTimeLabel(item),
+    item.id, bookingCreatedAtLabel(item), item.tokenNumber, item.appointmentDate, appointmentTimeLabel(item),
     item.doctor?.doctorNumber, item.doctor?.name,
     item.patient?.patientNumber, item.familyMember?.name || item.patient?.name,
     item.patient?.phone, item.clinic?.name, item.status, item.paymentStatus,

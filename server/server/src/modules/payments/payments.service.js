@@ -97,7 +97,7 @@ const PAYMENT_SELECT = {
   payerUpiId: true,
   status: true,
   createdAt: true,
-  appointment: { select: { id: true, bookingPaymentPolicy: true } },
+  appointment: { select: { id: true, createdAt: true, bookingPaymentPolicy: true } },
   patient: { select: { id: true, name: true, patientNumber: true } },
   // doctorProfile.minBookingAdvanceAmount added (EXACT PAYMENT-ROW-BREAKDOWN FIX — see
   // shapePaymentFees's own header comment) — needed to tell which of the three real payment
@@ -189,7 +189,7 @@ function shapePayment(row, role, commissionPercent) {
   return {
     id: row.id,
     receiptNumber: row.receiptNumber,
-    appointment: row.appointment ? { id: row.appointment.id } : null,
+    appointment: row.appointment ? { id: row.appointment.id, createdAt: row.appointment.createdAt || null } : null,
     patient: row.patient ? { id: row.patient.id, name: row.patient.name, patientNumber: row.patient.patientNumber ?? null } : null,
     doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name, doctorNumber: row.doctor.doctorProfile?.doctorNumber ?? null } : null,
     clinic: row.clinic ? { id: row.clinic.id, name: row.clinic.name, address: row.clinic.address, phone: row.clinic.phone } : null,

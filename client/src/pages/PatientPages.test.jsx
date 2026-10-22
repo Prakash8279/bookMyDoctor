@@ -712,6 +712,14 @@ describe('Booking', () => {
 // PatientAppointments / BookingHistory
 // =====================================================================
 describe('PatientAppointments', () => {
+  it.each([false, true])('shows booking creation separately from the scheduled visit (mobile: %s)', (mobile) => {
+    mockMobileViewport(mobile)
+    seedData({ appointments: [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00', status: 'confirmed', fees: { totalAmount: 500 } }], payments: [] })
+    renderConnected(PatientAppointments)
+    expect(screen.getByText('Booked on: 22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('10:00')).toBeInTheDocument()
+    mockMobileViewport(false)
+  })
   const APPT_COMPLETED = {
     id: 'a1',
     status: 'completed',
@@ -1256,6 +1264,16 @@ describe('Payments', () => {
   // "baki jagah v same kar do jaha slip download ho raha hai") — the Receipt action must open an
   // in-page preview rather than save a file immediately, with the download action inside it.
   it('View receipt opens an in-page PDF preview instead of downloading immediately, with a Download action inside it', async () => {
+    // This case deliberately has no loaded appointment, only the payment API's booking metadata.
+    seedData({ payments: [{ ...PAYMENT_ROW, appointment: { id: 'a1', createdAt: '2026-10-21T20:40:05Z' } }], appointments: [] })
+    renderConnected(Payments)
+    fireEvent.click(screen.getByRole('button', { name: /View receipt/ }))
+    const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
+    expect(within(preview).getByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+  })
+
+  it('opens a complete receipt preview with a Download action', async () => {
+    // Receipt preview and download share the same document contents.
     seedData({ payments: [PAYMENT_ROW], appointments: [APPT_FOR_PAYMENT] })
     renderConnected(Payments)
 
