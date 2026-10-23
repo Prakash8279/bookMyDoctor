@@ -52,7 +52,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (!mounted) return;
       setState(() {
         _submitting = false;
-        _error = err is ApiException ? err.message : 'Could not send the reset link. Please try again.';
+        _error = err is ApiException
+            ? err.message
+            : 'Could not send the reset link. Please try again.';
       });
     }
   }
@@ -70,25 +72,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.lock_reset_rounded, color: AppColors.primary, size: 48),
+                  Icon(Icons.lock_reset_rounded,
+                      color: context.palette.primary, size: 48),
                   const SizedBox(height: AppSpacing.md),
-                  const Text(
+                  Text(
                     'We will email you a 6-digit code to choose a new password.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: context.palette.textSecondary),
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   if (_sent) ...[
                     Container(
                       padding: const EdgeInsets.all(AppSpacing.md),
                       decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.08),
+                        color: context.palette.success.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                        border: Border.all(
+                            color:
+                                context.palette.success.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         'If an account exists for ${_emailController.text.trim()}, a 6-digit password reset code has been sent. The code expires in 5 minutes.',
-                        style: const TextStyle(color: AppColors.success),
+                        style: TextStyle(color: context.palette.success),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
@@ -112,18 +117,27 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           TextFormField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            decoration: const InputDecoration(labelText: 'Account email', hintText: 'you@example.com'),
-                            validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                            decoration: const InputDecoration(
+                                labelText: 'Account email',
+                                hintText: 'you@example.com'),
+                            validator: (v) => (v == null || !v.contains('@'))
+                                ? 'Enter a valid email'
+                                : null,
                           ),
                           const SizedBox(height: AppSpacing.lg),
-                          PrimaryButton(label: 'Send reset code', onPressed: _submit, loading: _submitting),
+                          PrimaryButton(
+                              label: 'Send reset code',
+                              onPressed: _submit,
+                              loading: _submitting),
                         ],
                       ),
                     ),
                   const SizedBox(height: AppSpacing.md),
                   Center(
                     child: TextButton(
-                      onPressed: () => Navigator.of(context).pushNamedAndRemoveUntil(Routes.login, (route) => false),
+                      onPressed: () => Navigator.of(context)
+                          .pushNamedAndRemoveUntil(
+                              Routes.login, (route) => false),
                       child: const Text('Return to sign in'),
                     ),
                   ),

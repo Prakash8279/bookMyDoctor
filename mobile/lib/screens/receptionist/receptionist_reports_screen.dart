@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/admin_period.dart';
+import '../../widgets/admin_period_filter.dart';
 import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/role_scaffold.dart';
+import 'receptionist_appointments_screen.dart';
 
 /// lib/paymentVisibility.js#doctorCharge, ported field-for-field: the fee actually charged for
 /// the visit, preferring the payment record's own figures and falling back to the linked
@@ -41,22 +45,26 @@ class _ReportData {
   });
 }
 
-/// Mirrors client/src/pages/FeaturePages.jsx#ReceptionReports. `payments`/`appointments`/`queue`
-/// are already clinic-scoped server-side to this receptionist's own clinicId — same
-/// GET /appointments and GET /payments calls as receptionist_dashboard_screen.dart and
-/// receptionist_payments_screen.dart. "Walk-ins" has no dedicated endpoint (plan §5) and, same
-/// as the web page's `data.queueTokens`, is derived from today's queue token count (GET /queue
-/// defaults to today server-side when no `date` is passed — queue.service.js#listQueue);
-/// "Check-ins" is derived from `appointment.checkedInAt` being set.
+/// Clinic-scoped complete report with an India-date period filter.
+/// Collections use payment date, walk-ins use visit date, arrivals use checkedInAt.
 class ReceptionistReportsScreen extends StatefulWidget {
   const ReceptionistReportsScreen({super.key});
 
   @override
-  State<ReceptionistReportsScreen> createState() => _ReceptionistReportsScreenState();
+  State<ReceptionistReportsScreen> createState() =>
+      _ReceptionistReportsScreenState();
 }
 
 class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
   Future<_ReportData>? _future;
+  AdminPeriod _period = AdminPeriod.today();
+
+  void _changePeriod(AdminPeriod period) {
+    setState(() {
+      _period = period;
+      if (period.isValid) _future = _fetch();
+    });
+  }
 
   @override
   void initState() {
@@ -89,10 +97,10 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
   // Appointments (pageSize 100) and Payments (pageSize 50) tabs stayed within range and always
   // worked — only this screen's 200 was ever out of bounds. Capped to 100, the actual max.
   Future<_ReportData> _fetch() async {
+    final period = _period;
     final results = await Future.wait([
-      ApiClient.instance.get('/appointments', query: {'pageSize': 100}),
-      ApiClient.instance.get('/payments', query: {'pageSize': 100}),
-      ApiClient.instance.get('/queue', query: {'pageSize': 100}),
+      ApiClient.instance.getAll('/appointments', query: {'pageSize': 100}),
+      ApiClient.instance.getAll('/payments', query: {'pageSize': 100}),
     ]);
     final appointments = <Appointment>[];
     for (final item in results[0].list) {
@@ -106,12 +114,15 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
         payments.add(PaymentItem.fromJson(item));
       } catch (_) {}
     }
-    final queue = results[2].list;
 
     final appointmentsById = {for (final a in appointments) a.id: a};
-    final rows = payments.map((payment) {
+    final rows = payments
+        .where((payment) => period.includes(payment.createdAt))
+        .map((payment) {
       final appointment = appointmentsById[payment.appointment?.id];
-      return _ReportPaymentRow(payment: payment, doctorCharge: _doctorCharge(payment.fees, appointment?.fees));
+      return _ReportPaymentRow(
+          payment: payment,
+          doctorCharge: _doctorCharge(payment.fees, appointment?.fees));
     }).toList();
 
     // BUG FIX (mobile parity audit): web's ReceptionReports (FeaturePages.jsx) shows 5 metrics —
@@ -119,19 +130,36 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
     // collected at clinic" entirely. isOnlineBookingPayment distinguishes a patient's own Razorpay
     // payment (mode 'online', transactionRef starting 'pay_') from one a receptionist typed in by
     // hand at the clinic — see core/payment_visibility.dart.
-    final bookingCollected = rows
+    final collected = rows
+        .where((row) => row.payment.status == 'paid' && row.doctorCharge > 0)
+        .toList();
+    final bookingCollected = collected
         .where((row) => isOnlineBookingPayment(row.payment))
         .fold<double>(0, (sum, row) => sum + row.doctorCharge);
-    final cashCollected = rows
-        .where((row) => !isOnlineBookingPayment(row.payment) && row.payment.mode.toLowerCase() == 'cash')
+    final cashCollected = collected
+        .where((row) =>
+            !isOnlineBookingPayment(row.payment) &&
+            row.payment.mode.toLowerCase() == 'cash')
         .fold<double>(0, (sum, row) => sum + row.doctorCharge);
-    final onlineCollected = rows
-        .where((row) => !isOnlineBookingPayment(row.payment) && row.payment.mode.toLowerCase() != 'cash')
+    final onlineCollected = collected
+        .where((row) =>
+            !isOnlineBookingPayment(row.payment) &&
+            row.payment.mode.toLowerCase() != 'cash')
         .fold<double>(0, (sum, row) => sum + row.doctorCharge);
-    final checkedInCount = appointments.where((a) => a.checkedInAt != null && a.checkedInAt!.isNotEmpty).length;
+    final checkedInCount = appointments
+        .where((a) =>
+            a.checkedInAt != null &&
+            a.checkedInAt!.isNotEmpty &&
+            period.includes(a.checkedInAt))
+        .length;
 
     return _ReportData(
-      walkIns: queue.length,
+      walkIns: appointments
+          .where((a) =>
+              period.includes(a.appointmentDate) &&
+              a.source == 'walk_in' &&
+              !['cancelled', 'no_show'].contains(a.status))
+          .length,
       checkedInCount: checkedInCount,
       bookingCollected: bookingCollected,
       cashCollected: cashCollected,
@@ -149,46 +177,97 @@ class _ReceptionistReportsScreenState extends State<ReceptionistReportsScreen> {
       child: FutureBuilder<_ReportData>(
         future: _future,
         builder: (context, snapshot) {
-          final loading = snapshot.connectionState != ConnectionState.done;
-          final data = snapshot.data;
+          final loading = _period.isValid &&
+              snapshot.connectionState != ConnectionState.done;
+          final data = !loading && _period.isValid && !snapshot.hasError
+              ? snapshot.data
+              : null;
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               const PageHeader(
                 title: 'Reception reports',
-                subtitle: 'Export clinic appointment and flow records.',
+                subtitle:
+                    'Selected-period clinic collections. Refunded and failed payments are excluded from totals.',
               ),
-              if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
-              if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
+              AdminPeriodFilter(value: _period, onChanged: _changePeriod),
+              const SizedBox(height: AppSpacing.sm),
+              const Text(
+                  'Collections use payment date; walk-ins use visit date; check-ins use arrival date (IST).',
+                  style: TextStyle(fontSize: 11)),
+              TextButton.icon(
+                onPressed: () {
+                  if (RoleScaffold.of(context)
+                          ?.navigateToLabel('Appointments') ==
+                      true) {
+                    return;
+                  }
+                  Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                          appBar: AppBar(title: const Text('Appointments')),
+                          body: const ReceptionistAppointmentsScreen())));
+                },
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Download appointments by date range'),
+              ),
+              if (loading)
+                const Padding(
+                    padding: EdgeInsets.only(top: AppSpacing.xl),
+                    child: LoadingView()),
+              if (snapshot.hasError)
+                ErrorBanner(error: snapshot.error!, onRetry: _load),
               if (data != null) ...[
                 // BUG FIX (mobile parity audit): web shows 5 stat cards — mobile had only 3
                 // (missing "Paid online at booking" and "Online collected at clinic").
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: StatCard(label: 'Walk-ins', value: '${data.walkIns}', icon: Icons.directions_walk_outlined)),
+                    Expanded(
+                        child: StatCard(
+                            label: 'Walk-ins',
+                            value: '${data.walkIns}',
+                            icon: Icons.directions_walk_outlined)),
                     const SizedBox(width: AppSpacing.sm),
-                    Expanded(child: StatCard(label: 'Check-ins', value: '${data.checkedInCount}', icon: Icons.how_to_reg_outlined)),
+                    Expanded(
+                        child: StatCard(
+                            label: 'Check-ins',
+                            value: '${data.checkedInCount}',
+                            icon: Icons.how_to_reg_outlined)),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: StatCard(label: 'Paid online at booking', value: '₹${data.bookingCollected.toStringAsFixed(0)}', icon: Icons.public)),
+                    Expanded(
+                        child: StatCard(
+                            label: 'Paid online at booking',
+                            value:
+                                '₹${data.bookingCollected.toStringAsFixed(0)}',
+                            icon: Icons.public)),
                     const SizedBox(width: AppSpacing.sm),
-                    Expanded(child: StatCard(label: 'Cash collected', value: '₹${data.cashCollected.toStringAsFixed(0)}', icon: Icons.currency_rupee)),
+                    Expanded(
+                        child: StatCard(
+                            label: 'Cash collected',
+                            value: '₹${data.cashCollected.toStringAsFixed(0)}',
+                            icon: Icons.currency_rupee)),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                StatCard(label: 'Online collected at clinic', value: '₹${data.onlineCollected.toStringAsFixed(0)}', icon: Icons.wifi),
+                StatCard(
+                    label: 'Online collected at clinic',
+                    value: '₹${data.onlineCollected.toStringAsFixed(0)}',
+                    icon: Icons.wifi),
                 const SizedBox(height: AppSpacing.lg),
                 SectionCard(
                   title: 'Payments',
                   child: data.payments.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                          child: Text('No payments recorded yet.', style: TextStyle(color: AppColors.textSecondary)),
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.md),
+                          child: Text('No payments in selected dates.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary)),
                         )
                       : Column(
                           children: [
@@ -229,21 +308,27 @@ class _PaymentRecordTile extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_formatDate(payment.createdAt), style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(_formatDate(payment.createdAt),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              StatusBadge(status: payment.status),
               const SizedBox(height: 2),
               Text(
                 'Receipt: ${payment.receiptNumber ?? '—'}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                style: TextStyle(
+                    color: context.palette.textSecondary, fontSize: 13),
               ),
               const SizedBox(height: 2),
               Text(
-                'Dr. ${payment.doctor?.name ?? '—'} · ${payment.mode.toUpperCase()}',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                '${payment.doctor?.name ?? '—'} · ${payment.mode.toUpperCase()}',
+                style: TextStyle(
+                    color: context.palette.textSecondary, fontSize: 13),
               ),
             ],
           ),
         ),
-        Text('₹${row.doctorCharge.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        Text('₹${row.doctorCharge.toStringAsFixed(0)}',
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
       ],
     );
   }

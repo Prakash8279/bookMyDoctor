@@ -31,8 +31,10 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
     'Other',
   ];
 
-  late final _nameController = TextEditingController(text: context.read<AuthProvider>().user?.name ?? '');
-  late final _emailController = TextEditingController(text: context.read<AuthProvider>().user?.email ?? '');
+  late final _nameController = TextEditingController(
+      text: context.read<AuthProvider>().user?.name ?? '');
+  late final _emailController = TextEditingController(
+      text: context.read<AuthProvider>().user?.email ?? '');
   String _subject = _subjectOptions.first;
   final _messageController = TextEditingController();
   bool _submitting = false;
@@ -86,27 +88,36 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
           const PageHeader(
             kicker: 'We are here to help',
             title: 'Contact BookADoctors',
-            subtitle: 'Get help with appointments, accounts, doctor onboarding, or clinic operations.',
+            subtitle:
+                'Get help with appointments, accounts, doctor onboarding, or clinic operations.',
           ),
           if (_sent)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
               child: Column(
                 children: [
-                  const Icon(Icons.check_circle_outline, size: 48, color: AppColors.success),
+                  Icon(Icons.check_circle_outline,
+                      size: 48, color: context.palette.success),
                   const SizedBox(height: AppSpacing.md),
                   const Text(
                     'Your message has been sent. Our team will get back to you at the email you provided.',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Back to profile')),
+                  OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Back to profile')),
                 ],
               ),
             )
           else ...[
-            if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-            TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Your name')),
+            if (_error != null) ...[
+              ErrorBanner(error: _error!),
+              const SizedBox(height: AppSpacing.md)
+            ],
+            TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Your name')),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _emailController,
@@ -117,33 +128,47 @@ class _ContactSupportScreenState extends State<ContactSupportScreen> {
             DropdownButtonFormField<String>(
               initialValue: _subject,
               decoration: const InputDecoration(labelText: 'Subject'),
-              items: [for (final s in _subjectOptions) DropdownMenuItem(value: s, child: Text(s))],
-              onChanged: (v) => setState(() => _subject = v ?? _subjectOptions.first),
+              items: [
+                for (final s in _subjectOptions)
+                  DropdownMenuItem(value: s, child: Text(s))
+              ],
+              onChanged: (v) =>
+                  setState(() => _subject = v ?? _subjectOptions.first),
             ),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _messageController,
-              decoration: const InputDecoration(labelText: 'How can we help?', alignLabelWithHint: true),
+              decoration: const InputDecoration(
+                  labelText: 'How can we help?', alignLabelWithHint: true),
               maxLines: 6,
             ),
             const SizedBox(height: AppSpacing.lg),
-            PrimaryButton(label: 'Send message', onPressed: _submit, loading: _submitting),
+            PrimaryButton(
+                label: 'Send message',
+                onPressed: _submit,
+                loading: _submitting),
             const SizedBox(height: AppSpacing.lg),
             // Website's contact page also shows this static info panel ("Support that listens")
             // alongside the form — client/src/pages/FeaturePages.jsx#PublicContent's CONTACT_ROWS.
-            const SectionCard(
+            SectionCard(
               title: 'Support that listens',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Send your query and our team will route it to the right specialist.', style: TextStyle(color: AppColors.textSecondary)),
-                  SizedBox(height: AppSpacing.sm),
-                  _ContactRow(label: 'Email', value: 'contact@bookadoctors.com'),
-                  _ContactRow(label: 'Support hours', value: 'Monday–Saturday, 9 AM–8 PM'),
-                  _ContactRow(label: 'Service region', value: 'India'),
-                  _ContactRow(
+                  Text(
+                      'Send your query and our team will route it to the right specialist.',
+                      style: TextStyle(color: context.palette.textSecondary)),
+                  const SizedBox(height: AppSpacing.sm),
+                  const _ContactRow(
+                      label: 'Email', value: 'contact@bookadoctors.com'),
+                  const _ContactRow(
+                      label: 'Support hours',
+                      value: 'Monday–Saturday, 9 AM–8 PM'),
+                  const _ContactRow(label: 'Service region', value: 'India'),
+                  const _ContactRow(
                     label: 'Urgent medical help',
-                    value: 'Contact local emergency services. This platform is not an emergency helpline.',
+                    value:
+                        'Contact local emergency services. This platform is not an emergency helpline.',
                   ),
                 ],
               ),
@@ -168,7 +193,7 @@ class _ContactRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-          Text(value, style: const TextStyle(color: AppColors.textSecondary)),
+          Text(value, style: TextStyle(color: context.palette.textSecondary)),
         ],
       ),
     );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -28,14 +29,20 @@ class MyQueueStatus {
     this.estimatedWaitMinutes,
   });
 
-  bool get hasActiveQueue => token != null;
+  bool get hasActiveQueue =>
+      token != null &&
+      ['waiting', 'called', 'in_consultation'].contains(status);
 
   factory MyQueueStatus.fromJson(Map<String, dynamic> json) => MyQueueStatus(
         token: json['token'] == null ? null : asInt(json['token']),
         status: json['status'] as String?,
-        nowServing: json['nowServing'] == null ? null : asInt(json['nowServing']),
-        patientsAhead: json['patientsAhead'] == null ? null : asInt(json['patientsAhead']),
-        estimatedWaitMinutes: json['estimatedWaitMinutes'] == null ? null : asInt(json['estimatedWaitMinutes']),
+        nowServing:
+            json['nowServing'] == null ? null : asInt(json['nowServing']),
+        patientsAhead:
+            json['patientsAhead'] == null ? null : asInt(json['patientsAhead']),
+        estimatedWaitMinutes: json['estimatedWaitMinutes'] == null
+            ? null
+            : asInt(json['estimatedWaitMinutes']),
       );
 }
 
@@ -54,15 +61,16 @@ class MyQueueStatus {
 class QueueTrackerScreen extends StatefulWidget {
   final String? appointmentId;
   final bool embedded;
-  const QueueTrackerScreen({super.key, this.appointmentId, this.embedded = false});
+  const QueueTrackerScreen(
+      {super.key, this.appointmentId, this.embedded = false});
 
   @override
   State<QueueTrackerScreen> createState() => _QueueTrackerScreenState();
 }
 
-class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBindingObserver {
+class _QueueTrackerScreenState extends State<QueueTrackerScreen>
+    with WidgetsBindingObserver {
   MyQueueStatus? _status;
-  String? _resolvedAppointmentId;
   Object? _error;
   bool _loading = true;
   Timer? _pollTimer;
@@ -72,13 +80,13 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _resolvedAppointmentId = widget.appointmentId;
     _load();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _isPaused = true;
       _pollTimer?.cancel();
     } else if (state == AppLifecycleState.resumed) {
@@ -100,16 +108,18 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
       _error = null;
     });
     try {
-      String? targetId = _resolvedAppointmentId;
+      String? targetId = widget.appointmentId;
       if (targetId == null) {
-        final res = await ApiClient.instance.get('/appointments', query: {'pageSize': 20});
+        final res = await ApiClient.instance
+            .getAll('/appointments', query: {'date': indiaToday()});
         final appts = res.list.where((a) {
           final s = a['status'] as String?;
-          return s == 'upcoming' || s == 'confirmed';
+          return (s == 'upcoming' || s == 'confirmed') &&
+              a['appointmentDate'] == indiaToday() &&
+              a['tokenNumber'] != null;
         }).toList();
         if (appts.isNotEmpty) {
           targetId = appts.first['id'] as String?;
-          _resolvedAppointmentId = targetId;
         }
       }
 
@@ -184,7 +194,8 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
           EmptyStateView(
             icon: Icons.hourglass_empty,
             title: 'No active queue',
-            subtitle: 'Your live token will appear here after this appointment is checked in.',
+            subtitle:
+                'Your live token will appear here after this appointment is checked in.',
           ),
         ],
       );
@@ -202,10 +213,10 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
               children: [
-                const Text(
+                Text(
                   'YOUR TOKEN',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                     letterSpacing: 1.1,
@@ -214,13 +225,17 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
                 const SizedBox(height: AppSpacing.xs),
                 Text(
                   '#${status.token}',
-                  style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w800, color: AppColors.primaryDark),
+                  style: TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w800,
+                      color: context.palette.primaryDark),
                 ),
                 const SizedBox(height: AppSpacing.sm),
                 if (status.status != null) StatusBadge(status: status.status!),
                 if (status.nowServing != null) ...[
                   const SizedBox(height: AppSpacing.sm),
-                  Text('Now serving token #${status.nowServing}', style: const TextStyle(color: AppColors.textSecondary)),
+                  Text('Now serving token #${status.nowServing}',
+                      style: TextStyle(color: context.palette.textSecondary)),
                 ],
               ],
             ),
@@ -235,7 +250,9 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
             Expanded(
               child: StatCard(
                 label: 'Patients ahead',
-                value: status.patientsAhead != null ? '${status.patientsAhead}' : '—',
+                value: status.patientsAhead != null
+                    ? '${status.patientsAhead}'
+                    : '—',
                 icon: Icons.groups_outlined,
               ),
             ),
@@ -243,7 +260,9 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
             Expanded(
               child: StatCard(
                 label: 'Estimated wait',
-                value: status.estimatedWaitMinutes != null ? '${status.estimatedWaitMinutes} min' : '—',
+                value: status.estimatedWaitMinutes != null
+                    ? '${status.estimatedWaitMinutes} min'
+                    : '—',
                 icon: Icons.timer_outlined,
               ),
             ),
@@ -257,12 +276,14 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen> with WidgetsBin
             children: [
               _StatusExplainer(
                 label: 'Waiting',
-                description: 'your token has joined the line; "Patients ahead" shows how many are before you.',
+                description:
+                    'your token has joined the line; "Patients ahead" shows how many are before you.',
               ),
               SizedBox(height: AppSpacing.sm),
               _StatusExplainer(
                 label: 'Called',
-                description: "the clinic has called your token; please head to the doctor's room.",
+                description:
+                    "the clinic has called your token; please head to the doctor's room.",
               ),
               SizedBox(height: AppSpacing.sm),
               _StatusExplainer(
@@ -291,9 +312,14 @@ class _StatusExplainer extends StatelessWidget {
   Widget build(BuildContext context) {
     return RichText(
       text: TextSpan(
-        style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+        style: TextStyle(
+            color: context.palette.textSecondary, fontSize: 13, height: 1.4),
         children: [
-          TextSpan(text: '$label — ', style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w700)),
+          TextSpan(
+              text: '$label — ',
+              style: TextStyle(
+                  color: context.palette.textPrimary,
+                  fontWeight: FontWeight.w700)),
           TextSpan(text: description),
         ],
       ),

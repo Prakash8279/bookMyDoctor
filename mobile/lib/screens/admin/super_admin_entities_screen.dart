@@ -31,7 +31,8 @@ class SuperAdminEntitiesScreen extends StatefulWidget {
   const SuperAdminEntitiesScreen({super.key});
 
   @override
-  State<SuperAdminEntitiesScreen> createState() => _SuperAdminEntitiesScreenState();
+  State<SuperAdminEntitiesScreen> createState() =>
+      _SuperAdminEntitiesScreenState();
 }
 
 class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
@@ -51,10 +52,12 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
 
   Future<_SuperAdminEntitiesData> _fetch() async {
     final results = await Future.wait([
-      ApiClient.instance.get('/admin/dashboard-stats').then((res) => DashboardStats.fromJson(res.map)),
-      ApiClient.instance.get('/clinics', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/doctors', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance.get('/receptionists', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance
+          .get('/admin/dashboard-stats')
+          .then((res) => DashboardStats.fromJson(res.map)),
+      ApiClient.instance.getAll('/clinics', query: {'pageSize': 100}),
+      ApiClient.instance.getAll('/doctors', query: {'pageSize': 100}),
+      ApiClient.instance.getAll('/receptionists', query: {'pageSize': 100}),
     ]);
 
     final stats = results[0] as DashboardStats;
@@ -71,7 +74,9 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
 
     return _SuperAdminEntitiesData(
       stats: stats,
-      totalDoctors: stats.verifiedDoctorsCount > 0 ? stats.verifiedDoctorsCount : doctorsRes.list.length,
+      totalDoctors: stats.verifiedDoctorsCount > 0
+          ? stats.verifiedDoctorsCount
+          : doctorsRes.list.length,
       totalPatients: stats.registeredPatientsCount,
       totalClinics: clinicsRes.list.length,
       pendingClinics: pendingClinics,
@@ -101,13 +106,18 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                 title: 'People & clinics',
                 subtitle: 'Choose what you want to manage.',
               ),
-              if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
-              if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
+              if (loading)
+                const Padding(
+                    padding: EdgeInsets.only(top: AppSpacing.xl),
+                    child: LoadingView()),
+              if (snapshot.hasError)
+                ErrorBanner(error: snapshot.error!, onRetry: _load),
               if (data != null) ...[
                 _buildEntityCard(
                   title: 'Doctors',
                   count: '${data.totalDoctors}',
-                  description: 'Create accounts, verify profiles, and enable or disable access.',
+                  description:
+                      'Create accounts, verify profiles, and enable or disable access.',
                   actionLabel: 'Open doctors →',
                   icon: Icons.medical_services_outlined,
                   onTap: () => _goTo('Doctors'),
@@ -123,7 +133,8 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                 _buildEntityCard(
                   title: 'Clinics',
                   count: '${data.totalClinics}',
-                  description: 'Control clinic availability and emergency services.',
+                  description:
+                      'Control clinic availability and emergency services.',
                   actionLabel: 'Open clinics →',
                   icon: Icons.apartment_outlined,
                   onTap: () => _goTo('Clinic tenants'),
@@ -145,11 +156,15 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Pending approvals', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const Text('Pending approvals',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
                         const SizedBox(height: 2),
-                        const Text(
+                        Text(
                           'New clinic requests stay separate until approved.',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 12),
                         ),
                         const SizedBox(height: AppSpacing.md),
                         Row(
@@ -158,15 +173,23 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                               child: Container(
                                 padding: const EdgeInsets.all(AppSpacing.md),
                                 decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(AppRadius.button),
+                                  color: context.palette.surface,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.button),
                                 ),
-                                child: const Column(
+                                child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Doctors waiting', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                                    SizedBox(height: 4),
-                                    Text('Auto-verified', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                                    Text('Doctors waiting',
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12)),
+                                    const SizedBox(height: 4),
+                                    const Text('Auto-verified',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15)),
                                   ],
                                 ),
                               ),
@@ -175,27 +198,38 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                             Expanded(
                               child: InkWell(
                                 onTap: () => _goTo('Clinic verification'),
-                                borderRadius: BorderRadius.circular(AppRadius.button),
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.button),
                                 child: Container(
                                   padding: const EdgeInsets.all(AppSpacing.md),
                                   decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(AppRadius.button),
+                                    color: context.palette.surface,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.button),
                                     border: data.pendingClinics > 0
-                                        ? Border.all(color: AppColors.warning.withValues(alpha: 0.5))
+                                        ? Border.all(
+                                            color: AppColors.warning
+                                                .withValues(alpha: 0.5))
                                         : null,
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      const Text('Clinics waiting', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                      Text('Clinics waiting',
+                                          style: TextStyle(
+                                              color:
+                                                  context.palette.textSecondary,
+                                              fontSize: 12)),
                                       const SizedBox(height: 4),
                                       Text(
                                         '${data.pendingClinics}',
                                         style: TextStyle(
                                           fontWeight: FontWeight.w700,
                                           fontSize: 22,
-                                          color: data.pendingClinics > 0 ? AppColors.warning : AppColors.textPrimary,
+                                          color: data.pendingClinics > 0
+                                              ? AppColors.warning
+                                              : context.palette.textPrimary,
                                         ),
                                       ),
                                     ],
@@ -211,10 +245,11 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: () => _goTo('Clinic verification'),
-                              icon: const Icon(Icons.verified_outlined, size: 16),
+                              icon:
+                                  const Icon(Icons.verified_outlined, size: 16),
                               label: const Text('Review pending clinics'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryDark,
+                                backgroundColor: context.palette.primaryDark,
                                 foregroundColor: Colors.white,
                               ),
                             ),
@@ -248,9 +283,9 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
         child: Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: context.palette.surface,
             borderRadius: BorderRadius.circular(AppRadius.card),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.palette.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,30 +293,46 @@ class _SuperAdminEntitiesScreenState extends State<SuperAdminEntitiesScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
+                  Expanded(
+                      child: Row(
                     children: [
-                      Icon(icon, color: AppColors.primaryDark, size: 22),
+                      Icon(icon, color: context.palette.primaryDark, size: 22),
                       const SizedBox(width: AppSpacing.sm),
-                      Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+                      Expanded(
+                          child: Text(title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 17))),
                     ],
-                  ),
+                  )),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryLight,
+                      color: context.palette.primaryLight,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
                       count,
-                      style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 14),
+                      style: TextStyle(
+                          color: context.palette.primaryDark,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: AppSpacing.xs),
-              Text(description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
+              Text(description,
+                  style: TextStyle(
+                      color: context.palette.textSecondary,
+                      fontSize: 13,
+                      height: 1.4)),
               const SizedBox(height: AppSpacing.sm),
-              Text(actionLabel, style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 13)),
+              Text(actionLabel,
+                  style: TextStyle(
+                      color: context.palette.primaryDark,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13)),
             ],
           ),
         ),

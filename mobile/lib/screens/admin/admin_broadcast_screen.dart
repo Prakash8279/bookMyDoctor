@@ -42,8 +42,7 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
   Future<List<BroadcastLogItem>> _fetchHistory() async {
     try {
       final res = await ApiClient.instance
-          .get('/notifications/broadcast', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+          .get('/notifications/broadcast', query: {'pageSize': 50});
       final list = <BroadcastLogItem>[];
       for (final item in res.list) {
         try {
@@ -68,7 +67,8 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
       return;
     }
     if (_audience == 'single_user' && _targetUserIdCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Enter the target user id for a single-user broadcast');
+      setState(() =>
+          _error = 'Enter the target user id for a single-user broadcast');
       return;
     }
     setState(() {
@@ -80,7 +80,8 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
         'audience': _audience,
         'title': _titleCtrl.text.trim(),
         'body': _bodyCtrl.text.trim(),
-        if (_audience == 'single_user') 'targetUserId': _targetUserIdCtrl.text.trim(),
+        if (_audience == 'single_user')
+          'targetUserId': _targetUserIdCtrl.text.trim(),
       });
       if (mounted) showSuccessSnack(context, 'Broadcast sent');
       _titleCtrl.clear();
@@ -110,27 +111,41 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.sm)],
+              if (_error != null) ...[
+                ErrorBanner(error: _error!),
+                const SizedBox(height: AppSpacing.sm)
+              ],
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _audience,
                 decoration: const InputDecoration(labelText: 'Audience'),
                 items: const [
                   DropdownMenuItem(value: 'all', child: Text('Everyone')),
                   DropdownMenuItem(value: 'patients', child: Text('Patients')),
                   DropdownMenuItem(value: 'doctors', child: Text('Doctors')),
-                  DropdownMenuItem(value: 'receptionists', child: Text('Receptionists')),
-                  DropdownMenuItem(value: 'single_user', child: Text('Single user (by id)')),
+                  DropdownMenuItem(
+                      value: 'receptionists', child: Text('Receptionists')),
+                  DropdownMenuItem(
+                      value: 'single_user', child: Text('Single user (by id)')),
                 ],
                 onChanged: (v) => setState(() => _audience = v ?? 'all'),
               ),
               if (_audience == 'single_user') ...[
                 const SizedBox(height: AppSpacing.sm),
-                TextField(controller: _targetUserIdCtrl, decoration: const InputDecoration(labelText: 'Target user id')),
+                TextField(
+                    controller: _targetUserIdCtrl,
+                    decoration:
+                        const InputDecoration(labelText: 'Target user id')),
               ],
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Title')),
+              TextField(
+                  controller: _titleCtrl,
+                  decoration: const InputDecoration(labelText: 'Title')),
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: _bodyCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'Message')),
+              TextField(
+                  controller: _bodyCtrl,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: 'Message')),
               const SizedBox(height: AppSpacing.sm),
               PrimaryButton(label: 'Send', onPressed: _send, loading: _sending),
             ],
@@ -142,10 +157,18 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
           child: FutureBuilder<List<BroadcastLogItem>>(
             future: _historyFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-              if (snapshot.hasError) return ErrorBanner(error: snapshot.error!, onRetry: _loadHistory);
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return ErrorBanner(
+                    error: snapshot.error!, onRetry: _loadHistory);
+              }
               final items = snapshot.data ?? [];
-              if (items.isEmpty) return const Text('No broadcasts sent yet', style: TextStyle(color: AppColors.textSecondary));
+              if (items.isEmpty) {
+                return Text('No broadcasts sent yet',
+                    style: TextStyle(color: context.palette.textSecondary));
+              }
               return Column(
                 children: items.map((b) {
                   return Padding(
@@ -153,11 +176,15 @@ class _AdminBroadcastScreenState extends State<AdminBroadcastScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(b.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(b.title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
                         Text(b.body, style: const TextStyle(fontSize: 13)),
                         Text(
                           '${b.audience} · ${b.recipientCount} recipients · ${b.readCount} read',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 11),
                         ),
                       ],
                     ),

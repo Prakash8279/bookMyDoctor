@@ -15,6 +15,7 @@ const { createInFlightGuard } = require('../../middleware/inFlightGuard');
 const env = require('../../config/env');
 const validation = require('./auth.validation');
 const controller = require('./auth.controller');
+const meController = require('../me/me.controller');
 
 // LOGIN RESILIENCE (docs/api-load-test-issues-and-plan-2026-09-20.md, Phase 1 item 2) — see
 // middleware/inFlightGuard.js's header comment for the full rationale and threshold math. Shared
@@ -194,6 +195,27 @@ router.post('/register', authLimiter, authInFlightGuard, validation.register, va
  *             schema: { $ref: '#/components/schemas/ApiError' }
  */
 router.post('/login', authLimiter, authInFlightGuard, validation.login, validateRequest, controller.login);
+
+/**
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Return the currently authenticated user.
+ *     description: Backwards-compatible alias for GET /me used by older web and mobile clients.
+ *     operationId: authGetCurrentUser
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: The authenticated user's current profile.
+ *       401:
+ *         description: Missing, expired, or invalid access token.
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/ApiError' }
+ */
+router.get('/me', authenticate, meController.getMe);
 
 /**
  * @openapi

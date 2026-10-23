@@ -17,7 +17,11 @@ class RoleNavItem {
   // actually existed on RoleNavItem, so the whole file failed to compile. Added here, plus the
   // divider rendering in the drawer's itemBuilder below.
   final String? headerAbove;
-  const RoleNavItem({required this.icon, required this.label, required this.builder, this.headerAbove});
+  const RoleNavItem(
+      {required this.icon,
+      required this.label,
+      required this.builder,
+      this.headerAbove});
 }
 
 /// Shared shell for every role portal — a drawer listing that role's
@@ -53,6 +57,51 @@ class RoleScaffoldState extends State<RoleScaffold> {
 
   int get currentIndex => _index;
 
+  List<MapEntry<int, String>> get bottomDestinations {
+    final role = widget.portalTitle.toLowerCase();
+    final labels = role.contains('patient')
+        ? {
+            'Dashboard': 'Home',
+            'My appointments': 'Appointments',
+            'Book appointment': 'Book',
+            'Queue tracker': 'Queue',
+            'My profile': 'Profile'
+          }
+        : role.contains('doctor')
+            ? {
+                'Dashboard': 'Home',
+                'Appointments': 'Appointments',
+                'Queue management': 'Queue',
+                'Reports': 'Reports',
+                'My profile': 'Profile'
+              }
+            : role.contains('reception')
+                ? {
+                    'Dashboard': 'Home',
+                    'Appointments': 'Appointments',
+                    'Walk-in registration': 'Walk-in',
+                    'Queue monitor': 'Queue',
+                    'My profile': 'Profile'
+                  }
+                : {
+                    'Control center': 'Home',
+                    'Dashboard': 'Home',
+                    'Doctors': 'Doctors',
+                    'Appointments': 'Bookings',
+                    'Payments & revenue': 'Reports',
+                    'Revenue': 'Reports',
+                    'My profile': 'Profile'
+                  };
+    final result = <MapEntry<int, String>>[];
+    for (final entry in labels.entries) {
+      final index = widget.items.indexWhere((item) => item.label == entry.key);
+      if (index >= 0 && !result.any((item) => item.value == entry.value)) {
+        result.add(MapEntry(index, entry.value));
+      }
+    }
+    return result.take(5).toList();
+  }
+
   // BUG FIX (user report: "aap ko back karne pe close ho ja raha hai" — pressing the phone's
   // back button closes the whole app instead of navigating within it). Root cause: switching
   // drawer sections here only calls `setState(() => _index = i)` — it never pushes a new route
@@ -69,13 +118,16 @@ class RoleScaffoldState extends State<RoleScaffold> {
       return false;
     }
     final now = DateTime.now();
-    if (_lastBackPressAt != null && now.difference(_lastBackPressAt!) < const Duration(seconds: 2)) {
+    if (_lastBackPressAt != null &&
+        now.difference(_lastBackPressAt!) < const Duration(seconds: 2)) {
       return true;
     }
     _lastBackPressAt = now;
     final messenger = ScaffoldMessenger.of(context);
     messenger.clearSnackBars();
-    messenger.showSnackBar(const SnackBar(content: Text('Press back again to exit'), duration: Duration(seconds: 2)));
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Press back again to exit'),
+        duration: Duration(seconds: 2)));
     return false;
   }
 
@@ -87,13 +139,16 @@ class RoleScaffoldState extends State<RoleScaffold> {
 
   bool navigateToLabel(String label) {
     final query = label.trim().toLowerCase();
-    final idx = widget.items.indexWhere((it) => it.label.trim().toLowerCase() == query);
+    final idx =
+        widget.items.indexWhere((it) => it.label.trim().toLowerCase() == query);
     if (idx != -1) {
       setState(() => _index = idx);
       return true;
     }
     final partialIdx = widget.items.indexWhere(
-      (it) => it.label.trim().toLowerCase().contains(query) || query.contains(it.label.trim().toLowerCase()),
+      (it) =>
+          it.label.trim().toLowerCase().contains(query) ||
+          query.contains(it.label.trim().toLowerCase()),
     );
     if (partialIdx != -1) {
       setState(() => _index = partialIdx);
@@ -106,8 +161,11 @@ class RoleScaffoldState extends State<RoleScaffold> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final current = widget.items[_index];
-    final displayName = auth.user?.name.isNotEmpty == true ? auth.user!.name : 'Account';
-    final initials = displayName.trim().isNotEmpty ? displayName.trim()[0].toUpperCase() : '?';
+    final displayName =
+        auth.user?.name.isNotEmpty == true ? auth.user!.name : 'Account';
+    final initials = displayName.trim().isNotEmpty
+        ? displayName.trim()[0].toUpperCase()
+        : '?';
 
     return PopScope(
       canPop: false,
@@ -119,190 +177,434 @@ class RoleScaffoldState extends State<RoleScaffold> {
         if (_handleBackPress()) SystemNavigator.pop();
       },
       child: Scaffold(
-      // COMPLETENESS FIX (brand consistency — "same to same as the website"): background/avatar
-      // colors below match the web app's own PortalHeader (src/components/Sidebar.jsx) exactly —
-      // bg-surface top bar, a primary-light/primary-dark initials avatar — rather than Material's
-      // default white app bar with a generic "Live" badge that has no web equivalent.
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1, color: AppColors.border),
-        ),
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        titleSpacing: 0,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: Image.asset('assets/branding/app_icon.png', width: 28, height: 28),
-            ),
-            const SizedBox(width: 8),
-            const Flexible(
-              child: Text(
-                'BookADoctors',
-                style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w800, fontSize: 16),
-                overflow: TextOverflow.ellipsis,
+        // COMPLETENESS FIX (brand consistency — "same to same as the website"): background/avatar
+        // colors below match the web app's own PortalHeader (src/components/Sidebar.jsx) exactly —
+        // bg-surface top bar, a primary-light/primary-dark initials avatar — rather than Material's
+        // default white app bar with a generic "Live" badge that has no web equivalent.
+        appBar: AppBar(
+          backgroundColor: context.palette.surface,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(1),
+            child: Divider(height: 1, color: context.palette.border),
+          ),
+          iconTheme: IconThemeData(color: context.palette.textPrimary),
+          automaticallyImplyLeading: MediaQuery.sizeOf(context).width >= 960,
+          titleSpacing: MediaQuery.sizeOf(context).width >= 960 ? 0 : 16,
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: Image.asset('assets/branding/app_icon.png',
+                    width: 28, height: 28),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'BookADoctors',
+                  style: TextStyle(
+                      color: context.palette.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            if (widget.items.any((item) => item.label == 'Notifications'))
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: () => navigateToLabel('Notifications'),
+                icon: Icon(Icons.notifications_none,
+                    color: context.palette.primaryDark),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.md),
+              child: IconButton(
+                tooltip: 'My profile',
+                onPressed: () => navigateToLabel('My profile'),
+                icon: CircleAvatar(
+                  radius: 16,
+                  backgroundColor: context.palette.primaryLight,
+                  child: Text(
+                    initials,
+                    style: TextStyle(
+                        color: context.palette.primaryDark,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13),
+                  ),
+                ),
               ),
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: AppColors.primaryLight,
-              child: Text(
-                initials,
-                style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-            ),
-          ),
-        ],
-      ),
-      drawer: Drawer(
-        backgroundColor: AppColors.charcoal,
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.sm),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.all(Radius.circular(11)),
-                      child: Image(image: AssetImage('assets/branding/app_icon.png'), width: 36, height: 36),
-                    ),
-                    SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        'BookADoctors',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 17),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(AppRadius.button),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(widget.portalTitle, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-                    const SizedBox(height: 2),
-                    Text(
-                      displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                  itemCount: widget.items.length,
-                  itemBuilder: (context, i) {
-                    final item = widget.items[i];
-                    final selected = i == _index;
-                    final tile = Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: 1),
-                      child: ListTile(
-                        dense: true,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                        leading: Icon(item.icon, size: 20, color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75)),
-                        title: Text(
-                          item.label,
-                          style: TextStyle(
-                            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.75),
-                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                            fontSize: 14,
-                          ),
-                        ),
-                        selected: selected,
-                        selectedTileColor: AppColors.primaryDark,
-                        onTap: () {
-                          setState(() => _index = i);
-                          Navigator.of(context).pop();
-                        },
-                      ),
-                    );
-                    // BUG FIX (see RoleNavItem.headerAbove's doc comment): renders the section
-                    // divider a superadmin's nav list expects between "Super Admin workspace" and
-                    // "Admin workspace" — a plain label + hairline, not a full second drawer header.
-                    if (item.headerAbove == null) return tile;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xs),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
-                              const SizedBox(height: AppSpacing.sm),
-                              Text(
-                                item.headerAbove!.toUpperCase(),
+        drawer: MediaQuery.sizeOf(context).width >= 960
+            ? Drawer(
+                backgroundColor: AppColors.charcoal,
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(AppSpacing.md,
+                            AppSpacing.md, AppSpacing.md, AppSpacing.sm),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(11)),
+                              child: Image(
+                                  image: AssetImage(
+                                      'assets/branding/app_icon.png'),
+                                  width: 36,
+                                  height: 36),
+                            ),
+                            SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                'BookADoctors',
                                 style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.5),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.6,
-                                ),
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 17),
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(AppRadius.button),
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.1)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(widget.portalTitle,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text(
+                              displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.sm),
+                          itemCount: widget.items.length,
+                          itemBuilder: (context, i) {
+                            final item = widget.items[i];
+                            final selected = i == _index;
+                            final tile = Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.sm, vertical: 1),
+                              child: Material(
+                                  type: MaterialType.transparency,
+                                  child: ListTile(
+                                    dense: true,
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                            AppRadius.button)),
+                                    leading: Icon(item.icon,
+                                        size: 20,
+                                        color: selected
+                                            ? Colors.white
+                                            : Colors.white
+                                                .withValues(alpha: 0.75)),
+                                    title: Text(
+                                      item.label,
+                                      style: TextStyle(
+                                        color: selected
+                                            ? Colors.white
+                                            : Colors.white
+                                                .withValues(alpha: 0.75),
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    selected: selected,
+                                    selectedTileColor:
+                                        context.palette.primaryDark,
+                                    onTap: () {
+                                      setState(() => _index = i);
+                                      Navigator.of(context).pop();
+                                    },
+                                  )),
+                            );
+                            // BUG FIX (see RoleNavItem.headerAbove's doc comment): renders the section
+                            // divider a superadmin's nav list expects between "Super Admin workspace" and
+                            // "Admin workspace" — a plain label + hairline, not a full second drawer header.
+                            if (item.headerAbove == null) return tile;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      AppSpacing.md,
+                                      AppSpacing.md,
+                                      AppSpacing.md,
+                                      AppSpacing.xs),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Divider(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.12),
+                                          height: 1),
+                                      const SizedBox(height: AppSpacing.sm),
+                                      Text(
+                                        item.headerAbove!.toUpperCase(),
+                                        style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.5),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 0.6,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                tile,
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm),
+                        child: Material(
+                            type: MaterialType.transparency,
+                            child: ListTile(
+                              dense: true,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.button)),
+                              leading: Icon(Icons.logout,
+                                  size: 20,
+                                  color: Colors.white.withValues(alpha: 0.75)),
+                              title: Text('Sign out',
+                                  style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.75),
+                                      fontSize: 14)),
+                              onTap: () async {
+                                Navigator.of(context).pop();
+                                await context.read<AuthProvider>().logout();
+                              },
+                            )),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                    ],
+                  ),
+                ),
+              )
+            : null,
+        bottomNavigationBar: bottomDestinations.length >= 2
+            ? Material(
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: bottomDestinations.map((entry) {
+                      final selected = entry.key == _index;
+                      return Expanded(
+                        child: Semantics(
+                          selected: selected,
+                          button: true,
+                          child: Tooltip(
+                            message: widget.items[entry.key].label,
+                            child: InkWell(
+                              onTap: () => setIndex(entry.key),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 3, vertical: 10),
+                                child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(widget.items[entry.key].icon,
+                                          size: 22,
+                                          color: selected
+                                              ? context.palette.primaryDark
+                                              : context.palette.textSecondary),
+                                      const SizedBox(height: 4),
+                                      Text(entry.value,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: selected
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              color: selected
+                                                  ? context.palette.primaryDark
+                                                  : context
+                                                      .palette.textSecondary)),
+                                    ]),
+                              ),
+                            ),
                           ),
                         ),
-                        tile,
-                      ],
-                    );
-                  },
+                      );
+                    }).toList(),
+                  ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                child: ListTile(
-                  dense: true,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.button)),
-                  leading: Icon(Icons.logout, size: 20, color: Colors.white.withValues(alpha: 0.75)),
-                  title: Text('Sign out', style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 14)),
-                  onTap: () async {
-                    Navigator.of(context).pop();
-                    await context.read<AuthProvider>().logout();
-                  },
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
+              )
+            : null,
+        // A single obvious top-level mount point for every role portal screen — see
+        // widgets/connectivity_banner.dart's own doc comment for what it does and doesn't cover.
+        body: SafeArea(
+          top: false,
+          bottom: true,
+          child: Column(
+            children: [
+              const ConnectivityBanner(),
+              Expanded(child: current.builder(context)),
             ],
           ),
         ),
       ),
-      // A single obvious top-level mount point for every role portal screen — see
-      // widgets/connectivity_banner.dart's own doc comment for what it does and doesn't cover.
-      body: SafeArea(
-        top: false,
-        bottom: true,
-        child: Column(
-          children: [
-            const ConnectivityBanner(),
-            Expanded(child: current.builder(context)),
-          ],
-        ),
-      ),
-      ),
     );
+  }
+}
+
+/// Compact mobile shortcuts, with notification/profile kept in the shared header/bottom bar.
+class PortalQuickActions extends StatelessWidget {
+  const PortalQuickActions({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final portal = RoleScaffold.of(context);
+    if (portal == null || MediaQuery.sizeOf(context).width >= 960) {
+      return const SizedBox.shrink();
+    }
+    final role = portal.widget.portalTitle.toLowerCase();
+    final patientServices = [
+      'Book appointment',
+      'My appointments',
+      'Queue tracker',
+      'Payments',
+      'Family members',
+      'My profile',
+      'Help & Policies'
+    ];
+    final doctorServices = [
+      'Queue management',
+      'Appointments',
+      'Analytics',
+      'Patient reviews',
+      'Clinic settings',
+      'OPD schedule',
+      'Receptionists',
+      'Help & Policies'
+    ];
+    final receptionServices = [
+      'Walk-in registration',
+      'Queue monitor',
+      'Check-in',
+      'Appointments',
+      'Payments',
+      'Patients',
+      'Reports',
+      'Help & Policies'
+    ];
+    final labels = role.contains('patient')
+        ? patientServices
+        : role.contains('doctor')
+            ? doctorServices
+            : role.contains('reception')
+                ? receptionServices
+                : null;
+    final items = labels == null
+        ? portal.widget.items
+            .where((item) => ![
+                  'Dashboard',
+                  'Control center',
+                  'My profile',
+                  'Notifications'
+                ].contains(item.label))
+            .toList()
+        : labels
+            .map((label) => portal.widget.items
+                .where((item) => item.label == label)
+                .firstOrNull)
+            .whereType<RoleNavItem>()
+            .toList();
+    return LayoutBuilder(builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 600
+          ? 6
+          : constraints.maxWidth < 340
+              ? 3
+              : 4;
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Wrap(
+            spacing: 8,
+            runSpacing: 14,
+            children: items
+                .map((item) => SizedBox(
+                      width:
+                          (constraints.maxWidth - (columns - 1) * 8) / columns,
+                      child: Tooltip(
+                          message: item.label,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => portal.navigateToLabel(item.label),
+                            child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4),
+                                child: Column(children: [
+                                  Container(
+                                      width: 46,
+                                      height: 46,
+                                      decoration: BoxDecoration(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .surface,
+                                          border: Border.all(
+                                              color: context.palette.border),
+                                          borderRadius:
+                                              BorderRadius.circular(14)),
+                                      child: Icon(item.icon,
+                                          size: 23,
+                                          color: context.palette.primaryDark)),
+                                  const SizedBox(height: 7),
+                                  Text(item.label,
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500)),
+                                ])),
+                          )),
+                    ))
+                .toList()),
+      );
+    });
   }
 }

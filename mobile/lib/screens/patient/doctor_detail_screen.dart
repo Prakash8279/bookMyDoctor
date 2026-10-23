@@ -34,10 +34,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
   }
 
   Future<_DoctorDetailData> _load() async {
-    final doctorRes = await ApiClient.instance.get('/doctors/${widget.doctorId}');
-    final reviewsRes = await ApiClient.instance
-        .get('/reviews', query: {'doctorId': widget.doctorId, 'pageSize': 20})
-        .catchError((_) => ApiResponse(data: []));
+    final doctorRes =
+        await ApiClient.instance.get('/doctors/${widget.doctorId}');
+    final reviewsRes = await ApiClient.instance.get('/reviews', query: {
+      'doctorId': widget.doctorId,
+      'pageSize': 20
+    }).catchError((_) => ApiResponse(data: []));
     final reviews = <ReviewItem>[];
     for (final item in reviewsRes.list) {
       try {
@@ -51,7 +53,8 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     // live token status here (they'd have to go find it under Queue tracker separately).
     String? myAppointmentId;
     try {
-      final apptRes = await ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
+      final apptRes = await ApiClient.instance.get('/appointments',
+          query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
       for (final item in apptRes.list) {
         final a = Appointment.fromJson(item);
         if (a.doctor?.id == widget.doctorId) {
@@ -72,10 +75,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     // detail it actually needs (GET /clinics/:id, same endpoint the web app's clinics list is
     // built from) to get the real phone/address — a patient couldn't see either at all before.
     Clinic? primaryClinicDetail;
-    final primaryClinicId = doctor.clinics.isNotEmpty ? doctor.clinics.first.id : null;
+    final primaryClinicId =
+        doctor.clinics.isNotEmpty ? doctor.clinics.first.id : null;
     if (primaryClinicId != null) {
       try {
-        final clinicRes = await ApiClient.instance.get('/clinics/$primaryClinicId');
+        final clinicRes =
+            await ApiClient.instance.get('/clinics/$primaryClinicId');
         primaryClinicDetail = Clinic.fromJson(clinicRes.map);
       } catch (_) {
         // Non-fatal — the screen still shows the name/city/area it already had from the
@@ -98,17 +103,30 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       body: FutureBuilder<_DoctorDetailData>(
         future: _future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const LoadingView();
+          }
           if (snapshot.hasError) {
             return Padding(
               padding: const EdgeInsets.all(AppSpacing.md),
-              child: ErrorBanner(error: snapshot.error!, onRetry: () => setState(() { _future = _load(); })),
+              child: ErrorBanner(
+                  error: snapshot.error!,
+                  onRetry: () => setState(() {
+                        _future = _load();
+                      })),
             );
           }
           final data = snapshot.data!;
           final doctor = data.doctor;
-          final primaryClinic = doctor.clinics.isNotEmpty ? doctor.clinics.first : null;
-          final initials = doctor.name.split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0]).join().toUpperCase();
+          final primaryClinic =
+              doctor.clinics.isNotEmpty ? doctor.clinics.first : null;
+          final initials = doctor.name
+              .split(' ')
+              .where((s) => s.isNotEmpty)
+              .take(2)
+              .map((s) => s[0])
+              .join()
+              .toUpperCase();
           final minAdvance = doctor.minBookingAdvanceAmount ?? 0.0;
 
           return ListView(
@@ -128,14 +146,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                           width: 64,
                           height: 64,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: context.palette.surface,
                             borderRadius: BorderRadius.circular(AppRadius.card),
                           ),
                           alignment: Alignment.center,
                           child: Text(
                             initials.isNotEmpty ? initials : 'DR',
-                            style: const TextStyle(
-                              color: AppColors.primaryDark,
+                            style: TextStyle(
+                              color: context.palette.primaryDark,
                               fontSize: 22,
                               fontWeight: FontWeight.w800,
                             ),
@@ -148,12 +166,16 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.verified, size: 14, color: Colors.white.withValues(alpha: 0.8)),
+                                  Icon(Icons.verified,
+                                      size: 14,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.8)),
                                   const SizedBox(width: 4),
                                   Text(
                                     'VERIFIED PRACTITIONER',
                                     style: TextStyle(
-                                      color: Colors.white.withValues(alpha: 0.75),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.75),
                                       fontWeight: FontWeight.w700,
                                       fontSize: 11,
                                       letterSpacing: 1.1,
@@ -164,23 +186,36 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 doctor.name,
-                                style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                doctor.qualification ?? doctor.specialization?.name ?? 'General practitioner',
-                                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 13),
+                                doctor.qualification ??
+                                    doctor.specialization?.name ??
+                                    'General practitioner',
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                    fontSize: 13),
                               ),
                               const SizedBox(height: 6),
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(Icons.location_on_outlined, size: 14, color: Colors.white.withValues(alpha: 0.6)),
+                                  Icon(Icons.location_on_outlined,
+                                      size: 14,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.6)),
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
                                       '${primaryClinic?.name ?? "Clinic not added"}${primaryClinic?.city != null ? ", ${primaryClinic!.city}" : ""}',
-                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.65), fontSize: 12),
+                                      style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.65),
+                                          fontSize: 12),
                                     ),
                                   ),
                                 ],
@@ -188,14 +223,18 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               if (doctor.emergencyAvailable) ...[
                                 const SizedBox(height: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: AppColors.danger,
+                                    color: context.palette.danger,
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: const Text(
                                     'Emergency available',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11),
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11),
                                   ),
                                 ),
                               ],
@@ -217,7 +256,10 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                             children: [
                               Text(
                                 doctor.rating.toStringAsFixed(1),
-                                style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(width: 6),
                               Flexible(
@@ -228,10 +270,16 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                     const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.star, color: AppColors.gold, size: 14),
+                                        Icon(Icons.star,
+                                            color: AppColors.gold, size: 14),
                                         SizedBox(width: 2),
                                         Flexible(
-                                          child: Text('Patient rating', style: TextStyle(color: AppColors.gold, fontSize: 11, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                          child: Text('Patient rating',
+                                              style: TextStyle(
+                                                  color: AppColors.gold,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600),
+                                              overflow: TextOverflow.ellipsis),
                                         ),
                                       ],
                                     ),
@@ -239,7 +287,10 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                       '${doctor.reviewCount} review(s)',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                                      style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.6),
+                                          fontSize: 11),
                                     ),
                                   ],
                                 ),
@@ -251,10 +302,16 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Consultation', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11)),
+                            Text('Consultation',
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.6),
+                                    fontSize: 11)),
                             Text(
                               '₹${doctor.consultationFee.toStringAsFixed(0)}',
-                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800),
                             ),
                           ],
                         ),
@@ -275,21 +332,24 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                       elevation: 2,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(AppRadius.card),
-                        side: const BorderSide(color: AppColors.primary, width: 1.5),
+                        side: BorderSide(
+                            color: context.palette.primary, width: 1.5),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(AppSpacing.md),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Row(
+                            Row(
                               children: [
-                                Icon(Icons.calendar_month, size: 16, color: AppColors.primaryDark),
-                                SizedBox(width: 6),
+                                Icon(Icons.calendar_month,
+                                    size: 16,
+                                    color: context.palette.primaryDark),
+                                const SizedBox(width: 6),
                                 Text(
                                   'BOOK CLINIC APPOINTMENT',
                                   style: TextStyle(
-                                    color: AppColors.primaryDark,
+                                    color: context.palette.primaryDark,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 11,
                                     letterSpacing: 1.1,
@@ -300,32 +360,44 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                             const SizedBox(height: AppSpacing.sm),
                             Text(
                               '₹${doctor.consultationFee.toStringAsFixed(0)}',
-                              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.palette.textPrimary),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               minAdvance > 0
                                   ? '₹${minAdvance.toStringAsFixed(0)} online advance confirms the booking — the remaining fee is payable at the clinic.'
                                   : 'Online payment of the full consultation fee confirms the booking.',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 13),
                             ),
                             const SizedBox(height: 6),
-                            const Text(
+                            Text(
                               'Your visit time and queue token are assigned from the doctor\'s OPD schedule.',
-                              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 12),
                             ),
                             const SizedBox(height: AppSpacing.md),
                             PrimaryButton(
                               label: 'Continue to booking',
-                              onPressed: doctor.onlineBooking ? () => _handleBook(context, doctor) : null,
+                              onPressed: doctor.onlineBooking
+                                  ? () => _handleBook(context, doctor)
+                                  : null,
                             ),
                             if (!doctor.onlineBooking)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
                                 child: Text(
                                   'This doctor is not accepting online bookings right now.',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                      color: context.palette.danger,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
                                 ),
                               ),
                           ],
@@ -336,7 +408,8 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
 
                     // COMPLETENESS FIX (mobile parity audit): web's PatientLiveQueuePreview.
                     if (data.myAppointmentId != null) ...[
-                      _DoctorLiveQueuePreview(appointmentId: data.myAppointmentId!),
+                      _DoctorLiveQueuePreview(
+                          appointmentId: data.myAppointmentId!),
                       const SizedBox(height: AppSpacing.md),
                     ],
 
@@ -348,7 +421,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         children: [
                           Text(
                             doctor.bio ?? 'No description added yet.',
-                            style: const TextStyle(height: 1.5, color: AppColors.textPrimary),
+                            style: TextStyle(
+                                height: 1.5,
+                                color: context.palette.textPrimary),
                           ),
                           const SizedBox(height: AppSpacing.md),
                           const Divider(height: 1),
@@ -359,9 +434,18 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Experience', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    Text('Experience',
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12)),
                                     const SizedBox(height: 2),
-                                    Text('${doctor.experienceYears ?? 0} years', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    Text('${doctor.experienceYears ?? 0} years',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
                                   ],
                                 ),
                               ),
@@ -369,11 +453,19 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Languages', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    Text('Languages',
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12)),
                                     const SizedBox(height: 2),
                                     Text(
-                                      doctor.languages.isNotEmpty ? doctor.languages.join(', ') : 'Not specified',
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                      doctor.languages.isNotEmpty
+                                          ? doctor.languages.join(', ')
+                                          : 'Not specified',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -388,12 +480,20 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Availability', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                    Text('Availability',
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12)),
                                     const SizedBox(height: 2),
                                     Text(
                                       doctor.scheduleSummary ??
-                                          (!doctor.onlineBooking ? 'Not accepting online' : 'Schedule not added'),
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                          (!doctor.onlineBooking
+                                              ? 'Not accepting online'
+                                              : 'Schedule not added'),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -415,12 +515,15 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                         children: [
                           Text(
                             primaryClinic?.name ?? 'Clinic not added',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             '${primaryClinic?.area != null ? "${primaryClinic!.area}, " : ""}${primaryClinic?.city ?? ""}',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 13),
                           ),
                           // PARITY FIX (mobile parity audit — Patient panel): web's DoctorProfile
                           // shows the clinic's phone/address (cross-referenced from the full clinic
@@ -428,66 +531,97 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                           // summary. data.primaryClinicDetail is the separately-fetched full Clinic
                           // record (see _load()); it's null if that lookup failed, in which case we
                           // simply omit these lines rather than show empty fields.
-                          if (data.primaryClinicDetail?.address != null && data.primaryClinicDetail!.address!.isNotEmpty) ...[
+                          if (data.primaryClinicDetail?.address != null &&
+                              data.primaryClinicDetail!.address!
+                                  .isNotEmpty) ...[
                             const SizedBox(height: 6),
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.location_on_outlined, size: 15, color: AppColors.textSecondary),
+                                Icon(Icons.location_on_outlined,
+                                    size: 15,
+                                    color: context.palette.textSecondary),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
                                     data.primaryClinicDetail!.address!,
-                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 13),
                                   ),
                                 ),
                               ],
                             ),
                           ],
-                          if (data.primaryClinicDetail?.phone != null && data.primaryClinicDetail!.phone!.isNotEmpty) ...[
+                          if (data.primaryClinicDetail?.phone != null &&
+                              data.primaryClinicDetail!.phone!.isNotEmpty) ...[
                             const SizedBox(height: 6),
                             InkWell(
-                              onTap: () => _callClinic(data.primaryClinicDetail!.phone!),
+                              onTap: () =>
+                                  _callClinic(data.primaryClinicDetail!.phone!),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.call_outlined, size: 15, color: AppColors.primaryDark),
+                                  Icon(Icons.call_outlined,
+                                      size: 15,
+                                      color: context.palette.primaryDark),
                                   const SizedBox(width: 6),
                                   Text(
                                     data.primaryClinicDetail!.phone!,
-                                    style: const TextStyle(color: AppColors.primaryDark, fontSize: 13, fontWeight: FontWeight.w700),
+                                    style: TextStyle(
+                                        color: context.palette.primaryDark,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700),
                                   ),
                                 ],
                               ),
                             ),
                           ],
                           const SizedBox(height: AppSpacing.md),
-                          const Text(
+                          Text(
                             'Weekly OPD Schedule',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: context.palette.textPrimary),
                           ),
                           const SizedBox(height: AppSpacing.xs),
                           if (doctor.schedule.isNotEmpty) ...[
                             for (final slot in doctor.schedule)
                               Container(
                                 margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.md,
+                                    vertical: AppSpacing.sm),
                                 decoration: BoxDecoration(
-                                  color: AppColors.background,
-                                  borderRadius: BorderRadius.circular(AppRadius.button),
-                                  border: Border.all(color: AppColors.border),
+                                  color: context.palette.background,
+                                  borderRadius:
+                                      BorderRadius.circular(AppRadius.button),
+                                  border:
+                                      Border.all(color: context.palette.border),
                                 ),
                                 child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(slot.day, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                                    Text(slot.hours, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                                    Text(slot.day,
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 13)),
+                                    Text(slot.hours,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13)),
                                   ],
                                 ),
                               ),
                           ] else ...[
                             Text(
-                              doctor.scheduleSummary ?? 'Weekly OPD schedule not added yet.',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                              doctor.scheduleSummary ??
+                                  'Weekly OPD schedule not added yet.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 13),
                             ),
                           ],
                         ],
@@ -500,14 +634,17 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                       title: 'Patient reviews',
                       trailing: Text(
                         '${doctor.rating.toStringAsFixed(1)} / 5 (${data.reviews.length} reviews)',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        style: TextStyle(
+                            color: context.palette.textSecondary, fontSize: 12),
                       ),
                       child: data.reviews.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: AppSpacing.md),
                               child: Text(
                                 'Reviews will appear after completed appointments.',
-                                style: TextStyle(color: AppColors.textSecondary),
+                                style: TextStyle(
+                                    color: context.palette.textSecondary),
                               ),
                             )
                           : Column(
@@ -515,28 +652,39 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               children: [
                                 for (final r in data.reviews.take(5))
                                   Container(
-                                    margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                                    padding: const EdgeInsets.all(AppSpacing.md),
+                                    margin: const EdgeInsets.only(
+                                        bottom: AppSpacing.sm),
+                                    padding:
+                                        const EdgeInsets.all(AppSpacing.md),
                                     decoration: BoxDecoration(
-                                      color: AppColors.background,
-                                      borderRadius: BorderRadius.circular(AppRadius.button),
-                                      border: Border.all(color: AppColors.border),
+                                      color: context.palette.background,
+                                      borderRadius: BorderRadius.circular(
+                                          AppRadius.button),
+                                      border: Border.all(
+                                          color: context.palette.border),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
                                           children: [
                                             Text(
-                                              r.patient.name ?? 'Verified patient',
-                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                              r.patient.name ??
+                                                  'Verified patient',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 13),
                                             ),
                                             Row(
                                               children: List.generate(
                                                 5,
                                                 (i) => Icon(
-                                                  i < r.rating ? Icons.star : Icons.star_border,
+                                                  i < r.rating
+                                                      ? Icons.star
+                                                      : Icons.star_border,
                                                   size: 13,
                                                   color: AppColors.warning,
                                                 ),
@@ -544,9 +692,14 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                             ),
                                           ],
                                         ),
-                                        if (r.text != null && r.text!.isNotEmpty) ...[
+                                        if (r.text != null &&
+                                            r.text!.isNotEmpty) ...[
                                           const SizedBox(height: 6),
-                                          Text(r.text!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                                          Text(r.text!,
+                                              style: TextStyle(
+                                                  color: context
+                                                      .palette.textSecondary,
+                                                  fontSize: 13)),
                                         ],
                                       ],
                                     ),
@@ -585,7 +738,8 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)),
+      MaterialPageRoute(
+          builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)),
     );
   }
 }
@@ -615,7 +769,8 @@ class _DoctorLiveQueuePreview extends StatefulWidget {
   const _DoctorLiveQueuePreview({required this.appointmentId});
 
   @override
-  State<_DoctorLiveQueuePreview> createState() => _DoctorLiveQueuePreviewState();
+  State<_DoctorLiveQueuePreview> createState() =>
+      _DoctorLiveQueuePreviewState();
 }
 
 class _DoctorLiveQueuePreviewState extends State<_DoctorLiveQueuePreview> {
@@ -638,7 +793,8 @@ class _DoctorLiveQueuePreviewState extends State<_DoctorLiveQueuePreview> {
 
   Future<void> _load() async {
     try {
-      final res = await ApiClient.instance.get('/queue/mine/${widget.appointmentId}');
+      final res =
+          await ApiClient.instance.get('/queue/mine/${widget.appointmentId}');
       if (!mounted) return;
       setState(() {
         _status = MyQueueStatus.fromJson(res.map);
@@ -667,14 +823,24 @@ class _DoctorLiveQueuePreviewState extends State<_DoctorLiveQueuePreview> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('YOUR LIVE QUEUE', style: TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.w700, fontSize: 11, letterSpacing: 1.1)),
+            Text('YOUR LIVE QUEUE',
+                style: TextStyle(
+                    color: context.palette.primaryDark,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    letterSpacing: 1.1)),
             const SizedBox(height: AppSpacing.sm),
             if (_loading && status == null)
-              const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 8), child: CircularProgressIndicator(strokeWidth: 2)))
+              const Center(
+                  child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: CircularProgressIndicator(strokeWidth: 2)))
             else if (_error != null && status == null)
               ErrorBanner(error: _error!, onRetry: _load)
             else if (status == null || !status.hasActiveQueue)
-              const Text('No active queue right now.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+              Text('No active queue right now.',
+                  style: TextStyle(
+                      color: context.palette.textSecondary, fontSize: 13))
             else
               Row(
                 children: [
@@ -682,13 +848,22 @@ class _DoctorLiveQueuePreviewState extends State<_DoctorLiveQueuePreview> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Token #${status.token}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: AppColors.primaryDark)),
+                        Text('Token #${status.token}',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 20,
+                                color: context.palette.primaryDark)),
                         if (status.patientsAhead != null)
-                          Text('${status.patientsAhead} ahead · ~${status.estimatedWaitMinutes ?? "—"} min', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          Text(
+                              '${status.patientsAhead} ahead · ~${status.estimatedWaitMinutes ?? "—"} min',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 12)),
                       ],
                     ),
                   ),
-                  if (status.status != null) StatusBadge(status: status.status!),
+                  if (status.status != null)
+                    StatusBadge(status: status.status!),
                 ],
               ),
           ],

@@ -17,7 +17,7 @@ describe('PdfPreviewModal', () => {
     expect(screen.getByRole('dialog', { name: 'Booking slip preview' })).toBeInTheDocument()
     const iframe = screen.getByTitle('Booking slip preview')
     expect(iframe.tagName).toBe('IFRAME')
-    expect(iframe).toHaveAttribute('src', SAMPLE_PREVIEW.url)
+    expect(iframe).toHaveAttribute('src', `${SAMPLE_PREVIEW.url}#view=FitH`)
 
     const downloadLink = screen.getByRole('link', { name: /Download/ })
     expect(downloadLink).toHaveAttribute('href', SAMPLE_PREVIEW.url)
@@ -103,5 +103,32 @@ describe('PdfPreviewModal', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(document.activeElement).toBe(trigger)
+  })
+})
+
+describe('PdfPreviewModal', () => {
+  const preview = { url: 'blob:pdf', filename: 'booking-slip.pdf', document: {
+    title: 'BookADoctors', subtitle: 'Booking Slip', meta: ['Booking ID: full-reference'],
+    sections: [{ heading: 'Patient', rows: [['Name', 'Family member'], ['Notes', '<script>literal</script>']] }],
+    totalRows: [['Due', 'Rs. 500', true]], footer: ['Times are approximate.'],
+  } }
+  it('uses responsive content rather than an iframe and offers both save and open fallbacks', () => {
+    const close = vi.fn()
+    const { container, unmount } = render(<PdfPreviewModal preview={preview} onClose={close} />)
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(screen.getByText('Family member')).toBeInTheDocument()
+    expect(screen.getByText('<script>literal</script>')).toBeInTheDocument()
+    expect(container.querySelector('script')).toBeNull()
+    expect(screen.getByRole('link', { name: /Download PDF/ })).toHaveAttribute('download', 'booking-slip.pdf')
+    expect(screen.getByRole('link', { name: 'Open PDF' })).toHaveAttribute('target', '_blank')
+    expect(document.body.style.overflow).toBe('hidden')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(close).toHaveBeenCalledOnce()
+    unmount()
+    expect(document.body.style.overflow).not.toBe('hidden')
+  })
+  it('renders a generation error accessibly', () => {
+    render(<PdfPreviewModal preview={null} error="Unable to prepare the PDF. Please try again." />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Please try again')
   })
 })

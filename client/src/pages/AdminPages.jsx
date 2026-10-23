@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DataTable } from '../components/DataTable'
+import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
 import { LoadingSkeleton } from '../components/LoadingSkeleton'
@@ -17,11 +17,15 @@ import { isOnlineBookingPayment } from '../lib/paymentVisibility'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
+import { AdminPeriodSummary } from '../components/AdminPeriodSummary'
+import { indiaRecordDate } from '../lib/adminRecords'
 const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
 const ErrorNote =({ children }) => children ? <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">{children}</p> : null
 
 export function AdminDashboard({ data }) {
+  const [range, setRange] = useState(() => ({ from: indiaTodayDate(), to: indiaTodayDate() }))
   const fetchDashboardStats = useAppStore((state) => state.fetchDashboardStats)
   // Admin/superadmin's post-login bulk load does NOT fetch appointments (plan
   // §4.2 admin branch) — this page needs them for "recent live records", so
@@ -62,8 +66,10 @@ export function AdminDashboard({ data }) {
   // shortId() from lib/format (hash-derived, e.g. '#5b4a') is kept elsewhere for
   // record-referencing text (receipts, booking-slip content) where a stable identifier tied to
   // the actual record still matters.
-  const recentRecords = [...(data.appointments || [])].reverse().slice(0, 6).map((item, index) => ({
-    id: sequenceId(index),
+  const recentRecords = [...(data.appointments || [])].reverse().map((item, index) => ({
+    appointmentDate: item.appointmentDate,
+    id: item.id,
+    displayId: sequenceId(index),
     // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar admin
     // ke") — 'id' above is just this widget's own row sequence number (DC01, DC02...), never the
     // real booking id. Kept as its own field (not reusing 'id') so the Time/ID column above can
@@ -93,12 +99,11 @@ export function AdminDashboard({ data }) {
     >
       <ErrorNote>{error}</ErrorNote>
       {/* Stat Cards Grid */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="admin-dashboard-stats grid grid-cols-2 gap-3">
         <StatCard label="VERIFIED DOCTORS" value={stats ? stats.verifiedDoctorsCount : '—'} icon="🩺" to="/admin/doctors" />
         <StatCard label="REGISTERED PATIENTS" value={stats ? stats.registeredPatientsCount : '—'} icon="👥" to="/admin/patients" />
-        <StatCard label="TODAY'S BOOKINGS" value={stats ? stats.todaysBookingsCount : '—'} icon="📅" to="/admin/appointments" />
-        <StatCard label="MONTHLY REVENUE" value={stats ? `₹${Number(stats.monthlyRevenue ?? 0).toLocaleString('en-IN')}` : '—'} icon="🧾" to="/admin/revenue" />
       </div>
+      <AdminPeriodSummary dateRange={range} onDateRangeChange={setRange} />
 
       {/* Recent Live Records & Quick Actions */}
       <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_320px]">
@@ -108,13 +113,15 @@ export function AdminDashboard({ data }) {
             <span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span>
           </div>
           <DataTable
+            dateField="appointmentDate"
+            dateRange={range} onDateRangeChange={setRange}
             loading={recordsLoading}
             error={recordsError}
             onRetry={loadRecords}
             rows={recentRecords}
             columns={[
-              { key: 'id', label: 'Time / ID', render: (item) => `#${item.id}` },
-              { key: 'bookingId', label: 'Booking ID' },
+              { key: 'id', label: 'Time / ID', render: (item) => `#${item.displayId}` },
+              { key: 'bookingId', label: 'Booking ID', exportValue: (item) => item.id },
               { key: 'patient', label: 'Patient / User' },
               { key: 'details', label: 'Details' },
               { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }
@@ -302,7 +309,7 @@ export function DoctorVerification({ data }) {
       await updateDoctorBookingPolicy(editingDoctor.id, {
         onlineBooking: values.onlineBooking === 'on',
         allowRebooking: values.allowRebooking === 'on',
-        maxDaysAdvance: Number(values.maxDaysAdvance) || 1,
+        maxDaysAdvance: Number(values.maxDaysAdvance),
         maxOnlineBookingsPerDay: values.maxOnlineBookingsPerDay === '' ? null : Number(values.maxOnlineBookingsPerDay),
         // "Follow platform-wide hours" clears this doctor's override entirely (both null)
         // regardless of whatever the now-hidden time inputs still hold in the DOM — the
@@ -321,7 +328,7 @@ export function DoctorVerification({ data }) {
   const allDoctors = data.doctors || []
   const pendingDoctors = allDoctors.filter((item) => (item.status || 'verified') === 'pending')
 
-  return <Page kicker="Production database" title="Doctor management" subtitle="Create, verify, enable, and disable doctor accounts." action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={load}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" onClick={exportCsv}>Export CSV</Button></div>}>
+  return <Page kicker="Production database" title="Doctor management" subtitle="Create, verify, enable, and disable doctor accounts." action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={load}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" disabled={loading || Boolean(listError)} onClick={exportCsv}>Export CSV</Button></div>}>
     <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-5 shadow-card">
       <h2 className="mb-4 text-lg">Create doctor account</h2>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -401,7 +408,7 @@ export function DoctorVerification({ data }) {
       {viewingDoctor && <div className="space-y-3 text-sm">
         <div className="flex items-center justify-between"><span className="font-semibold text-ink">Verification status</span><StatusPill status={viewingDoctor.status || 'verified'} /></div>
         <div className="flex items-center justify-between"><span className="font-semibold text-ink">Login status</span><StatusPill status={viewingDoctor.accountStatus || 'active'} /></div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+        <dl className="admin-record-details grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-x-3 gap-y-2">
           <dt className="text-muted">Email</dt><dd className="break-all font-medium text-ink">{viewingDoctor.email || '—'}</dd>
           <dt className="text-muted">Phone</dt><dd className="font-medium text-ink">{viewingDoctor.phone || '—'}</dd>
           <dt className="text-muted">City</dt><dd className="font-medium text-ink">{viewingDoctor.city || '—'}</dd>
@@ -441,7 +448,7 @@ export function DoctorVerification({ data }) {
         <div>
           <h3 className="font-semibold text-ink">Bank details</h3>
           {viewingDoctor.bankDetails
-            ? <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-button border border-border px-3 py-2">
+            ? <dl className="admin-record-details mt-2 grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] gap-x-3 gap-y-1.5 rounded-button border border-border px-3 py-2">
                 <dt className="text-muted">Account holder</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.accountHolderName || '—'}</dd>
                 <dt className="text-muted">Bank</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.bankName || '—'}</dd>
                 <dt className="text-muted">Account number</dt><dd className="font-medium text-ink">{viewingDoctor.bankDetails.accountNumber || '—'}</dd>
@@ -463,7 +470,7 @@ export function DoctorVerification({ data }) {
           <input type="checkbox" name="onlineBooking" defaultChecked={Boolean(editingDoctor.onlineBooking)} />
         </label>
         <label className="flex min-h-11 items-center justify-between gap-3 font-medium text-ink">
-          Allow rebooking
+          Allow same-day online booking
           <input type="checkbox" name="allowRebooking" defaultChecked={Boolean(editingDoctor.allowRebooking)} />
         </label>
         <FormField
@@ -486,7 +493,7 @@ export function DoctorVerification({ data }) {
         />
         <div className="border-t border-border pt-4">
           <p className="text-sm font-semibold text-ink">Online booking hours (this doctor)</p>
-          <p className="mt-1 text-xs text-muted">Keep "Follow platform-wide hours" checked to use the platform's general online-booking window (Settings → Booking rules). Uncheck it to give THIS doctor their own hours instead — this overrides the platform-wide window just for them.</p>
+          <p className="mt-1 text-xs text-muted">Platform Today and Advance booking hours apply to every doctor. Keep "Follow platform-wide hours" checked for no additional restriction, or set narrower hours for this doctor.</p>
           <label className="mt-3 flex min-h-11 items-center gap-2 font-medium text-ink">
             <input type="checkbox" checked={followPlatformWindow} onChange={(event) => setFollowPlatformWindow(event.target.checked)} />
             Follow platform-wide hours
@@ -650,6 +657,9 @@ export function ManageClinics({ data }) {
 }
 
 export function CitiesAreas({ data }) {
+  const fetchCities = useAppStore((state) => state.fetchCities)
+  const fetchAreas = useAppStore((state) => state.fetchAreas)
+  const { loading, error: listError, refresh } = useListLoad('admin:geography', () => Promise.all([fetchCities(), fetchAreas()]))
   const [mode, setMode] = useState(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -707,7 +717,7 @@ export function CitiesAreas({ data }) {
     return { id: area.id, cityId: area.cityId, name: area.name, state: city?.state || '—', type: 'area' }
   })
 
-  return <Page title="Cities & areas" subtitle="Maintain supported locations and pincodes." action={<div className="flex gap-2"><Button onClick={() => setMode(mode === 'city' ? null : 'city')}>Add city</Button><Button tone="secondary" onClick={() => setMode(mode === 'area' ? null : 'area')}>Add service area</Button></div>}>
+  return <Page title="Cities & areas" subtitle="Maintain supported locations and pincodes." action={<div className="flex gap-2"><Button disabled={loading} onClick={() => setMode(mode === 'city' ? null : 'city')}>Add city</Button><Button disabled={loading} tone="secondary" onClick={() => setMode(mode === 'area' ? null : 'area')}>Add service area</Button></div>}>
     <ErrorNote>{error}</ErrorNote>
     {mode === 'city' && <form onSubmit={saveCity} className="mb-5 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card sm:grid-cols-2"><FormField label="City" name="city" required /><FormField label="State" name="state" required /><Button type="submit" className="sm:col-span-2" disabled={submitting}>{submitting ? 'Saving…' : 'Save city'}</Button></form>}
     {mode === 'area' && <form onSubmit={saveArea} className="mb-5 grid max-w-2xl gap-4 rounded-card border border-border bg-white p-5 shadow-card sm:grid-cols-3">
@@ -720,7 +730,7 @@ export function CitiesAreas({ data }) {
       <Button type="submit" className="sm:col-span-3" disabled={submitting}>{submitting ? 'Saving…' : 'Save area'}</Button>
     </form>}
     <DataTable
-      rows={[...cityRows, ...areaRows]}
+      loading={loading} error={listError} onRetry={refresh} rows={[...cityRows, ...areaRows]}
       columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         { key: 'name', label: 'Name' },
@@ -812,7 +822,7 @@ export function ManagePatients({ data }) {
   return <Page
     title="Patient management"
     subtitle="Every registered patient account — not just ones seen in a booking or payment."
-    action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={() => load({ search: search.trim() || undefined })}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" onClick={exportCsv}>Export CSV</Button></div>}
+    action={<div className="flex flex-wrap items-center gap-2"><Button type="button" tone="secondary" disabled={loading} onClick={() => load({ search: search.trim() || undefined })}>{loading ? 'Refreshing…' : '↻ Refresh'}</Button><Button type="button" tone="dark" disabled={loading || Boolean(listError)} onClick={exportCsv}>Export CSV</Button></div>}
   >
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <span className="rounded-full bg-primary-light px-3 py-1.5 text-sm font-semibold text-primary-dark">{patients.length} registered patient{patients.length === 1 ? '' : 's'}</span>
@@ -930,6 +940,13 @@ export function ManageReceptionists({ data }) {
 const parsePaymentDate = (value) => {
   if (!value) return null
   const text = String(value)
+  if (/T/.test(text)) {
+    const instant = new Date(text)
+    if (Number.isNaN(instant.getTime())) return null
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(instant)
+    const part = (type) => Number(parts.find((item) => item.type === type)?.value)
+    return new Date(part('year'), part('month') - 1, part('day'))
+  }
   const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
   const slash = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/)
@@ -937,34 +954,33 @@ const parsePaymentDate = (value) => {
   const parsed = new Date(text)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
-const dateInputValue = (date) =>`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 export function RevenueReports({ data, doctorOnly = false }) {
   const fetchPayments = useAppStore((state) => state.fetchPayments)
+  const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   // `currentUser` lives at the top level of the store, not inside `data`.
   const currentUser = useAppStore((state) => state.currentUser)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const today = new Date()
-  const [fromDate, setFromDate] = useState(() => dateInputValue(new Date(today.getFullYear(), today.getMonth(), 1)))
-  const [toDate, setToDate] = useState(() => dateInputValue(today))
+  const [fromDate, setFromDate] = useState(indiaTodayDate)
+  const [toDate, setToDate] = useState(indiaTodayDate)
   const [doctorFilter, setDoctorFilter] = useState('all')
 
   const load = () => {
     setLoading(true)
     setLoadError('')
-    return fetchPayments({}).catch((err) => setLoadError(err.message || 'Could not load payment records.')).finally(() => setLoading(false))
+    return Promise.all([fetchPayments({ allPages: true }), ...(!doctorOnly ? [fetchAppointments({ allPages: true })] : [])]).catch((err) => setLoadError(err.message || 'Could not load report records.')).finally(() => setLoading(false))
   }
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setLoadError('')
-    fetchPayments({})
+    Promise.all([fetchPayments({ allPages: true }), ...(!doctorOnly ? [fetchAppointments({ allPages: true })] : [])])
       .catch((err) => { if (!cancelled) setLoadError(err.message || 'Could not load payment records.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [fetchPayments])
+  }, [fetchPayments, fetchAppointments, doctorOnly])
 
   // The whole revenue-report derivation (filtering, per-payment fee shaping, the doctor-wise
   // grouping, and the payment-mode breakdown) previously ran unmemoized on every render of this
@@ -974,8 +990,8 @@ export function RevenueReports({ data, doctorOnly = false }) {
   // `paymentModeBreakdown` is computed a single time and reused.
   const {
     selectedDoctor,
-    payments,
     reportPayments,
+    revenuePayments,
     total,
     average,
     commission,
@@ -988,9 +1004,8 @@ export function RevenueReports({ data, doctorOnly = false }) {
     cashTotal,
     onlineTotal,
   } = useMemo(() => {
-    const currentDoctor = (data.doctors || []).find((doctor) => doctor.id === currentUser?.id) || (data.doctors || []).find((doctor) => doctor.name === currentUser?.name) || null
-    const selectedDoctor = doctorOnly ? (currentDoctor?.name || 'all') : doctorFilter
-    const sourcePayments = doctorOnly ? (currentDoctor ? (data.payments || []).filter((payment) => payment.doctor?.id === currentDoctor.id) : []) : (data.payments || [])
+    const selectedDoctor = doctorOnly ? (currentUser?.name || 'My practice') : doctorFilter
+    const sourcePayments = doctorOnly ? (currentUser?.id ? (data.payments || []).filter((payment) => payment.doctor?.id === currentUser.id) : []) : (data.payments || [])
     const start = parsePaymentDate(fromDate)
     const end = parsePaymentDate(toDate)
     if (start) start.setHours(0, 0, 0, 0)
@@ -1000,7 +1015,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       const date = parsePaymentDate(payment.createdAt)
       const name = payment.doctor?.name || 'Unassigned'
       const inPeriod = !invalidRange && date && start && end ? date >= start && date <= end : false
-      return inPeriod && (selectedDoctor === 'all' || name === selectedDoctor)
+      return inPeriod && (doctorOnly || selectedDoctor === 'all' || name === selectedDoctor)
     })
     // Money fields come pre-masked/pre-computed by role from the server (plan
     // §1.8/§1.12) — doctor/receptionist only ever get `fees.consultationFee`,
@@ -1010,12 +1025,16 @@ export function RevenueReports({ data, doctorOnly = false }) {
       ...item,
       reportAmount: Number(doctorOnly ? (item.fees?.consultationFee ?? 0) : (item.fees?.amount ?? 0)),
     }))
-    const total = reportPayments.reduce((sum, item) => sum + item.reportAmount, 0)
-    const average = reportPayments.length ? total / reportPayments.length : 0
-    const commission = doctorOnly ? 0 : reportPayments.reduce((sum, item) => sum + Number(item.fees?.commission ?? 0), 0)
-    const clinicPayout = doctorOnly ? total : reportPayments.reduce((sum, item) => sum + Number(item.fees?.clinicPayout ?? 0), 0)
+    // Keep all receipts in history, but only actual successful collections contribute to revenue.
+    // A platform-only receipt can have a zero doctor share; it must not dilute the doctor's average.
+    const revenuePayments = reportPayments.filter((item) => String(item.status).toLowerCase() === 'paid'
+      && Number.isFinite(item.reportAmount) && item.reportAmount > 0)
+    const total = revenuePayments.reduce((sum, item) => sum + item.reportAmount, 0)
+    const average = revenuePayments.length ? total / revenuePayments.length : 0
+    const commission = doctorOnly ? 0 : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.commission ?? 0), 0)
+    const clinicPayout = doctorOnly ? total : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.clinicPayout ?? 0), 0)
     const doctorNames = [...new Set([...(data.doctors || []).map((doctor) => doctor.name), ...sourcePayments.map((item) => item.doctor?.name).filter(Boolean)])]
-    const byDoctor = Object.values(reportPayments.reduce((groups, item) => {
+    const byDoctor = Object.values(revenuePayments.reduce((groups, item) => {
       const name = item.doctor?.name || 'Unassigned'
       const group = groups[name] || { id: name, doctor: name, payments: 0, revenue: 0 }
       group.payments += 1
@@ -1032,7 +1051,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     // see lib/paymentVisibility.js's isOnlineBookingPayment for how the two are told apart). Now
     // tracks amount + count per literal mode (for the detail list) AND a three-way rollup: paid
     // online at booking, cash collected at the clinic, and online collected at the clinic.
-    const paymentModeBreakdown = reportPayments.reduce((buckets, item) => {
+    const paymentModeBreakdown = revenuePayments.reduce((buckets, item) => {
       const mode = item.mode || 'Other'
       const bucket = buckets[mode] || { mode, count: 0, amount: 0 }
       bucket.count += 1
@@ -1041,17 +1060,25 @@ export function RevenueReports({ data, doctorOnly = false }) {
       return buckets
     }, {})
     const isCashMode = (mode) => String(mode || '').toLowerCase() === 'cash'
-    const bookingTotal = reportPayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + item.reportAmount, 0)
-    const cashTotal = reportPayments.filter((item) => isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
-    const onlineTotal = reportPayments.filter((item) => !isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
-    return { selectedDoctor, payments, reportPayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
+    const bookingTotal = revenuePayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + item.reportAmount, 0)
+    const cashTotal = revenuePayments.filter((item) => isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
+    const onlineTotal = revenuePayments.filter((item) => !isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
+    return { selectedDoctor, payments, reportPayments, revenuePayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
   }, [data.doctors, data.payments, currentUser, doctorOnly, doctorFilter, fromDate, toDate])
   const periodLabel = `${fromDate || 'Start'} to ${toDate || 'End'}`
+  const rangeAnalytics = useMemo(() => {
+    const appointments = (data.appointments || []).filter((row) => !invalidRange && row.appointmentDate >= fromDate && row.appointmentDate <= toDate
+      && (doctorFilter === 'all' || row.doctor?.name === doctorFilter))
+    const days = [...new Set([...appointments.map((row) => row.appointmentDate), ...reportPayments.map((row) => indiaRecordDate(row.createdAt))])].filter(Boolean).sort()
+    return { labels: days, appointments: days.map((day) => appointments.filter((row) => row.appointmentDate === day).length),
+      revenue: days.map((day) => revenuePayments.filter((row) => indiaRecordDate(row.createdAt) === day).reduce((sum, row) => sum + row.reportAmount, 0)),
+      total: appointments.length, completed: appointments.filter((row) => row.status === 'completed').length, cancelled: appointments.filter((row) => row.status === 'cancelled').length }
+  }, [data.appointments, fromDate, toDate, invalidRange, doctorFilter, reportPayments, revenuePayments])
   const downloadExcel = () => {
     const escape = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const doctorRows = byDoctor.map((item) => `<tr><td>${escape(item.doctor)}</td><td>${item.payments}</td><td>${escape(money(item.revenue))}</td></tr>`).join('')
     const paymentRows = reportPayments.map((item) => `<tr><td>${escape(item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '')}</td><td>${escape(item.doctor?.name || 'Unassigned')}</td><td>${escape(item.receiptNumber || '')}</td><td>${escape(item.mode || 'Other')}</td><td>${escape(money(item.reportAmount))}</td><td>${escape(item.status || '')}</td></tr>`).join('')
-    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookADoctors Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Payments</td><td>${payments.length}</td></tr><tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr></table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
+    const html = `<html><head><meta charset="UTF-8"></head><body><h2>BookADoctors Revenue Report</h2><p>Period: ${escape(periodLabel)} · Doctor: ${escape(selectedDoctor === 'all' ? 'All doctors' : selectedDoctor)}</p><table border="1"><tr><th>Metric</th><th>Value</th></tr><tr><td>Revenue</td><td>${escape(money(total))}</td></tr><tr><td>Successful revenue payments</td><td>${revenuePayments.length}</td></tr>${doctorOnly ? '' : `<tr><td>Platform commission</td><td>${escape(money(commission))}</td></tr><tr><td>Clinic payout</td><td>${escape(money(clinicPayout))}</td></tr>`}</table><br><h3>Doctor-wise revenue</h3><table border="1"><tr><th>Doctor</th><th>Payments</th><th>Revenue</th></tr>${doctorRows || '<tr><td colspan="3">No payments</td></tr>'}</table><br><p>Totals include paid, positive amounts only. Refunded, failed, pending and zero-share receipts remain in history but are excluded from revenue.</p><h3>Payment details</h3><table border="1"><tr><th>Date</th><th>Doctor</th><th>Receipt</th><th>Mode</th><th>Amount</th><th>Status</th></tr>${paymentRows || '<tr><td colspan="6">No payments</td></tr>'}</table></body></html>`
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
@@ -1060,12 +1087,13 @@ export function RevenueReports({ data, doctorOnly = false }) {
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="flex flex-wrap items-end gap-2"><label className="text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label><label className="text-xs font-semibold text-muted">To<input aria-label="Revenue end date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal">Download Excel</button></div>}>
+  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap"><label className="min-w-0 text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label><label className="min-w-0 text-xs font-semibold text-muted">To<input aria-label="Revenue end date" min={fromDate} type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} disabled={loading || invalidRange || Boolean(loadError)} className="touch-target col-span-2 inline-flex items-center justify-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50">Download Excel</button></div>}>
     {invalidRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
     <ErrorNote>{loadError}</ErrorNote>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="Selected range revenue" value={money(total)} detail={`${reportPayments.length} payment${reportPayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail={periodLabel} icon="≈" /><StatCard label="Platform commission" value={doctorOnly ? '—' : money(commission)} detail={doctorOnly ? 'Shown to admin only' : 'Convenience/emergency/GST charges'} icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail={doctorOnly ? 'Your consultation charges' : "Full consultation fee (doctor's share)"} icon="✓" /></div>
-    <div className="mt-6 grid gap-5 lg:grid-cols-2"><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section><section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid grid-cols-3 gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div><div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div></section></div>
-    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
+    <div className={doctorOnly ? 'grid grid-cols-2 gap-3' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'}><StatCard label="Selected range revenue" value={money(total)} detail={`${revenuePayments.length} payment${revenuePayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail="Per successful revenue payment" icon="≈" />{!doctorOnly && <><StatCard label="Platform commission" value={money(commission)} detail="Platform charges and taxes" icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail="Consultation charges collected" icon="✓" /></>}</div>
+    <p className="mt-2 text-xs text-muted">Totals include paid, positive {doctorOnly ? 'consultation charges' : 'collections'} only. Refunded, failed, pending and zero-share records are excluded from totals, but remain in payment history.</p>
+    <div className={doctorOnly ? "mt-4" : "mt-6 grid gap-5 lg:grid-cols-2"}>{!doctorOnly && <section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Doctor-wise revenue</h2><p className="mt-1 text-sm text-muted">{periodLabel} · {selectedDoctor === 'all' ? 'All doctors' : selectedDoctor}</p><div className="mt-4"><DataTable rows={byDoctor} columns={[{ key: 'doctor', label: 'Doctor' }, { key: 'payments', label: 'Payments' }, { key: 'revenue', label: 'Revenue', render: (item) => money(item.revenue) }]} /></div></section>}<section className="rounded-card border border-border bg-white p-5 shadow-card"><h2 className="text-lg">Payment modes</h2><div className="mt-4 grid gap-2 min-[420px]:grid-cols-3 sm:gap-3"><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Paid at booking</p><p className="mt-1 text-lg font-bold text-ink">{money(bookingTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cash (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(cashTotal)}</p></div><div className="rounded-button bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Online (clinic)</p><p className="mt-1 text-lg font-bold text-ink">{money(onlineTotal)}</p></div></div>{!doctorOnly && <div className="mt-4 space-y-3">{Object.keys(paymentModeBreakdown).length ? Object.values(paymentModeBreakdown).map((bucket) => <p className="flex justify-between text-sm" key={bucket.mode}><span>{bucket.mode}</span><strong>{money(bucket.amount)} · {bucket.count}</strong></p>) : <p className="text-sm text-muted">No payments in this period.</p>}</div>}</section></div>
+    <div className="mt-6 rounded-card border border-border bg-white p-5 shadow-card"><h2 className="mb-3 text-lg">Payments in selected period</h2><DataTable dateField={false} loading={loading} error={loadError} onRetry={load} rows={reportPayments} columns={[{ key: 'createdAt', label: 'Date', render: (item) => item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—' }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || 'Unassigned' }, { key: 'receiptNumber', label: 'Receipt', render: (item) => item.receiptNumber || '—' },
       // BOOKING-ID VISIBILITY FIX (user request: "payment me v booking id do", follow-up to
       // "bookinh id ko slip pe dikhai and my bookong me v dikhao") — this table (shared by
       // admin's "Revenue reports" and, via the doctorOnly prop, the doctor's own "My revenue
@@ -1080,7 +1108,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       // booking-time Razorpay payment apart from one collected in person at the clinic.
       { key: 'mode', label: 'Mode', render: (item) => <span className="inline-flex items-center gap-1.5">{item.mode}<PaymentSourceBadge payment={item} /></span> },
       { key: 'reportAmount', label: 'Amount', render: (item) => money(item.reportAmount) }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} /></div>
-    <div className="mt-6"><Analytics data={data} admin /></div>
+    {!doctorOnly && !loading && !loadError && <div className="mt-6"><Analytics data={{ ...data, analytics: rangeAnalytics }} admin /></div>}
   </Page>
 }
 export function Complaints({ data }) {
@@ -1290,7 +1318,7 @@ export function AuditLog({ data }) {
     return () => { cancelled = true }
   }, [fetchActivityLog])
 
-  return <Page title="Activity logs" subtitle="Audit important platform actions." action={<div className="flex flex-wrap items-center gap-2"><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><Button tone="secondary" onClick={() => window.alert('CSV export is available for this browser session.')}>Export CSV</Button></div>}>
+  return <Page title="Activity logs" subtitle="Audit important platform actions." action={<button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button>}>
     <DataTable
       loading={loading}
       error={error}
@@ -1329,6 +1357,7 @@ export function PlatformSettings() {
   // Defaults to "always open" (true) until real data arrives, then syncs to whatever's actually
   // saved — a fetched window (both times set) flips this off so the time fields show instead.
   const [alwaysOpen, setAlwaysOpen] = useState(true)
+  const [advanceAlwaysOpen, setAdvanceAlwaysOpen] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -1341,7 +1370,10 @@ export function PlatformSettings() {
   }, [fetchSystemSettings, fetchBookingRules])
 
   useEffect(() => {
-    if (bookingRules) setAlwaysOpen(!bookingRules.onlineBookingWindowStart)
+    if (bookingRules) {
+      setAlwaysOpen(!bookingRules.onlineBookingWindowStart)
+      setAdvanceAlwaysOpen(!bookingRules.advanceBookingWindowStart)
+    }
   }, [bookingRules])
 
   const save = async (event) => {
@@ -1386,6 +1418,8 @@ export function PlatformSettings() {
         // field presence.
         onlineBookingWindowStart: alwaysOpen ? null : (values.onlineBookingWindowStart || null),
         onlineBookingWindowEnd: alwaysOpen ? null : (values.onlineBookingWindowEnd || null),
+        advanceBookingWindowStart: advanceAlwaysOpen ? null : (values.advanceBookingWindowStart || null),
+        advanceBookingWindowEnd: advanceAlwaysOpen ? null : (values.advanceBookingWindowEnd || null),
         onlineBookingMaxAdvanceDays: values.onlineBookingMaxAdvanceDays === '' ? null : Number(values.onlineBookingMaxAdvanceDays),
       })
       setRulesSaved(true)
@@ -1422,15 +1456,27 @@ export function PlatformSettings() {
         <FormField label="Max bookings per patient" name="maxBookingsPerPatient" type="number" min="1" max="100" defaultValue={bookingRules?.maxBookingsPerPatient ?? 5} />
         <FormField label="Default slot length (minutes)" name="defaultSlotMinutes" type="number" min="5" max="120" defaultValue={bookingRules?.defaultSlotMinutes ?? 15} />
         <div className="border-t border-border pt-4">
-          <p className="text-sm font-semibold text-ink">Online booking hours</p>
+          <p className="text-sm font-semibold text-ink">Today booking hours (IST)</p>
           <p className="mt-1 text-xs text-muted">Platform-wide — controls when PATIENTS can make an online booking. Walk-ins registered by staff at the clinic are never affected.</p>
           <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={alwaysOpen} onChange={(event) => setAlwaysOpen(event.target.checked)} />
             Accept online bookings around the clock (full time)
           </label>
           {!alwaysOpen && <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <FormField label="Open from" name="onlineBookingWindowStart" type="time" defaultValue={bookingRules?.onlineBookingWindowStart || '09:00'} required={!alwaysOpen} />
-            <FormField label="Open until" name="onlineBookingWindowEnd" type="time" defaultValue={bookingRules?.onlineBookingWindowEnd || '21:00'} required={!alwaysOpen} />
+            <FormField label="Today booking opens at" name="onlineBookingWindowStart" type="time" defaultValue={bookingRules?.onlineBookingWindowStart || '09:00'} required={!alwaysOpen} />
+            <FormField label="Today booking closes at" name="onlineBookingWindowEnd" type="time" defaultValue={bookingRules?.onlineBookingWindowEnd || '21:00'} required={!alwaysOpen} />
+          </div>}
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="text-sm font-semibold text-ink">Advance booking hours (IST)</p>
+          <p className="mt-1 text-xs text-muted">For tomorrow and later dates, across all doctors. Booking stops exactly at closing time. Each doctor's advance-days limit still applies. Opening must be earlier than closing on the same day.</p>
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={advanceAlwaysOpen} onChange={(event) => setAdvanceAlwaysOpen(event.target.checked)} />
+            Accept advance bookings around the clock (full time)
+          </label>
+          {!advanceAlwaysOpen && <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <FormField label="Advance booking opens at" name="advanceBookingWindowStart" type="time" defaultValue={bookingRules?.advanceBookingWindowStart || '09:00'} required />
+            <FormField label="Advance booking closes at" name="advanceBookingWindowEnd" type="time" defaultValue={bookingRules?.advanceBookingWindowEnd || '21:00'} required />
           </div>}
         </div>
         <div className="border-t border-border pt-4">

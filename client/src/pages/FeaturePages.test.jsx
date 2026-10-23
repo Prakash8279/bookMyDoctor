@@ -26,9 +26,19 @@ vi.mock('../lib/apiClient', () => ({
 
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
-import { ClinicSearch, PublicContent, ReceptionReports } from './FeaturePages'
+import { ClinicSearch, PublicContent, ReceptionReports, SuperAdminDashboard } from './FeaturePages'
 
 const initialStoreState = useAppStore.getState()
+
+describe('SuperAdminDashboard mobile layout', () => {
+  it('keeps master counts in two columns, with a separate date-range summary', () => {
+    render(<MemoryRouter><SuperAdminDashboard data={{ doctors: [], clinics: [], activity: [], receptionists: [], dashboardStats: { verifiedDoctorsCount: 4, registeredPatientsCount: 12, monthlyRevenue: 500 } }} /></MemoryRouter>)
+    const grid = screen.getByText('Doctors & clinics').closest('a').parentElement
+    expect(grid).toHaveClass('admin-dashboard-stats', 'grid-cols-2')
+    expect(grid.querySelectorAll('a')).toHaveLength(2)
+    expect(screen.getByLabelText('Summary start date')).toBeInTheDocument()
+  })
+})
 
 beforeEach(() => {
   localStorage.clear()
@@ -153,6 +163,8 @@ describe('ReceptionReports', () => {
       queueTokens: [],
     }
     render(<MemoryRouter><ReceptionReports data={data} /></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
 
     expect(screen.getByText('Paid online at booking').closest('article')).toHaveTextContent('₹900')
     expect(screen.getByText('Cash collected').closest('article')).toHaveTextContent('₹500')

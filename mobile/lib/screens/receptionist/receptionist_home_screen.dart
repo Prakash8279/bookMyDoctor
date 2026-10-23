@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../shared/notifications_screen.dart';
 import '../shared/profile_screen.dart';
+import '../shared/legal_policies_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'receptionist_appointments_screen.dart';
 import 'receptionist_dashboard_screen.dart';
@@ -34,31 +35,74 @@ class ReceptionistHomeScreen extends StatelessWidget {
     return const RoleScaffold(
       portalTitle: 'Receptionist portal',
       items: [
-        RoleNavItem(icon: Icons.dashboard_outlined, label: 'Dashboard', builder: _buildDashboard),
-        RoleNavItem(icon: Icons.person_add_alt_outlined, label: 'Walk-in registration', builder: _buildWalkIn),
-        RoleNavItem(icon: Icons.people_alt_outlined, label: 'Queue monitor', builder: _buildQueue),
-        RoleNavItem(icon: Icons.how_to_reg_outlined, label: 'Check-in', builder: _buildCheckIn),
-        RoleNavItem(icon: Icons.event_note_outlined, label: 'Appointments', builder: _buildAppointments),
-        RoleNavItem(icon: Icons.schedule_outlined, label: 'Doctor availability', builder: _buildAvailability),
-        RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Payments', builder: _buildPayments),
-        RoleNavItem(icon: Icons.people_outline, label: 'Patients', builder: _buildPatients),
-        RoleNavItem(icon: Icons.notifications_none, label: 'Notifications', builder: _buildNotifications),
-        RoleNavItem(icon: Icons.summarize_outlined, label: 'Reports', builder: _buildReports),
-        RoleNavItem(icon: Icons.person_outline, label: 'My profile', builder: _buildProfile),
+        RoleNavItem(
+            icon: Icons.dashboard_outlined,
+            label: 'Dashboard',
+            builder: _buildDashboard),
+        RoleNavItem(
+            icon: Icons.person_add_alt_outlined,
+            label: 'Walk-in registration',
+            builder: _buildWalkIn),
+        RoleNavItem(
+            icon: Icons.people_alt_outlined,
+            label: 'Queue monitor',
+            builder: _buildQueue),
+        RoleNavItem(
+            icon: Icons.how_to_reg_outlined,
+            label: 'Check-in',
+            builder: _buildCheckIn),
+        RoleNavItem(
+            icon: Icons.event_note_outlined,
+            label: 'Appointments',
+            builder: _buildAppointments),
+        RoleNavItem(
+            icon: Icons.schedule_outlined,
+            label: 'Doctor availability',
+            builder: _buildAvailability),
+        RoleNavItem(
+            icon: Icons.receipt_long_outlined,
+            label: 'Payments',
+            builder: _buildPayments),
+        RoleNavItem(
+            icon: Icons.people_outline,
+            label: 'Patients',
+            builder: _buildPatients),
+        RoleNavItem(
+            icon: Icons.notifications_none,
+            label: 'Notifications',
+            builder: _buildNotifications),
+        RoleNavItem(
+            icon: Icons.summarize_outlined,
+            label: 'Reports',
+            builder: _buildReports),
+        RoleNavItem(
+            icon: Icons.description_outlined,
+            label: 'Help & Policies',
+            builder: _buildPolicies),
+        RoleNavItem(
+            icon: Icons.person_outline,
+            label: 'My profile',
+            builder: _buildProfile),
       ],
     );
   }
 }
 
-Widget _buildDashboard(BuildContext context) => const ReceptionistDashboardScreen();
-Widget _buildWalkIn(BuildContext context) => const ReceptionistWalkInBookingScreen();
+Widget _buildDashboard(BuildContext context) =>
+    const ReceptionistDashboardScreen();
+Widget _buildWalkIn(BuildContext context) =>
+    const ReceptionistWalkInBookingScreen();
 Widget _buildQueue(BuildContext context) => const ReceptionistQueueScreen();
 Widget _buildCheckIn(BuildContext context) => const ReceptionistCheckinScreen();
-Widget _buildAppointments(BuildContext context) => const ReceptionistAppointmentsScreen();
-Widget _buildAvailability(BuildContext context) => const ReceptionistDoctorsScreen();
-Widget _buildPayments(BuildContext context) => const ReceptionistPaymentsScreen();
-Widget _buildPatients(BuildContext context) => const ReceptionistPatientsScreen();
+Widget _buildAppointments(BuildContext context) =>
+    const ReceptionistAppointmentsScreen();
+Widget _buildAvailability(BuildContext context) =>
+    const ReceptionistDoctorsScreen();
+Widget _buildPayments(BuildContext context) =>
+    const ReceptionistPaymentsScreen();
+Widget _buildPatients(BuildContext context) =>
+    const ReceptionistPatientsScreen();
 Widget _buildNotifications(BuildContext context) => const NotificationsScreen();
 Widget _buildReports(BuildContext context) => const ReceptionistReportsScreen();
 Widget _buildProfile(BuildContext context) => const ProfileScreen();
-
+Widget _buildPolicies(BuildContext context) => const LegalPoliciesScreen();

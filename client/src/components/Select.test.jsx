@@ -13,6 +13,14 @@ import { Select } from './Select'
 // scope option/button queries with `within(...)` to the piece they mean, rather than a bare
 // `screen.getByRole(...)` that could also match the hidden native control.
 describe('Select', () => {
+  it('allows long values to shrink inside narrow mobile cards and wraps open options', () => {
+    render(<Select options={['LongClinicNameWithoutSpaces'.repeat(8)]} defaultValue={'LongClinicNameWithoutSpaces'.repeat(8)} />)
+    const button = screen.getByRole('button')
+    expect(button.parentElement).toHaveClass('min-w-0', 'max-w-full')
+    expect(button.querySelector('span')).toHaveClass('min-w-0', 'flex-1', 'truncate')
+    fireEvent.click(button)
+    expect(screen.getByRole('listbox')).toHaveClass('max-w-full', 'overflow-x-hidden', 'whitespace-normal', '[overflow-wrap:anywhere]')
+  })
   const OPTIONS = ['Cash', 'Upi', 'Card']
   const trigger = () => screen.getAllByRole('button').find((button) => button.getAttribute('aria-haspopup') === 'listbox')
 
@@ -34,9 +42,9 @@ describe('Select', () => {
     render(<Select options={OPTIONS} value="" onChange={() => {}} />)
     fireEvent.click(trigger())
     const listbox = screen.getByRole('listbox')
-    expect(listbox.className).toMatch(/\babsolute\b/)
-    expect(listbox.className).toMatch(/\bleft-0\b/)
-    expect(listbox.className).toMatch(/\bright-0\b/)
+    expect(listbox.parentElement.className).toMatch(/\babsolute\b/)
+    expect(listbox.parentElement.className).toMatch(/\bleft-0\b/)
+    expect(listbox.parentElement.className).toMatch(/\bright-0\b/)
   })
 
   // NOTE: a bare vi.fn() onChange, on a truly CONTROLLED field, gets its DOM value reset right

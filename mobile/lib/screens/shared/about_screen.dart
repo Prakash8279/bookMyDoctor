@@ -18,11 +18,14 @@ class AboutScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('About')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
-        children: const [
-          PageHeader(title: 'About BookADoctors'),
+        children: [
+          const PageHeader(title: 'About BookADoctors'),
           Text(
             'We help patients find care and track their clinic queue from anywhere.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
+            style: TextStyle(
+                color: context.palette.textSecondary,
+                fontSize: 15,
+                height: 1.5),
           ),
         ],
       ),

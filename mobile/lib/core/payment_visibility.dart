@@ -13,7 +13,8 @@ import '../theme/app_theme.dart';
 final RegExp _razorpayIdPattern = RegExp(r'^pay_', caseSensitive: false);
 
 bool isOnlineBookingPayment(PaymentItem payment) {
-  return payment.mode.toLowerCase() == 'online' && _razorpayIdPattern.hasMatch(payment.transactionRef ?? '');
+  return payment.mode.toLowerCase() == 'online' &&
+      _razorpayIdPattern.hasMatch(payment.transactionRef ?? '');
 }
 
 /// The amount staff ever see per payment — masked to the doctor's own consultation fee, mirroring
@@ -21,6 +22,13 @@ bool isOnlineBookingPayment(PaymentItem payment) {
 /// totalAmount/GST/convenience-fee/platform-commission breakdown, only their own consultation fee).
 double clinicAmount(PaymentItem payment) {
   return payment.fees.consultationFee ?? payment.fees.amount ?? 0;
+}
+
+bool isRevenuePayment(PaymentItem payment, {bool doctorOnly = false}) {
+  final amount = doctorOnly
+      ? payment.fees.consultationFee ?? 0
+      : payment.fees.amount ?? payment.fees.consultationFee ?? 0;
+  return payment.status == 'paid' && amount.isFinite && amount > 0;
 }
 
 /// Ports components/PaymentSourceBadge.jsx (COMPLETENESS FIX, mobile parity audit, patient panel)
@@ -39,7 +47,9 @@ class PaymentSourceBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: atBooking ? AppColors.teal.withValues(alpha: 0.15) : AppColors.border.withValues(alpha: 0.6),
+        color: atBooking
+            ? context.palette.teal.withValues(alpha: 0.15)
+            : context.palette.border.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -47,7 +57,9 @@ class PaymentSourceBadge extends StatelessWidget {
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,
-          color: atBooking ? AppColors.tealDark : AppColors.textSecondary,
+          color: atBooking
+              ? context.palette.tealDark
+              : context.palette.textSecondary,
         ),
       ),
     );

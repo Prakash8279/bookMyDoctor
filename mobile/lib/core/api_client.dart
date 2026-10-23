@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:http_parser/http_parser.dart';
 
 import '../config/env.dart';
@@ -26,8 +26,9 @@ class ApiResponse {
   /// Convenience: `data` cast to a `List<Map<String, dynamic>>` — use for
   /// every list endpoint (they always return `data` as a bare array, never
   /// `{rows: [...]}`).
-  List<Map<String, dynamic>> get list =>
-      (data as List<dynamic>? ?? const []).map((e) => e as Map<String, dynamic>).toList();
+  List<Map<String, dynamic>> get list => (data as List<dynamic>? ?? const [])
+      .map((e) => e as Map<String, dynamic>)
+      .toList();
 
   /// Convenience: `data` cast to a `Map<String, dynamic>` — use for every
   /// single-resource endpoint.
@@ -56,8 +57,12 @@ class ApiClient {
             Platform.script.toString().contains('flutter_test'));
     _dio = Dio(BaseOptions(
       baseUrl: Env.apiBaseUrl,
-      connectTimeout: isTest ? const Duration(milliseconds: 100) : const Duration(seconds: 20),
-      receiveTimeout: isTest ? const Duration(milliseconds: 100) : const Duration(seconds: 20),
+      connectTimeout: isTest
+          ? const Duration(milliseconds: 100)
+          : const Duration(seconds: 20),
+      receiveTimeout: isTest
+          ? const Duration(milliseconds: 100)
+          : const Duration(seconds: 20),
       headers: {'Content-Type': 'application/json'},
     ));
 
@@ -74,7 +79,9 @@ class ApiClient {
         final requestPath = error.requestOptions.path;
         final alreadyRetried = error.requestOptions.extra['retried'] == true;
 
-        if (status == 401 && !alreadyRetried && requestPath != '/auth/refresh') {
+        if (status == 401 &&
+            !alreadyRetried &&
+            requestPath != '/auth/refresh') {
           final tokens = TokenStore.instance.current;
           if (tokens == null) {
             await TokenStore.instance.clear();
@@ -88,7 +95,8 @@ class ApiClient {
 
             final retryOptions = error.requestOptions;
             retryOptions.extra['retried'] = true;
-            retryOptions.headers['Authorization'] = 'Bearer ${refreshed.accessToken}';
+            retryOptions.headers['Authorization'] =
+                'Bearer ${refreshed.accessToken}';
             final response = await _dio.fetch(retryOptions);
             handler.resolve(response);
             return;
@@ -139,9 +147,8 @@ class ApiClient {
   }
 
   Future<TokenPair> _refreshTokens(String refreshToken) {
-    _refreshInFlight ??= _dio
-        .post('/auth/refresh', data: {'refreshToken': refreshToken})
-        .then((response) {
+    _refreshInFlight ??= _dio.post('/auth/refresh',
+        data: {'refreshToken': refreshToken}).then((response) {
       final body = response.data as Map<String, dynamic>;
       final data = body['data'] as Map<String, dynamic>;
       return TokenPair.fromJson(data);
@@ -156,7 +163,8 @@ class ApiClient {
   // type-checks, carrying the ApiException in DioException.error so `_shape` below can recognize
   // and unwrap an already-shaped error instead of re-shaping it (which would lose the real
   // message/code and fall back to the generic "Something went wrong").
-  DioException _wrap(RequestOptions options, ApiException exception) => DioException(
+  DioException _wrap(RequestOptions options, ApiException exception) =>
+      DioException(
         requestOptions: options,
         error: exception,
         type: DioExceptionType.unknown,
@@ -182,7 +190,8 @@ class ApiClient {
     } else if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout ||
         error.type == DioExceptionType.connectionError) {
-      message = 'Cannot reach the server. Check that the backend is running and reachable.';
+      message =
+          'Cannot reach the server. Check that the backend is running and reachable.';
     }
     return ApiException(
       message: message,
@@ -212,6 +221,44 @@ class ApiClient {
       kpi: body['kpi'] as Map<String, dynamic>?,
       message: body['message'] as String?,
     );
+  }
+
+  Future<ApiResponse> getAll(String path, {Map<String, dynamic>? query}) async {
+    final rows = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    Map<String, dynamic>? kpi;
+    for (var page = 1; page <= 1000; page++) {
+      final response =
+          await get(path, query: {...?query, 'page': page, 'pageSize': 100});
+      kpi ??= response.kpi;
+      final returnedPage = response.pagination?['page'];
+      if (returnedPage is num && returnedPage != page) {
+        throw const FormatException('Unexpected records page. Please refresh.');
+      }
+      for (final row in response.list) {
+        final id = row['id']?.toString();
+        if (id != null && !seen.add(id)) {
+          throw const FormatException(
+              'Records changed during loading. Please refresh.');
+        }
+        rows.add(row);
+      }
+      final totalPages = response.pagination?['totalPages'];
+      if ((totalPages is num && page >= totalPages) ||
+          (totalPages == null && response.list.length < 100)) {
+        final total = response.pagination?['total'];
+        if (total is num && rows.length != total) {
+          throw const FormatException('Incomplete records. Please refresh.');
+        }
+        return ApiResponse(data: rows, kpi: kpi);
+      }
+      if (response.list.isEmpty) {
+        throw const FormatException(
+            'Records changed during loading. Please refresh.');
+      }
+    }
+    throw const FormatException(
+        'Too many records. Choose a shorter date range.');
   }
 
   Future<ApiResponse> get(String path, {Map<String, dynamic>? query}) async {
@@ -285,7 +332,8 @@ class ApiClient {
           // Windows test paths use backslashes. Sending the complete Windows
           // path as a filename is both incorrect and leaks local path details.
           filename: filePath.split(RegExp(r'[\\/]+')).last,
-          contentType: MediaType(parts.first, parts.length > 1 ? parts[1] : 'octet-stream'),
+          contentType: MediaType(
+              parts.first, parts.length > 1 ? parts[1] : 'octet-stream'),
         ),
       });
       final response = await _dio.post(path, data: formData);
@@ -312,6 +360,11 @@ class ApiClient {
 
   void setMockFailAdapter() {
     _dio.httpClientAdapter = _MockFailAdapter();
+  }
+
+  @visibleForTesting
+  void setHttpAdapterForTesting(HttpClientAdapter adapter) {
+    _dio.httpClientAdapter = adapter;
   }
 }
 

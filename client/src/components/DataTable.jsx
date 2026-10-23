@@ -27,7 +27,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 // `break-words` (plus `break-all` as a second line of defense for a value with literally no word
 // boundaries at all, like a query string) wraps it inside that width instead of overflowing.
 const isActionColumn = (column) => column.key === 'actionCol' || column.key === 'actions'
-export function DataTable({ columns, rows = [], pagination, loading = false, error, onRetry, onPageChange }) {
+export function DataTable({ columns, rows = [], pagination, loading = false, error, onRetry, onPageChange, mobileSummary, mobileSummaryKeys = [] }) {
   const isMobile = useIsMobile()
   if (loading) return <LoadingSkeleton />
   if (error) return <EmptyState title="Couldn’t load this list" message={error}><button className="btn-primary mt-4" onClick={onRetry}>Try again</button></EmptyState>
@@ -35,12 +35,18 @@ export function DataTable({ columns, rows = [], pagination, loading = false, err
   const page = pagination?.page || 1
   const totalPages = pagination?.totalPages || 1
   const detailColumns = columns.filter((column) => !isActionColumn(column))
+  const mobileExtraColumns = mobileSummary ? detailColumns.filter((column) => !mobileSummaryKeys.includes(column.key)) : detailColumns
   const actionColumn = columns.find(isActionColumn)
   return <div className="rounded-card border border-border bg-white shadow-card">
     {isMobile
       ? <ul className="grid gap-3 p-3">{rows.map((row, index) => <li key={row.id} className="rounded-button border border-border p-3">
-          <dl className="grid gap-2">{detailColumns.map((column) => <div key={column.key} className="flex items-start justify-between gap-3 text-sm"><dt className="shrink-0 font-semibold text-muted">{column.label}</dt><dd className="min-w-0 flex-1 text-right text-ink [overflow-wrap:anywhere]">{column.render ? column.render(row, index) : row[column.key]}</dd></div>)}</dl>
-          {actionColumn && <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{actionColumn.render ? actionColumn.render(row, index) : row[actionColumn.key]}</div>}
+          {mobileSummary && <div>{mobileSummary(row, index)}</div>}
+          {mobileSummary && mobileExtraColumns.length > 0 && <details className="mt-2 border-t border-border pt-2">
+            <summary className="cursor-pointer py-1 text-sm font-semibold text-primary-dark">More details</summary>
+            <dl className="mt-2 grid gap-2">{mobileExtraColumns.map((column) => <div key={column.key} className="flex items-start justify-between gap-3 text-sm"><dt className="min-w-0 max-w-[45%] font-semibold text-muted [overflow-wrap:anywhere]">{column.label}</dt><dd className="min-w-0 flex-1 text-right text-ink [overflow-wrap:anywhere]">{column.render ? column.render(row, index) : row[column.key]}</dd></div>)}</dl>
+          </details>}
+          {!mobileSummary && <dl className="grid gap-2">{detailColumns.map((column) => <div key={column.key} className="flex items-start justify-between gap-3 text-sm"><dt className="min-w-0 max-w-[45%] font-semibold text-muted [overflow-wrap:anywhere]">{column.label}</dt><dd className="min-w-0 flex-1 text-right text-ink [overflow-wrap:anywhere]">{column.render ? column.render(row, index) : row[column.key]}</dd></div>)}</dl>}
+          {actionColumn && <div className="portal-record-actions mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{actionColumn.render ? actionColumn.render(row, index) : row[actionColumn.key]}</div>}
         </li>)}</ul>
       : <div className="data-scroll"><table className="min-w-full text-left text-sm"><thead className="bg-primary-light/50 text-muted"><tr>{columns.map((column) => <th scope="col" className="whitespace-nowrap px-4 py-3 font-semibold" key={column.key}>{column.label}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id} className="border-t border-border">{columns.map((column) => <td className="whitespace-nowrap px-4 py-3" key={column.key}>{column.render ? column.render(row, index) : row[column.key]}</td>)}</tr>)}</tbody></table></div>}
     {totalPages > 1 && <nav aria-label="Table pagination" className="flex items-center justify-between border-t border-border px-4 py-3"><span className="text-xs text-muted">Page {page} of {totalPages}</span><div className="flex gap-2"><button className="touch-target rounded-button border border-border px-3 text-sm disabled:opacity-40" disabled={page === 1} onClick={() => onPageChange?.(page - 1)}>Previous</button><button className="touch-target rounded-button border border-border px-3 text-sm disabled:opacity-40" disabled={page === totalPages} onClick={() => onPageChange?.(page + 1)}>Next</button></div></nav>}

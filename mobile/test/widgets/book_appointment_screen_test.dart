@@ -28,11 +28,14 @@ void main() {
   });
 
   group('BookAppointmentScreen', () {
-    testWidgets('shows a loading indicator on the very first frame, before options have loaded', (tester) async {
+    testWidgets(
+        'shows a loading indicator on the very first frame, before options have loaded',
+        (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
 
       expect(find.byType(LoadingView), findsOneWidget);
-      expect(find.widgetWithText(AppBar, 'Book an appointment'), findsOneWidget);
+      expect(
+          find.widgetWithText(AppBar, 'Book an appointment'), findsOneWidget);
       expect(find.byType(DropdownButtonFormField<String>), findsNothing);
 
       // Drain the real _loadOptions() network calls kicked off in initState before this test
@@ -47,7 +50,9 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('renders the booking form once loading settles, with the confirm button disabled', (tester) async {
+    testWidgets(
+        'renders the booking form once loading settles, with the confirm button disabled',
+        (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
 
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
@@ -58,27 +63,24 @@ void main() {
       // the same ErrorBanner every other screen uses, rather than leaving the form half-drawn.
       expect(find.byType(ErrorBanner), findsOneWidget);
 
-      // The form itself still renders (doctor list just ends up empty) so a patient always has
-      // something on screen to retry from, rather than a dead end.
-      expect(find.text('Reason for visit'), findsOneWidget);
-      expect(find.text('Emergency booking'), findsOneWidget);
-      // Defaults to today (see `_selectedDate = DateTime.now()`) rather than an unset placeholder
-      // — the date-picker button always shows a formatted date, never "Select date".
-      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
-
-      final confirmButton = tester.widget<ElevatedButton>(
-        find.widgetWithText(ElevatedButton, 'Confirm booking'),
-      );
-      // Neither a doctor nor a "booking for" choice has been made yet -> `_canSubmit` is false.
-      expect(confirmButton.onPressed, isNull);
+      expect(find.text('Filters'), findsOneWidget);
+      expect(find.text('Matching Doctors (0)'), findsOneWidget);
+      expect(find.text('Reason for visit'), findsNothing);
+      expect(find.text('Confirm booking'), findsNothing);
+      expect(find.byType(Checkbox), findsNothing);
     });
 
-    testWidgets('toggling the emergency switch updates its own state without requiring a doctor first', (tester) async {
+    testWidgets(
+        'toggling the emergency switch updates its own state without requiring a doctor first',
+        (tester) async {
       await tester.pumpWidget(const MaterialApp(home: BookAppointmentScreen()));
       await tester.runAsync(() => Future.delayed(const Duration(seconds: 2)));
       await tester.pumpAndSettle();
 
-      final emergencyCheckbox = tester.widget<Checkbox>(find.byType(Checkbox).last);
+      await tester.tap(find.byKey(const ValueKey('booking-filters-toggle')));
+      await tester.pumpAndSettle();
+      final emergencyCheckbox =
+          tester.widget<Checkbox>(find.byType(Checkbox).last);
       expect(emergencyCheckbox.value, isFalse);
 
       await tester.ensureVisible(find.byType(Checkbox).last);

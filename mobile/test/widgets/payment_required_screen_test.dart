@@ -21,7 +21,8 @@ import 'package:connect_mobile/widgets/common_widgets.dart';
 /// ever reached, since no backend is reachable in this environment).
 const MethodChannel _razorpayChannel = MethodChannel('razorpay_flutter');
 
-Appointment _appointment({required String status, String? tokenNumber, double totalAmount = 500}) {
+Appointment _appointment(
+    {required String status, String? tokenNumber, double totalAmount = 500}) {
   return Appointment(
     id: 'appt-1',
     doctor: DoctorRef(id: 'doc-1', name: 'Dr. Asha Rao'),
@@ -31,6 +32,7 @@ Appointment _appointment({required String status, String? tokenNumber, double to
     status: status,
     source: 'online',
     tokenNumber: tokenNumber,
+    paymentStatus: status == 'pending_payment' ? 'pending' : 'paid',
     fees: Fees(totalAmount: totalAmount),
   );
 }
@@ -39,47 +41,60 @@ void main() {
   group('PaymentRequiredScreen', () {
     setUp(() {
       ApiClient.instance.setMockFailAdapter();
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
         _razorpayChannel,
         (MethodCall methodCall) async => null,
       );
     });
 
     tearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
         _razorpayChannel,
         null,
       );
     });
 
-    testWidgets('shows the payment-required card and Pay button for a pending_payment appointment', (tester) async {
+    testWidgets(
+        'shows the payment-required card and Pay button for a pending_payment appointment',
+        (tester) async {
       final appointment = _appointment(status: 'pending_payment');
 
-      await tester.pumpWidget(MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
+      await tester.pumpWidget(
+          MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
       await tester.pump();
 
       expect(find.text('Payment required'), findsOneWidget);
       expect(find.textContaining('Dr. Asha Rao'), findsOneWidget);
-      expect(find.widgetWithText(ElevatedButton, 'Pay ₹500 now'), findsOneWidget);
+      expect(
+          find.widgetWithText(ElevatedButton, 'Pay ₹500 now'), findsOneWidget);
       expect(find.text('Booking confirmed'), findsNothing);
     });
 
-    testWidgets('shows the confirmed state with the token number once the appointment is already paid', (tester) async {
+    testWidgets(
+        'shows the confirmed state with the token number once the appointment is already paid',
+        (tester) async {
       final appointment = _appointment(status: 'confirmed', tokenNumber: 'A12');
 
-      await tester.pumpWidget(MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
+      await tester.pumpWidget(
+          MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
       await tester.pump();
 
       expect(find.text('Booking confirmed'), findsOneWidget);
       expect(find.textContaining('A12'), findsOneWidget);
-      expect(find.widgetWithText(ElevatedButton, 'View my appointments'), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'View my appointments'),
+          findsOneWidget);
       expect(find.text('Payment required'), findsNothing);
     });
 
-    testWidgets('tapping Pay shows a loading state, then an error banner once the network call fails', (tester) async {
+    testWidgets(
+        'tapping Pay shows a loading state, then an error banner once the network call fails',
+        (tester) async {
       final appointment = _appointment(status: 'pending_payment');
 
-      await tester.pumpWidget(MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
+      await tester.pumpWidget(
+          MaterialApp(home: PaymentRequiredScreen(appointment: appointment)));
       await tester.pump();
 
       final payButton = find.widgetWithText(ElevatedButton, 'Pay ₹500 now');

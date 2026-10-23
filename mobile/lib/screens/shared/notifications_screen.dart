@@ -45,8 +45,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Future<List<AppNotification>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/notifications', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+          .getAll('/notifications', query: {'pageSize': 50});
       final list = <AppNotification>[];
       for (final item in res.list) {
         try {
@@ -55,7 +54,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -71,8 +70,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       await ApiClient.instance.patch('/notifications/${n.id}/read');
       if (!mounted) return;
       _load();
-    } catch (_) {
-      // Non-fatal — the notification just stays showing as unread.
+    } catch (error) {
+      if (mounted) showErrorSnack(context, error);
     }
   }
 
@@ -94,118 +93,157 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     // under RoleScaffold's own — that action now lives in PageHeader's own `action` slot instead,
     // matching how the other nav-item screens (e.g. doctor_dashboard_screen.dart) were fixed.
     return Column(
-        children: [
-          // Mirrors web's SimpleInbox (doctor/receptionist notifications inbox — FeaturePages.jsx):
-          // <Page title="Notifications" subtitle="New bookings, queue activity, reviews, and
-          // system updates.">. This screen's own behavior (tap a row to mark it read, one
-          // "mark all read" action) matches SimpleInbox's shape more closely than the patient
-          // portal's dedicated table/CSV page, so that is the copy mirrored here.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-            child: PageHeader(
-              title: 'Notifications',
-              subtitle: 'New bookings, queue activity, reviews, and system updates.',
-              action: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // COMPLETENESS FIX (mobile parity audit — Patient panel): web's patient
-                  // Notifications header shows a "● Live" pill (PatientPages.jsx) confirming this
-                  // list polls for fresh data — mobile already polls every 30s (see initState's
-                  // Timer) but never showed the indicator that tells the patient it's live.
-                  if (widget.showLiveBadge) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircleAvatar(radius: 3, backgroundColor: AppColors.success),
-                          SizedBox(width: 6),
-                          Text('Live', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
+      children: [
+        // Mirrors web's SimpleInbox (doctor/receptionist notifications inbox — FeaturePages.jsx):
+        // <Page title="Notifications" subtitle="New bookings, queue activity, reviews, and
+        // system updates.">. This screen's own behavior (tap a row to mark it read, one
+        // "mark all read" action) matches SimpleInbox's shape more closely than the patient
+        // portal's dedicated table/CSV page, so that is the copy mirrored here.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          child: PageHeader(
+            title: 'Notifications',
+            subtitle:
+                'New bookings, queue activity, reviews, and system updates.',
+            action: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // COMPLETENESS FIX (mobile parity audit — Patient panel): web's patient
+                // Notifications header shows a "● Live" pill (PatientPages.jsx) confirming this
+                // list polls for fresh data — mobile already polls every 30s (see initState's
+                // Timer) but never showed the indicator that tells the patient it's live.
+                if (widget.showLiveBadge) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: context.palette.success.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                          color:
+                              context.palette.success.withValues(alpha: 0.3)),
                     ),
-                  ],
-                  TextButton(onPressed: _markAllRead, child: const Text('Mark all read')),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<AppNotification>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-                if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
-                }
-                final items = snapshot.data ?? [];
-                // COMPLETENESS FIX (mobile parity audit — Patient panel): the empty state wasn't
-                // wrapped in RefreshIndicator — every other patient list screen (appointments,
-                // payments, family members) lets a pull-to-refresh work even with zero rows.
-                if (items.isEmpty) {
-                  return RefreshIndicator(
-                    onRefresh: () async => _load(),
-                    child: ListView(
-                      children: const [
-                        SizedBox(height: 80),
-                        EmptyStateView(icon: Icons.notifications_none, title: 'No notifications'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircleAvatar(
+                            radius: 3,
+                            backgroundColor: context.palette.success),
+                        const SizedBox(width: 6),
+                        Text('Live',
+                            style: TextStyle(
+                                color: context.palette.success,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700)),
                       ],
                     ),
-                  );
-                }
-                return RefreshIndicator(
-                  onRefresh: () async => _load(),
-                  child: ListView.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final n = items[i];
-                      return ListTile(
-                        onTap: () => _markRead(n),
-                        leading: Icon(
-                          n.isRead ? Icons.notifications_none : Icons.notifications,
-                          color: n.isRead ? AppColors.textSecondary : AppColors.primary,
-                        ),
-                        title: Text(n.title, style: TextStyle(fontWeight: n.isRead ? FontWeight.w400 : FontWeight.w700)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(n.body),
-                            const SizedBox(height: 4),
-                            // COMPLETENESS FIX (mobile parity audit — Patient panel): web shows a
-                            // "Type" column for every row (PatientPages.jsx/FeaturePages.jsx) —
-                            // mobile parsed `type` onto the model (for CSV export) but never
-                            // displayed it anywhere in the UI.
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: AppColors.surface,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              child: Text(
-                                n.type ?? 'system',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-                              ),
-                            ),
-                          ],
-                        ),
-                        isThreeLine: true,
-                        trailing: n.createdAt != null ? Text(n.createdAt!.split('T').first, style: const TextStyle(fontSize: 11)) : null,
-                      );
-                    },
                   ),
-                );
-              },
+                ],
+                TextButton(
+                    onPressed: _markAllRead,
+                    child: const Text('Mark all read')),
+              ],
             ),
           ),
-        ],
-      );
+        ),
+        Expanded(
+          child: FutureBuilder<List<AppNotification>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+              }
+              final items = snapshot.data ?? [];
+              // COMPLETENESS FIX (mobile parity audit — Patient panel): the empty state wasn't
+              // wrapped in RefreshIndicator — every other patient list screen (appointments,
+              // payments, family members) lets a pull-to-refresh work even with zero rows.
+              if (items.isEmpty) {
+                return RefreshIndicator(
+                  onRefresh: () async => _load(),
+                  child: ListView(
+                    children: const [
+                      SizedBox(height: 80),
+                      EmptyStateView(
+                          icon: Icons.notifications_none,
+                          title: 'No notifications'),
+                    ],
+                  ),
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: () async => _load(),
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final n = items[i];
+                    return Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                          onTap: () => _markRead(n),
+                          leading: Icon(
+                            n.isRead
+                                ? Icons.notifications_none
+                                : Icons.notifications,
+                            color: n.isRead
+                                ? context.palette.textSecondary
+                                : context.palette.primary,
+                          ),
+                          title: Text(n.title,
+                              style: TextStyle(
+                                  fontWeight: n.isRead
+                                      ? FontWeight.w400
+                                      : FontWeight.w700)),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(n.body),
+                              const SizedBox(height: 4),
+                              // COMPLETENESS FIX (mobile parity audit — Patient panel): web shows a
+                              // "Type" column for every row (PatientPages.jsx/FeaturePages.jsx) —
+                              // mobile parsed `type` onto the model (for CSV export) but never
+                              // displayed it anywhere in the UI.
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: context.palette.surface,
+                                  borderRadius: BorderRadius.circular(999),
+                                  border:
+                                      Border.all(color: context.palette.border),
+                                ),
+                                child: Text(
+                                  n.type ?? 'system',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: context.palette.textSecondary),
+                                ),
+                              ),
+                            ],
+                          ),
+                          isThreeLine: true,
+                          trailing: n.createdAt != null
+                              ? Text(n.createdAt!.split('T').first,
+                                  style: const TextStyle(fontSize: 11))
+                              : null,
+                        ));
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

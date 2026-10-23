@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/admin_period.dart';
+import '../../widgets/admin_period_filter.dart';
+import '../../widgets/paged_record_list.dart';
 import '../../core/csv_export.dart';
 import '../../models/core_models.dart';
 import '../../theme/app_theme.dart';
@@ -25,6 +28,11 @@ class AdminDoctorsScreen extends StatefulWidget {
 }
 
 class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
+  AdminPeriod _period = AdminPeriod.today();
+  List<DoctorDirectoryItem> _visible(List<DoctorDirectoryItem> items) => items
+      .where((item) => _period.includes(item.createdAt?.toIso8601String()))
+      .toList();
+
   Future<List<DoctorDirectoryItem>>? _future;
   String? _busyId;
 
@@ -35,20 +43,15 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   }
 
   Future<List<DoctorDirectoryItem>> _fetch() async {
-    try {
-      final res = await ApiClient.instance
-          .get('/doctors', query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'})
-          .catchError((_) => ApiResponse(data: []));
-      final list = <DoctorDirectoryItem>[];
-      for (final item in res.list) {
-        try {
-          list.add(DoctorDirectoryItem.fromJson(item));
-        } catch (_) {}
-      }
-      return list;
-    } catch (_) {
-      return [];
+    final res = await ApiClient.instance.getAll('/doctors',
+        query: {'pageSize': 100, 'sortBy': 'rating', 'sortOrder': 'desc'});
+    final list = <DoctorDirectoryItem>[];
+    for (final item in res.list) {
+      try {
+        list.add(DoctorDirectoryItem.fromJson(item));
+      } catch (_) {}
     }
+    return list;
   }
 
   void _load() {
@@ -66,15 +69,21 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          title: Text(status == 'disabled' ? 'Disable Dr. ${d.name}?' : 'Mark Dr. ${d.name} pending re-verification?'),
+          title: Text(status == 'disabled'
+              ? 'Disable Dr. ${d.name}?'
+              : 'Mark Dr. ${d.name} pending re-verification?'),
           content: Text(
             status == 'disabled'
                 ? 'Dr. ${d.name} will be removed from the public directory and can no longer receive bookings until re-verified.'
                 : 'Dr. ${d.name} will move back to "Pending verification" and be removed from the public directory until re-verified.',
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Continue')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Continue')),
           ],
         ),
       );
@@ -82,7 +91,8 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     }
     setState(() => _busyId = d.id);
     try {
-      await ApiClient.instance.patch('/doctors/${d.id}/status', body: {'status': status});
+      await ApiClient.instance
+          .patch('/doctors/${d.id}/status', body: {'status': status});
       if (mounted) showSuccessSnack(context, 'Updated');
       _load();
     } catch (err) {
@@ -100,8 +110,12 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   Future<void> _setAccountStatus(DoctorDirectoryItem d, String status) async {
     setState(() => _busyId = d.id);
     try {
-      await ApiClient.instance.patch('/doctors/${d.id}/account-status', body: {'status': status});
-      if (mounted) showSuccessSnack(context, status == 'disabled' ? 'Login disabled' : 'Login re-enabled');
+      await ApiClient.instance
+          .patch('/doctors/${d.id}/account-status', body: {'status': status});
+      if (mounted) {
+        showSuccessSnack(context,
+            status == 'disabled' ? 'Login disabled' : 'Login re-enabled');
+      }
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -111,7 +125,8 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   }
 
   Future<void> _openAdd() async {
-    final result = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const _AddDoctorScreen()));
+    final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const _AddDoctorScreen()));
     if (result == true) _load();
   }
 
@@ -120,7 +135,15 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   Future<void> _exportCsv(List<DoctorDirectoryItem> doctors) async {
     await shareCsv(
       filename: 'doctors.csv',
-      headers: const ['Id', 'Doctor', 'Registration', 'Experience', 'Fee', 'Rating', 'Status'],
+      headers: const [
+        'Id',
+        'Doctor',
+        'Registration',
+        'Experience',
+        'Fee',
+        'Rating',
+        'Status'
+      ],
       rows: [
         for (final d in doctors)
           [
@@ -139,13 +162,18 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(onPressed: _openAdd, icon: const Icon(Icons.add), label: const Text('Add doctor')),
-      body: Column(
+      floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openAdd,
+          icon: const Icon(Icons.add),
+          label: const Text('Add doctor')),
+      body: SingleChildScrollView(
+          child: Column(
         children: [
           // Mirrors the web app's DoctorVerification `Page` header (AdminPages.jsx) —
           // same kicker + title + subtitle copy.
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'Doctor management',
@@ -154,9 +182,23 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               action: FutureBuilder<List<DoctorDirectoryItem>>(
                 future: _future,
                 builder: (context, snapshot) {
-                  final doctors = snapshot.data ?? const <DoctorDirectoryItem>[];
+                  final doctors =
+                      _visible(snapshot.data ?? const <DoctorDirectoryItem>[]);
                   return TextButton.icon(
-                    onPressed: doctors.isEmpty ? null : () => _exportCsv(doctors),
+                    onPressed: doctors.isEmpty ||
+                            snapshot.hasError ||
+                            snapshot.connectionState != ConnectionState.done ||
+                            !_period.isValid
+                        ? null
+                        : () async {
+                            try {
+                              await _exportCsv(doctors);
+                            } catch (error) {
+                              if (context.mounted) {
+                                showErrorSnack(context, error);
+                              }
+                            }
+                          },
                     icon: const Icon(Icons.file_download_outlined, size: 16),
                     label: const Text('Export CSV'),
                   );
@@ -164,61 +206,83 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
               ),
             ),
           ),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: AdminPeriodFilter(
+                  value: _period,
+                  onChanged: (period) => setState(() => _period = period))),
           Container(
             width: double.infinity,
             margin: const EdgeInsets.all(AppSpacing.md),
             padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
-            child: const Text(
+            decoration: BoxDecoration(
+                color: context.palette.primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10)),
+            child: Text(
               'An admin sees every doctor here, including those awaiting verification — see "Pending verification" below. New doctors are onboarded via "Add doctor" below (with an option to verify immediately).',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style:
+                  TextStyle(fontSize: 12, color: context.palette.textSecondary),
             ),
           ),
-          Expanded(
-            child: FutureBuilder<List<DoctorDirectoryItem>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-                if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
-                }
-                final doctors = snapshot.data ?? [];
-                if (doctors.isEmpty) {
-                  return const EmptyStateView(icon: Icons.medical_services_outlined, title: 'No doctors yet');
-                }
-                // Mirrors the web app's DoctorVerification split (AdminPages.jsx) — the same
-                // fetch (an admin caller gets every doctorProfile.status back in one call) is
-                // partitioned client-side into a "Pending verification" queue shown first, and
-                // the full "All doctors" list below it.
-                final pendingDoctors = doctors.where((d) => (d.doctorStatus ?? 'verified') == 'pending').toList();
-                return RefreshIndicator(
-                  onRefresh: () async => _load(),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                    children: [
-                      if (pendingDoctors.isNotEmpty) ...[
-                        _SectionHeading(title: 'Pending verification', count: pendingDoctors.length),
-                        const SizedBox(height: AppSpacing.sm),
-                        for (int i = 0; i < pendingDoctors.length; i++) ...[
-                          _buildDoctorCard(pendingDoctors[i], i),
-                          const SizedBox(height: AppSpacing.sm),
-                        ],
-                        const SizedBox(height: AppSpacing.md),
-                      ],
-                      _SectionHeading(title: 'All doctors', count: doctors.length),
+          FutureBuilder<List<DoctorDirectoryItem>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+              }
+              final doctors = _visible(snapshot.data ?? []);
+              if (doctors.isEmpty) {
+                return const EmptyStateView(
+                    icon: Icons.medical_services_outlined,
+                    title: 'No doctors yet');
+              }
+              // Mirrors the web app's DoctorVerification split (AdminPages.jsx) — the same
+              // fetch (an admin caller gets every doctorProfile.status back in one call) is
+              // partitioned client-side into a "Pending verification" queue shown first, and
+              // the full "All doctors" list below it.
+              final pendingDoctors = doctors
+                  .where((d) => (d.doctorStatus ?? 'verified') == 'pending')
+                  .toList();
+              return RefreshIndicator(
+                onRefresh: () async => _load(),
+                child: ListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                  children: [
+                    if (pendingDoctors.isNotEmpty) ...[
+                      _SectionHeading(
+                          title: 'Pending verification',
+                          count: pendingDoctors.length),
                       const SizedBox(height: AppSpacing.sm),
-                      for (int i = 0; i < doctors.length; i++) ...[
-                        _buildDoctorCard(doctors[i], i),
+                      for (int i = 0; i < pendingDoctors.length; i++) ...[
+                        _buildDoctorCard(pendingDoctors[i], i),
                         const SizedBox(height: AppSpacing.sm),
                       ],
+                      const SizedBox(height: AppSpacing.md),
                     ],
-                  ),
-                );
-              },
-            ),
+                    _SectionHeading(
+                        title: 'All doctors', count: doctors.length),
+                    const SizedBox(height: AppSpacing.sm),
+                    PagedRecordList<DoctorDirectoryItem>(
+                        key: ValueKey(_period.label),
+                        items: doctors,
+                        shrinkWrap: true,
+                        itemBuilder: (context, doctor, i) =>
+                            _buildDoctorCard(doctor, i)),
+                  ],
+                ),
+              );
+            },
           ),
         ],
-      ),
+      )),
     );
   }
 
@@ -230,69 +294,99 @@ class _AdminDoctorsScreenState extends State<AdminDoctorsScreen> {
     final seqId = d.doctorNumber == null ? 'DCD—' : 'DCD${d.doctorNumber}';
 
     return Card(
-      child: ListTile(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w700))),
-            StatusBadge(status: doctorStatus),
-          ],
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 2),
-            Text(
-              '${d.specialization?.name ?? "—"} · ₹${d.consultationFee.toStringAsFixed(0)} · ${d.city ?? "—"}',
-              style: const TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (d.registrationNumber != null && d.registrationNumber!.isNotEmpty) 'Reg: ${d.registrationNumber}',
-                if (d.experienceYears != null) '${d.experienceYears} yrs exp',
-                if (d.rating > 0) '★ ${d.rating.toStringAsFixed(1)}',
-                if (accountStatus == 'disabled') 'Login disabled',
-              ].join(' · '),
-              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-            ),
-          ],
-        ),
-        trailing: busy
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-            : PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'account_disabled' || value == 'account_active') {
-                    _setAccountStatus(d, value == 'account_disabled' ? 'disabled' : 'active');
-                  } else {
-                    _setStatus(d, value);
-                  }
-                },
-                itemBuilder: (context) => [
-                  // Verify — the action this screen was missing entirely: an admin previously
-                  // had no way to move a pending doctor to 'verified' from mobile at all.
-                  if (isPending) const PopupMenuItem(value: 'verified', child: Text('Verify')),
-                  const PopupMenuItem(value: 'disabled', child: Text('Disable account')),
-                  const PopupMenuItem(value: 'pending', child: Text('Mark pending re-verification')),
-                  const PopupMenuDivider(),
-                  // COMPLETENESS FIX (audit Priority 4): account-level login
-                  // enable/disable — see _setAccountStatus's doc comment.
-                  PopupMenuItem(
-                    value: accountStatus == 'active' ? 'account_disabled' : 'account_active',
-                    child: Text(accountStatus == 'active' ? 'Disable login' : 'Enable login'),
+      child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            title: Row(
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: context.palette.surface,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: context.palette.border),
                   ),
-                ],
-              ),
-      ),
+                  child: Text('#$seqId',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          color: context.palette.primaryDark)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: Text(d.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700))),
+                StatusBadge(status: doctorStatus),
+              ],
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 2),
+                Text(
+                  '${d.specialization?.name ?? "—"} · ₹${d.consultationFee.toStringAsFixed(0)} · ${d.city ?? "—"}',
+                  style: const TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (d.registrationNumber != null &&
+                        d.registrationNumber!.isNotEmpty)
+                      'Reg: ${d.registrationNumber}',
+                    if (d.experienceYears != null)
+                      '${d.experienceYears} yrs exp',
+                    if (d.rating > 0) '★ ${d.rating.toStringAsFixed(1)}',
+                    if (accountStatus == 'disabled') 'Login disabled',
+                  ].join(' · '),
+                  style: TextStyle(
+                      fontSize: 11, color: context.palette.textSecondary),
+                ),
+              ],
+            ),
+            trailing: busy
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'account_disabled' ||
+                          value == 'account_active') {
+                        _setAccountStatus(
+                            d,
+                            value == 'account_disabled'
+                                ? 'disabled'
+                                : 'active');
+                      } else {
+                        _setStatus(d, value);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      // Verify — the action this screen was missing entirely: an admin previously
+                      // had no way to move a pending doctor to 'verified' from mobile at all.
+                      if (isPending)
+                        const PopupMenuItem(
+                            value: 'verified', child: Text('Verify')),
+                      const PopupMenuItem(
+                          value: 'disabled', child: Text('Disable account')),
+                      const PopupMenuItem(
+                          value: 'pending',
+                          child: Text('Mark pending re-verification')),
+                      const PopupMenuDivider(),
+                      // COMPLETENESS FIX (audit Priority 4): account-level login
+                      // enable/disable — see _setAccountStatus's doc comment.
+                      PopupMenuItem(
+                        value: accountStatus == 'active'
+                            ? 'account_disabled'
+                            : 'account_active',
+                        child: Text(accountStatus == 'active'
+                            ? 'Disable login'
+                            : 'Enable login'),
+                      ),
+                    ],
+                  ),
+          )),
     );
   }
 }
@@ -310,10 +404,15 @@ class _SectionHeading extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        Text(title,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         Text(
           '$count record${count == 1 ? '' : 's'}',
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary, letterSpacing: 0.4),
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: context.palette.textSecondary,
+              letterSpacing: 0.4),
         ),
       ],
     );
@@ -347,18 +446,17 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
   @override
   void initState() {
     super.initState();
-    _specializationsFuture = ApiClient.instance
-        .get('/geography/specializations', query: {'pageSize': 100})
-        .then((res) {
-          final list = <Specialization>[];
-          for (final item in res.list) {
-            try {
-              list.add(Specialization.fromJson(item));
-            } catch (_) {}
-          }
-          return list;
-        })
-        .catchError((_) => <Specialization>[]);
+    _specializationsFuture = ApiClient.instance.get(
+        '/geography/specializations',
+        query: {'pageSize': 100}).then((res) {
+      final list = <Specialization>[];
+      for (final item in res.list) {
+        try {
+          list.add(Specialization.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    }).catchError((_) => <Specialization>[]);
   }
 
   @override
@@ -381,8 +479,11 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
   }
 
   Future<void> _submit() async {
-    if (_nameCtrl.text.trim().isEmpty || _emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8) {
-      setState(() => _error = 'Name, email and an 8+ character password are required');
+    if (_nameCtrl.text.trim().isEmpty ||
+        _emailCtrl.text.trim().isEmpty ||
+        _passwordCtrl.text.trim().length < 8) {
+      setState(() =>
+          _error = 'Name, email and an 8+ character password are required');
       return;
     }
     if (_selectedSpecialization == null) {
@@ -406,9 +507,12 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
         if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
         if (_cityCtrl.text.trim().isNotEmpty) 'city': _cityCtrl.text.trim(),
         'specializationId': _selectedSpecialization!.id,
-        if (_qualificationCtrl.text.trim().isNotEmpty) 'qualification': _qualificationCtrl.text.trim(),
-        if (_registrationCtrl.text.trim().isNotEmpty) 'registrationNumber': _registrationCtrl.text.trim(),
-        if (int.tryParse(_experienceCtrl.text.trim()) != null) 'experienceYears': int.parse(_experienceCtrl.text.trim()),
+        if (_qualificationCtrl.text.trim().isNotEmpty)
+          'qualification': _qualificationCtrl.text.trim(),
+        if (_registrationCtrl.text.trim().isNotEmpty)
+          'registrationNumber': _registrationCtrl.text.trim(),
+        if (int.tryParse(_experienceCtrl.text.trim()) != null)
+          'experienceYears': int.parse(_experienceCtrl.text.trim()),
         'consultationFee': fee,
         if (_bioCtrl.text.trim().isNotEmpty) 'bio': _bioCtrl.text.trim(),
         'verifyImmediately': _verifyImmediately,
@@ -429,16 +533,34 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-          TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
+          TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Name')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+          TextField(
+              controller: _emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(labelText: 'Email')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
+          TextField(
+              controller: _passwordCtrl,
+              obscureText: true,
+              decoration:
+                  const InputDecoration(labelText: 'Password (min 8 chars)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
+          TextField(
+              controller: _phoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Phone (optional)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _cityCtrl, decoration: const InputDecoration(labelText: 'City (display only, optional)')),
+          TextField(
+              controller: _cityCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'City (display only, optional)')),
           const SizedBox(height: AppSpacing.md),
           FutureBuilder<List<Specialization>>(
             future: _specializationsFuture,
@@ -448,15 +570,23 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
                 initialValue: _selectedSpecialization,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Specialization'),
-                items: items.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                items: items
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s.name)))
+                    .toList(),
                 onChanged: (s) => setState(() => _selectedSpecialization = s),
               );
             },
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _qualificationCtrl, decoration: const InputDecoration(labelText: 'Qualification (optional)')),
+          TextField(
+              controller: _qualificationCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Qualification (optional)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _registrationCtrl, decoration: const InputDecoration(labelText: 'Registration number (optional)')),
+          TextField(
+              controller: _registrationCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'Registration number (optional)')),
           const SizedBox(height: AppSpacing.md),
           Row(
             children: [
@@ -464,31 +594,44 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
                 child: TextField(
                   controller: _experienceCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Experience (years, optional)'),
+                  decoration: const InputDecoration(
+                      labelText: 'Experience (years, optional)'),
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: TextField(
                   controller: _feeCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Consultation fee'),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration:
+                      const InputDecoration(labelText: 'Consultation fee'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _bioCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Bio (optional)')),
+          TextField(
+              controller: _bioCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Bio (optional)')),
           const SizedBox(height: AppSpacing.md),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Verify immediately'),
-            subtitle: const Text('If off, the doctor stays pending until verified via status update', style: TextStyle(fontSize: 12)),
-            value: _verifyImmediately,
-            onChanged: (v) => setState(() => _verifyImmediately = v),
-          ),
+          Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Verify immediately'),
+                subtitle: const Text(
+                    'If off, the doctor stays pending until verified via status update',
+                    style: TextStyle(fontSize: 12)),
+                value: _verifyImmediately,
+                onChanged: (v) => setState(() => _verifyImmediately = v),
+              )),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Create doctor account', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Create doctor account',
+              onPressed: _submit,
+              loading: _submitting),
         ],
       ),
     );

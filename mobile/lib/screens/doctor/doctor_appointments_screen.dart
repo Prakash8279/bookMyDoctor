@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/booking_slip_sheet.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/appointment_export_bar.dart';
 
 /// Ports client/src/lib/format.js's shortId() exactly — see appointments_screen.dart's copy for
 /// the same rationale (a private per-file helper, matching this codebase's existing convention).
@@ -19,14 +20,17 @@ String _shortId(String id) {
 /// allows `upcoming` -> any of the 4, and `confirmed` -> completed/cancelled/
 /// no_show — completed/cancelled/no_show are terminal (no actions shown).
 class DoctorAppointmentsScreen extends StatefulWidget {
-  const DoctorAppointmentsScreen({super.key});
+  const DoctorAppointmentsScreen({super.key, this.showClinicalDetails = true});
+  final bool showClinicalDetails;
 
   @override
-  State<DoctorAppointmentsScreen> createState() => _DoctorAppointmentsScreenState();
+  State<DoctorAppointmentsScreen> createState() =>
+      _DoctorAppointmentsScreenState();
 }
 
 class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
   String? _statusFilter;
+  String _visitDate = indiaToday();
   Future<List<Appointment>>? _future;
   String? _busyId;
 
@@ -47,9 +51,11 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
 
   Future<List<Appointment>> _fetch() async {
     try {
-      final res = await ApiClient.instance
-          .get('/appointments', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+      final res = await ApiClient.instance.getAll('/appointments', query: {
+        'date': _visitDate,
+        if (_statusFilter != null) 'status': _statusFilter,
+        'pageSize': 100
+      });
       final list = <Appointment>[];
       for (final item in res.list) {
         try {
@@ -58,7 +64,7 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -82,9 +88,12 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
   Future<void> _setStatus(Appointment appt, String status) async {
     setState(() => _busyId = appt.id);
     try {
-      await ApiClient.instance.patch('/appointments/${appt.id}/status', body: {'status': status});
-      if (mounted) showSuccessSnack(context, 'Marked ${status.replaceAll('_', ' ')}');
-      _load();
+      await ApiClient.instance
+          .patch('/appointments/${appt.id}/status', body: {'status': status});
+      if (mounted) {
+        showSuccessSnack(context, 'Marked ${status.replaceAll('_', ' ')}');
+      }
+      if (mounted) _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
     } finally {
@@ -105,8 +114,12 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
           '${appt.tokenNumber != null ? " (token #${appt.tokenNumber})" : ""}? This cannot be undone.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Keep appointment')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Cancel appointment')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep appointment')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Cancel appointment')),
         ],
       ),
     );
@@ -119,17 +132,52 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Appointments',
               subtitle: 'Manage scheduled patients and consultation status.',
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: Wrap(spacing: 8, runSpacing: 6, children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: Text(_visitDate),
+                onPressed: () async {
+                  final today = DateTime.parse(indiaToday());
+                  final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.parse(_visitDate),
+                      firstDate: today.subtract(const Duration(days: 730)),
+                      lastDate: today.add(const Duration(days: 365)));
+                  if (picked != null && mounted) {
+                    setState(() => _visitDate =
+                        '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}');
+                    _load();
+                  }
+                },
+              ),
+              TextButton(
+                  key: const ValueKey('visit-today'),
+                  onPressed: () {
+                    setState(() {
+                      _visitDate = indiaToday();
+                      _statusFilter = null;
+                    });
+                    _load();
+                  },
+                  child: const Text('Today')),
+            ]),
+          ),
+          const AppointmentExportBar(),
           SizedBox(
             height: 48,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: 4),
               itemCount: _filters.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
@@ -150,7 +198,9 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
             child: FutureBuilder<List<Appointment>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -159,17 +209,23 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                 }
                 final appts = snapshot.data ?? [];
                 if (appts.isEmpty) {
-                  return const EmptyStateView(icon: Icons.event_note_outlined, title: 'No appointments found');
+                  return const EmptyStateView(
+                      icon: Icons.event_note_outlined,
+                      title: 'No appointments found');
                 }
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     itemCount: appts.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, i) {
                       final a = appts[i];
-                      final targets = _legalTargets(a.status);
+                      final targets = _legalTargets(a.status)
+                          .where((target) =>
+                              target == 'cancelled' || a.canStartClinicActions)
+                          .toList();
                       final busy = _busyId == a.id;
                       return Card(
                         child: Padding(
@@ -180,7 +236,12 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               Row(
                                 children: [
                                   Expanded(
-                                    child: Text(a.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    child: Text(
+                                        a.familyMember?.name ??
+                                            a.patient?.displayName ??
+                                            'Patient',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
                                   ),
                                   StatusBadge(status: a.status),
                                 ],
@@ -191,26 +252,45 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               // appointment, StaffPages.jsx:152) — was missing from this card.
                               Text(
                                 'Booking ${_shortId(a.id)}',
-                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: context.palette.textSecondary,
+                                    fontWeight: FontWeight.w600),
                               ),
                               const SizedBox(height: 4),
-                              Text('${a.appointmentDate} · ${a.appointmentTime}', style: const TextStyle(color: AppColors.textSecondary)),
+                              Text('${a.appointmentDate} · ${a.displayTime}',
+                                  style: TextStyle(
+                                      color: context.palette.textSecondary)),
                               if (a.clinic?.name != null)
-                                Text(a.clinic!.name!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                Text(a.clinic!.name!,
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 12)),
                               // Phone + clinical vitals (gender/age/blood group) are only ever
                               // present here for a doctor/admin caller — appointments.service.js
                               // #shapePatientRef never sends them to anyone else — so this block
                               // simply doesn't render for a role that doesn't get the data.
-                              if (a.patient?.phone != null || a.patient?.vitalsSummary != null) ...[
+                              if (a.patient?.phone != null ||
+                                  a.patient?.vitalsSummary != null) ...[
                                 const SizedBox(height: 4),
                                 Text(
-                                  [a.patient?.phone, a.patient?.vitalsSummary].whereType<String>().join(' · '),
-                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                  [
+                                    a.patient?.phone,
+                                    if (widget.showClinicalDetails)
+                                      a.patient?.vitalsSummary
+                                  ].whereType<String>().join(' · '),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: context.palette.textSecondary),
                                 ),
                               ],
-                              if (a.patient?.hasHealthNotes ?? false) ...[
+                              if (widget.showClinicalDetails &&
+                                  (a.patient?.hasHealthNotes ?? false)) ...[
                                 const SizedBox(height: 4),
-                                Text(a.patient!.healthNotesSummary!, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                Text(a.patient!.healthNotesSummary!,
+                                    style: const TextStyle(fontSize: 12),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis),
                               ],
                               if (a.reason != null && a.reason!.isNotEmpty) ...[
                                 const SizedBox(height: 4),
@@ -234,7 +314,10 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                                 const SizedBox(height: 4),
                                 Text(
                                   'Due: ₹${a.fees.due!.toStringAsFixed(0)}',
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.warning),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.warning),
                                 ),
                               ],
                               // COMPLETENESS FIX (mobile parity): the web AppointmentTable shows a
@@ -244,28 +327,36 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Text('Payment: ', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                                  StatusBadge(status: a.paymentStatus ?? 'pending'),
+                                  Text('Payment: ',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          color:
+                                              context.palette.textSecondary)),
+                                  StatusBadge(
+                                      status: a.paymentStatus ?? 'pending'),
                                   if (a.paymentMethod != null) ...[
                                     const SizedBox(width: 6),
-                                    Text(a.paymentMethod!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                    Text(a.paymentMethod!,
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color:
+                                                context.palette.textSecondary)),
                                   ],
                                 ],
                               ),
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
-                                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                                const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
                               ] else ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.receipt_long_outlined, size: 16),
-                                      label: const Text('View slip'),
-                                      onPressed: () => showBookingSlipSheet(context, a),
-                                    ),
                                     // PARITY FIX (user request: "doctor panel ko app me complete same
                                     // to same website jaisa"): dropped the "EMR / Notes" action —
                                     // web's shared AppointmentTable (StaffPages.jsx) has no such
@@ -274,8 +365,16 @@ class _DoctorAppointmentsScreenState extends State<DoctorAppointmentsScreen> {
                                     // menu and linked from nowhere else in the web app, so a real
                                     // user can never reach it — it was mobile-only extra surface.
                                     ...targets.map((s) => OutlinedButton(
-                                          onPressed: () => s == 'cancelled' ? _confirmCancel(a) : _setStatus(a, s),
-                                          child: Text(s.replaceAll('_', ' ')),
+                                          onPressed: () => s == 'cancelled'
+                                              ? _confirmCancel(a)
+                                              : _setStatus(a, s),
+                                          child: Text(const {
+                                                'confirmed': 'Confirm',
+                                                'completed': 'Complete',
+                                                'no_show': 'No-show',
+                                                'cancelled': 'Cancel'
+                                              }[s] ??
+                                              s),
                                         )),
                                   ],
                                 ),

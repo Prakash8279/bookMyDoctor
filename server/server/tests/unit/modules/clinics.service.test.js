@@ -70,6 +70,7 @@ jest.mock('../../../src/config/db', () => {
     // `prisma.x` and the `tx.x` the callback receives, so a test can mock `prisma.clinic.create`
     // etc. directly regardless of whether the source calls it inside or outside $transaction.
     $transaction: jest.fn((cb) => cb(prisma)),
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
   };
   return prisma;
 });
@@ -876,6 +877,8 @@ describe('clinicsService.upsertClosure', () => {
     });
     expect(prisma.doctorClinicClosure.update).not.toHaveBeenCalled();
     expect(result.id).toBe('c1');
+    expect(prisma.$executeRaw.mock.calls[0][1]).toBe(`doctor-day:${DOCTOR.id}:2026-03-01`);
+    expect(doctorsService.invalidateDoctorCaches).toHaveBeenCalledWith(DOCTOR.id);
   });
 
   test('updates the existing row (upsert-by-triple) instead of creating a duplicate when one already exists', async () => {

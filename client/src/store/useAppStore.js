@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import apiClient, { getTokens, setTokens, clearTokens, registerUnauthorizedHandler } from '../lib/apiClient'
 
@@ -14,6 +15,14 @@ import apiClient, { getTokens, setTokens, clearTokens, registerUnauthorizedHandl
 const cleanParams = (params = {}) =>
   Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''))
 
+const fetchAdminRows = async (path, filters, user) => {
+  const { allPages = ['admin', 'superadmin'].includes(user?.role) && !filters.page, ...params } = filters
+  const rows = await (allPages ? fetchAllClinicRows(apiClient, path, cleanParams(params))
+    : apiClient.get(path, { params: cleanParams(params) }))
+  if (user !== useAppStore.getState().currentUser) throw new Error('Session changed. Reload this list.')
+  return rows
+}
+
 // Merge-or-append a fetched item into a cached list, keyed by `id`.
 const upsertById = (list = [], item) => {
   if (!item || item.id == null) return list
@@ -27,9 +36,9 @@ const upsertById = (list = [], item) => {
 // `opdEntries` is a client-side merged view of clinic hours (weekly recurring)
 // and clinic closures (one-off dates) — each real row gets a `kind` tag so
 // save/delete route to the correct endpoint pair (integration plan §1.5).
-const replaceOpdEntriesOfKind = (existing = [], freshRows, kind) => [
-  ...existing.filter((row) => row.kind !== kind),
-  ...freshRows.map((row) => ({ ...row, kind })),
+const replaceOpdEntriesOfKind = (existing = [], freshRows, kind, clinicId) => [
+  ...existing.filter((row) => row.kind !== kind || row.clinicId !== clinicId),
+  ...freshRows.map((row) => ({ ...row, clinicId, kind })),
 ]
 const upsertOpdEntry = (list = [], entry) => {
   const idx = list.findIndex((row) => row.id === entry.id && row.kind === entry.kind)
@@ -164,6 +173,11 @@ const initialState = {
   bookingQueueInfo: null,
 
 }
+
+// Only the newest list request for this resource/session may update its shared cache.
+// Navigation and slow networks can otherwise overwrite a newer filter or restore
+// clinic data after logout. Writes also invalidate outstanding list snapshots.
+const clinicRequestVersion = { appointments: 0, payments: 0, queueTokens: 0 }
 
 export const useAppStore = create(
   persist(
@@ -361,7 +375,9 @@ export const useAppStore = create(
             get().fetchSpecializations(),
             get().searchDoctors({ pageSize: 100 }),
             get().fetchClinics({}),
-            get().fetchReviews({}),
+            // Admins receive every status by default; the public directory must
+            // request approved rows explicitly for the homepage carousel.
+            get().fetchReviews({ status: 'approved' }),
           ])
         } finally {
           set({ dataLoading: false, dataLoaded: true })
@@ -438,6 +454,11 @@ export const useAppStore = create(
       // =====================================================================
       // /me
       // =====================================================================
+      refreshCurrentUser: async () => {
+        const me = await apiClient.get('/me')
+        set({ currentUser: me })
+        return me
+      },
       updateProfile: async (fields) => {
         const me = await apiClient.patch('/me', fields)
         set({ currentUser: me })
@@ -530,17 +551,17 @@ export const useAppStore = create(
       // Geography
       // =====================================================================
       fetchCities: async (filters = {}) => {
-        const rows = await apiClient.get('/geography/cities', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/geography/cities', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, cities: rows } }))
         return rows
       },
       fetchAreas: async (filters = {}) => {
-        const rows = await apiClient.get('/geography/areas', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/geography/areas', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, areas: rows } }))
         return rows
       },
       fetchSpecializations: async (filters = {}) => {
-        const rows = await apiClient.get('/geography/specializations', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/geography/specializations', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, specializations: rows } }))
         return rows
       },
@@ -587,7 +608,7 @@ export const useAppStore = create(
       // Doctors
       // =====================================================================
       searchDoctors: async (filters = {}) => {
-        const rows = await apiClient.get('/doctors', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/doctors', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, doctors: rows } }))
         return rows
       },
@@ -600,7 +621,16 @@ export const useAppStore = create(
       // booking-policy fields, full-replace, all 3 required by the server.
       updateDoctorBookingPolicy: async (id, fields) => {
         const doctor = await apiClient.patch(`/doctors/${id}`, fields)
-        set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
+        const policyFields = ['onlineBooking', 'allowRebooking', 'maxDaysAdvance', 'maxOnlineBookingsPerDay', 'tokenNumberingMode', 'onlineTokenParity']
+        const updatedPolicy = Object.fromEntries(policyFields
+          .map((field) => [field, doctor[field] !== undefined ? doctor[field] : fields[field]])
+          .filter(([, value]) => value !== undefined))
+        set((state) => ({
+          data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) },
+          currentUser: state.currentUser?.id === id
+            ? { ...state.currentUser, profile: { ...state.currentUser.profile, ...updatedPolicy } }
+            : state.currentUser,
+        }))
         return doctor
       },
       createDoctor: async (fields) => {
@@ -626,7 +656,7 @@ export const useAppStore = create(
       // Clinics
       // =====================================================================
       fetchClinics: async (filters = {}) => {
-        const rows = await apiClient.get('/clinics', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/clinics', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, clinics: rows } }))
         return rows
       },
@@ -687,12 +717,12 @@ export const useAppStore = create(
       // client-side into `data.opdEntries`, each row tagged `kind`.
       fetchClinicHours: async (clinicId, filters = {}) => {
         const rows = await apiClient.get(`/clinics/${clinicId}/hours`, { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'hours') } }))
+        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'hours', clinicId) } }))
         return rows
       },
       fetchClinicClosures: async (clinicId, filters = {}) => {
         const rows = await apiClient.get(`/clinics/${clinicId}/closures`, { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'closure') } }))
+        set((state) => ({ data: { ...state.data, opdEntries: replaceOpdEntriesOfKind(state.data.opdEntries, rows, 'closure', clinicId) } }))
         return rows
       },
       // Upsert by (doctorUserId, clinicId, weekday) server-side — calling
@@ -752,7 +782,7 @@ export const useAppStore = create(
       // Receptionists
       // =====================================================================
       fetchReceptionists: async (filters = {}) => {
-        const rows = await apiClient.get('/receptionists', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/receptionists', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, receptionists: rows } }))
         return rows
       },
@@ -827,8 +857,14 @@ export const useAppStore = create(
         throw timeoutErr
       },
       fetchAppointments: async (filters = {}) => {
-        const rows = await apiClient.get('/appointments', { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, appointments: rows } }))
+        const version = ++clinicRequestVersion.appointments
+        const user = get().currentUser
+        const { allPages = ['admin', 'superadmin'].includes(user?.role) && !filters.page, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/appointments', cleanParams(params))
+          : await apiClient.get('/appointments', { params: cleanParams(params) })
+        if (version === clinicRequestVersion.appointments && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, appointments: rows } }))
+        }
         return rows
       },
       fetchAppointmentAvailability: async (filters) => apiClient.get('/appointments/availability', { params: cleanParams(filters) }),
@@ -839,17 +875,30 @@ export const useAppStore = create(
       },
       updateAppointmentStatus: async (id, status) => {
         const appointment = await apiClient.patch(`/appointments/${id}/status`, { status })
+        clinicRequestVersion.appointments += 1
         set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
         return appointment
       },
       cancelAppointment: async (id) => get().updateAppointmentStatus(id, 'cancelled'),
+      checkInAppointment: async (id) => {
+        const appointment = await apiClient.post(`/appointments/${id}/check-in`, {})
+        clinicRequestVersion.appointments += 1
+        set((state) => ({ data: { ...state.data, appointments: upsertById(state.data.appointments, appointment) } }))
+        return appointment
+      },
 
       // =====================================================================
       // Queue
       // =====================================================================
       fetchQueue: async (filters = {}) => {
-        const rows = await apiClient.get('/queue', { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, queueTokens: rows } }))
+        const version = ++clinicRequestVersion.queueTokens
+        const user = get().currentUser
+        const { allPages = false, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/queue', cleanParams(params))
+          : await apiClient.get('/queue', { params: cleanParams(params) })
+        if (version === clinicRequestVersion.queueTokens && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, queueTokens: rows } }))
+        }
         return rows
       },
       // Patient-only (GET /queue/mine/:appointmentId — see queue.service.js#getMyQueueStatus).
@@ -866,6 +915,7 @@ export const useAppStore = create(
       // must pass that exact string, not the mock's `'in consultation'`.
       setQueueTokenStatus: async (id, status) => {
         const token = await apiClient.patch(`/queue/${id}/status`, { status })
+        clinicRequestVersion.queueTokens += 1
         set((state) => ({ data: { ...state.data, queueTokens: upsertById(state.data.queueTokens, token) } }))
         // Completing a token cascades server-side to the linked appointment's
         // status — refetch is left to the page (fetchAppointments on demand)
@@ -891,12 +941,18 @@ export const useAppStore = create(
       // Payments
       // =====================================================================
       fetchPayments: async (filters = {}) => {
-        const rows = await apiClient.get('/payments', { params: cleanParams(filters) })
-        set((state) => ({ data: { ...state.data, payments: rows } }))
+        const version = ++clinicRequestVersion.payments
+        const user = get().currentUser
+        const { allPages = ['admin', 'superadmin'].includes(user?.role) && !filters.page, ...params } = filters
+        const rows = allPages ? await fetchAllClinicRows(apiClient, '/payments', cleanParams(params))
+          : await apiClient.get('/payments', { params: cleanParams(params) })
+        if (version === clinicRequestVersion.payments && user === get().currentUser) {
+          set((state) => ({ data: { ...state.data, payments: rows } }))
+        }
         return rows
       },
       fetchRefunds: async (filters = {}) => {
-        const rows = await apiClient.get('/payments/refunds', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/payments/refunds', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, refunds: rows } }))
         return rows
       },
@@ -906,7 +962,7 @@ export const useAppStore = create(
         return result
       },
       fetchReconciliation: async (filters = {}) => {
-        const rows = await apiClient.get('/payments/reconciliation', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/payments/reconciliation', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, reconciliation: rows, reconciliationKpi: rows.__kpi || null } }))
         return rows
       },
@@ -915,6 +971,7 @@ export const useAppStore = create(
       // read-only.
       createPayment: async (fields) => {
         const payment = await apiClient.post('/payments', fields)
+        clinicRequestVersion.payments += 1
         set((state) => ({ data: { ...state.data, payments: [payment, ...(state.data.payments || [])] } }))
         return payment
       },
@@ -964,7 +1021,7 @@ export const useAppStore = create(
       // Reviews
       // =====================================================================
       fetchReviews: async (filters = {}) => {
-        const rows = await apiClient.get('/reviews', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/reviews', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, reviews: rows } }))
         return rows
       },
@@ -1016,7 +1073,7 @@ export const useAppStore = create(
         return result
       },
       fetchBroadcastHistory: async (filters = {}) => {
-        const rows = await apiClient.get('/notifications/broadcast', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/notifications/broadcast', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, broadcasts: rows } }))
         return rows
       },
@@ -1025,7 +1082,7 @@ export const useAppStore = create(
       // Complaints
       // =====================================================================
       fetchComplaints: async (filters = {}) => {
-        const rows = await apiClient.get('/complaints', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/complaints', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, complaints: rows } }))
         return rows
       },
@@ -1045,7 +1102,7 @@ export const useAppStore = create(
       // Contact requests
       // =====================================================================
       fetchContactRequests: async (filters = {}) => {
-        const rows = await apiClient.get('/contact', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/contact', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, contactRequests: rows } }))
         return rows
       },
@@ -1065,7 +1122,7 @@ export const useAppStore = create(
       // Admin
       // =====================================================================
       fetchActivityLog: async (filters = {}) => {
-        const rows = await apiClient.get('/admin/activity-log', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/admin/activity-log', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, activity: rows } }))
         return rows
       },
@@ -1099,7 +1156,7 @@ export const useAppStore = create(
       // best-effort list ManagePatients used to derive from appointments/payments alone, which
       // silently missed any patient who registered but never booked/paid.
       fetchPatients: async (filters = {}) => {
-        const rows = await apiClient.get('/admin/patients', { params: cleanParams(filters) })
+        const rows = await fetchAdminRows('/admin/patients', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, patients: rows } }))
         return rows
       },

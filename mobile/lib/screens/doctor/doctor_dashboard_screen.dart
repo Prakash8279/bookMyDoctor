@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../models/clinical_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
@@ -11,7 +12,6 @@ import '../../widgets/role_scaffold.dart';
 import 'doctor_appointments_screen.dart';
 import 'doctor_queue_screen.dart';
 import 'doctor_revenue_reports_screen.dart';
-import 'doctor_reviews_screen.dart';
 
 /// Doctor dashboard — 100% parity with web's DoctorDashboard (StaffPages.jsx):
 /// Header with "Open OPD console", on-duty toggle banner, verification warning,
@@ -27,11 +27,25 @@ class DoctorDashboardScreen extends StatefulWidget {
 class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   Future<_DashboardData>? _future;
   bool _dutyBusy = false;
+  Timer? _dayWatch;
+  String _today = indiaToday();
 
   @override
   void initState() {
     super.initState();
     _future = _fetch();
+    _dayWatch = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _today != indiaToday()) {
+        _today = indiaToday();
+        _load();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _dayWatch?.cancel();
+    super.dispose();
   }
 
   void _load() {
@@ -49,9 +63,10 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
   // existing `snapshot.hasError` branch (ErrorBanner) instead.
   Future<_DashboardData> _fetch() async {
     final futures = await Future.wait([
-      ApiClient.instance.get('/appointments', query: {'pageSize': 50}),
-      ApiClient.instance.get('/queue', query: {'pageSize': 50}),
-      ApiClient.instance.get('/payments', query: {'pageSize': 50}),
+      ApiClient.instance.getAll('/appointments',
+          query: {'dateFrom': indiaToday(), 'dateTo': indiaToday()}),
+      ApiClient.instance.getAll('/queue', query: {'date': indiaToday()}),
+      ApiClient.instance.getAll('/payments'),
     ]);
 
     final appointments = <Appointment>[];
@@ -96,16 +111,22 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
       // (StaffPages.jsx) via updateDoctorBookingPolicy(currentUser.id, {...}).
       final auth = context.read<AuthProvider>();
       final doctorId = auth.user?.id;
-      if (doctorId == null) throw Exception('Could not determine your doctor id.');
+      if (doctorId == null) {
+        throw Exception('Could not determine your doctor id.');
+      }
       await ApiClient.instance.patch('/doctors/$doctorId', body: {
         'onlineBooking': next,
         'allowRebooking': auth.profile?.allowRebooking ?? true,
-        'maxDaysAdvance': auth.profile?.maxDaysAdvance ?? 7,
+        'maxDaysAdvance': auth.profile?.maxDaysAdvance ?? 30,
       });
       if (mounted) {
         await context.read<AuthProvider>().refreshProfile();
         if (mounted) {
-          showSuccessSnack(context, next ? 'You are now marked on duty' : 'You are now marked off duty');
+          showSuccessSnack(
+              context,
+              next
+                  ? 'You are now marked on duty'
+                  : 'You are now marked off duty');
         }
       }
     } catch (err) {
@@ -119,7 +140,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Queue')) return;
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Queue')), body: const DoctorQueueScreen()),
+      builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Queue')),
+          body: const DoctorQueueScreen()),
     ));
   }
 
@@ -127,23 +150,24 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Appointments')) return;
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Appointments')), body: const DoctorAppointmentsScreen()),
+      builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Appointments')),
+          body: const DoctorAppointmentsScreen()),
     ));
   }
 
   void _goToRevenue(BuildContext context) {
     final role = RoleScaffold.of(context);
-    if (role != null && (role.navigateToLabel('Analytics') || role.navigateToLabel('Reports') || role.navigateToLabel('Revenue'))) return;
+    if (role != null &&
+        (role.navigateToLabel('Analytics') ||
+            role.navigateToLabel('Reports') ||
+            role.navigateToLabel('Revenue'))) {
+      return;
+    }
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Revenue')), body: const DoctorRevenueReportsScreen()),
-    ));
-  }
-
-  void _goToReviews(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Reviews')) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => Scaffold(appBar: AppBar(title: const Text('Reviews')), body: const DoctorReviewsScreen()),
+      builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Revenue')),
+          body: const DoctorRevenueReportsScreen()),
     ));
   }
 
@@ -153,7 +177,10 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     final user = auth.user;
     final profile = auth.profile;
     final rawName = user?.name ?? 'Doctor';
-    final firstName = rawName.replaceAll(RegExp(r'^dr\.?\s+', caseSensitive: false), '').split(' ').first;
+    final firstName = rawName
+        .replaceAll(RegExp(r'^dr\.?\s+', caseSensitive: false), '')
+        .split(' ')
+        .first;
     final onDuty = profile?.onlineBooking ?? true;
 
     return RefreshIndicator(
@@ -168,42 +195,69 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
           final queue = data?.queue ?? [];
           final payments = data?.payments ?? [];
 
-          final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-          final todayBookings = appointments.where((a) => a.appointmentDate == todayStr && a.status != 'completed').length;
-          final waitingPatients = queue.where((q) => q.status == 'waiting').length;
-          final todayRevenue = payments.fold<double>(0, (sum, p) => sum + (p.fees.consultationFee ?? 0));
-          final rating = profile?.rating ?? 5.0;
-
-          final recentRecords = appointments.reversed.take(6).toList();
+          final todayStr = indiaToday();
+          final todayAppointments =
+              appointments.where((a) => a.appointmentDate == todayStr).toList();
+          final todayBookings = todayAppointments
+              .where((a) => ['upcoming', 'confirmed', 'completed', 'no_show']
+                  .contains(a.status))
+              .length;
+          final waitingPatients = queue
+              .where((q) => q.queueDate == todayStr && q.status == 'waiting')
+              .length;
+          final todayRevenue = payments
+              .where((p) =>
+                  p.status == 'paid' &&
+                  indiaRecordDate(p.createdAt) == todayStr)
+              .fold<double>(0, (sum, p) => sum + (p.fees.consultationFee ?? 0));
+          final completedToday =
+              todayAppointments.where((a) => a.status == 'completed').length;
+          todayAppointments
+              .sort((a, b) => (b.createdAt ?? '').compareTo(a.createdAt ?? ''));
+          final recentRecords = todayAppointments.take(6).toList();
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               // Mirrors web PageHeader with "Open OPD console" action
-              PageHeader(
-                kicker: 'Production database',
-                title: 'Welcome, $firstName.',
-                subtitle: 'Your authenticated workspace is connected to live records.',
-                action: ElevatedButton(
-                  onPressed: () => _goToQueue(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryDark,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              if (MediaQuery.sizeOf(context).width >= 960)
+                PageHeader(
+                  kicker: 'Production database',
+                  title: 'Welcome, $firstName.',
+                  subtitle:
+                      'Your authenticated workspace is connected to live records.',
+                  action: ElevatedButton(
+                    onPressed: () => _goToQueue(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.palette.primaryDark,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Open OPD console',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
-                  child: const Text('Open OPD console', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                ),
-              ),
+                )
+              else
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text('Welcome, $firstName.',
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w600))),
 
+              const PortalQuickActions(),
               // Duty status toggle banner (mirrors web's toggleDuty bar)
               Container(
                 margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.palette.surface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.palette.border),
                 ),
                 child: Row(
                   children: [
@@ -211,27 +265,36 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                       width: 10,
                       height: 10,
                       decoration: BoxDecoration(
-                        color: onDuty ? AppColors.success : AppColors.textSecondary,
+                        color: onDuty
+                            ? context.palette.success
+                            : context.palette.textSecondary,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: Text(
-                        onDuty ? 'Patients can currently find and book you.' : 'You are hidden from new patient bookings.',
-                        style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                        onDuty
+                            ? 'Patients can currently find and book you.'
+                            : 'You are hidden from new patient bookings.',
+                        style: TextStyle(
+                            fontSize: 13, color: context.palette.textPrimary),
                       ),
                     ),
                     OutlinedButton(
                       onPressed: _dutyBusy ? null : () => _toggleDuty(onDuty),
                       style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: Text(
-                        _dutyBusy ? 'Saving…' : (onDuty ? 'Go off duty' : 'Go on duty'),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        _dutyBusy
+                            ? 'Saving…'
+                            : (onDuty ? 'Go off duty' : 'Go on duty'),
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ],
@@ -239,7 +302,8 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
               ),
 
               // Verification warning if account is pending
-              if (profile?.doctorStatus != null && profile?.doctorStatus != 'verified') ...[
+              if (profile?.doctorStatus != null &&
+                  profile?.doctorStatus != 'verified') ...[
                 Container(
                   margin: const EdgeInsets.only(bottom: AppSpacing.md),
                   padding: const EdgeInsets.all(AppSpacing.md),
@@ -252,13 +316,20 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     profile?.doctorStatus == 'disabled'
                         ? 'Your account has been disabled by an admin. Contact support if you believe this is a mistake.'
                         : 'Your account is pending admin verification — patients cannot find or book you until verification is complete.',
-                    style: const TextStyle(color: Color(0xFF92400E), fontSize: 13, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                        color: Color(0xFF92400E),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
 
-              if (loading) const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView()),
-              if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
+              if (loading)
+                const Padding(
+                    padding: EdgeInsets.only(top: AppSpacing.xl),
+                    child: LoadingView()),
+              if (snapshot.hasError)
+                ErrorBanner(error: snapshot.error!, onRetry: _load),
 
               if (data != null) ...[
                 // Stat Cards (2x2 Grid)
@@ -297,10 +368,10 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     const SizedBox(width: AppSpacing.sm),
                     Expanded(
                       child: StatCard(
-                        label: 'PATIENT RATING',
-                        value: rating.toStringAsFixed(1),
-                        icon: Icons.star,
-                        onTap: () => _goToReviews(context),
+                        label: 'COMPLETED TODAY',
+                        value: '$completedToday',
+                        icon: Icons.check,
+                        onTap: () => _goToAppointments(context),
                       ),
                     ),
                   ],
@@ -317,48 +388,79 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text('Recent live records', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            const Flexible(
+                                child: Text("Today's live records",
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16))),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: AppColors.success.withValues(alpha: 0.12),
+                                color: context.palette.success
+                                    .withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(999),
                               ),
-                              child: const Text('Connected', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 11)),
+                              child: Text('Connected',
+                                  style: TextStyle(
+                                      color: context.palette.success,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11)),
                             ),
                           ],
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         if (recentRecords.isEmpty)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                            child: Text('No live records yet. Consultations will appear here as they happen.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: AppSpacing.md),
+                            child: Text('No appointments today.',
+                                style: TextStyle(
+                                    color: context.palette.textSecondary,
+                                    fontSize: 13)),
                           )
                         else
                           ...recentRecords.map((item) {
-                            final timeStr = '${item.appointmentDate} ${item.appointmentTime}'.trim();
+                            final timeStr =
+                                '${item.appointmentDate} ${item.displayTime}'
+                                    .trim();
                             return Container(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               decoration: const BoxDecoration(
-                                border: Border(bottom: BorderSide(color: Color(0xFFF3F0EC))),
+                                border: Border(
+                                    bottom:
+                                        BorderSide(color: Color(0xFFF3F0EC))),
                               ),
                               child: Row(
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text(item.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                        Text(
+                                            item.patient?.displayName ??
+                                                'Patient',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 14)),
                                         Text(
                                           // COMPLETENESS FIX (mobile parity audit round 2, doctor
                                           // panel): web's dashboard "Recent live records" table
                                           // has a Details column showing the clinic name
                                           // (StaffPages.jsx:246) — was dropped here.
                                           [
-                                            if (timeStr.isNotEmpty) timeStr else 'Today',
-                                            if (item.clinic?.name != null) item.clinic!.name!,
+                                            if (timeStr.isNotEmpty)
+                                              timeStr
+                                            else
+                                              'Today',
+                                            if (item.clinic?.name != null)
+                                              item.clinic!.name!,
                                           ].join(' · '),
-                                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                          style: TextStyle(
+                                              color:
+                                                  context.palette.textSecondary,
+                                              fontSize: 12),
                                         ),
                                       ],
                                     ),
@@ -381,7 +483,9 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const Text('Quick actions',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 16)),
                         const SizedBox(height: AppSpacing.sm),
                         // PARITY FIX (mobile parity audit — Doctor panel, user request: "doctor
                         // panel ko app me complete same to same website jaisa"): web's Quick
@@ -420,21 +524,32 @@ class _DoctorDashboardScreenState extends State<DoctorDashboardScreen> {
     );
   }
 
-  Widget _buildActionRow(BuildContext context, {required IconData icon, required String label, required VoidCallback onTap}) {
+  Widget _buildActionRow(BuildContext context,
+      {required IconData icon,
+      required String label,
+      required VoidCallback onTap}) {
     return Container(
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.palette.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
+        border:
+            Border.all(color: context.palette.border.withValues(alpha: 0.6)),
       ),
-      child: ListTile(
-        leading: Icon(icon, color: AppColors.primaryDark),
-        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-        subtitle: const Text('Open live workspace', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-        onTap: onTap,
-      ),
+      child: Material(
+          type: MaterialType.transparency,
+          child: ListTile(
+            leading: Icon(icon, color: context.palette.primaryDark),
+            title: Text(label,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            subtitle: Text('Open live workspace',
+                style: TextStyle(
+                    fontSize: 12, color: context.palette.textSecondary)),
+            trailing:
+                Icon(Icons.chevron_right, color: context.palette.textSecondary),
+            onTap: onTap,
+          )),
     );
   }
 }
@@ -443,5 +558,8 @@ class _DashboardData {
   final List<Appointment> appointments;
   final List<QueueTokenItem> queue;
   final List<PaymentItem> payments;
-  _DashboardData({required this.appointments, required this.queue, required this.payments});
+  _DashboardData(
+      {required this.appointments,
+      required this.queue,
+      required this.payments});
 }

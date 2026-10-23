@@ -7,7 +7,7 @@ import { useAppStore } from '../store/useAppStore'
 const COMPACT_PORTAL_ROLES = new Set(['patient', 'doctor', 'receptionist'])
 const FOOTER_NAV = {
   patient: [['Home', '/patient/dashboard', 'layout-dashboard'], ['Appointments', '/patient/appointments', 'clipboard-list'], ['Book', '/patient/book', 'calendar-days'], ['Queue', '/patient/queue', 'ticket-check'], ['Profile', '/patient/profile', 'user-round']],
-  doctor: [['Home', '/doctor/dashboard', 'layout-dashboard'], ['Appointments', '/doctor/appointments', 'clipboard-list'], ['Queue', '/doctor/queue', 'ticket-check'], ['Schedule', '/doctor/schedule', 'clock3'], ['Profile', '/doctor/profile', 'user-round']],
+  doctor: [['Home', '/doctor/dashboard', 'layout-dashboard'], ['Appointments', '/doctor/appointments', 'clipboard-list'], ['Queue', '/doctor/queue', 'ticket-check'], ['Reports', '/doctor/reports', 'file-text'], ['Profile', '/doctor/profile', 'user-round']],
   receptionist: [['Home', '/receptionist/dashboard', 'layout-dashboard'], ['Appointments', '/receptionist/appointments', 'clipboard-list'], ['Walk-in', '/receptionist/walk-in', 'user-round'], ['Queue', '/receptionist/queue', 'ticket-check'], ['Profile', '/receptionist/profile', 'user-round']],
 }
 
@@ -33,10 +33,10 @@ export function PortalLayout({ role, onLogout }) {
   const compactPortal = COMPACT_PORTAL_ROLES.has(displayRole)
   const sidebar = <Sidebar role={displayRole} open={open} onClose={() => setOpen(false)} onLogout={onLogout} />
 
-  return <div className={`min-h-screen bg-surface ${compactPortal ? 'lg:flex' : 'md:flex'}`}>
+  return <div className={`min-h-screen bg-surface lg:flex ${!compactPortal ? 'admin-portal' : ''}`}>
     {compactPortal ? <div className="hidden lg:block">{sidebar}</div> : sidebar}
     <div className="min-w-0 flex-1">
-      <PortalHeader role={displayRole} showMenu={!compactPortal} onMenu={() => setOpen(true)} />
+      <PortalHeader role={displayRole} showMenu={!compactPortal} menuOpen={open} onMenu={() => setOpen(true)} />
       <main className={`portal-content mx-auto max-w-7xl p-4 sm:p-6 ${compactPortal ? 'portal-content--with-bottom-nav' : ''}`}><Outlet /></main>
     </div>
     {compactPortal && <PortalBottomNav role={displayRole} />}

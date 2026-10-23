@@ -73,6 +73,20 @@ describe('DataTable', () => {
   describe('mobile card layout (viewport below 768px)', () => {
     afterEach(() => { delete window.matchMedia })
 
+    it.each([320, 360, 390, 640, 767])('selects mobile cards at %ipx with long values and multiple actions', (width) => {
+      window.matchMedia = vi.fn().mockImplementation(() => ({ matches: width <= 767,
+        addEventListener: () => {}, removeEventListener: () => {} }))
+      const value = 'LongClinicNameWithoutAnySpaces'.repeat(10)
+      render(<DataTable rows={[{ id: 'long-row', name: value }]} columns={[
+        { key: 'name', label: 'Appointment payment transaction reference' },
+        { key: 'actionCol', label: 'Actions', render: () => <div className="flex gap-2"><button>Confirm</button><button>Cancel appointment</button><button>View receipt</button></div> },
+      ]} />)
+      expect(screen.queryByRole('table')).not.toBeInTheDocument()
+      expect(screen.getByText(value)).toHaveClass('min-w-0', '[overflow-wrap:anywhere]')
+      expect(screen.getByText('Appointment payment transaction reference')).toHaveClass('max-w-[45%]')
+      expect(screen.getByRole('button', { name: 'View receipt' }).closest('.portal-record-actions')).not.toBeNull()
+    })
+
     it('renders rows as cards, not a table, when the mobile query matches', () => {
       mockMobileViewport(true)
       const rows = [{ id: 1, name: 'Alice', status: 'active' }]
@@ -108,6 +122,24 @@ describe('DataTable', () => {
       expect(screen.queryByText('Actions')).not.toBeInTheDocument()
       const card = screen.getByText('Asha').closest('li')
       expect(within(card).getByRole('button', { name: 'Confirm' })).toBeInTheDocument()
+      expect(within(card).getByRole('button', { name: 'Confirm' }).parentElement).toHaveClass('portal-record-actions')
+      expect(within(card).getByText('Name')).toHaveClass('min-w-0', 'max-w-[45%]')
+    })
+
+    it('keeps optional mobile extra fields inside a closed details control', () => {
+      mockMobileViewport(true)
+      const compactColumns = [
+        { key: 'name', label: 'Patient' },
+        { key: 'phone', label: 'Phone' },
+      ]
+      render(<DataTable columns={compactColumns} rows={[{ id: 1, name: 'Asha', phone: '9000000001' }]} mobileSummary={(row) => <strong>{row.name}</strong>} mobileSummaryKeys={['name']} />)
+
+      const card = screen.getByText('Asha').closest('li')
+      const details = card.querySelector('details')
+      expect(details).not.toHaveAttribute('open')
+      fireEvent.click(within(card).getByText('More details'))
+      expect(details).toHaveAttribute('open')
+      expect(within(details).getByText('9000000001')).toBeInTheDocument()
     })
 
     it('paginates the same way in card view', () => {

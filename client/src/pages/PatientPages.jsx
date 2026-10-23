@@ -1,3 +1,4 @@
+import { appointmentTimeLabel, bookingCreatedAtLabel } from '../lib/appointmentTime'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DataTable } from '../components/DataTable'
@@ -15,6 +16,9 @@ import { buildCsv, downloadCsv } from '../lib/csv'
 import { buildBookingSlipPdfBlob, buildPatientReceiptPdfBlob } from '../lib/receiptPdf'
 import { usePdfPreview } from '../hooks/usePdfPreview'
 import { useRazorpayPayment } from '../hooks/useRazorpayPayment'
+import { PaymentConfirmation } from '../components/PaymentConfirmation'
+import { PaymentVerification } from '../components/PaymentVerification'
+import { isConfirmedPayment, usePaymentVerification } from '../hooks/usePaymentVerification'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
 import { PatientNavIcon } from '../components/PatientNavIcon'
 
@@ -30,7 +34,6 @@ const PATIENT_SERVICES = [
   ['Queue tracker', '/patient/queue', 'ticket-check'],
   ['Payments', '/patient/payments', 'credit-card'],
   ['Family members', '/patient/family', 'users-round'],
-  ['Notifications', '/patient/notifications', 'bell'],
   ['My profile', '/patient/profile', 'user-round'],
 ]
 
@@ -101,7 +104,7 @@ export function PatientDashboard({ data }) {
 
       <section className="rounded-card border border-border bg-white p-5 shadow-card lg:mt-6">
         <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-lg">Recent live records</h2><span className="rounded-full bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Connected</span></div>
-        <DataTable rows={userAppointments.slice(0, 5)} columns={[{ key: 'date', label: 'Time / ID', render: (item) => `${item.appointmentDate || 'Today'} ${item.appointmentTime || ''}` }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' }, { key: 'clinic', label: 'Details', render: (item) => item.clinic?.name || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} />
+        <DataTable rows={userAppointments.slice(0, 5)} columns={[{ key: 'date', label: 'Time / ID', render: (item) => `${item.appointmentDate || 'Today'} ${appointmentTimeLabel(item)}` }, { key: 'doctor', label: 'Doctor', render: (item) => item.doctor?.name || '—' }, { key: 'clinic', label: 'Details', render: (item) => item.clinic?.name || '—' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }]} />
       </section>
 
       {/* Active Appointment & Live Queue Widget */}
@@ -117,7 +120,7 @@ export function PatientDashboard({ data }) {
               </div>
 
               <h2 className="mt-4 text-2xl font-bold font-sans text-ink">{upcoming.doctor?.name || '—'}</h2>
-              <p className="mt-1 text-sm text-muted">{upcoming.clinic?.name || '—'} · {upcoming.appointmentDate}, {upcoming.appointmentTime}</p>
+              <p className="mt-1 text-sm text-muted">{upcoming.clinic?.name || '—'} · {upcoming.appointmentDate}, {appointmentTimeLabel(upcoming)}</p>
 
               <div className="mt-5 grid grid-cols-2 gap-3 text-xs sm:text-sm">
                 <div className="rounded-button border border-border bg-surface p-3">
@@ -196,22 +199,43 @@ const todayStr = () => {
   return `${yyyy}-${mm}-${dd}`
 }
 
+const advanceDateStr = (startDate, days) => {
+  const [year, month, day] = startDate.split('-').map(Number)
+  const result = new Date(Date.UTC(year, month - 1, day + days))
+  return result.toISOString().slice(0, 10)
+}
+
 export function Booking({ data }) {
   const [params, setSearchParams] = useSearchParams()
   const [booked, setBooked] = useState(null)
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const createAppointment = useAppStore((state) => state.createAppointment)
+  const addFamilyMember = useAppStore((state) => state.addFamilyMember)
   const fetchAppointmentAvailability = useAppStore((state) => state.fetchAppointmentAvailability)
   const bookingQueueInfo = useAppStore((state) => state.bookingQueueInfo)
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
-  const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
+  const confirmation = usePaymentVerification()
   const getAppointment = useAppStore((state) => state.getAppointment)
   const currentUser = useAppStore((state) => state.currentUser) || {}
   const [payingNow, setPayingNow] = useState(false)
   const [paymentError, setPaymentError] = useState('')
+  const checkoutRef = useRef(null)
+  const checkoutMountedRef = useRef(true)
   const platformCharges = data.platformCharges
   const [doctorId, setDoctorId] = useState(params.get('doctorId') || params.get('doctor') || '')
+  const [patientChoice, setPatientChoice] = useState('')
+  const completeMembers = (data.familyMembers || []).filter((member) =>
+    ['name', 'relation', 'dateOfBirth', 'gender', 'bloodGroup'].every((field) => String(member[field] || '').trim()))
+  const [addingMember, setAddingMember] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [memberRelation, setMemberRelation] = useState('')
+  const [memberDob, setMemberDob] = useState('')
+  const [memberGender, setMemberGender] = useState('')
+  const [memberBloodGroup, setMemberBloodGroup] = useState('')
+  const [memberSaving, setMemberSaving] = useState(false)
+  const [memberError, setMemberError] = useState('')
   const [clockNowMs, setClockNowMs] = useState(Date.now())
   const paymentDeadlineMs = booked?.status === 'pending_payment' && booked.createdAt
     ? Date.parse(booked.createdAt) + 10 * 60 * 1000
@@ -226,9 +250,58 @@ export function Booking({ data }) {
   }, [paymentDeadlineMs])
 
   useEffect(() => {
+    if (paymentSecondsLeft !== 0 || !checkoutRef.current) return
+    checkoutRef.current.close?.()
+    checkoutRef.current = null
+    setPayingNow(false)
+  }, [paymentSecondsLeft])
+
+  useEffect(() => {
+    checkoutMountedRef.current = true
+    return () => {
+      checkoutMountedRef.current = false
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
+    }
+  }, [])
+
+  // UPI app-switches can lose Checkout's browser callback. The signed webhook still updates
+  // the booking; reconcile that authoritative state on return, without starting another charge.
+  useEffect(() => {
+    if (!booked?.id || booked.status !== 'pending_payment' || confirmation.verification) return undefined
+    let cancelled = false
+    let running = false
+    const refresh = async () => {
+      if (cancelled || running || document.hidden) return
+      running = true
+      try {
+        const fresh = await getAppointment(booked.id)
+        if (!cancelled && isConfirmedPayment(fresh)) {
+          setBooked(fresh)
+          setShowPaymentConfirmation(true)
+        }
+      } catch { /* A read failure never means payment failed. */ }
+      finally { running = false }
+    }
+    const interval = setInterval(refresh, 3000)
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [booked?.id, booked?.status, confirmation.verification, getAppointment])
+
+  useEffect(() => {
     const qDoctor = params.get('doctorId') || params.get('doctor') || ''
     if (qDoctor !== doctorId) {
       setDoctorId(qDoctor)
+      setBooked(null)
+      setShowPaymentConfirmation(false)
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
     }
   }, [params, doctorId])
 
@@ -243,6 +316,9 @@ export function Booking({ data }) {
   }
 
   const doctor = (data.doctors || []).find((item) => item.id === doctorId)
+  const earliestBookingDate = todayStr()
+  const doctorMaxDays = Math.min(365, Math.max(1, Number(doctor?.maxDaysAdvance) || 30))
+  const latestBookingDate = doctor ? advanceDateStr(earliestBookingDate, doctorMaxDays) : undefined
   // Clinic is never chosen by the patient — it's always the doctor's primary (first) clinic,
   // derived automatically the moment a doctor is picked (matches the mobile app's behaviour).
   const primaryClinic = doctor?.clinics?.[0] || null
@@ -251,11 +327,16 @@ export function Booking({ data }) {
   // doctor's next free slot on that date server-side. What the patient actually cares about is
   // their queue/token number, not a clock time.
   const [date, setDate] = useState(params.get('date') || todayStr())
+  useEffect(() => {
+    if (doctor && (date < earliestBookingDate || date > latestBookingDate)) setDate(earliestBookingDate)
+  }, [doctor, date, earliestBookingDate, latestBookingDate])
   const [availability, setAvailability] = useState({})
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
+  const selectedDateClosed = !availabilityLoading && availability[`${doctorId}:${primaryClinic?.id}`]?.closed === true
   useEffect(() => {
     let cancelled = false
     setAvailabilityLoading(true)
+    setAvailability({})
     fetchAppointmentAvailability({ date })
       .then((rows) => {
         if (cancelled) return
@@ -330,12 +411,47 @@ export function Booking({ data }) {
     })
   }, [data, appliedDoctorFilters])
   const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters) }
+  const saveBookingMember = async () => {
+    if (!memberName.trim() || !memberRelation.trim() || !memberDob || !memberGender || !memberBloodGroup.trim()) {
+      setMemberError('Name, relationship, date of birth, gender and blood group are required.')
+      return
+    }
+    if (memberDob > todayStr()) {
+      setMemberError('Date of birth cannot be in the future.')
+      return
+    }
+    setMemberError('')
+    setMemberSaving(true)
+    try {
+      const member = await addFamilyMember({ name: memberName.trim(), relation: memberRelation.trim(), dateOfBirth: memberDob, gender: memberGender, bloodGroup: memberBloodGroup.trim() })
+      setPatientChoice(member.id)
+      setMemberName('')
+      setMemberRelation('')
+      setMemberDob('')
+      setMemberGender('')
+      setMemberBloodGroup('')
+      setAddingMember(false)
+    } catch (err) {
+      setMemberError(err.message || 'Could not add family member.')
+    } finally {
+      setMemberSaving(false)
+    }
+  }
   const submit = async (event) => {
     event.preventDefault()
+    if (selectedDateClosed) {
+      setError('This doctor is unavailable at this clinic on the selected closing date. Please choose another date.')
+      return
+    }
     const values = Object.fromEntries(new FormData(event.currentTarget).entries())
-    const familyMember = values.patient && values.patient !== 'Myself'
-      ? (data.familyMembers || []).find((item) => `${item.name} · ${item.relation}` === values.patient)
-      : null
+    if (!completeMembers.some((member) => member.id === values.patient)) {
+      setError('Select a patient with complete details, or add a member first.')
+      return
+    }
+    if (doctor && (values.date < earliestBookingDate || values.date > latestBookingDate)) {
+      setError(`Choose a date within ${doctorMaxDays} days from today for this doctor.`)
+      return
+    }
     setError('')
     setConfirming(true)
     try {
@@ -344,7 +460,7 @@ export function Booking({ data }) {
         clinicId: primaryClinic?.id,
         appointmentDate: values.date,
         reason: values.reason || '',
-        familyMemberId: familyMember?.id,
+        familyMemberId: values.patient,
       })
       setBooked(appointment)
     } catch (bookingError) {
@@ -373,6 +489,7 @@ export function Booking({ data }) {
   // consultation amount) or 'minimum' (pay just the doctor's configured minimum booking amount,
   // rest collected at the clinic).
   const payNow = async (paymentOption = 'full') => {
+    if (checkoutRef.current || payingNow) return
     if (paymentDeadlineMs != null && Date.now() >= paymentDeadlineMs) {
       setPaymentError('Your ten-minute payment window expired. Please choose an available slot again.')
       return
@@ -383,7 +500,14 @@ export function Booking({ data }) {
       await loadRazorpayScript().catch(() => {
         throw new Error('Payment gateway failed to load. Check your internet connection and try again.')
       })
+      if (!checkoutMountedRef.current) return
       const order = await createRazorpayOrder(booked.id, paymentOption)
+      if (!checkoutMountedRef.current) return
+      const checkoutDeadlineMs = Date.parse(order.holdExpiresAt) || paymentDeadlineMs
+      const checkoutSecondsLeft = Math.floor((checkoutDeadlineMs - Date.now()) / 1000)
+      if (checkoutSecondsLeft <= 0) {
+        throw new Error('Your ten-minute payment window expired. Please choose an available slot again.')
+      }
       const checkout = new window.Razorpay({
         key: order.keyId,
         amount: order.amount,
@@ -392,55 +516,41 @@ export function Booking({ data }) {
         name: 'BookADoctors',
         description: `Consultation with ${doctor?.name || booked.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : paymentOption === 'platform_only' ? ' · Platform charge' : ''}`,
         prefill: { name: currentUser.name || '', email: currentUser.email || '', contact: currentUser.phone || '' },
+        timeout: checkoutSecondsLeft,
         theme: { color: '#ad5d3b' },
-        modal: { ondismiss: () => setPayingNow(false) },
+        modal: { ondismiss: () => { checkoutRef.current = null; setPayingNow(false) } },
         handler: async (response) => {
-          try {
-            // Backend returns the authoritative, freshly re-fetched appointment (status may have
-            // just flipped pending_payment -> upcoming, with the reserved token now visible) — trust
-            // that instead of guessing the new shape ourselves.
-            const { appointment } = await verifyRazorpayPayment({
+          if (!checkoutMountedRef.current) return
+          checkoutRef.current = null
+          setPaymentError('')
+          await confirmation.start({
               appointmentId: booked.id,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
+            }, (appointment) => {
+              setBooked(appointment)
+              setShowPaymentConfirmation(true)
             })
-            setBooked(appointment)
-          } catch (verifyError) {
-            // RESUME/RECONCILE FIX (senior-dev payment audit, "payment sahi nahi hua hai"): this
-            // handler only ever fires after Razorpay has already captured the payment — a failure
-            // in THIS call (request timeout, dropped connection, a transient server error after the
-            // backend's own transaction actually committed) does not mean the money wasn't taken.
-            // Re-check the appointment's real status before showing a scary "payment failed"
-            // message: if it already moved off pending_payment, the payment WAS recorded despite
-            // this call failing, and telling the patient to pay again here would risk a double
-            // charge.
-            try {
-              const fresh = await getAppointment(booked.id)
-              if (fresh && fresh.status !== 'pending_payment') {
-                setBooked(fresh)
-                return
-              }
-            } catch {
-              /* couldn't even re-check — fall through to showing the original error below */
-            }
-            setPaymentError(verifyError.message)
-          } finally {
-            setPayingNow(false)
-          }
+          if (checkoutMountedRef.current) setPayingNow(false)
         },
       })
       checkout.on('payment.failed', (failure) => {
         setPaymentError(failure?.error?.description || 'Payment failed. Please try again.')
         setPayingNow(false)
       })
+      checkoutRef.current = checkout
       checkout.open()
     } catch (orderError) {
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
       setPaymentError(orderError.message)
       setPayingNow(false)
     }
   }
+  if (confirmation.verification) return <PaymentVerification verification={confirmation.verification} onRetry={confirmation.retry} />
   if (booked) {
+    if (showPaymentConfirmation) return <PaymentConfirmation appointment={booked} />
     if (booked.status === 'cancelled') {
       return <Page title="Booking not confirmed" subtitle="The ten-minute payment window ended before confirmation.">
         <div className="max-w-xl rounded-card border border-border bg-white p-6 shadow-card">
@@ -617,7 +727,7 @@ export function Booking({ data }) {
           </div>
 
           {/* Booking Form */}
-          <form onSubmit={submit} className="rounded-card border-2 border-primary-dark/30 bg-white p-6 shadow-card">
+          <form onSubmit={submit} className="rounded-card border-2 border-primary-dark/30 bg-white p-4 shadow-card sm:p-6">
             <h3 className="text-base font-bold font-sans text-ink mb-4 pb-3 border-b border-border">
               Appointment Details
             </h3>
@@ -659,25 +769,45 @@ export function Booking({ data }) {
                   {primaryClinic ? primaryClinic.name : 'Select a doctor first'}
                 </div>
               </div>
-              <FormField
-                label="Patient"
-                name="patient"
-                type="select"
-                options={['Myself', ...(data.familyMembers || []).map((item) => `${item.name} · ${item.relation}`)]}
-                required
-              />
+              <div>
+                <FormField
+                  label="Patient"
+                  name="patient"
+                  type="select"
+                  options={completeMembers.map((item) => ({ value: item.id, label: `${item.name} · ${item.relation}` }))}
+                  value={patientChoice}
+                  onChange={(event) => setPatientChoice(event.target.value)}
+                  required
+                />
+                <p className="mt-1 text-xs text-muted">Select a complete patient profile. For yourself, add your details with relationship “Self”. Incomplete profiles must be updated in Family members.</p>
+                <button type="button" className="mt-1.5 text-xs font-semibold text-primary-dark hover:underline" aria-expanded={addingMember} aria-controls="booking-add-member" onClick={() => { setAddingMember((open) => !open); setMemberError('') }}>+ Add member</button>
+              </div>
+              {addingMember && <div id="booking-add-member" className="sm:col-span-2 grid gap-3 rounded-button border border-border bg-surface p-3 sm:grid-cols-2">
+                <FormField label="Member name" value={memberName} onChange={(event) => setMemberName(event.target.value)} required />
+                <FormField label="Relationship" value={memberRelation} onChange={(event) => setMemberRelation(event.target.value)} required />
+                <FormField label="Member date of birth" type="date" max={todayStr()} value={memberDob} onChange={(event) => setMemberDob(event.target.value)} required />
+                <FormField label="Member gender" type="select" options={['Female', 'Male', 'Other', 'Prefer not to say']} value={memberGender} onChange={(event) => setMemberGender(event.target.value)} required />
+                <FormField label="Member blood group" placeholder="e.g. B+ or Unknown" maxLength={10} value={memberBloodGroup} onChange={(event) => setMemberBloodGroup(event.target.value)} required />
+                {memberError && <p role="alert" className="text-xs text-error sm:col-span-2">{memberError}</p>}
+                <div className="flex gap-2 sm:col-span-2">
+                  <button type="button" disabled={memberSaving} onClick={saveBookingMember} className="touch-target rounded-button bg-primary-dark px-3 text-xs font-semibold text-white disabled:opacity-60">{memberSaving ? 'Saving…' : 'Save member'}</button>
+                  <button type="button" onClick={() => setAddingMember(false)} className="touch-target rounded-button border border-border px-3 text-xs font-semibold text-ink">Cancel</button>
+                </div>
+              </div>}
               <FormField
                 label="Appointment date"
                 name="date"
                 type="date"
                 required
                 value={date}
-                min={date && date < todayStr() ? date : todayStr()}
+                min={earliestBookingDate}
+                max={latestBookingDate}
                 onChange={(event) => setDate(event.target.value)}
               />
+              {doctor && <p className="text-xs text-muted">Booking available through {latestBookingDate} ({doctorMaxDays} days ahead).</p>}
               {primaryClinic && (() => {
                 const slots = availability[`${doctor.id}:${primaryClinic.id}`]
-                return <div className="sm:col-span-2 rounded-button border border-border bg-surface p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Slot availability for {date}</p>{availabilityLoading ? <p className="mt-2 text-sm text-muted">Checking slots…</p> : slots ? <div className="mt-2 grid grid-cols-3 gap-2 text-center"><div><strong className="block text-lg text-ink">{slots.totalSlots}</strong><span className="text-xs text-muted">Total</span></div><div><strong className="block text-lg text-success">{slots.availableSlots}</strong><span className="text-xs text-muted">Available</span></div><div><strong className="block text-lg text-primary-dark">{slots.bookedSlots}</strong><span className="text-xs text-muted">Booked</span></div></div> : <p className="mt-2 text-sm text-muted">No OPD slots configured for this date.</p>}</div>
+                return <div role="group" aria-label="Slot availability" className="sm:col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-button border border-border bg-surface px-3 py-2 text-xs"><span className="font-semibold text-muted">Slots · {date}</span>{availabilityLoading ? <span className="text-muted">Checking…</span> : slots ? <><span>Total <strong className="text-ink">{slots.totalSlots}</strong></span><span>Available <strong className="text-success">{slots.availableSlots}</strong></span><span>Booked <strong className="text-primary-dark">{slots.bookedSlots}</strong></span></> : <span className="text-muted">No OPD slots configured.</span>}</div>
               })()}
               <div className="sm:col-span-2">
                 <FormField
@@ -718,7 +848,8 @@ export function Booking({ data }) {
               </div>
             )}
 
-            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={confirming}>
+            {selectedDateClosed && <p role="alert" className="mt-3 text-sm font-semibold text-error">This doctor is unavailable at this clinic on the selected closing date. Please choose another date.</p>}
+            <Button type="submit" className="mt-5 w-full sm:w-auto" disabled={confirming || selectedDateClosed}>
               {confirming ? 'Confirming…' : 'Confirm booking'}
             </Button>
           </form>
@@ -944,6 +1075,7 @@ export function Booking({ data }) {
   )
 }
 export function PatientAppointments({ data, history = false }) {
+  const [confirmedPayment, setConfirmedPayment] = useState(null)
   const isMobile = useIsMobile()
   const [reviewAppointment, setReviewAppointment] = useState('')
   const [rating, setRating] = useState('')
@@ -963,7 +1095,7 @@ export function PatientAppointments({ data, history = false }) {
   // patient left the one-shot post-booking screen — see hooks/useRazorpayPayment.js's header
   // comment for the full failure scenario. This list now offers "Resume payment"/"Cancel" for
   // any pending_payment row it renders.
-  const { payNow, payingId, paymentError } = useRazorpayPayment()
+  const { payNow, payingId, paymentError, verification, retryVerification } = useRazorpayPayment()
   const [cancelError, setCancelError] = useState('')
   const { deletingId: cancellingId, remove: cancelPendingBooking } = useDeleteWithConfirm({
     deleteFn: (appointment) => cancelAppointment(appointment.id),
@@ -973,7 +1105,9 @@ export function PatientAppointments({ data, history = false }) {
   })
   const resumePayment = (appointment, paymentOption) => {
     setCancelError('')
-    payNow(appointment, paymentOption, { currentUser })
+    payNow(appointment, paymentOption, { currentUser, onUpdated: (updated) => {
+      if (updated?.tokenNumber != null && ['upcoming', 'confirmed', 'completed'].includes(updated.status)) setConfirmedPayment(updated)
+    } })
   }
   const owned = data.appointments || []
   const completed = owned.filter((item) => item.status === 'completed')
@@ -1077,7 +1211,7 @@ export function PatientAppointments({ data, history = false }) {
   // 'partial', otherwise the full online-payment total), not the always-full `fee`, so the
   // slip's "Total amount" row reconciles with Paid + Due exactly like the table does.
   const viewSlip = ({ appointment, displayFee, paid, due }) =>
-    slip.open(() => buildBookingSlipPdfBlob({ appointment, fee: displayFee, paid, due, patientName: appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—', patientNumber: appointment.patient?.patientNumber ?? currentUser.patientNumber }))
+    slip.open(() => buildBookingSlipPdfBlob({ appointment, payment: records.find((row) => row.appointment.id === appointment.id)?.payment, fee: displayFee, paid, due, patientName: appointment.familyMember?.name || appointment.patient?.name || currentUser.name || '—', patientNumber: appointment.patient?.patientNumber ?? currentUser.patientNumber }))
   // COLUMN-CLARITY FIX (user request: "feec column ka matlab clear kro" — the "Fee" column shows
   // the FULL fee as if paid entirely online (consultationFee + platform convenience/emergency
   // charge + GST — see utils/minBookingAmount.js's worked example), which is deliberately MORE
@@ -1092,7 +1226,7 @@ export function PatientAppointments({ data, history = false }) {
   // 'ID' column is just this page's own row sequence number (#1, #2...), not the real booking
   // id a patient would need to reference at the clinic counter or read off the slip. Same
   // shortId(appointment.id) format already used for "Booking ID" on the Payments table below.
-  const exportCsv = () => downloadCsv('my-appointments.csv', buildCsv(['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes'], records.map(({ appointment, payment, displayFee, paid, due, status, mode }, index) => [sequenceId(index), shortId(appointment.id), appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '', appointment.appointmentDate || '', appointment.appointmentTime || '', appointment.doctor?.name || '', appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '', appointment.clinic?.name || '', appointment.status || '', status, mode, paymentReference(payment), displayFee, paid, due, appointment.reason || appointment.notes || ''])))
+  const exportCsv = () => downloadCsv('my-appointments.csv', buildCsv(['ID', 'Booking ID', 'Booked on (IST)', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes'], records.map(({ appointment, payment, displayFee, paid, due, status, mode }, index) => [sequenceId(index), shortId(appointment.id), bookingCreatedAtLabel(appointment), appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '', appointment.appointmentDate || '', appointmentTimeLabel(appointment), appointment.doctor?.name || '', appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '', appointment.clinic?.name || '', appointment.status || '', status, mode, paymentReference(payment), displayFee, paid, due, appointment.reason || appointment.notes || ''])))
   const submitReview = async (event) => {
     event.preventDefault()
     const appointment = completed.find((item) => item.id === selectedReviewId)
@@ -1139,6 +1273,9 @@ export function PatientAppointments({ data, history = false }) {
     return records
   }, [records, statusFilter])
 
+  if (verification) return <PaymentVerification verification={verification} onRetry={retryVerification} />
+  if (confirmedPayment) return <PaymentConfirmation appointment={confirmedPayment} onClose={() => setConfirmedPayment(null)} />
+
   return <>
     <Page title={history ? 'Booking history' : 'My appointments'} subtitle={history ? 'Review every clinic visit and view/download booking slips.' : 'View upcoming bookings, view/download slips, and review completed consultations.'} action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>
       {refreshError && <p role="alert" className="mb-4 text-sm text-error">{refreshError}</p>}
@@ -1171,14 +1308,14 @@ export function PatientAppointments({ data, history = false }) {
             </button>
           ))}
         </div>
-        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.appointmentTime || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
+        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right font-mono text-[11px] [overflow-wrap:anywhere]">{shortId(appointment.id)}<span className="mt-1 block text-xs text-muted">Booked on: {bookingCreatedAtLabel(appointment)}</span></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{displayDate(appointment.appointmentDate)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointmentTimeLabel(appointment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{appointment.doctor?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{appointment.clinic?.name || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={appointment.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{mode}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{paymentReference(payment)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Fee</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{displayFee}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Paid</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{paid}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Due</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{due}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Notes</dt><dd className="min-w-0 max-w-[60%] flex-1 text-right [overflow-wrap:anywhere]">{appointment.reason || appointment.notes || '—'}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
         <button type="button" className="whitespace-nowrap rounded-button bg-primary px-3 py-2 text-xs font-semibold text-white disabled:opacity-60" onClick={() => resumePayment(appointment, 'full')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay ₹${fee} now`}</button>
         {appointment.fees?.minBookingAmount != null && <button type="button" className="whitespace-nowrap rounded-button border border-primary px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => resumePayment(appointment, 'minimum')} disabled={payingId === appointment.id || cancellingId === appointment.id}>{payingId === appointment.id ? 'Opening…' : `Pay min ₹${Number(appointment.fees.minBookingAmount)} now`}</button>}
         <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
-      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}</td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointment.appointmentTime || '—'}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
+      </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status', 'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading} title={heading === 'Fee' ? 'The total for this booking, matching how it\'s actually being paid: the minimum booking amount + remaining balance while only the minimum has been paid online (rest due at the clinic), or the full online-payment total once it\'s paid in full.' : undefined}>{heading}</th>)}</tr></thead><tbody>{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <tr className="border-t border-border align-top" key={appointment.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4 font-mono text-[11px]">{shortId(appointment.id)}<span className="mt-1 block text-xs text-muted">Booked on: {bookingCreatedAtLabel(appointment)}</span></td><td className="px-3 py-4">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{displayDate(appointment.appointmentDate)}</td><td className="px-3 py-4">{appointmentTimeLabel(appointment)}</td><td className="px-3 py-4 font-semibold">{appointment.doctor?.name || '—'}</td><td className="px-3 py-4">{appointment.patient?.name || appointment.familyMember?.name || currentUser.name || '—'}</td><td className="px-3 py-4">{appointment.clinic?.name || '—'}</td><td className="px-3 py-4"><StatusPill status={appointment.status} /></td><td className="px-3 py-4"><StatusPill status={status} /></td><td className="px-3 py-4">{mode}</td><td className="max-w-64 break-all px-3 py-4 font-mono text-[11px]">{paymentReference(payment)}</td><td className="px-3 py-4">₹{displayFee}</td><td className="px-3 py-4">₹{paid}</td><td className="px-3 py-4">₹{due}</td><td className="max-w-48 px-3 py-4">{appointment.reason || appointment.notes || '—'}</td><td className="px-3 py-4"><div className="flex flex-wrap gap-2">{appointment.status === 'pending_payment' && <>
         {/* PENDING-PAYMENT RESUME FIX — see hooks/useRazorpayPayment.js. Without this, a
         pending_payment booking (payment never finished) had no Pay/Cancel action anywhere
         outside the one-shot post-booking screen and sat stuck forever. */}
@@ -1187,7 +1324,7 @@ export function PatientAppointments({ data, history = false }) {
         <button type="button" className="whitespace-nowrap rounded-button border border-error px-3 py-2 text-xs font-semibold text-error disabled:opacity-60" onClick={() => cancelPendingBooking(appointment)} disabled={payingId === appointment.id || cancellingId === appointment.id}>{cancellingId === appointment.id ? 'Cancelling…' : 'Cancel'}</button>
       </>}<button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewSlip({ appointment, displayFee, paid, due })} disabled={slip.loading}>{slip.loading ? 'Opening…' : '👁 View slip'}</button></div></td></tr>)}</tbody></table></div>}{!filteredRecords.length && <p className="p-8 text-center text-sm text-muted">{records.length === 0 ? 'No appointments found.' : `No ${statusFilter} appointments found.`}</p>}</section>
     </Page>
-    <PdfPreviewModal preview={slip.preview} onClose={slip.close} title="Booking slip preview" />
+    <PdfPreviewModal preview={slip.preview} error={slip.error} onClose={slip.close} title="Booking slip preview" />
   </>
 }
 export function BookingHistory({ data }) { return <PatientAppointments data={data} history /> }
@@ -1208,8 +1345,12 @@ export function Family({ data }) {
   const closeForm = () => { setEditingId(null); setMember(emptyMember) }
   const save = async (event) => {
     event.preventDefault()
-    if (!member.name.trim() || !member.relation.trim()) return
-    const values = { name: member.name.trim(), relation: member.relation.trim(), dateOfBirth: member.dateOfBirth || undefined, gender: member.gender || undefined, bloodGroup: member.bloodGroup || undefined }
+    if (!member.name.trim() || !member.relation.trim() || !member.dateOfBirth || !member.gender || !member.bloodGroup.trim()) {
+      setError('Full name, relationship, date of birth, gender and blood group are required.')
+      return
+    }
+    if (member.dateOfBirth > todayStr()) { setError('Date of birth cannot be in the future.'); return }
+    const values = { name: member.name.trim(), relation: member.relation.trim(), dateOfBirth: member.dateOfBirth, gender: member.gender, bloodGroup: member.bloodGroup.trim() }
     setError('')
     setSaving(true)
     try {
@@ -1246,7 +1387,7 @@ export function Family({ data }) {
     }
   }
   return <Page title="Family members" subtitle="Manage dependents for appointment booking." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-success/30 bg-success/10 px-3 text-sm font-semibold text-success"><span className="h-2 w-2 rounded-full bg-success" />Live</span><button type="button" className="touch-target rounded-button border border-border bg-white px-4 text-sm font-semibold text-ink disabled:opacity-60" onClick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh'}</button><button type="button" className="touch-target rounded-button bg-charcoal px-4 text-sm font-semibold text-white" onClick={exportCsv}>↓ Export CSV</button></div>}>
-    <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">{editingId ? 'Edit family member' : 'Add family member'}</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Full name" value={member.name} onChange={update('name')} required /><FormField label="Relationship" value={member.relation} onChange={update('relation')} required /><FormField label="Date of birth" type="date" value={member.dateOfBirth} onChange={update('dateOfBirth')} /><FormField label="Gender" type="select" options={['Female', 'Male', 'Other', 'Prefer not to say']} value={member.gender} onChange={update('gender')} /><FormField label="Blood group" placeholder="e.g. B+" value={member.bloodGroup} onChange={update('bloodGroup')} /><div className="flex items-end gap-2"><Button type="submit" disabled={saving}>{saving ? 'Saving…' : (editingId ? 'Update member' : 'Add member')}</Button>{editingId && <button type="button" className="touch-target rounded-button border border-border px-4 text-sm font-semibold text-ink" onClick={closeForm}>Cancel</button>}</div></div>{error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}</form>
+    <form onSubmit={save} className="mb-6 rounded-card border border-border bg-white p-6 shadow-card"><h2 className="mb-5 text-xl">{editingId ? 'Edit family member' : 'Add family member'}</h2><div className="grid gap-4 sm:grid-cols-2"><FormField label="Full name" value={member.name} onChange={update('name')} required /><FormField label="Relationship" value={member.relation} onChange={update('relation')} required /><FormField label="Date of birth" type="date" max={todayStr()} required value={member.dateOfBirth} onChange={update('dateOfBirth')} /><FormField label="Gender" type="select" required options={['Female', 'Male', 'Other', 'Prefer not to say']} value={member.gender} onChange={update('gender')} /><FormField label="Blood group" required maxLength={10} placeholder="e.g. B+ or Unknown" value={member.bloodGroup} onChange={update('bloodGroup')} /><div className="flex items-end gap-2"><Button type="submit" disabled={saving}>{saving ? 'Saving…' : (editingId ? 'Update member' : 'Add member')}</Button>{editingId && <button type="button" className="touch-target rounded-button border border-border px-4 text-sm font-semibold text-ink" onClick={closeForm}>Cancel</button>}</div></div>{error && <p role="alert" className="mt-3 text-sm text-error">{error}</p>}</form>
     <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">Live records</h2><span className="text-sm font-semibold text-muted">{(data.familyMembers || []).length} record(s)</span></div>{isMobile ? <ul className="grid gap-3">{(data.familyMembers || []).map((item, index) => <li key={item.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm">
       {/* RESPONSIVE-CARDS FIX (user request: "patient and receptionist and admin panel ko fully
           resposive bnao mobile view v best ho") — same stacked label/value card treatment as
@@ -1270,7 +1411,7 @@ export function Payments({ data }) {
   const currentUser = useAppStore((state) => state.currentUser) || {}
   const payments = data.payments || []
   const rows = payments.map((payment) => {
-    const appointment = (data.appointments || []).find((item) => item.id === payment.appointment?.id)
+    const appointment = (data.appointments || []).find((item) => item.id === payment.appointment?.id) || payment.appointment
     return {
       ...payment,
       appointment,
@@ -1308,7 +1449,7 @@ export function Payments({ data }) {
       {refreshError && <p role="alert" className="mb-4 text-sm text-error">{refreshError}</p>}
       <section key={refreshKey} className="rounded-card border border-border bg-white p-6 shadow-card"><div className="mb-5 flex items-center justify-between gap-3"><h2 className="text-xl">Live records</h2><span className="text-sm font-semibold text-muted">{rows.length} record(s)</span></div>{isMobile ? <ul className="grid gap-3">{rows.map((item, index) => <li key={item.id} className="rounded-button border border-border p-3"><dl className="grid gap-2 text-sm"><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{sequenceId(index)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Receipt</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.receiptNumber || shortId(item.id)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Booking ID</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.appointment?.id ? shortId(item.appointment.id) : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Token</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.appointment?.tokenNumber != null ? `#${item.appointment.tokenNumber}` : '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment date</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{formatDate(item.createdAt)}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Time</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.appointment?.appointmentTime || '—'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Patient</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.patientName}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Doctor</dt><dd className="min-w-0 flex-1 text-right font-semibold [overflow-wrap:anywhere]">{item.doctorName}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Clinic</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.clinicName}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Amount</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">₹{item.amount}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Method</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><span className="inline-flex items-center gap-1.5">{item.mode || '—'}<PaymentSourceBadge payment={item} /></span></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Purpose</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]">{item.appointment?.isEmergency ? 'Emergency consultation' : 'Consultation'}</dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Appointment status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={item.appointment?.status || '—'} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Payment status</dt><dd className="min-w-0 flex-1 text-right [overflow-wrap:anywhere]"><StatusPill status={item.status} /></dd></div><div className="flex items-start justify-between gap-3"><dt className="shrink-0 font-semibold text-muted">Transaction</dt><dd className="min-w-0 max-w-[60%] flex-1 break-all text-right font-mono text-[11px] [overflow-wrap:anywhere]">{item.transactionId}</dd></div></dl><div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-border pt-3"><button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewReceipt(item)} disabled={receipt.loading}>{receipt.loading ? 'Opening…' : '👁 View receipt'}</button></div></li>)}</ul> : <div className="overflow-x-auto rounded-button border border-border"><table className="min-w-[1400px] w-full text-left text-xs"><thead className="bg-surface uppercase tracking-wide text-muted"><tr>{['ID', 'Receipt', 'Booking ID', 'Token', 'Payment date', 'Time', 'Patient', 'Doctor', 'Clinic', 'Amount', 'Method', 'Purpose', 'Appointment status', 'Payment status', 'Transaction', 'Actions'].map((heading) => <th className="px-3 py-3" key={heading}>{heading}</th>)}</tr></thead><tbody>{rows.map((item, index) => <tr className="border-t border-border align-top" key={item.id}><td className="px-3 py-4 font-semibold text-muted">{sequenceId(index)}</td><td className="px-3 py-4">{item.receiptNumber || shortId(item.id)}</td><td className="px-3 py-4">{item.appointment?.id ? shortId(item.appointment.id) : '—'}</td><td className="px-3 py-4">{item.appointment?.tokenNumber != null ? `#${item.appointment.tokenNumber}` : '—'}</td><td className="px-3 py-4">{formatDate(item.createdAt)}</td><td className="px-3 py-4">{item.appointment?.appointmentTime || '—'}</td><td className="px-3 py-4">{item.patientName}</td><td className="px-3 py-4 font-semibold">{item.doctorName}</td><td className="px-3 py-4">{item.clinicName}</td><td className="px-3 py-4">₹{item.amount}</td><td className="px-3 py-4"><span className="inline-flex items-center gap-1.5">{item.mode || '—'}<PaymentSourceBadge payment={item} /></span></td><td className="px-3 py-4">{item.appointment?.isEmergency ? 'Emergency consultation' : 'Consultation'}</td><td className="px-3 py-4"><StatusPill status={item.appointment?.status || '—'} /></td><td className="px-3 py-4"><StatusPill status={item.status} /></td><td className="max-w-56 break-all px-3 py-4 font-mono text-[11px]">{item.transactionId}</td><td className="px-3 py-4"><button type="button" className="whitespace-nowrap rounded-button border border-border px-3 py-2 text-xs font-semibold text-primary-dark disabled:opacity-60" onClick={() => viewReceipt(item)} disabled={receipt.loading}>{receipt.loading ? 'Opening…' : '👁 View receipt'}</button></td></tr>)}</tbody></table></div>}{!rows.length && <p className="p-8 text-center text-sm text-muted">No payment records yet.</p>}</section>
     </Page>
-    <PdfPreviewModal preview={receipt.preview} onClose={receipt.close} title="Payment receipt preview" />
+    <PdfPreviewModal preview={receipt.preview} error={receipt.error} onClose={receipt.close} title="Payment receipt preview" />
   </>
 }
 export function Notifications({ data }) {

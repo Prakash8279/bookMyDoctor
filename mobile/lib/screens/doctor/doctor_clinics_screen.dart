@@ -42,19 +42,19 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
   Future<List<Clinic>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/clinics', query: {'mine': true, 'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
-      final ids = res.list.map((json) => asString(json['id'])).where((id) => id.isNotEmpty).toList();
+          .getAll('/clinics', query: {'mine': true, 'pageSize': 50});
+      final ids = res.list
+          .map((json) => asString(json['id']))
+          .where((id) => id.isNotEmpty)
+          .toList();
       final clinics = <Clinic>[];
       for (final id in ids) {
-        try {
-          final detail = await ApiClient.instance.get('/clinics/$id');
-          clinics.add(Clinic.fromJson(detail.map));
-        } catch (_) {}
+        final detail = await ApiClient.instance.get('/clinics/$id');
+        clinics.add(Clinic.fromJson(detail.map));
       }
       return clinics;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -87,7 +87,15 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
     }
     await shareCsv(
       filename: 'clinic-settings.csv',
-      headers: const ['Id', 'Clinic', 'Doctor', 'Owner', 'Primary', 'Online booking', 'Public profile'],
+      headers: const [
+        'Id',
+        'Clinic',
+        'Doctor',
+        'Owner',
+        'Primary',
+        'Online booking',
+        'Public profile'
+      ],
       rows: rows,
     );
   }
@@ -106,15 +114,19 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
 
   Future<void> _openAddDoctor(Clinic c) async {
     final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => _AddDoctorScreen(clinicId: c.id, clinicName: c.name)),
+      MaterialPageRoute(
+          builder: (_) => _AddDoctorScreen(clinicId: c.id, clinicName: c.name)),
     );
     if (result == true) _load();
   }
 
-  Future<void> _toggleOnlineBooking(Clinic c, ClinicDoctorLink d, bool next) async {
+  Future<void> _toggleOnlineBooking(
+      Clinic c, ClinicDoctorLink d, bool next) async {
     setState(() => _busyKey = '${c.id}_${d.doctorUserId}');
     try {
-      await ApiClient.instance.patch('/clinics/${c.id}/doctors/${d.doctorUserId}', body: {'onlineBooking': next});
+      await ApiClient.instance.patch(
+          '/clinics/${c.id}/doctors/${d.doctorUserId}',
+          body: {'onlineBooking': next});
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -128,17 +140,23 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Remove doctor?'),
-        content: Text('Remove ${d.name} from ${c.name}\'s team? They will no longer see this clinic under "My Clinics".'),
+        content: Text(
+            'Remove ${d.name} from ${c.name}\'s team? They will no longer see this clinic under "My Clinics".'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remove')),
         ],
       ),
     );
     if (confirmed != true) return;
     setState(() => _busyKey = '${c.id}_${d.doctorUserId}');
     try {
-      await ApiClient.instance.delete('/clinics/${c.id}/doctors/${d.doctorUserId}');
+      await ApiClient.instance
+          .delete('/clinics/${c.id}/doctors/${d.doctorUserId}');
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -158,10 +176,13 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Text(d.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
                 Text(
                   tags.isEmpty ? 'Team member' : tags.join(' · '),
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                  style: TextStyle(
+                      color: context.palette.textSecondary, fontSize: 11),
                 ),
               ],
             ),
@@ -174,10 +195,13 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
             width: 36,
             height: 36,
             child: busy
-                ? const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2))
+                ? const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : IconButton(
                     padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.danger),
+                    icon: Icon(Icons.delete_outline,
+                        size: 20, color: context.palette.danger),
                     onPressed: () => _removeDoctor(c, d),
                   ),
           ),
@@ -198,7 +222,9 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
         future: _future,
         builder: (context, snapshot) {
           final clinics = snapshot.data;
-          if (clinics == null || clinics.isNotEmpty) return const SizedBox.shrink();
+          if (clinics == null || clinics.isNotEmpty) {
+            return const SizedBox.shrink();
+          }
           return FloatingActionButton.extended(
             onPressed: () => _openForm(),
             icon: const Icon(Icons.add),
@@ -209,93 +235,135 @@ class _DoctorClinicsScreenState extends State<DoctorClinicsScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'Clinic settings',
-              subtitle: 'Manage clinic details and see every doctor practising at the clinic.',
+              subtitle:
+                  'Manage clinic details and see every doctor practising at the clinic.',
               // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile equivalent.
-              action: TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
+              action: TextButton.icon(
+                  onPressed: _exportCsv,
+                  icon: const Icon(Icons.file_download_outlined, size: 16),
+                  label: const Text('Export CSV')),
             ),
           ),
           Expanded(
             child: FutureBuilder<List<Clinic>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-          if (snapshot.hasError) {
-            return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
-          }
-          final clinics = snapshot.data ?? [];
-          if (clinics.isEmpty) {
-            return const EmptyStateView(icon: Icons.local_hospital_outlined, title: 'No clinics linked yet', subtitle: 'Add a clinic to start managing OPD hours and receptionists');
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: clinics.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, i) {
-                final c = clinics[i];
-                final owner = _isOwner(c);
-                return Card(
-                  child: Padding(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
+                }
+                final clinics = snapshot.data ?? [];
+                if (clinics.isEmpty) {
+                  return const EmptyStateView(
+                      icon: Icons.local_hospital_outlined,
+                      title: 'No clinics linked yet',
+                      subtitle:
+                          'Add a clinic to start managing OPD hours and receptionists');
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _load(),
+                  child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700))),
-                            StatusBadge(status: c.approvalStatus),
-                          ],
-                        ),
-                        if (c.address != null) Text(c.address!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                        if (c.city != null) Text('${c.city!.name}${c.area != null ? ", ${c.area!.name}" : ""}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                        if (c.rejectionReason != null) ...[
-                          const SizedBox(height: 4),
-                          Text('Rejected: ${c.rejectionReason}', style: const TextStyle(color: AppColors.danger, fontSize: 12)),
-                        ],
-                        if (owner) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: OutlinedButton.icon(
-                              onPressed: () => _openForm(existing: c),
-                              icon: const Icon(Icons.edit_outlined, size: 16),
-                              label: const Text('Edit'),
-                            ),
-                          ),
-                          const Divider(height: AppSpacing.lg),
-                          Row(
+                    itemCount: clinics.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, i) {
+                      final c = clinics[i];
+                      final owner = _isOwner(c);
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Expanded(
-                                child: Text('Clinic team', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                              Row(
+                                children: [
+                                  Expanded(
+                                      child: Text(c.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700))),
+                                  StatusBadge(status: c.approvalStatus),
+                                ],
                               ),
-                              TextButton.icon(
-                                onPressed: () => _openAddDoctor(c),
-                                icon: const Icon(Icons.person_add_alt_1_outlined, size: 16),
-                                label: const Text('Add doctor'),
-                              ),
+                              if (c.address != null)
+                                Text(c.address!,
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 12)),
+                              if (c.city != null)
+                                Text(
+                                    '${c.city!.name}${c.area != null ? ", ${c.area!.name}" : ""}',
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 12)),
+                              if (c.rejectionReason != null) ...[
+                                const SizedBox(height: 4),
+                                Text('Rejected: ${c.rejectionReason}',
+                                    style: TextStyle(
+                                        color: context.palette.danger,
+                                        fontSize: 12)),
+                              ],
+                              if (owner) ...[
+                                const SizedBox(height: AppSpacing.sm),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _openForm(existing: c),
+                                    icon: const Icon(Icons.edit_outlined,
+                                        size: 16),
+                                    label: const Text('Edit'),
+                                  ),
+                                ),
+                                const Divider(height: AppSpacing.lg),
+                                Row(
+                                  children: [
+                                    const Expanded(
+                                      child: Text('Clinic team',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13)),
+                                    ),
+                                    TextButton.icon(
+                                      onPressed: () => _openAddDoctor(c),
+                                      icon: const Icon(
+                                          Icons.person_add_alt_1_outlined,
+                                          size: 16),
+                                      label: const Text('Add doctor'),
+                                    ),
+                                  ],
+                                ),
+                                if (c.doctors.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                        bottom: AppSpacing.xs),
+                                    child: Text('No doctors linked yet',
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12)),
+                                  )
+                                else
+                                  ...c.doctors
+                                      .map((d) => _buildDoctorRow(c, d)),
+                              ],
                             ],
                           ),
-                          if (c.doctors.isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: AppSpacing.xs),
-                              child: Text('No doctors linked yet', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            )
-                          else
-                            ...c.doctors.map((d) => _buildDoctorRow(c, d)),
-                        ],
-                      ],
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
-            ),
-          );
-        },
             ),
           ),
         ],
@@ -313,9 +381,12 @@ class _ClinicFormScreen extends StatefulWidget {
 }
 
 class _ClinicFormScreenState extends State<_ClinicFormScreen> {
-  late final _nameCtrl = TextEditingController(text: widget.existing?.name ?? '');
-  late final _phoneCtrl = TextEditingController(text: widget.existing?.phone ?? '');
-  late final _addressCtrl = TextEditingController(text: widget.existing?.address ?? '');
+  late final _nameCtrl =
+      TextEditingController(text: widget.existing?.name ?? '');
+  late final _phoneCtrl =
+      TextEditingController(text: widget.existing?.phone ?? '');
+  late final _addressCtrl =
+      TextEditingController(text: widget.existing?.address ?? '');
   City? _selectedCity;
   Area? _selectedArea;
   Future<List<City>>? _citiesFuture;
@@ -336,15 +407,15 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
     // backend's list-query validator rejects pageSize over 100 outright (422 "Validation
     // failed"), not clamped.
     _citiesFuture = ApiClient.instance
-        .get('/geography/cities', query: {'pageSize': 100})
-        .then((res) {
-          final list = <City>[];
-          for (final item in res.list) {
-            try { list.add(City.fromJson(item)); } catch (_) {}
-          }
-          return list;
-        })
-        .catchError((_) => <City>[]);
+        .getAll('/geography/cities', query: {'pageSize': 100}).then((res) {
+      final list = <City>[];
+      for (final item in res.list) {
+        try {
+          list.add(City.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    }).catchError((_) => <City>[]);
     if (widget.existing?.city != null) {
       _selectedCity = widget.existing!.city;
       _loadAreas(widget.existing!.city!.id);
@@ -354,16 +425,16 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
 
   void _loadAreas(String cityId) {
     setState(() {
-      _areasFuture = ApiClient.instance
-          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100})
-          .then((res) {
-            final list = <Area>[];
-            for (final item in res.list) {
-              try { list.add(Area.fromJson(item)); } catch (_) {}
-            }
-            return list;
-          })
-          .catchError((_) => <Area>[]);
+      _areasFuture = ApiClient.instance.get('/geography/areas',
+          query: {'cityId': cityId, 'pageSize': 100}).then((res) {
+        final list = <Area>[];
+        for (final item in res.list) {
+          try {
+            list.add(Area.fromJson(item));
+          } catch (_) {}
+        }
+        return list;
+      }).catchError((_) => <Area>[]);
     });
   }
 
@@ -391,7 +462,8 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
     final body = {
       'name': _nameCtrl.text.trim(),
       if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
-      if (_addressCtrl.text.trim().isNotEmpty) 'address': _addressCtrl.text.trim(),
+      if (_addressCtrl.text.trim().isNotEmpty)
+        'address': _addressCtrl.text.trim(),
       if (_selectedCity != null) 'cityId': _selectedCity!.id,
       if (_selectedArea != null) 'areaId': _selectedArea!.id,
     };
@@ -399,7 +471,8 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
       if (widget.existing == null) {
         await ApiClient.instance.post('/clinics', body: body);
       } else {
-        await ApiClient.instance.patch('/clinics/${widget.existing!.id}', body: body);
+        await ApiClient.instance
+            .patch('/clinics/${widget.existing!.id}', body: body);
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -416,28 +489,43 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.existing == null ? 'Add clinic' : 'Edit clinic')),
+      appBar: AppBar(
+          title: Text(widget.existing == null ? 'Add clinic' : 'Edit clinic')),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-          TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Clinic name')),
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
+          TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Clinic name')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
+          TextField(
+              controller: _phoneCtrl,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: 'Phone (optional)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _addressCtrl, decoration: const InputDecoration(labelText: 'Address (optional)')),
+          TextField(
+              controller: _addressCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Address (optional)')),
           const SizedBox(height: AppSpacing.md),
           FutureBuilder<List<City>>(
             future: _citiesFuture,
             builder: (context, snapshot) {
               final cities = snapshot.data ?? [];
               return DropdownButtonFormField<City>(
-                initialValue: _selectedCity != null && cities.any((c) => c.id == _selectedCity!.id)
+                initialValue: _selectedCity != null &&
+                        cities.any((c) => c.id == _selectedCity!.id)
                     ? cities.firstWhere((c) => c.id == _selectedCity!.id)
                     : null,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'City'),
-                items: cities.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                items: cities
+                    .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
+                    .toList(),
                 onChanged: (c) {
                   setState(() {
                     _selectedCity = c;
@@ -454,23 +542,30 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
             builder: (context, snapshot) {
               final areas = snapshot.data ?? [];
               return DropdownButtonFormField<Area>(
-                initialValue: _selectedArea != null && areas.any((a) => a.id == _selectedArea!.id)
+                initialValue: _selectedArea != null &&
+                        areas.any((a) => a.id == _selectedArea!.id)
                     ? areas.firstWhere((a) => a.id == _selectedArea!.id)
                     : null,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Area (optional)'),
-                items: areas.map((a) => DropdownMenuItem(value: a, child: Text(a.name))).toList(),
-                onChanged: _selectedCity == null ? null : (a) => setState(() => _selectedArea = a),
+                items: areas
+                    .map((a) => DropdownMenuItem(value: a, child: Text(a.name)))
+                    .toList(),
+                onChanged: _selectedCity == null
+                    ? null
+                    : (a) => setState(() => _selectedArea = a),
               );
             },
           ),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save', onPressed: _submit, loading: _submitting),
           if (widget.existing == null) ...[
             const SizedBox(height: AppSpacing.sm),
-            const Text(
+            Text(
               'New clinics start as "pending" until an admin approves them.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style:
+                  TextStyle(color: context.palette.textSecondary, fontSize: 12),
               textAlign: TextAlign.center,
             ),
           ],
@@ -516,9 +611,10 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
 
   void _search() {
     setState(() {
-      _future = ApiClient.instance.get('/doctors', query: {
+      _future = ApiClient.instance.getAll('/doctors', query: {
         'pageSize': 30,
-        if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
+        if (_searchController.text.trim().isNotEmpty)
+          'search': _searchController.text.trim(),
       }).then((res) {
         final list = <DoctorDirectoryItem>[];
         for (final item in res.list) {
@@ -542,7 +638,8 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
       _error = null;
     });
     try {
-      await ApiClient.instance.post('/clinics/${widget.clinicId}/doctors', body: {
+      await ApiClient.instance
+          .post('/clinics/${widget.clinicId}/doctors', body: {
         'doctorUserId': doctor.id,
         'isOwner': false,
         'isPrimary': false,
@@ -564,45 +661,67 @@ class _AddDoctorScreenState extends State<_AddDoctorScreen> {
       appBar: AppBar(title: Text('Add a doctor · ${widget.clinicName}')),
       body: Column(
         children: [
-          if (_error != null) Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: _error!)),
+          if (_error != null)
+            Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: ErrorBanner(error: _error!)),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: TextField(
               controller: _searchController,
               onChanged: _onSearchChanged,
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search verified doctors by name'),
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: 'Search verified doctors by name'),
             ),
           ),
           Expanded(
             child: FutureBuilder<List<DoctorDirectoryItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    child: ErrorBanner(error: snapshot.error!, onRetry: _search),
+                    child:
+                        ErrorBanner(error: snapshot.error!, onRetry: _search),
                   );
                 }
                 final doctors = snapshot.data ?? [];
                 if (doctors.isEmpty) {
-                  return const EmptyStateView(icon: Icons.medical_services_outlined, title: 'No matching doctors');
+                  return const EmptyStateView(
+                      icon: Icons.medical_services_outlined,
+                      title: 'No matching doctors');
                 }
                 return ListView.separated(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: doctors.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, i) {
                     final doc = doctors[i];
                     final adding = _addingId == doc.id;
                     return Card(
-                      child: ListTile(
-                        title: Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text('${doc.specialization?.name ?? "General Medicine"} · ${doc.experienceYears ?? 0} yrs'),
-                        trailing: adding
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : TextButton(onPressed: () => _add(doc), child: const Text('Add')),
-                      ),
+                      child: Material(
+                          type: MaterialType.transparency,
+                          child: ListTile(
+                            title: Text(doc.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                            subtitle: Text(
+                                '${doc.specialization?.name ?? "General Medicine"} · ${doc.experienceYears ?? 0} yrs'),
+                            trailing: adding
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : TextButton(
+                                    onPressed: () => _add(doc),
+                                    child: const Text('Add')),
+                          )),
                     );
                   },
                 );

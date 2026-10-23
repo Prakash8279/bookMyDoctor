@@ -9,7 +9,8 @@ import '../../widgets/common_widgets.dart';
 enum AdminSettingsSection { all, charges, settings, bookingRules }
 
 String _formatMoney(num value) {
-  final fmt = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
+  final fmt =
+      NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 2);
   return fmt.format(value);
 }
 
@@ -36,10 +37,12 @@ class AdminPlatformSettingsScreen extends StatefulWidget {
   });
 
   @override
-  State<AdminPlatformSettingsScreen> createState() => _AdminPlatformSettingsScreenState();
+  State<AdminPlatformSettingsScreen> createState() =>
+      _AdminPlatformSettingsScreenState();
 }
 
-class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScreen> {
+class _AdminPlatformSettingsScreenState
+    extends State<AdminPlatformSettingsScreen> {
   Future<PlatformCharges>? _chargesFuture;
   Future<SystemSettings>? _settingsFuture;
   Future<BookingRules>? _rulesFuture;
@@ -52,23 +55,33 @@ class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScree
 
   void _loadAll() {
     setState(() {
-      _chargesFuture = ApiClient.instance.get('/platform-charges').then((res) => PlatformCharges.fromJson(res.map));
-      _settingsFuture = ApiClient.instance.get('/admin/system-settings').then((res) => SystemSettings.fromJson(res.map));
-      _rulesFuture = ApiClient.instance.get('/admin/booking-rules').then((res) => BookingRules.fromJson(res.map));
+      _chargesFuture = ApiClient.instance
+          .get('/platform-charges')
+          .then((res) => PlatformCharges.fromJson(res.map));
+      _settingsFuture = ApiClient.instance
+          .get('/admin/system-settings')
+          .then((res) => SystemSettings.fromJson(res.map));
+      _rulesFuture = ApiClient.instance
+          .get('/admin/booking-rules')
+          .then((res) => BookingRules.fromJson(res.map));
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final showCharges = widget.focusSection == AdminSettingsSection.charges;
-    final showSettings = widget.focusSection == AdminSettingsSection.all || widget.focusSection == AdminSettingsSection.settings;
-    final showRules = widget.focusSection == AdminSettingsSection.all || widget.focusSection == AdminSettingsSection.bookingRules;
+    final showSettings = widget.focusSection == AdminSettingsSection.all ||
+        widget.focusSection == AdminSettingsSection.settings;
+    final showRules = widget.focusSection == AdminSettingsSection.all ||
+        widget.focusSection == AdminSettingsSection.bookingRules;
 
     String pageTitle = 'Settings';
-    String pageSubtitle = 'Persist platform identity, fees, and maintenance status.';
+    String pageSubtitle =
+        'Persist platform identity, fees, and maintenance status.';
     if (widget.focusSection == AdminSettingsSection.charges) {
       pageTitle = 'Platform charges';
-      pageSubtitle = 'Set the global pricing rules used across every clinic and online booking.';
+      pageSubtitle =
+          'Set the global pricing rules used across every clinic and online booking.';
     } else if (widget.focusSection == AdminSettingsSection.settings) {
       pageTitle = 'System settings';
       pageSubtitle = 'Persist platform identity, fees, and maintenance status.';
@@ -91,9 +104,13 @@ class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScree
               future: _chargesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView());
+                  return const Padding(
+                      padding: EdgeInsets.only(top: AppSpacing.xl),
+                      child: LoadingView());
                 }
-                if (snapshot.hasError) return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
+                if (snapshot.hasError) {
+                  return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
+                }
                 return _ChargesForm(initial: snapshot.data!, onSaved: _loadAll);
               },
             ),
@@ -103,10 +120,15 @@ class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScree
               future: _settingsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView());
+                  return const Padding(
+                      padding: EdgeInsets.only(top: AppSpacing.xl),
+                      child: LoadingView());
                 }
-                if (snapshot.hasError) return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
-                return _SettingsForm(initial: snapshot.data!, onSaved: _loadAll);
+                if (snapshot.hasError) {
+                  return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
+                }
+                return _SettingsForm(
+                    initial: snapshot.data!, onSaved: _loadAll);
               },
             ),
             if (showRules) const SizedBox(height: AppSpacing.lg),
@@ -116,9 +138,13 @@ class _AdminPlatformSettingsScreenState extends State<AdminPlatformSettingsScree
               future: _rulesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
-                  return const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView());
+                  return const Padding(
+                      padding: EdgeInsets.only(top: AppSpacing.xl),
+                      child: LoadingView());
                 }
-                if (snapshot.hasError) return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
+                if (snapshot.hasError) {
+                  return ErrorBanner(error: snapshot.error!, onRetry: _loadAll);
+                }
                 return _RulesForm(initial: snapshot.data!, onSaved: _loadAll);
               },
             ),
@@ -140,8 +166,10 @@ class _ChargesForm extends StatefulWidget {
 }
 
 class _ChargesFormState extends State<_ChargesForm> {
-  late final _convenienceCtrl = TextEditingController(text: widget.initial.patientConvenienceFee.toString());
-  late final _gstCtrl = TextEditingController(text: widget.initial.gstPercent.toString());
+  late final _convenienceCtrl = TextEditingController(
+      text: widget.initial.patientConvenienceFee.toString());
+  late final _gstCtrl =
+      TextEditingController(text: widget.initial.gstPercent.toString());
   late bool _applyConvenience = widget.initial.applyConvenienceFee;
 
   // Live bill preview state matching Web
@@ -182,7 +210,8 @@ class _ChargesFormState extends State<_ChargesForm> {
       return;
     }
     if (gst == null || gst < 0 || gst > 100) {
-      setState(() => _error = 'Enter a valid transaction charge percentage (0-100%)');
+      setState(() =>
+          _error = 'Enter a valid transaction charge percentage (0-100%)');
       return;
     }
 
@@ -205,7 +234,8 @@ class _ChargesFormState extends State<_ChargesForm> {
       });
 
       if (mounted) {
-        showSuccessSnack(context, 'Platform charges saved and connected to future bookings.');
+        showSuccessSnack(context,
+            'Platform charges saved and connected to future bookings.');
         setState(() => _saved = true);
       }
       widget.onSaved();
@@ -241,30 +271,35 @@ class _ChargesFormState extends State<_ChargesForm> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
+                    Expanded(
+                        child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Charge configuration',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           'These values apply to every future booking platform-wide.',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 12),
                         ),
                       ],
-                    ),
+                    )),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.12),
+                        color: context.palette.primary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Global rules',
                         style: TextStyle(
-                          color: AppColors.primaryDark,
+                          color: context.palette.primaryDark,
                           fontWeight: FontWeight.w700,
                           fontSize: 11,
                         ),
@@ -279,7 +314,8 @@ class _ChargesFormState extends State<_ChargesForm> {
                 ],
                 TextField(
                   controller: _convenienceCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                     labelText: 'Platform charge (₹)',
                     hintText: '25.00',
@@ -288,7 +324,8 @@ class _ChargesFormState extends State<_ChargesForm> {
                 const SizedBox(height: AppSpacing.sm),
                 TextField(
                   controller: _gstCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
                     labelText: 'Transaction charge (%)',
                     hintText: '18.00',
@@ -299,24 +336,31 @@ class _ChargesFormState extends State<_ChargesForm> {
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.sm),
                   decoration: BoxDecoration(
-                    color: AppColors.surface,
+                    color: context.palette.surface,
                     borderRadius: BorderRadius.circular(AppRadius.button),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Transaction charge applies only to the portion of a doctor\'s fee paid online through the website — a walk-in payment collected in cash/card/UPI at the clinic counter is never charged it.',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: context.palette.textSecondary,
+                        height: 1.4),
                   ),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Apply platform charge to online bookings', style: TextStyle(fontSize: 14)),
-                  value: _applyConvenience,
-                  onChanged: (v) => setState(() {
-                    _applyConvenience = v;
-                    _saved = false;
-                  }),
-                ),
+                Material(
+                    type: MaterialType.transparency,
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                          'Apply platform charge to online bookings',
+                          style: TextStyle(fontSize: 14)),
+                      value: _applyConvenience,
+                      onChanged: (v) => setState(() {
+                        _applyConvenience = v;
+                        _saved = false;
+                      }),
+                    )),
                 const SizedBox(height: AppSpacing.md),
                 PrimaryButton(
                   label: _submitting ? 'Saving…' : 'Save platform charges',
@@ -325,9 +369,12 @@ class _ChargesFormState extends State<_ChargesForm> {
                 ),
                 if (_saved) ...[
                   const SizedBox(height: AppSpacing.sm),
-                  const Text(
+                  Text(
                     'Charges saved and connected to future bookings.',
-                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600, fontSize: 13),
+                    style: TextStyle(
+                        color: context.palette.success,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13),
                   ),
                 ],
               ],
@@ -374,17 +421,22 @@ class _ChargesFormState extends State<_ChargesForm> {
               const SizedBox(height: 8),
               _billRow('Platform charge', _formatMoney(convenienceFee)),
               const SizedBox(height: 8),
-              _billRow('Transaction charge (${_gstCtrl.text.trim()}%)', _formatMoney(gstAmount)),
+              _billRow('Transaction charge (${_gstCtrl.text.trim()}%)',
+                  _formatMoney(gstAmount)),
               const SizedBox(height: AppSpacing.sm),
               const Divider(color: Colors.white24),
               const SizedBox(height: AppSpacing.xs),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  const Expanded(
+                      child: Text(
                     'Patient total',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
-                  ),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16),
+                  )),
                   Text(
                     _formatMoney(total),
                     style: const TextStyle(
@@ -406,8 +458,17 @@ class _ChargesFormState extends State<_ChargesForm> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+        Expanded(
+            child: Text(label,
+                style: const TextStyle(color: Colors.white70, fontSize: 13))),
+        const SizedBox(width: 8),
+        Flexible(
+            child: Text(value,
+                textAlign: TextAlign.end,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13))),
       ],
     );
   }
@@ -424,11 +485,13 @@ class _SettingsForm extends StatefulWidget {
 }
 
 class _SettingsFormState extends State<_SettingsForm> {
-  late final _nameCtrl = TextEditingController(text: widget.initial.platformName);
+  late final _nameCtrl =
+      TextEditingController(text: widget.initial.platformName);
   late final _emailCtrl = TextEditingController(
     text: widget.initial.supportEmail ?? 'support@bookadoctors.com',
   );
-  late final _phoneCtrl = TextEditingController(text: widget.initial.supportPhone ?? '');
+  late final _phoneCtrl =
+      TextEditingController(text: widget.initial.supportPhone ?? '');
   late bool _maintenance = widget.initial.maintenanceMode;
   bool _submitting = false;
   bool _saved = false;
@@ -504,9 +567,10 @@ class _SettingsFormState extends State<_SettingsForm> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
             ),
             const SizedBox(height: 2),
-            const Text(
+            Text(
               'Persist platform identity and maintenance status.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style:
+                  TextStyle(color: context.palette.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: AppSpacing.md),
             if (_error != null) ...[
@@ -521,24 +585,29 @@ class _SettingsFormState extends State<_SettingsForm> {
             TextField(
               controller: _emailCtrl,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Support email (optional)'),
+              decoration:
+                  const InputDecoration(labelText: 'Support email (optional)'),
             ),
             const SizedBox(height: AppSpacing.sm),
             TextField(
               controller: _phoneCtrl,
               keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Support phone (optional)'),
+              decoration:
+                  const InputDecoration(labelText: 'Support phone (optional)'),
             ),
             const SizedBox(height: AppSpacing.sm),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Maintenance mode', style: TextStyle(fontSize: 14)),
-              value: _maintenance,
-              onChanged: (v) => setState(() {
-                _maintenance = v;
-                _saved = false;
-              }),
-            ),
+            Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Maintenance mode',
+                      style: TextStyle(fontSize: 14)),
+                  value: _maintenance,
+                  onChanged: (v) => setState(() {
+                    _maintenance = v;
+                    _saved = false;
+                  }),
+                )),
             const SizedBox(height: AppSpacing.md),
             PrimaryButton(
               label: _submitting ? 'Saving…' : 'Save settings',
@@ -547,9 +616,12 @@ class _SettingsFormState extends State<_SettingsForm> {
             ),
             if (_saved) ...[
               const SizedBox(height: AppSpacing.sm),
-              const Text(
+              Text(
                 'Settings saved.',
-                style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600, fontSize: 13),
+                style: TextStyle(
+                    color: context.palette.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13),
               ),
             ],
           ],
@@ -570,16 +642,22 @@ class _RulesForm extends StatefulWidget {
 }
 
 class _RulesFormState extends State<_RulesForm> {
-  late final _cancellationCtrl = TextEditingController(text: widget.initial.cancellationWindowHours.toString());
-  late final _maxBookingsCtrl = TextEditingController(text: widget.initial.maxBookingsPerPatient.toString());
-  late final _slotCtrl = TextEditingController(text: widget.initial.defaultSlotMinutes.toString());
-  late final _startTimeCtrl = TextEditingController(text: widget.initial.onlineBookingWindowStart ?? '09:00');
-  late final _endTimeCtrl = TextEditingController(text: widget.initial.onlineBookingWindowEnd ?? '21:00');
+  late final _cancellationCtrl = TextEditingController(
+      text: widget.initial.cancellationWindowHours.toString());
+  late final _maxBookingsCtrl = TextEditingController(
+      text: widget.initial.maxBookingsPerPatient.toString());
+  late final _slotCtrl =
+      TextEditingController(text: widget.initial.defaultSlotMinutes.toString());
+  late final _startTimeCtrl = TextEditingController(
+      text: widget.initial.onlineBookingWindowStart ?? '09:00');
+  late final _endTimeCtrl = TextEditingController(
+      text: widget.initial.onlineBookingWindowEnd ?? '21:00');
   late final _advanceDaysCtrl = TextEditingController(
     text: widget.initial.onlineBookingMaxAdvanceDays?.toString() ?? '',
   );
 
-  late bool _alwaysOpen = widget.initial.onlineBookingWindowStart == null || widget.initial.onlineBookingWindowStart!.isEmpty;
+  late bool _alwaysOpen = widget.initial.onlineBookingWindowStart == null ||
+      widget.initial.onlineBookingWindowStart!.isEmpty;
 
   bool _submitting = false;
   bool _saved = false;
@@ -636,15 +714,18 @@ class _RulesFormState extends State<_RulesForm> {
     final slot = int.tryParse(_slotCtrl.text.trim());
 
     if (cancellation == null || cancellation < 0 || cancellation > 720) {
-      setState(() => _error = 'Cancellation window must be a number between 0 and 720 hours');
+      setState(() => _error =
+          'Cancellation window must be a number between 0 and 720 hours');
       return;
     }
     if (maxBookings == null || maxBookings < 1 || maxBookings > 100) {
-      setState(() => _error = 'Max bookings per patient must be a number between 1 and 100');
+      setState(() => _error =
+          'Max bookings per patient must be a number between 1 and 100');
       return;
     }
     if (slot == null || slot < 5 || slot > 120) {
-      setState(() => _error = 'Default slot length must be between 5 and 120 minutes');
+      setState(() =>
+          _error = 'Default slot length must be between 5 and 120 minutes');
       return;
     }
 
@@ -654,15 +735,18 @@ class _RulesFormState extends State<_RulesForm> {
       final s = _startTimeCtrl.text.trim();
       final e = _endTimeCtrl.text.trim();
       if (!_isValidHHMM(s)) {
-        setState(() => _error = 'Open from time must be in 24-hour HH:MM format (e.g. 09:00)');
+        setState(() => _error =
+            'Open from time must be in 24-hour HH:MM format (e.g. 09:00)');
         return;
       }
       if (!_isValidHHMM(e)) {
-        setState(() => _error = 'Open until time must be in 24-hour HH:MM format (e.g. 21:00)');
+        setState(() => _error =
+            'Open until time must be in 24-hour HH:MM format (e.g. 21:00)');
         return;
       }
       if (_toMinutes(s) >= _toMinutes(e)) {
-        setState(() => _error = 'Open until time must be strictly after Open from time');
+        setState(() =>
+            _error = 'Open until time must be strictly after Open from time');
         return;
       }
       start = s;
@@ -674,7 +758,8 @@ class _RulesFormState extends State<_RulesForm> {
     if (advanceText.isNotEmpty) {
       final parsed = int.tryParse(advanceText);
       if (parsed == null || parsed < 0 || parsed > 365) {
-        setState(() => _error = 'Max advance days must be a whole number between 0 and 365, or blank');
+        setState(() => _error =
+            'Max advance days must be a whole number between 0 and 365, or blank');
         return;
       }
       maxDays = parsed;
@@ -721,9 +806,10 @@ class _RulesFormState extends State<_RulesForm> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
             ),
             const SizedBox(height: 2),
-            const Text(
+            Text(
               'Global rules controlling cancellations, slot lengths, and booking windows.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style:
+                  TextStyle(color: context.palette.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: AppSpacing.md),
             if (_error != null) ...[
@@ -766,23 +852,28 @@ class _RulesFormState extends State<_RulesForm> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
             ),
             const SizedBox(height: 2),
-            const Text(
+            Text(
               'Platform-wide — controls when PATIENTS can make an online booking. Walk-ins registered by staff at the clinic are never affected.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.3),
+              style: TextStyle(
+                  color: context.palette.textSecondary,
+                  fontSize: 12,
+                  height: 1.3),
             ),
             const SizedBox(height: AppSpacing.xs),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Accept online bookings around the clock (full time)',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              value: _alwaysOpen,
-              onChanged: (v) => setState(() {
-                _alwaysOpen = v;
-                _saved = false;
-              }),
-            ),
+            Material(
+                type: MaterialType.transparency,
+                child: SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Accept online bookings around the clock (full time)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                  value: _alwaysOpen,
+                  onChanged: (v) => setState(() {
+                    _alwaysOpen = v;
+                    _saved = false;
+                  }),
+                )),
             if (!_alwaysOpen) ...[
               const SizedBox(height: AppSpacing.xs),
               Row(
@@ -833,9 +924,12 @@ class _RulesFormState extends State<_RulesForm> {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Platform-wide cap on ONLINE bookings only. Enter 0 to allow only today\'s date. Leave blank for no platform-wide limit (each doctor\'s own advance-booking setting still applies). Always the stricter of this and a doctor\'s own setting wins.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.3),
+              style: TextStyle(
+                  color: context.palette.textSecondary,
+                  fontSize: 12,
+                  height: 1.3),
             ),
             const SizedBox(height: AppSpacing.md),
             PrimaryButton(
@@ -845,9 +939,12 @@ class _RulesFormState extends State<_RulesForm> {
             ),
             if (_saved) ...[
               const SizedBox(height: AppSpacing.sm),
-              const Text(
+              Text(
                 'Booking rules saved.',
-                style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600, fontSize: 13),
+                style: TextStyle(
+                    color: context.palette.success,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13),
               ),
             ],
           ],

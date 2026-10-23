@@ -22,7 +22,8 @@ class AdminClinicsScreen extends StatefulWidget {
   State<AdminClinicsScreen> createState() => _AdminClinicsScreenState();
 }
 
-class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTickerProviderStateMixin {
+class _AdminClinicsScreenState extends State<AdminClinicsScreen>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController = TabController(
     length: 2,
     vsync: this,
@@ -48,9 +49,8 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
 
   Future<List<Clinic>> _fetchPending() async {
     try {
-      final res = await ApiClient.instance
-          .get('/clinics', query: {'approvalStatus': 'pending', 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+      final res = await ApiClient.instance.getAll('/clinics',
+          query: {'approvalStatus': 'pending', 'pageSize': 100});
       final list = <Clinic>[];
       for (final item in res.list) {
         try {
@@ -65,9 +65,8 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
 
   Future<List<Clinic>> _fetchAll() async {
     try {
-      final res = await ApiClient.instance
-          .get('/clinics', query: {'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+      final res =
+          await ApiClient.instance.getAll('/clinics', query: {'pageSize': 100});
       final list = <Clinic>[];
       for (final item in res.list) {
         try {
@@ -107,21 +106,32 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
         context: context,
         builder: (_) => AlertDialog(
           title: Text('Reject ${c.name}?'),
-          content: TextField(controller: reasonCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Reason (5-1000 chars)')),
+          content: TextField(
+              controller: reasonCtrl,
+              maxLines: 3,
+              decoration:
+                  const InputDecoration(labelText: 'Reason (5-1000 chars)')),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Reject')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Reject')),
           ],
         ),
       );
       if (confirmed != true) return;
       if (reasonCtrl.text.trim().length < 5) {
-        if (mounted) showErrorSnack(context, 'Reason must be at least 5 characters');
+        if (mounted) {
+          showErrorSnack(context, 'Reason must be at least 5 characters');
+        }
         return;
       }
       setState(() => _busyId = c.id);
       try {
-        await ApiClient.instance.patch('/clinics/${c.id}/reject', body: {'rejectionReason': reasonCtrl.text.trim()});
+        await ApiClient.instance.patch('/clinics/${c.id}/reject',
+            body: {'rejectionReason': reasonCtrl.text.trim()});
         if (mounted) showSuccessSnack(context, 'Clinic rejected');
         _load();
       } catch (err) {
@@ -143,10 +153,15 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
         context: context,
         builder: (_) => AlertDialog(
           title: Text('Disable ${c.name}?'),
-          content: const Text('Disabled clinics are hidden from patients and cannot take new bookings.'),
+          content: const Text(
+              'Disabled clinics are hidden from patients and cannot take new bookings.'),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Disable')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Disable')),
           ],
         ),
       );
@@ -155,11 +170,15 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
     setState(() => _busyKey = '${c.id}:status');
     try {
       if (disabling) {
-        await ApiClient.instance.patch('/clinics/${c.id}/reject', body: {'rejectionReason': 'Disabled by admin.'});
+        await ApiClient.instance.patch('/clinics/${c.id}/reject',
+            body: {'rejectionReason': 'Disabled by admin.'});
       } else {
         await ApiClient.instance.patch('/clinics/${c.id}/approve');
       }
-      if (mounted) showSuccessSnack(context, disabling ? 'Clinic disabled' : 'Clinic enabled');
+      if (mounted) {
+        showSuccessSnack(
+            context, disabling ? 'Clinic disabled' : 'Clinic enabled');
+      }
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -174,8 +193,15 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
     final next = !c.emergencyAvailable;
     setState(() => _busyKey = '${c.id}:emergency');
     try {
-      await ApiClient.instance.patch('/clinics/${c.id}', body: {'emergencyAvailable': next});
-      if (mounted) showSuccessSnack(context, next ? 'Emergency availability enabled' : 'Emergency availability disabled');
+      await ApiClient.instance
+          .patch('/clinics/${c.id}', body: {'emergencyAvailable': next});
+      if (mounted) {
+        showSuccessSnack(
+            context,
+            next
+                ? 'Emergency availability enabled'
+                : 'Emergency availability disabled');
+      }
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -184,17 +210,26 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
     }
   }
 
-  Widget _list(Future<List<Clinic>>? future, {required bool showActions, bool showManageActions = false}) {
+  Widget _list(Future<List<Clinic>>? future,
+      {required bool showActions, bool showManageActions = false}) {
     return FutureBuilder<List<Clinic>>(
       future: future,
       builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const LoadingView();
+        }
         if (snapshot.hasError) {
-          return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+          return Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: ErrorBanner(error: snapshot.error!, onRetry: _load));
         }
         final clinics = snapshot.data ?? [];
         if (clinics.isEmpty) {
-          return EmptyStateView(icon: Icons.local_hospital_outlined, title: showActions ? 'No clinics awaiting approval' : 'No clinics found');
+          return EmptyStateView(
+              icon: Icons.local_hospital_outlined,
+              title: showActions
+                  ? 'No clinics awaiting approval'
+                  : 'No clinics found');
         }
         return RefreshIndicator(
           onRefresh: () async => _load(),
@@ -213,23 +248,42 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
                     children: [
                       Row(
                         children: [
-                          Expanded(child: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700))),
+                          Expanded(
+                              child: Text(c.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700))),
                           StatusBadge(status: c.approvalStatus),
                         ],
                       ),
-                      if (c.address != null) Text(c.address!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                      if (c.address != null)
+                        Text(c.address!,
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 12)),
                       if (c.city != null)
-                        Text('${c.city!.name}${c.area != null ? ", ${c.area!.name}" : ""}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                        Text(
+                            '${c.city!.name}${c.area != null ? ", ${c.area!.name}" : ""}',
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 12)),
                       if (busy) ...[
                         const SizedBox(height: AppSpacing.sm),
-                        const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                      ] else if (showActions && c.approvalStatus == 'pending') ...[
+                        const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2)),
+                      ] else if (showActions &&
+                          c.approvalStatus == 'pending') ...[
                         const SizedBox(height: AppSpacing.sm),
                         Row(
                           children: [
-                            OutlinedButton(onPressed: () => _approve(c), child: const Text('Approve')),
+                            OutlinedButton(
+                                onPressed: () => _approve(c),
+                                child: const Text('Approve')),
                             const SizedBox(width: 8),
-                            OutlinedButton(onPressed: () => _reject(c), child: const Text('Reject')),
+                            OutlinedButton(
+                                onPressed: () => _reject(c),
+                                child: const Text('Reject')),
                           ],
                         ),
                       ],
@@ -242,23 +296,35 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
                             Expanded(
                               child: Row(
                                 children: [
-                                  const Text('Emergency', style: TextStyle(fontSize: 13)),
+                                  const Text('Emergency',
+                                      style: TextStyle(fontSize: 13)),
                                   Switch(
                                     value: c.emergencyAvailable,
-                                    onChanged: _busyKey == '${c.id}:emergency' ? null : (_) => _toggleEmergency(c),
+                                    onChanged: _busyKey == '${c.id}:emergency'
+                                        ? null
+                                        : (_) => _toggleEmergency(c),
                                   ),
                                 ],
                               ),
                             ),
                             if (_busyKey == '${c.id}:status')
-                              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                              const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2))
                             else
                               OutlinedButton(
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: c.approvalStatus == 'disabled' ? AppColors.success : AppColors.danger,
+                                  foregroundColor:
+                                      c.approvalStatus == 'disabled'
+                                          ? context.palette.success
+                                          : context.palette.danger,
                                 ),
                                 onPressed: () => _toggleStatus(c),
-                                child: Text(c.approvalStatus == 'disabled' ? 'Enable' : 'Disable'),
+                                child: Text(c.approvalStatus == 'disabled'
+                                    ? 'Enable'
+                                    : 'Disable'),
                               ),
                           ],
                         ),
@@ -281,10 +347,12 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
         body: Column(
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+              padding: EdgeInsets.fromLTRB(
+                  AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
               child: PageHeader(
                 title: 'Clinic verification',
-                subtitle: 'Review clinic submissions before making them available.',
+                subtitle:
+                    'Review clinic submissions before making them available.',
               ),
             ),
             Expanded(
@@ -302,7 +370,8 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
           // title + subtitle copy; this screen additionally folds in the pending-approval
           // queue (web's separate ClinicVerification page) as the first tab.
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Clinic management',
               subtitle: 'Review and control clinic availability.',
@@ -310,9 +379,12 @@ class _AdminClinicsScreenState extends State<AdminClinicsScreen> with SingleTick
           ),
           TabBar(
             controller: _tabController,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textSecondary,
-            tabs: const [Tab(text: 'Pending approval'), Tab(text: 'All clinics')],
+            labelColor: context.palette.primary,
+            unselectedLabelColor: context.palette.textSecondary,
+            tabs: const [
+              Tab(text: 'Pending approval'),
+              Tab(text: 'All clinics')
+            ],
           ),
           Expanded(
             child: TabBarView(

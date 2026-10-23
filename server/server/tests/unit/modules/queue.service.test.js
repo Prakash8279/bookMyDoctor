@@ -62,6 +62,12 @@ const queueService = require('../../../src/modules/queue/queue.service');
 const MINUTES_PER_WAITING_PATIENT = 9; // mirrors the module's own private constant
 
 describe('queueService.getMyQueueStatus', () => {
+  test.each(['pending', 'partial', 'refunded'])('hides an existing token while clinic payment is %s', async paymentStatus => {
+    prisma.appointment.findUnique.mockResolvedValue({id:'appt-1',patientUserId:'patient-1',status:'upcoming',paymentStatus,totalAmount:500});
+    const result = await queueService.getMyQueueStatus('appt-1', {id:'patient-1',role:'patient'});
+    expect(result.token).toBeNull();
+    expect(prisma.queueToken.findUnique).not.toHaveBeenCalled();
+  });
   test('never reveals an on-hold token before payment', async () => {
     prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1', status: 'pending_payment' });
     const result = await queueService.getMyQueueStatus('appt-1', { id: 'patient-1', role: 'patient' });
@@ -87,7 +93,7 @@ describe('queueService.getMyQueueStatus', () => {
   });
 
   test('returns the all-null shape when the appointment exists but never reached the queue', async () => {
-    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1' });
+    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1', paymentStatus: 'paid' });
     prisma.queueToken.findUnique.mockResolvedValue(null);
 
     const result = await queueService.getMyQueueStatus('appt-1', { id: 'patient-1', role: 'patient' });
@@ -98,7 +104,7 @@ describe('queueService.getMyQueueStatus', () => {
   });
 
   test('while waiting, patientsAhead counts only OTHER waiting tokens with a strictly smaller tokenNumber', async () => {
-    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1' });
+    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1', paymentStatus: 'paid' });
     prisma.queueToken.findUnique.mockResolvedValue({
       tokenNumber: 5,
       status: 'waiting',
@@ -123,7 +129,7 @@ describe('queueService.getMyQueueStatus', () => {
   });
 
   test('once called/in_consultation, patientsAhead is always 0 and nowServing reports the currently-serving token', async () => {
-    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1' });
+    prisma.appointment.findUnique.mockResolvedValue({ id: 'appt-1', patientUserId: 'patient-1', paymentStatus: 'paid' });
     prisma.queueToken.findUnique.mockResolvedValue({
       tokenNumber: 3,
       status: 'in_consultation',
@@ -147,6 +153,13 @@ describe('queueService.getMyQueueStatus', () => {
 });
 
 describe('queueService.listQueue', () => {
+  test('applies the full-payment gate in the database before counts and pagination', async () => {
+    prisma.queueToken.findMany.mockResolvedValue([]);
+    await queueService.listQueue({}, {id:'doc-A',role:'doctor'});
+    expect(prisma.queueToken.findMany).toHaveBeenCalledWith(expect.objectContaining({where:expect.objectContaining({
+      appointment:{is:expect.objectContaining({paymentStatus:{not:'refunded'},OR:[{paymentStatus:'paid'},{totalAmount:{lte:0}}]})}
+    })}));
+  });
   test('a receptionist with no clinic assignment gets an empty page without ever querying queue tokens', async () => {
     prisma.receptionistProfile.findUnique.mockResolvedValue(null);
 
@@ -234,14 +247,28 @@ describe('queueService.updateQueueStatus — sequential transition rules', () =>
     tokenNumber: 7,
     status: 'waiting',
     queueDate: '2026-09-10',
-    appointment: { id: 'appt-1', status: 'confirmed', source: 'online', patient: { id: 'patient-1', name: 'Pat' } },
+    appointment: { id: 'appt-1', status: 'confirmed', paymentStatus: 'paid', source: 'online', patient: { id: 'patient-1', name: 'Pat' } },
     ...overrides,
   });
 
   let tx;
   beforeEach(() => {
-    tx = { queueToken: { update: jest.fn() }, appointment: { update: jest.fn() } };
+    prisma.queueToken.findUnique.mockReset();
+    tx = { $queryRaw: jest.fn(), queueToken: { update: jest.fn() }, appointment: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue({status:'confirmed',paymentStatus:'paid'}) } };
     prisma.$transaction.mockImplementation(async (cb) => cb(tx));
+  });
+  test.each([['waiting','called'],['called','in_consultation'],['in_consultation','completed']])('blocks %s -> %s until full payment', async (status,target) => {
+    prisma.queueToken.findUnique.mockResolvedValue(baseRow({status,appointment:{status:'upcoming',paymentStatus:'partial',totalAmount:500}}));
+    await expect(queueService.updateQueueStatus('q1',target,{id:'doc-A',role:'doctor'})).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
+    expect(tx.queueToken.update).not.toHaveBeenCalled();
+  });
+  test('rechecks payment under the appointment lock before advancing', async () => {
+    prisma.queueToken.findUnique.mockResolvedValue(baseRow());
+    tx.appointment.findUnique.mockResolvedValue({status:'upcoming',paymentStatus:'refunded',totalAmount:500});
+    await expect(queueService.updateQueueStatus('q1','called',{id:'doc-A',role:'doctor'})).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.$queryRaw.mock.calls[0][0].join('')).not.toContain('::uuid');
+    expect(tx.queueToken.update).not.toHaveBeenCalled();
   });
 
   test('rejects a transition that skips a step (waiting -> completed) with 409 QUEUE_INVALID_TRANSITION', async () => {
@@ -289,7 +316,7 @@ describe('queueService.updateQueueStatus — sequential transition rules', () =>
 
   test('in_consultation -> completed cascades the linked (non-terminal) appointment to completed, with its own audit-log entry', async () => {
     prisma.queueToken.findUnique
-      .mockResolvedValueOnce(baseRow({ status: 'in_consultation', appointment: { id: 'appt-1', status: 'confirmed', source: 'online', patient: { id: 'patient-1', name: 'Pat' } } }))
+      .mockResolvedValueOnce(baseRow({ status: 'in_consultation', appointment: { id: 'appt-1', status: 'confirmed', paymentStatus:'paid', source: 'online', patient: { id: 'patient-1', name: 'Pat' } } }))
       .mockResolvedValueOnce(baseRow({ status: 'completed' }));
 
     await queueService.updateQueueStatus('q1', 'completed', { id: 'doc-A', role: 'doctor' });
@@ -310,15 +337,15 @@ describe('queueService.updateQueueStatus — sequential transition rules', () =>
     expect(notificationsService.notifySystemEventSafe).not.toHaveBeenCalled();
   });
 
-  test('in_consultation -> completed does NOT re-cascade when the linked appointment is already terminal', async () => {
+  test('in_consultation -> completed rejects an already-cancelled appointment', async () => {
     prisma.queueToken.findUnique
-      .mockResolvedValueOnce(baseRow({ status: 'in_consultation', appointment: { id: 'appt-1', status: 'cancelled', source: 'online', patient: { id: 'patient-1', name: 'Pat' } } }))
+      .mockResolvedValueOnce(baseRow({ status: 'in_consultation', appointment: { id: 'appt-1', status: 'cancelled', paymentStatus:'paid', source: 'online', patient: { id: 'patient-1', name: 'Pat' } } }))
       .mockResolvedValueOnce(baseRow({ status: 'completed' }));
 
-    await queueService.updateQueueStatus('q1', 'completed', { id: 'doc-A', role: 'doctor' });
+    await expect(queueService.updateQueueStatus('q1', 'completed', { id: 'doc-A', role: 'doctor' })).rejects.toMatchObject({code:'APPOINTMENT_NOT_ACTIVE'});
 
     expect(tx.appointment.update).not.toHaveBeenCalled();
-    expect(activityLogService.log).toHaveBeenCalledTimes(1); // only the queue-token log, no cascade log
+    expect(activityLogService.log).not.toHaveBeenCalled();
     expect(appointmentsService.invalidateAppointmentListCaches).not.toHaveBeenCalled();
   });
 

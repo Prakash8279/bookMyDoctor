@@ -1,7 +1,7 @@
 name: connect_mobile
 description: "BookADoctors - mobile app for Patient, Doctor, Receptionist and Admin roles, backed by the same Node/Express/PostgreSQL API as the web app."
 publish_to: 'none'
-version: 1.0.3+6
+version: 1.0.4+7
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -54,6 +54,7 @@ dependencies:
   # text-share path (Share.share) rather than a temp-file share, so no extra path_provider
   # dependency is needed. Run `flutter pub get` after pulling this.
   share_plus: ^10.1.4
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:
@@ -82,3 +83,10 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
+    - assets/fonts/OFL.txt
+    - assets/fonts/NotoSansDevanagari-OFL.txt
+    - assets/fonts/NotoSansDevanagari.ttf
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf

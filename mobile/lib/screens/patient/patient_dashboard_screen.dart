@@ -12,9 +12,6 @@ import '../shared/notifications_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'appointments_screen.dart';
 import 'book_appointment_screen.dart';
-import 'family_members_screen.dart';
-import 'patient_search_screen.dart';
-import 'payments_screen.dart';
 import 'payment_required_screen.dart';
 import 'queue_tracker_screen.dart';
 
@@ -75,12 +72,8 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
 
   Future<_PatientDashboardData> _fetch() async {
     final futures = await Future.wait([
-      ApiClient.instance
-          .get('/appointments', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance
-          .get('/notifications', query: {'pageSize': 10})
-          .catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.getAll('/appointments', query: {'pageSize': 50}),
+      ApiClient.instance.getAll('/notifications', query: {'pageSize': 10}),
     ]);
 
     final appointments = <Appointment>[];
@@ -96,7 +89,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
         notifications.add(AppNotification.fromJson(item));
       } catch (_) {}
     }
-    
+
     // PARITY FIX (mobile parity audit — Patient panel): web's PatientDashboard only counts
     // `['upcoming', 'confirmed'].includes(item.status)` as "upcoming" (PatientPages.jsx) — a
     // `pending_payment` booking isn't a confirmed visit yet (no token, nothing to queue for) and
@@ -105,7 +98,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     // (surfacing it here saves a trip to My Appointments) worth keeping — kept via
     // `pendingPaymentAppt` as a fallback below — but it must not inflate the UPCOMING stat count
     // or silently take over the queue widget the way lumping it into one list did before.
-    final upcomingConfirmed = appointments.where((a) => a.status == 'upcoming' || a.status == 'confirmed').toList();
+    final upcomingConfirmed = appointments
+        .where((a) => a.status == 'upcoming' || a.status == 'confirmed')
+        .toList();
     Appointment? pendingPaymentAppt;
     for (final a in appointments) {
       if (a.status == 'pending_payment') {
@@ -113,7 +108,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
         break;
       }
     }
-    final nextAppt = upcomingConfirmed.isNotEmpty ? upcomingConfirmed.first : pendingPaymentAppt;
+    final nextAppt = upcomingConfirmed.isNotEmpty
+        ? upcomingConfirmed.first
+        : pendingPaymentAppt;
     Map<String, dynamic>? queueStatus;
 
     if (nextAppt != null && nextAppt.status != 'pending_payment') {
@@ -139,7 +136,8 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     }
     final role = RoleScaffold.of(context);
     if (role != null && role.navigateToLabel('Book appointment')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const BookAppointmentScreen()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const BookAppointmentScreen()));
   }
 
   // COMPLETENESS FIX (mobile parity audit): web's "📞 Call clinic" quick action
@@ -158,33 +156,16 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     }
     final role = RoleScaffold.of(context);
     if (isHistory) {
-      if (role != null && (role.navigateToLabel('Booking history') || role.navigateToLabel('My appointments'))) return;
+      if (role != null &&
+          (role.navigateToLabel('Booking history') ||
+              role.navigateToLabel('My appointments'))) {
+        return;
+      }
     } else {
       if (role != null && role.navigateToLabel('My appointments')) return;
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => PatientAppointmentsScreen(isHistory: isHistory)));
-  }
-
-  void _goToPayments(BuildContext context) {
-    if (widget.onNavigateToPayments != null) {
-      widget.onNavigateToPayments!();
-      return;
-    }
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Payments')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientPaymentsScreen()));
-  }
-
-  void _goToSearch(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Find doctors')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientSearchScreen()));
-  }
-
-  void _goToFamily(BuildContext context) {
-    final role = RoleScaffold.of(context);
-    if (role != null && role.navigateToLabel('Family members')) return;
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FamilyMembersScreen()));
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PatientAppointmentsScreen(isHistory: isHistory)));
   }
 
   @override
@@ -205,7 +186,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
           // _fetch() above — `upcomingConfirmed` (used for the UPCOMING stat card) now matches
           // web's `['upcoming', 'confirmed']` filter exactly, while `nextUpcoming` still falls
           // back to a pending-payment booking so the "Pay to confirm" CTA keeps working.
-          final upcomingConfirmed = appointments.where((a) => a.status == 'upcoming' || a.status == 'confirmed').toList();
+          final upcomingConfirmed = appointments
+              .where((a) => a.status == 'upcoming' || a.status == 'confirmed')
+              .toList();
           Appointment? pendingPaymentAppt;
           for (final a in appointments) {
             if (a.status == 'pending_payment') {
@@ -213,105 +196,60 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
               break;
             }
           }
-          final nextUpcoming = upcomingConfirmed.isNotEmpty ? upcomingConfirmed.first : pendingPaymentAppt;
-          final pendingPayments = appointments.where((a) => a.paymentStatus == 'pending').length;
+          final nextUpcoming = upcomingConfirmed.isNotEmpty
+              ? upcomingConfirmed.first
+              : pendingPaymentAppt;
           final queueData = data?.queueStatus;
           final notifications = data?.notifications ?? [];
 
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              PageHeader(
-                kicker: 'Production database',
-                title: 'Welcome, $firstName.',
-                subtitle: 'Your authenticated workspace is connected to live records.',
-                action: ElevatedButton.icon(
-                  onPressed: () => _goToBook(context),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Book appointment'),
-                ),
-              ),
+              if (MediaQuery.sizeOf(context).width >= 960)
+                PageHeader(
+                  kicker: 'Production database',
+                  title: 'Welcome, $firstName.',
+                  subtitle:
+                      'Your authenticated workspace is connected to live records.',
+                  action: ElevatedButton.icon(
+                    onPressed: () => _goToBook(context),
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Book appointment'),
+                  ),
+                )
+              else
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text('Welcome, $firstName.',
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w600))),
+              const PortalQuickActions(),
               const SizedBox(height: AppSpacing.sm),
 
-              // Metric cards
-              Row(
-                children: [
-                  Expanded(
-                    child: StatCard(
-                      label: 'TOTAL APPOINTMENTS',
-                      value: appointments.length.toString(),
-                      icon: Icons.calendar_month_outlined,
-                      onTap: () => _goToAppointments(context, isHistory: true),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: StatCard(
-                      label: 'UPCOMING',
-                      value: upcomingConfirmed.length.toString(),
-                      icon: Icons.schedule_outlined,
-                      onTap: () => _goToAppointments(context),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              StatCard(
-                label: 'PENDING PAYMENTS',
-                value: pendingPayments.toString(),
-                icon: Icons.currency_rupee,
-                onTap: () => _goToPayments(context),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              // Healthcare services quick actions
-              // COMPLETENESS FIX (mobile parity audit, patient panel): "Medical records" and
-              // "Complaints" tiles removed on the user's explicit instruction — see
-              // patient_home_screen.dart's doc comment for why (no web patient UI backs either).
-              // "Emergency care" and "Quick clinic" tiles ALSO removed on the user's later
-              // explicit instruction (same doc comment) — grid narrowed from 3 to 2 columns since
-              // only 2 tiles remain, so they fill the row evenly instead of leaving a gap.
-              SectionCard(
-                title: 'Healthcare services',
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: AppSpacing.sm,
-                  crossAxisSpacing: AppSpacing.sm,
-                  childAspectRatio: 1.6,
-                  children: [
-                    _QuickServiceTile(
-                      icon: Icons.search_rounded,
-                      label: 'Find doctors',
-                      onTap: () => _goToSearch(context),
-                    ),
-                    _QuickServiceTile(
-                      icon: Icons.people_outline,
-                      label: 'Family members',
-                      onTap: () => _goToFamily(context),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-
-              if (loading) const Padding(padding: EdgeInsets.symmetric(vertical: AppSpacing.xl), child: LoadingView()),
-              if (snapshot.hasError) ErrorBanner(error: snapshot.error!, onRetry: _load),
+              // Navigation is already provided by the compact quick-action grid.
+              if (loading)
+                const Padding(
+                    padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                    child: LoadingView()),
+              if (snapshot.hasError)
+                ErrorBanner(error: snapshot.error!, onRetry: _load),
 
               // Recent live records section (mirrors web's section directly below stat cards)
               SectionCard(
                 title: 'Recent live records',
-
                 trailing: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.12),
+                    color: context.palette.success.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Connected',
-                    style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w700, fontSize: 11),
+                    style: TextStyle(
+                        color: context.palette.success,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11),
                   ),
                 ),
                 child: appointments.isEmpty
@@ -320,42 +258,56 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                         child: EmptyStateView(
                           icon: Icons.calendar_today_outlined,
                           title: 'No appointments yet',
-                          subtitle: 'Book your first appointment to see live records here.',
+                          subtitle:
+                              'Book your first appointment to see live records here.',
                         ),
                       )
                     : Column(
                         children: [
                           for (final appt in appointments.take(5))
                             Padding(
-                              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: AppSpacing.xs),
                               child: InkWell(
                                 onTap: () {
                                   Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const PatientAppointmentsScreen()),
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const PatientAppointmentsScreen()),
                                   );
                                 },
-                                borderRadius: BorderRadius.circular(AppRadius.button),
+                                borderRadius:
+                                    BorderRadius.circular(AppRadius.button),
                                 child: Container(
                                   padding: const EdgeInsets.all(AppSpacing.sm),
                                   decoration: BoxDecoration(
-                                    color: AppColors.background,
-                                    borderRadius: BorderRadius.circular(AppRadius.button),
-                                    border: Border.all(color: AppColors.border),
+                                    color: context.palette.background,
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.button),
+                                    border: Border.all(
+                                        color: context.palette.border),
                                   ),
                                   child: Row(
                                     children: [
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              appt.doctor?.displayName ?? 'Doctor',
-                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                              appt.doctor?.displayName ??
+                                                  'Doctor',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 14),
                                             ),
                                             const SizedBox(height: 2),
                                             Text(
-                                              '${appt.appointmentDate} · ${appt.appointmentTime} · ${appt.clinic?.name ?? "Clinic"}',
-                                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                              '${appt.appointmentDate} · ${appt.displayTime} · ${appt.clinic?.name ?? "Clinic"}',
+                                              style: TextStyle(
+                                                  color: context
+                                                      .palette.textSecondary,
+                                                  fontSize: 12),
                                             ),
                                           ],
                                         ),
@@ -390,7 +342,8 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   elevation: 1,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.25)),
+                    side: BorderSide(
+                        color: context.palette.primary.withValues(alpha: 0.25)),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -401,19 +354,26 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: AppColors.tealDark.withValues(alpha: 0.12),
+                                color: context.palette.tealDark
+                                    .withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(999),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  CircleAvatar(radius: 4, backgroundColor: AppColors.success),
-                                  SizedBox(width: 6),
+                                  CircleAvatar(
+                                      radius: 4,
+                                      backgroundColor: context.palette.success),
+                                  const SizedBox(width: 6),
                                   Text(
                                     'Live Next Visit',
-                                    style: TextStyle(color: AppColors.tealDark, fontWeight: FontWeight.w700, fontSize: 12),
+                                    style: TextStyle(
+                                        color: context.palette.tealDark,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12),
                                   ),
                                 ],
                               ),
@@ -424,12 +384,17 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                         const SizedBox(height: AppSpacing.sm),
                         Text(
                           nextUpcoming.doctor?.displayName ?? 'Doctor',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: context.palette.textPrimary),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${nextUpcoming.clinic?.name ?? "Clinic"} · ${nextUpcoming.appointmentDate}, ${nextUpcoming.appointmentTime}',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          '${nextUpcoming.clinic?.name ?? "Clinic"} · ${nextUpcoming.appointmentDate}, ${nextUpcoming.displayTime}',
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 13),
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         // COMPLETENESS FIX (mobile parity audit): web's "View appointment details
@@ -443,22 +408,40 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           children: [
                             TextButton(
                               onPressed: () => _goToAppointments(context),
-                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                              child: const Text('View appointment details & QR →', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                              style: TextButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap),
+                              child: const Text(
+                                  'View appointment details & QR →',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700)),
                             ),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 OutlinedButton(
                                   onPressed: () => _callClinic(context),
-                                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-                                  child: const Text('📞 Call clinic', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                  style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4)),
+                                  child: const Text('📞 Call clinic',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600)),
                                 ),
                                 const SizedBox(width: 6),
                                 ElevatedButton(
                                   onPressed: () => _goToAppointments(context),
-                                  style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-                                  child: const Text('Arrive at clinic', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                  style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 10, vertical: 4)),
+                                  child: const Text('Arrive at clinic',
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600)),
                                 ),
                               ],
                             ),
@@ -474,7 +457,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                             Expanded(
                               child: _DashboardQueueStat(
                                 label: 'Token number',
-                                value: nextUpcoming.tokenNumber != null ? '#${nextUpcoming.tokenNumber}' : '—',
+                                value: nextUpcoming.tokenNumber != null
+                                    ? '#${nextUpcoming.tokenNumber}'
+                                    : '—',
                                 emphasize: true,
                               ),
                             ),
@@ -482,7 +467,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                             Expanded(
                               child: _DashboardQueueStat(
                                 label: 'Now serving',
-                                value: queueData?['nowServing'] != null ? '#${queueData!["nowServing"]}' : '—',
+                                value: queueData?['nowServing'] != null
+                                    ? '#${queueData!["nowServing"]}'
+                                    : '—',
                               ),
                             ),
                           ],
@@ -493,14 +480,19 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                             Expanded(
                               child: _DashboardQueueStat(
                                 label: 'Patients ahead',
-                                value: queueData?['patientsAhead'] != null ? '${queueData!["patientsAhead"]} ahead' : '—',
+                                value: queueData?['patientsAhead'] != null
+                                    ? '${queueData!["patientsAhead"]} ahead'
+                                    : '—',
                               ),
                             ),
                             const SizedBox(width: AppSpacing.sm),
                             Expanded(
                               child: _DashboardQueueStat(
                                 label: 'Estimated wait',
-                                value: queueData?['estimatedWaitMinutes'] != null ? '${queueData!["estimatedWaitMinutes"]} min' : '—',
+                                value: queueData?['estimatedWaitMinutes'] !=
+                                        null
+                                    ? '${queueData!["estimatedWaitMinutes"]} min'
+                                    : '—',
                               ),
                             ),
                           ],
@@ -511,17 +503,21 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                             width: double.infinity,
                             child: ElevatedButton.icon(
                               onPressed: () async {
-                                final updated = await Navigator.of(context).push<Appointment>(
-                                  MaterialPageRoute(builder: (_) => PaymentRequiredScreen(appointment: nextUpcoming)),
+                                final updated = await Navigator.of(context)
+                                    .push<Appointment>(
+                                  MaterialPageRoute(
+                                      builder: (_) => PaymentRequiredScreen(
+                                          appointment: nextUpcoming)),
                                 );
                                 if (updated != null && mounted) _load();
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.danger,
+                                backgroundColor: context.palette.danger,
                                 foregroundColor: Colors.white,
                               ),
                               icon: const Icon(Icons.payment, size: 16),
-                              label: const Text('Complete payment to confirm appointment'),
+                              label: const Text(
+                                  'Complete payment to confirm appointment'),
                             ),
                           )
                         else
@@ -530,10 +526,13 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                             child: OutlinedButton.icon(
                               onPressed: () {
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => QueueTrackerScreen(appointmentId: nextUpcoming.id)),
+                                  MaterialPageRoute(
+                                      builder: (_) => QueueTrackerScreen(
+                                          appointmentId: nextUpcoming.id)),
                                 );
                               },
-                              icon: const Icon(Icons.timelapse_outlined, size: 16),
+                              icon: const Icon(Icons.timelapse_outlined,
+                                  size: 16),
                               label: const Text('Open live queue tracker'),
                             ),
                           ),
@@ -547,7 +546,7 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(AppRadius.card),
-                    side: const BorderSide(color: AppColors.border),
+                    side: BorderSide(color: context.palette.border),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(AppSpacing.lg),
@@ -555,15 +554,20 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                       children: [
                         const Text('🏥', style: TextStyle(fontSize: 32)),
                         const SizedBox(height: AppSpacing.sm),
-                        const Text(
+                        Text(
                           'No upcoming appointments scheduled',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: context.palette.textPrimary),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 4),
-                        const Text(
+                        Text(
                           'Book a visit with verified doctors, follow your live queue token, and skip waiting room delays.',
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: context.palette.textSecondary),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: AppSpacing.md),
@@ -573,7 +577,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                               widget.onNavigateToBook!();
                             } else {
                               Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => const BookAppointmentScreen()),
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        const BookAppointmentScreen()),
                               );
                             }
                           },
@@ -592,12 +598,17 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                   trailing: TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const NotificationsScreen(showLiveBadge: true)),
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                const NotificationsScreen(showLiveBadge: true)),
                       );
                     },
-                    child: const Text(
+                    child: Text(
                       'View all',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryDark),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: context.palette.primaryDark),
                     ),
                   ),
                   child: Column(
@@ -607,41 +618,54 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
                           margin: const EdgeInsets.only(bottom: AppSpacing.xs),
                           padding: const EdgeInsets.all(AppSpacing.sm),
                           decoration: BoxDecoration(
-                            color: n.isRead ? AppColors.surface : AppColors.primaryLight.withValues(alpha: 0.4),
+                            color: n.isRead
+                                ? context.palette.surface
+                                : context.palette.primaryLight
+                                    .withValues(alpha: 0.4),
                             borderRadius: BorderRadius.circular(8),
                             border: Border(
                               left: BorderSide(
-                                color: n.isRead ? AppColors.border : AppColors.primary,
+                                color: n.isRead
+                                    ? context.palette.border
+                                    : context.palette.primary,
                                 width: 4,
                               ),
-                              top: const BorderSide(color: AppColors.border),
-                              right: const BorderSide(color: AppColors.border),
-                              bottom: const BorderSide(color: AppColors.border),
+                              top: BorderSide(color: context.palette.border),
+                              right: BorderSide(color: context.palette.border),
+                              bottom: BorderSide(color: context.palette.border),
                             ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
                                   Expanded(
                                     child: Text(
                                       n.title,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13),
                                     ),
                                   ),
                                   if (n.createdAt != null)
                                     Text(
                                       n.createdAt!.split('T').first,
-                                      style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: context.palette.textSecondary),
                                     ),
                                 ],
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 n.body,
-                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.palette.textSecondary,
+                                    height: 1.3),
                               ),
                             ],
                           ),
@@ -663,28 +687,33 @@ class _DashboardQueueStat extends StatelessWidget {
   final String label;
   final String value;
   final bool emphasize;
-  const _DashboardQueueStat({required this.label, required this.value, this.emphasize = false});
+  const _DashboardQueueStat(
+      {required this.label, required this.value, this.emphasize = false});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: context.palette.background,
         borderRadius: BorderRadius.circular(AppRadius.button),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          Text(label,
+              style: TextStyle(
+                  color: context.palette.textSecondary, fontSize: 11)),
           const SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: emphasize ? AppColors.primaryDark : AppColors.textPrimary,
+              color: emphasize
+                  ? context.palette.primaryDark
+                  : context.palette.textPrimary,
             ),
           ),
         ],
@@ -692,49 +721,3 @@ class _DashboardQueueStat extends StatelessWidget {
     );
   }
 }
-
-class _QuickServiceTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickServiceTile({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.button),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.button),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: AppColors.primaryLight,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 20, color: AppColors.primaryDark),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.textPrimary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-

@@ -28,7 +28,8 @@ class DoctorPaymentSetupScreen extends StatefulWidget {
   const DoctorPaymentSetupScreen({super.key});
 
   @override
-  State<DoctorPaymentSetupScreen> createState() => _DoctorPaymentSetupScreenState();
+  State<DoctorPaymentSetupScreen> createState() =>
+      _DoctorPaymentSetupScreenState();
 }
 
 class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
@@ -63,7 +64,8 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
       _loadError = null;
     });
     try {
-      final res = await ApiClient.instance.get('/clinics', query: {'mine': true, 'pageSize': 20});
+      final res = await ApiClient.instance
+          .getAll('/clinics', query: {'mine': true, 'pageSize': 20});
       final rows = res.list;
       if (rows.isEmpty) {
         setState(() {
@@ -72,7 +74,8 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
         });
         return;
       }
-      final detail = await ApiClient.instance.get('/clinics/${rows.first['id']}');
+      final detail =
+          await ApiClient.instance.get('/clinics/${rows.first['id']}');
       final clinic = Clinic.fromJson(detail.map);
       setState(() {
         _clinic = clinic;
@@ -92,7 +95,8 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
 
   Future<void> _pickAndUploadQr() async {
     if (_clinic == null) return;
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 1200, imageQuality: 90);
+    final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery, maxWidth: 1200, imageQuality: 90);
     if (picked == null || !mounted) return;
     setState(() => _uploadingQr = true);
     try {
@@ -123,7 +127,8 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
       await ApiClient.instance.patch('/clinics/${_clinic!.id}', body: {
         'paymentCashEnabled': _cash,
         'paymentUpiEnabled': _upi,
-        if (_upiIdController.text.trim().isNotEmpty) 'paymentUpiId': _upiIdController.text.trim(),
+        if (_upiIdController.text.trim().isNotEmpty)
+          'paymentUpiId': _upiIdController.text.trim(),
         if (_qrUrl != null) 'paymentQrUrl': _qrUrl,
       });
       if (mounted) showSuccessSnack(context, 'Payment setup saved');
@@ -139,100 +144,132 @@ class _DoctorPaymentSetupScreenState extends State<DoctorPaymentSetupScreen> {
     // No own Scaffold/AppBar — only ever embedded as a RoleScaffold nav-item body
     // (doctor_home_screen.dart), which already supplies the app bar.
     return Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-            child: PageHeader(
-              title: 'Payment setup',
-              subtitle: 'Choose how patients can pay at your clinic.',
-            ),
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          child: PageHeader(
+            title: 'Payment setup',
+            subtitle: 'Choose how patients can pay at your clinic.',
           ),
-          Expanded(
-            child: _loading
-          ? const LoadingView()
-          : _loadError != null
-              ? Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: _loadError!, onRetry: _load))
-              : _clinic == null
-                  ? const EmptyStateView(
-                      icon: Icons.storefront_outlined,
-                      title: 'No clinic found for your account yet',
-                      subtitle: 'Add a clinic first from "My clinics" to set up payments.',
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        children: [
-                          SectionCard(
-                            title: 'Accepted payment methods',
-                            child: Column(
-                              children: [
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Accept cash'),
-                                  value: _cash,
-                                  onChanged: (v) => setState(() => _cash = v),
+        ),
+        Expanded(
+          child: _loading
+              ? const LoadingView()
+              : _loadError != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child: ErrorBanner(error: _loadError!, onRetry: _load))
+                  : _clinic == null
+                      ? const EmptyStateView(
+                          icon: Icons.storefront_outlined,
+                          title: 'No clinic found for your account yet',
+                          subtitle:
+                              'Add a clinic first from "My clinics" to set up payments.',
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _load,
+                          child: ListView(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            children: [
+                              SectionCard(
+                                title: 'Accepted payment methods',
+                                child: Column(
+                                  children: [
+                                    Material(
+                                        type: MaterialType.transparency,
+                                        child: SwitchListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          title: const Text('Accept cash'),
+                                          value: _cash,
+                                          onChanged: (v) =>
+                                              setState(() => _cash = v),
+                                        )),
+                                    Material(
+                                        type: MaterialType.transparency,
+                                        child: SwitchListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          title: const Text('Accept UPI'),
+                                          value: _upi,
+                                          onChanged: (v) =>
+                                              setState(() => _upi = v),
+                                        )),
+                                  ],
                                 ),
-                                SwitchListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  title: const Text('Accept UPI'),
-                                  value: _upi,
-                                  onChanged: (v) => setState(() => _upi = v),
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              SectionCard(
+                                title: 'UPI ID',
+                                child: TextField(
+                                  controller: _upiIdController,
+                                  decoration: const InputDecoration(
+                                      hintText: 'e.g. clinicname@upi'),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          SectionCard(
-                            title: 'UPI ID',
-                            child: TextField(
-                              controller: _upiIdController,
-                              decoration: const InputDecoration(hintText: 'e.g. clinicname@upi'),
-                            ),
-                          ),
-                          const SizedBox(height: AppSpacing.md),
-                          SectionCard(
-                            title: 'Payment QR code',
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_qrUrl != null && _qrUrl!.isNotEmpty)
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: CachedNetworkImage(imageUrl: _qrUrl!, width: 160, height: 160, fit: BoxFit.cover),
-                                  )
-                                else
-                                  Container(
-                                    width: 160,
-                                    height: 160,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.border.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(8),
+                              ),
+                              const SizedBox(height: AppSpacing.md),
+                              SectionCard(
+                                title: 'Payment QR code',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (_qrUrl != null && _qrUrl!.isNotEmpty)
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: CachedNetworkImage(
+                                            imageUrl: _qrUrl!,
+                                            width: 160,
+                                            height: 160,
+                                            fit: BoxFit.cover),
+                                      )
+                                    else
+                                      Container(
+                                        width: 160,
+                                        height: 160,
+                                        decoration: BoxDecoration(
+                                          color: context.palette.border
+                                              .withValues(alpha: 0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(Icons.qr_code_2_outlined,
+                                            size: 48,
+                                            color:
+                                                context.palette.textSecondary),
+                                      ),
+                                    const SizedBox(height: AppSpacing.sm),
+                                    OutlinedButton.icon(
+                                      onPressed: _uploadingQr
+                                          ? null
+                                          : _pickAndUploadQr,
+                                      icon: _uploadingQr
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                  strokeWidth: 2))
+                                          : const Icon(Icons.upload_outlined,
+                                              size: 18),
+                                      label: Text(_qrUrl == null
+                                          ? 'Upload QR image'
+                                          : 'Replace QR image'),
                                     ),
-                                    child: const Icon(Icons.qr_code_2_outlined, size: 48, color: AppColors.textSecondary),
-                                  ),
-                                const SizedBox(height: AppSpacing.sm),
-                                OutlinedButton.icon(
-                                  onPressed: _uploadingQr ? null : _pickAndUploadQr,
-                                  icon: _uploadingQr
-                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                      : const Icon(Icons.upload_outlined, size: 18),
-                                  label: Text(_qrUrl == null ? 'Upload QR image' : 'Replace QR image'),
+                                  ],
                                 ),
+                              ),
+                              const SizedBox(height: AppSpacing.lg),
+                              if (_saveError != null) ...[
+                                ErrorBanner(error: _saveError!, onRetry: _save),
+                                const SizedBox(height: AppSpacing.sm),
                               ],
-                            ),
+                              PrimaryButton(
+                                  label: 'Save payment setup',
+                                  onPressed: _save,
+                                  loading: _saving),
+                            ],
                           ),
-                          const SizedBox(height: AppSpacing.lg),
-                          if (_saveError != null) ...[
-                            ErrorBanner(error: _saveError!, onRetry: _save),
-                            const SizedBox(height: AppSpacing.sm),
-                          ],
-                          PrimaryButton(label: 'Save payment setup', onPressed: _save, loading: _saving),
-                        ],
-                      ),
-                    ),
-          ),
-        ],
-      );
+                        ),
+        ),
+      ],
+    );
   }
 }

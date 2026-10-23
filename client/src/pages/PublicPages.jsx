@@ -9,6 +9,7 @@ import { LoadingSkeleton } from '../components/LoadingSkeleton'
 import { GoogleSignInButton } from '../lib/GoogleSignInButton'
 import { useAppStore } from '../store/useAppStore'
 import { usePolling } from '../hooks/usePolling'
+import { ProfileAvatar } from '../components/ProfileAvatar'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
 
@@ -93,7 +94,7 @@ export function SiteHeader() {
           <a href="/#specializations">Specialties</a>
           <a href="/#how-it-works">How it works</a>
           <Link to="/contact">Contact</Link>
-              {authRole ? <Link to={profilePath} className="btn btn-ghost inline-flex items-center gap-2" aria-label="Open profile"><span className="grid h-7 w-7 overflow-hidden place-items-center rounded-full bg-primary-light text-xs font-bold text-primary-dark">{currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${profileName} profile`} className="h-full w-full object-cover" /> : profileInitials}</span><span>{profileName}</span></Link> : <><Link to="/login" className="btn btn-ghost">Log in</Link><Link to="/register" className="btn btn-primary">Get started</Link></>}
+              {authRole ? <Link to={profilePath} className="btn btn-ghost inline-flex items-center gap-2" aria-label="Open profile"><ProfileAvatar src={currentUser?.photoUrl} alt={`${profileName} profile`} fallback={profileInitials} className="h-7 w-7 rounded-full bg-primary-light text-xs font-bold text-primary-dark" /><span>{profileName}</span></Link> : <><Link to="/login" className="btn btn-ghost">Log in</Link><Link to="/register" className="btn btn-primary">Get started</Link></>}
         </nav>
 
         {/* Header Utilities: Theme Toggle & Mobile Menu Hamburger.
@@ -128,7 +129,7 @@ export function SiteHeader() {
               aria-label="Open dashboard"
               title={`${profileName} dashboard`}
             >
-              {currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${profileName} profile`} className="h-full w-full object-cover" /> : profileInitials}
+              <ProfileAvatar src={currentUser?.photoUrl} alt={`${profileName} profile`} fallback={profileInitials} className="h-full w-full rounded-full bg-primary-light text-xs font-bold text-primary-dark" />
             </Link>
           ) : (
             <button
@@ -156,7 +157,7 @@ export function SiteHeader() {
             <a href="/#how-it-works" onClick={() => setMobileOpen(false)} className="rounded-button p-2.5 hover:bg-white">How it works</a>
             <Link to="/contact" onClick={() => setMobileOpen(false)} className="rounded-button p-2.5 hover:bg-white">Contact</Link>
             <div className="flex gap-2 pt-2 border-t border-border">
-              {authRole ? <Link to={profilePath} onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center gap-2 rounded-button border border-border bg-white text-ink font-semibold"><span className="grid h-7 w-7 overflow-hidden place-items-center rounded-full bg-primary-light text-xs font-bold text-primary-dark">{currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${profileName} profile`} className="h-full w-full object-cover" /> : profileInitials}</span>{profileName}</Link> : <><Link to="/login" onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center rounded-button border border-border bg-white text-ink font-semibold">Log in</Link><Link to="/register" onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center rounded-button bg-primary-dark text-white font-semibold">Get started</Link></>}
+              {authRole ? <Link to={profilePath} onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center gap-2 rounded-button border border-border bg-white text-ink font-semibold"><ProfileAvatar src={currentUser?.photoUrl} alt={`${profileName} profile`} fallback={profileInitials} className="h-7 w-7 rounded-full bg-primary-light text-xs font-bold text-primary-dark" />{profileName}</Link> : <><Link to="/login" onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center rounded-button border border-border bg-white text-ink font-semibold">Log in</Link><Link to="/register" onClick={() => setMobileOpen(false)} className="touch-target flex-1 flex items-center justify-center rounded-button bg-primary-dark text-white font-semibold">Get started</Link></>}
             </div>
           </nav>
         </div>
@@ -397,7 +398,7 @@ export function Login() {
             text="continue_with"
           />
           
-          <div className="oauth-divider"><span>or sign in with</span></div>
+          <div className="oauth-divider"><span>or use your email</span></div>
 
           {notice && !error && <p role="status" className="form-message success">{notice}</p>}
           {error && <p role="alert" className="form-message error">{error}</p>}

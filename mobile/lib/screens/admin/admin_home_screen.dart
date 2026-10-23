@@ -78,17 +78,50 @@ class AdminHomeScreen extends StatelessWidget {
         portalTitle: 'Super Admin control panel',
         items: [
           // Super Admin workspace (first 10 items)
-          RoleNavItem(icon: Icons.speed, label: 'Control center', builder: _buildControlCenter),
-          RoleNavItem(icon: Icons.groups_outlined, label: 'People & clinics', builder: _buildEntities),
-          RoleNavItem(icon: Icons.currency_rupee, label: 'Payments & revenue', builder: _buildRevenue),
-          RoleNavItem(icon: Icons.currency_exchange, label: 'Refunds & reconciliation', builder: _buildPaymentOperations),
-          RoleNavItem(icon: Icons.percent_outlined, label: 'Platform charges', builder: _buildCharges),
-          RoleNavItem(icon: Icons.map_outlined, label: 'Cities & service areas', builder: _buildCities),
-          RoleNavItem(icon: Icons.apartment_outlined, label: 'Clinic tenants', builder: _buildClinicTenants),
-          RoleNavItem(icon: Icons.shield_outlined, label: 'Security & activity', builder: _buildActivityLog),
-          RoleNavItem(icon: Icons.campaign_outlined, label: 'Content & broadcasts', builder: _buildBroadcast),
-          RoleNavItem(icon: Icons.settings_outlined, label: 'System settings', builder: _buildSystemSettings),
-          RoleNavItem(icon: Icons.person_outline, label: 'My profile', builder: _buildProfile),
+          RoleNavItem(
+              icon: Icons.speed,
+              label: 'Control center',
+              builder: _buildControlCenter),
+          RoleNavItem(
+              icon: Icons.groups_outlined,
+              label: 'People & clinics',
+              builder: _buildEntities),
+          RoleNavItem(
+              icon: Icons.currency_rupee,
+              label: 'Payments & revenue',
+              builder: _buildRevenue),
+          RoleNavItem(
+              icon: Icons.currency_exchange,
+              label: 'Refunds & reconciliation',
+              builder: _buildPaymentOperations),
+          RoleNavItem(
+              icon: Icons.percent_outlined,
+              label: 'Platform charges',
+              builder: _buildCharges),
+          RoleNavItem(
+              icon: Icons.map_outlined,
+              label: 'Cities & service areas',
+              builder: _buildCities),
+          RoleNavItem(
+              icon: Icons.apartment_outlined,
+              label: 'Clinic tenants',
+              builder: _buildClinicTenants),
+          RoleNavItem(
+              icon: Icons.shield_outlined,
+              label: 'Security & activity',
+              builder: _buildActivityLog),
+          RoleNavItem(
+              icon: Icons.campaign_outlined,
+              label: 'Content & broadcasts',
+              builder: _buildBroadcast),
+          RoleNavItem(
+              icon: Icons.settings_outlined,
+              label: 'System settings',
+              builder: _buildSystemSettings),
+          RoleNavItem(
+              icon: Icons.person_outline,
+              label: 'My profile',
+              builder: _buildProfile),
 
           // Admin workspace divider (items 11-21)
           RoleNavItem(
@@ -97,16 +130,46 @@ class AdminHomeScreen extends StatelessWidget {
             builder: _buildDashboard,
             headerAbove: 'Admin workspace',
           ),
-          RoleNavItem(icon: Icons.medical_services_outlined, label: 'Doctors', builder: _buildDoctors),
-          RoleNavItem(icon: Icons.verified_outlined, label: 'Clinic verification', builder: _buildClinicVerification),
-          RoleNavItem(icon: Icons.people_outline, label: 'Patients', builder: _buildPatients),
-          RoleNavItem(icon: Icons.category_outlined, label: 'Specializations', builder: _buildSpecializations),
-          RoleNavItem(icon: Icons.event_note_outlined, label: 'Appointments', builder: _buildAppointments),
-          RoleNavItem(icon: Icons.rule_folder_outlined, label: 'Booking rules', builder: _buildBookingRules),
-          RoleNavItem(icon: Icons.support_agent_outlined, label: 'Receptionists', builder: _buildReceptionists),
-          RoleNavItem(icon: Icons.star_outline, label: 'Reviews', builder: _buildReviews),
-          RoleNavItem(icon: Icons.report_problem_outlined, label: 'Complaints', builder: _buildComplaints),
-          RoleNavItem(icon: Icons.mail_outline, label: 'Contact inbox', builder: _buildContact),
+          RoleNavItem(
+              icon: Icons.medical_services_outlined,
+              label: 'Doctors',
+              builder: _buildDoctors),
+          RoleNavItem(
+              icon: Icons.verified_outlined,
+              label: 'Clinic verification',
+              builder: _buildClinicVerification),
+          RoleNavItem(
+              icon: Icons.people_outline,
+              label: 'Patients',
+              builder: _buildPatients),
+          RoleNavItem(
+              icon: Icons.category_outlined,
+              label: 'Specializations',
+              builder: _buildSpecializations),
+          RoleNavItem(
+              icon: Icons.event_note_outlined,
+              label: 'Appointments',
+              builder: _buildAppointments),
+          RoleNavItem(
+              icon: Icons.rule_folder_outlined,
+              label: 'Booking rules',
+              builder: _buildBookingRules),
+          RoleNavItem(
+              icon: Icons.support_agent_outlined,
+              label: 'Receptionists',
+              builder: _buildReceptionists),
+          RoleNavItem(
+              icon: Icons.star_outline,
+              label: 'Reviews',
+              builder: _buildReviews),
+          RoleNavItem(
+              icon: Icons.report_problem_outlined,
+              label: 'Complaints',
+              builder: _buildComplaints),
+          RoleNavItem(
+              icon: Icons.mail_outline,
+              label: 'Contact inbox',
+              builder: _buildContact),
         ],
       );
     }
@@ -114,52 +177,118 @@ class AdminHomeScreen extends StatelessWidget {
     return const RoleScaffold(
       portalTitle: 'Admin control panel',
       items: [
-        RoleNavItem(icon: Icons.dashboard_outlined, label: 'Dashboard', builder: _buildDashboard),
-        RoleNavItem(icon: Icons.medical_services_outlined, label: 'Doctors', builder: _buildDoctors),
-        RoleNavItem(icon: Icons.people_outline, label: 'Patients', builder: _buildPatients),
-        RoleNavItem(icon: Icons.support_agent_outlined, label: 'Receptionists', builder: _buildReceptionists),
-        RoleNavItem(icon: Icons.local_hospital_outlined, label: 'Clinics', builder: _buildClinics),
-        RoleNavItem(icon: Icons.map_outlined, label: 'Cities & areas', builder: _buildCities),
-        RoleNavItem(icon: Icons.category_outlined, label: 'Specializations', builder: _buildSpecializations),
-        RoleNavItem(icon: Icons.event_note_outlined, label: 'Appointments', builder: _buildAppointments),
-        RoleNavItem(icon: Icons.receipt_long_outlined, label: 'Revenue', builder: _buildRevenue),
-        RoleNavItem(icon: Icons.currency_exchange, label: 'Refunds & reconciliation', builder: _buildPaymentOperations),
-        RoleNavItem(icon: Icons.star_outline, label: 'Review moderation', builder: _buildReviews),
-        RoleNavItem(icon: Icons.report_problem_outlined, label: 'Complaints', builder: _buildComplaints),
-        RoleNavItem(icon: Icons.mail_outline, label: 'Contact inbox', builder: _buildContact),
-        RoleNavItem(icon: Icons.notifications_none, label: 'Notifications', builder: _buildBroadcast),
-        RoleNavItem(icon: Icons.history, label: 'Activity logs', builder: _buildActivityLog),
-        RoleNavItem(icon: Icons.settings_outlined, label: 'Settings', builder: _buildSettings),
-        RoleNavItem(icon: Icons.person_outline, label: 'My profile', builder: _buildProfile),
+        RoleNavItem(
+            icon: Icons.dashboard_outlined,
+            label: 'Dashboard',
+            builder: _buildDashboard),
+        RoleNavItem(
+            icon: Icons.medical_services_outlined,
+            label: 'Doctors',
+            builder: _buildDoctors),
+        RoleNavItem(
+            icon: Icons.people_outline,
+            label: 'Patients',
+            builder: _buildPatients),
+        RoleNavItem(
+            icon: Icons.support_agent_outlined,
+            label: 'Receptionists',
+            builder: _buildReceptionists),
+        RoleNavItem(
+            icon: Icons.local_hospital_outlined,
+            label: 'Clinics',
+            builder: _buildClinics),
+        RoleNavItem(
+            icon: Icons.map_outlined,
+            label: 'Cities & areas',
+            builder: _buildCities),
+        RoleNavItem(
+            icon: Icons.category_outlined,
+            label: 'Specializations',
+            builder: _buildSpecializations),
+        RoleNavItem(
+            icon: Icons.event_note_outlined,
+            label: 'Appointments',
+            builder: _buildAppointments),
+        RoleNavItem(
+            icon: Icons.receipt_long_outlined,
+            label: 'Revenue',
+            builder: _buildRevenue),
+        RoleNavItem(
+            icon: Icons.currency_exchange,
+            label: 'Refunds & reconciliation',
+            builder: _buildPaymentOperations),
+        RoleNavItem(
+            icon: Icons.star_outline,
+            label: 'Review moderation',
+            builder: _buildReviews),
+        RoleNavItem(
+            icon: Icons.report_problem_outlined,
+            label: 'Complaints',
+            builder: _buildComplaints),
+        RoleNavItem(
+            icon: Icons.mail_outline,
+            label: 'Contact inbox',
+            builder: _buildContact),
+        RoleNavItem(
+            icon: Icons.notifications_none,
+            label: 'Notifications',
+            builder: _buildBroadcast),
+        RoleNavItem(
+            icon: Icons.history,
+            label: 'Activity logs',
+            builder: _buildActivityLog),
+        RoleNavItem(
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            builder: _buildSettings),
+        RoleNavItem(
+            icon: Icons.person_outline,
+            label: 'My profile',
+            builder: _buildProfile),
       ],
     );
   }
 }
 
 // Superadmin specific builders
-Widget _buildControlCenter(BuildContext context) => const SuperAdminDashboardScreen();
+Widget _buildControlCenter(BuildContext context) =>
+    const SuperAdminDashboardScreen();
 Widget _buildEntities(BuildContext context) => const SuperAdminEntitiesScreen();
-Widget _buildCharges(BuildContext context) => const AdminPlatformSettingsScreen(focusSection: AdminSettingsSection.charges);
-Widget _buildClinicTenants(BuildContext context) => const AdminClinicsScreen(initialTabIndex: 1);
-Widget _buildSystemSettings(BuildContext context) => const AdminPlatformSettingsScreen(focusSection: AdminSettingsSection.settings);
-Widget _buildClinicVerification(BuildContext context) => const AdminClinicsScreen(initialTabIndex: 0, verificationOnly: true);
-Widget _buildBookingRules(BuildContext context) => const AdminPlatformSettingsScreen(focusSection: AdminSettingsSection.bookingRules);
+Widget _buildCharges(BuildContext context) => const AdminPlatformSettingsScreen(
+    focusSection: AdminSettingsSection.charges);
+Widget _buildClinicTenants(BuildContext context) =>
+    const AdminClinicsScreen(initialTabIndex: 1);
+Widget _buildSystemSettings(BuildContext context) =>
+    const AdminPlatformSettingsScreen(
+        focusSection: AdminSettingsSection.settings);
+Widget _buildClinicVerification(BuildContext context) =>
+    const AdminClinicsScreen(initialTabIndex: 0, verificationOnly: true);
+Widget _buildBookingRules(BuildContext context) =>
+    const AdminPlatformSettingsScreen(
+        focusSection: AdminSettingsSection.bookingRules);
 
 // Shared Admin & Superadmin builders
 Widget _buildDashboard(BuildContext context) => const AdminDashboardScreen();
 Widget _buildDoctors(BuildContext context) => const AdminDoctorsScreen();
 Widget _buildPatients(BuildContext context) => const AdminPatientsScreen();
-Widget _buildReceptionists(BuildContext context) => const AdminReceptionistsScreen();
+Widget _buildReceptionists(BuildContext context) =>
+    const AdminReceptionistsScreen();
 Widget _buildClinics(BuildContext context) => const AdminClinicsScreen();
-Widget _buildCities(BuildContext context) => const AdminGeographyScreen(focusSpecializations: false);
-Widget _buildSpecializations(BuildContext context) => const AdminGeographyScreen(focusSpecializations: true);
-Widget _buildAppointments(BuildContext context) => const AdminAppointmentsScreen();
+Widget _buildCities(BuildContext context) =>
+    const AdminGeographyScreen(focusSpecializations: false);
+Widget _buildSpecializations(BuildContext context) =>
+    const AdminGeographyScreen(focusSpecializations: true);
+Widget _buildAppointments(BuildContext context) =>
+    const AdminAppointmentsScreen();
 Widget _buildRevenue(BuildContext context) => const AdminRevenueReportsScreen();
-Widget _buildPaymentOperations(BuildContext context) => const AdminPaymentOperationsScreen();
+Widget _buildPaymentOperations(BuildContext context) =>
+    const AdminPaymentOperationsScreen();
 Widget _buildReviews(BuildContext context) => const AdminReviewsScreen();
 Widget _buildComplaints(BuildContext context) => const AdminComplaintsScreen();
 Widget _buildContact(BuildContext context) => const AdminContactScreen();
 Widget _buildBroadcast(BuildContext context) => const AdminBroadcastScreen();
-Widget _buildActivityLog(BuildContext context) => const AdminActivityLogScreen();
-Widget _buildSettings(BuildContext context) => const AdminPlatformSettingsScreen();
+Widget _buildActivityLog(BuildContext context) =>
+    const AdminActivityLogScreen();
+Widget _buildSettings(BuildContext context) =>
+    const AdminPlatformSettingsScreen();
 Widget _buildProfile(BuildContext context) => const ProfileScreen();

@@ -10,7 +10,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Portal Nav & Feature Parity Tests', () {
-    testWidgets('PatientHomeScreen exposes all patient workflows', (tester) async {
+    testWidgets('PatientHomeScreen exposes all patient workflows',
+        (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -23,12 +24,12 @@ void main() {
         ),
       );
 
-      final roleScaffold = const PatientHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 12);
+      final roleScaffold =
+          const PatientHomeScreen().build(capturedContext) as RoleScaffold;
+      expect(roleScaffold.items.length, 11);
 
       final expectedLabels = [
         'Dashboard',
-        'Find doctors',
         'Book appointment',
         'My appointments',
         'Queue tracker',
@@ -51,7 +52,8 @@ void main() {
       }
     });
 
-    testWidgets('DoctorHomeScreen matches the web doctor navigation', (tester) async {
+    testWidgets('DoctorHomeScreen matches the web doctor navigation',
+        (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -64,14 +66,14 @@ void main() {
         ),
       );
 
-      final roleScaffold = const DoctorHomeScreen().build(capturedContext) as RoleScaffold;
+      final roleScaffold =
+          const DoctorHomeScreen().build(capturedContext) as RoleScaffold;
       expect(roleScaffold.items.length, 12);
 
       final expectedLabels = [
         'Dashboard',
         'Queue management',
         'Appointments',
-        'Consultation & EMR',
         'Analytics',
         'Patient reviews',
         'Notifications',
@@ -79,6 +81,7 @@ void main() {
         'OPD schedule',
         'Receptionists',
         'Reports',
+        'Help & Policies',
         'My profile',
       ];
 
@@ -92,7 +95,9 @@ void main() {
       }
     });
 
-    testWidgets('ReceptionistHomeScreen matches the web receptionist navigation', (tester) async {
+    testWidgets(
+        'ReceptionistHomeScreen matches the web receptionist navigation',
+        (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -105,8 +110,9 @@ void main() {
         ),
       );
 
-      final roleScaffold = const ReceptionistHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 11);
+      final roleScaffold =
+          const ReceptionistHomeScreen().build(capturedContext) as RoleScaffold;
+      expect(roleScaffold.items.length, 12);
 
       final expectedLabels = [
         'Dashboard',
@@ -119,6 +125,7 @@ void main() {
         'Patients',
         'Notifications',
         'Reports',
+        'Help & Policies',
         'My profile',
       ];
 
@@ -132,7 +139,8 @@ void main() {
       }
     });
 
-    testWidgets('AdminHomeScreen for Admin includes payment operations', (tester) async {
+    testWidgets('AdminHomeScreen for Admin includes payment operations',
+        (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -145,7 +153,8 @@ void main() {
         ),
       );
 
-      final roleScaffold = const AdminHomeScreen(isSuperAdmin: false).build(capturedContext) as RoleScaffold;
+      final roleScaffold = const AdminHomeScreen(isSuperAdmin: false)
+          .build(capturedContext) as RoleScaffold;
       expect(roleScaffold.portalTitle, 'Admin control panel');
       expect(roleScaffold.items.length, 17);
 
@@ -179,7 +188,8 @@ void main() {
       }
     });
 
-    testWidgets('AdminHomeScreen for Superadmin includes payment operations', (tester) async {
+    testWidgets('AdminHomeScreen for Superadmin includes payment operations',
+        (tester) async {
       late BuildContext capturedContext;
       await tester.pumpWidget(
         MaterialApp(
@@ -192,7 +202,8 @@ void main() {
         ),
       );
 
-      final roleScaffold = const AdminHomeScreen(isSuperAdmin: true).build(capturedContext) as RoleScaffold;
+      final roleScaffold = const AdminHomeScreen(isSuperAdmin: true)
+          .build(capturedContext) as RoleScaffold;
       expect(roleScaffold.portalTitle, 'Super Admin control panel');
       expect(roleScaffold.items.length, 22);
 

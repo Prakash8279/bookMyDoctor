@@ -5,6 +5,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'routing/app_router.dart';
 import 'state/auth_provider.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_preference.dart';
 
 /// Crash reporting (Sentry) is entirely opt-in and OFF by default — mirrors
 /// config/env.dart's own `String.fromEnvironment` pattern for build-time config rather than
@@ -35,35 +36,59 @@ Future<void> main() async {
   );
 }
 
-class BookADoctorsApp extends StatelessWidget {
+class BookADoctorsApp extends StatefulWidget {
   const BookADoctorsApp({super.key});
+
+  @override
+  State<BookADoctorsApp> createState() => _BookADoctorsAppState();
+}
+
+class _BookADoctorsAppState extends State<BookADoctorsApp> {
+  final _appearance = ThemePreference();
+  @override
+  void initState() {
+    super.initState();
+    _appearance.load();
+  }
+
+  @override
+  void dispose() {
+    _appearance.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => AuthProvider()..bootstrap(),
-      child: MaterialApp(
-        title: 'BookADoctors',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        builder: (context, child) {
-          final mediaQuery = MediaQuery.of(context);
-          // Clamp text scaling between 0.85 and 1.15 to ensure compatibility
-          // across different phone screen sizes and OS accessibility font settings,
-          // preventing RenderFlex overflows on devices with huge display scales.
-          return MediaQuery(
-            data: mediaQuery.copyWith(
-              textScaler: mediaQuery.textScaler.clamp(
-                minScaleFactor: 0.85,
-                maxScaleFactor: 1.15,
-              ),
-            ),
-            child: child ?? const SizedBox.shrink(),
-          );
-        },
-        onGenerateRoute: onGenerateRoute,
-        home: const AppRoot(),
-      ),
+      child: ThemePreferenceScope(
+          preference: _appearance,
+          child: AnimatedBuilder(
+              animation: _appearance,
+              builder: (context, _) => MaterialApp(
+                    title: 'BookADoctors',
+                    debugShowCheckedModeBanner: false,
+                    theme: AppTheme.light,
+                    darkTheme: AppTheme.dark,
+                    themeMode: _appearance.mode,
+                    builder: (context, child) {
+                      final mediaQuery = MediaQuery.of(context);
+                      // Clamp text scaling between 0.85 and 1.15 to ensure compatibility
+                      // across different phone screen sizes and OS accessibility font settings,
+                      // preventing RenderFlex overflows on devices with huge display scales.
+                      return MediaQuery(
+                        data: mediaQuery.copyWith(
+                          textScaler: mediaQuery.textScaler.clamp(
+                            minScaleFactor: 0.85,
+                            maxScaleFactor: 1.15,
+                          ),
+                        ),
+                        child: child ?? const SizedBox.shrink(),
+                      );
+                    },
+                    onGenerateRoute: onGenerateRoute,
+                    home: const AppRoot(),
+                  ))),
     );
   }
 }

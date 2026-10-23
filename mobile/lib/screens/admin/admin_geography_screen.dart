@@ -38,8 +38,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<City>> _fetchCities() async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/cities', query: {'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+          .get('/geography/cities', query: {'pageSize': 100});
       final list = <City>[];
       for (final item in res.list) {
         try {
@@ -55,8 +54,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<Specialization>> _fetchSpecializations() async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/specializations', query: {'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+          .get('/geography/specializations', query: {'pageSize': 100});
       final list = <Specialization>[];
       for (final item in res.list) {
         try {
@@ -72,8 +70,7 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<List<Area>> _fetchAreas(String cityId) async {
     try {
       final res = await ApiClient.instance
-          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100});
       final list = <Area>[];
       for (final item in res.list) {
         try {
@@ -115,14 +112,23 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'City name')),
+              TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'City name')),
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: stateCtrl, decoration: const InputDecoration(labelText: 'State (optional)')),
+              TextField(
+                  controller: stateCtrl,
+                  decoration:
+                      const InputDecoration(labelText: 'State (optional)')),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Add')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Add')),
           ],
         ),
       );
@@ -154,22 +160,34 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Area name')),
+              TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Area name')),
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: pincodeCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Pincode (optional, 6 digits)')),
+              TextField(
+                  controller: pincodeCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Pincode (optional, 6 digits)')),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Add')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Add')),
           ],
         ),
       );
       if (saved != true || nameCtrl.text.trim().isEmpty) return;
       try {
-        await ApiClient.instance.post('/geography/cities/${_areaCity!.id}/areas', body: {
+        await ApiClient.instance
+            .post('/geography/cities/${_areaCity!.id}/areas', body: {
           'name': nameCtrl.text.trim(),
-          if (pincodeCtrl.text.trim().isNotEmpty) 'pincode': pincodeCtrl.text.trim(),
+          if (pincodeCtrl.text.trim().isNotEmpty)
+            'pincode': pincodeCtrl.text.trim(),
         });
         _loadAreas(_areaCity!.id);
       } catch (err) {
@@ -196,16 +214,29 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name')),
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: descriptionCtrl, maxLines: 2, decoration: const InputDecoration(labelText: 'Description (optional)')),
+              TextField(
+                  controller: descriptionCtrl,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                      labelText: 'Description (optional)')),
               const SizedBox(height: AppSpacing.sm),
-              TextField(controller: iconCtrl, decoration: const InputDecoration(labelText: 'Icon (optional)')),
+              TextField(
+                  controller: iconCtrl,
+                  decoration:
+                      const InputDecoration(labelText: 'Icon (optional)')),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Add')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Add')),
           ],
         ),
       );
@@ -214,7 +245,8 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
         await ApiClient.instance.post('/geography/specializations', body: {
           'name': nameCtrl.text.trim(),
           if (iconCtrl.text.trim().isNotEmpty) 'icon': iconCtrl.text.trim(),
-          if (descriptionCtrl.text.trim().isNotEmpty) 'description': descriptionCtrl.text.trim(),
+          if (descriptionCtrl.text.trim().isNotEmpty)
+            'description': descriptionCtrl.text.trim(),
         });
         _loadSpecializations();
       } catch (err) {
@@ -234,8 +266,12 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
         title: Text('Delete $label?'),
         content: const Text('This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -257,7 +293,8 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
     if (_areaCity == null) return;
     if (!await _confirmDelete(area.name)) return;
     try {
-      await ApiClient.instance.delete('/geography/cities/${_areaCity!.id}/areas/${area.id}');
+      await ApiClient.instance
+          .delete('/geography/cities/${_areaCity!.id}/areas/${area.id}');
       _loadAreas(_areaCity!.id);
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -267,7 +304,8 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
   Future<void> _deleteSpecialization(Specialization specialization) async {
     if (!await _confirmDelete(specialization.name)) return;
     try {
-      await ApiClient.instance.delete('/geography/specializations/${specialization.id}');
+      await ApiClient.instance
+          .delete('/geography/specializations/${specialization.id}');
       _loadSpecializations();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -286,13 +324,21 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
           ),
           SectionCard(
             title: 'Specializations',
-            trailing: TextButton.icon(onPressed: _addSpecialization, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+            trailing: TextButton.icon(
+                onPressed: _addSpecialization,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add')),
             child: FutureBuilder<List<Specialization>>(
               future: _specializationsFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 final items = snapshot.data ?? [];
-                if (items.isEmpty) return const Text('No specializations yet', style: TextStyle(color: AppColors.textSecondary));
+                if (items.isEmpty) {
+                  return Text('No specializations yet',
+                      style: TextStyle(color: context.palette.textSecondary));
+                }
                 return Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -322,19 +368,28 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
         ),
         SectionCard(
           title: 'Cities',
-          trailing: TextButton.icon(onPressed: _addCity, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+          trailing: TextButton.icon(
+              onPressed: _addCity,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add')),
           child: FutureBuilder<List<City>>(
             future: _citiesFuture,
             builder: (context, snapshot) {
               final cities = snapshot.data ?? [];
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-              if (cities.isEmpty) return const Text('No cities yet', style: TextStyle(color: AppColors.textSecondary));
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (cities.isEmpty) {
+                return Text('No cities yet',
+                    style: TextStyle(color: context.palette.textSecondary));
+              }
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: cities
                     .map((c) => Chip(
-                          label: Text('${c.name}${c.state != null ? ", ${c.state}" : ""}'),
+                          label: Text(
+                              '${c.name}${c.state != null ? ", ${c.state}" : ""}'),
                           onDeleted: () => _deleteCity(c),
                           deleteIcon: const Icon(Icons.close, size: 16),
                         ))
@@ -346,7 +401,10 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
         const SizedBox(height: AppSpacing.md),
         SectionCard(
           title: 'Areas',
-          trailing: TextButton.icon(onPressed: _areaCity == null ? null : _addArea, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+          trailing: TextButton.icon(
+              onPressed: _areaCity == null ? null : _addArea,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add')),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -355,10 +413,17 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
                 builder: (context, snapshot) {
                   final cities = snapshot.data ?? [];
                   return DropdownButtonFormField<City>(
-                    initialValue: _areaCity != null && cities.any((c) => c.id == _areaCity!.id) ? cities.firstWhere((c) => c.id == _areaCity!.id) : null,
+                    initialValue: _areaCity != null &&
+                            cities.any((c) => c.id == _areaCity!.id)
+                        ? cities.firstWhere((c) => c.id == _areaCity!.id)
+                        : null,
                     isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Pick a city to view/add areas'),
-                    items: cities.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+                    decoration: const InputDecoration(
+                        labelText: 'Pick a city to view/add areas'),
+                    items: cities
+                        .map((c) =>
+                            DropdownMenuItem(value: c, child: Text(c.name)))
+                        .toList(),
                     onChanged: (c) {
                       setState(() => _areaCity = c);
                       if (c != null) _loadAreas(c.id);
@@ -371,15 +436,22 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
                 FutureBuilder<List<Area>>(
                   future: _areasFuture,
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const LoadingView();
+                    }
                     final areas = snapshot.data ?? [];
-                    if (areas.isEmpty) return const Text('No areas yet in this city', style: TextStyle(color: AppColors.textSecondary));
+                    if (areas.isEmpty) {
+                      return Text('No areas yet in this city',
+                          style:
+                              TextStyle(color: context.palette.textSecondary));
+                    }
                     return Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: areas
                           .map((a) => Chip(
-                                label: Text('${a.name}${a.pincode != null ? " (${a.pincode})" : ""}'),
+                                label: Text(
+                                    '${a.name}${a.pincode != null ? " (${a.pincode})" : ""}'),
                                 onDeleted: () => _deleteArea(a),
                                 deleteIcon: const Icon(Icons.close, size: 16),
                               ))
@@ -393,13 +465,21 @@ class _AdminGeographyScreenState extends State<AdminGeographyScreen> {
         const SizedBox(height: AppSpacing.md),
         SectionCard(
           title: 'Specializations',
-          trailing: TextButton.icon(onPressed: _addSpecialization, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
+          trailing: TextButton.icon(
+              onPressed: _addSpecialization,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add')),
           child: FutureBuilder<List<Specialization>>(
             future: _specializationsFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               final items = snapshot.data ?? [];
-              if (items.isEmpty) return const Text('No specializations yet', style: TextStyle(color: AppColors.textSecondary));
+              if (items.isEmpty) {
+                return Text('No specializations yet',
+                    style: TextStyle(color: context.palette.textSecondary));
+              }
               return Wrap(
                 spacing: 8,
                 runSpacing: 8,

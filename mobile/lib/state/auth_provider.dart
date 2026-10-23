@@ -56,7 +56,8 @@ class AuthProvider extends ChangeNotifier {
   Future<bool> login(String email, String password) async {
     lastError = null;
     try {
-      final res = await _api.post('/auth/login', body: {'email': email, 'password': password});
+      final res = await _api
+          .post('/auth/login', body: {'email': email, 'password': password});
       final data = res.map;
       final tokens = TokenPair.fromJson(data);
       await TokenStore.instance.save(tokens);
@@ -160,7 +161,8 @@ class AuthProvider extends ChangeNotifier {
     final tokens = TokenStore.instance.current;
     try {
       if (tokens != null) {
-        await _api.post('/auth/logout', body: {'refreshToken': tokens.refreshToken});
+        await _api
+            .post('/auth/logout', body: {'refreshToken': tokens.refreshToken});
       }
     } catch (_) {
       // Fire-and-forget per integration_plan.md §1.1 — logout must still

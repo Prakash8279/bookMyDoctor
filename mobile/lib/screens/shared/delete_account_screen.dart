@@ -43,7 +43,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   Future<void> _submit() async {
     if (!_confirmed) {
-      setState(() => _error = 'Please confirm the checkbox below before submitting — this tells us you understand deletion cannot be undone.');
+      setState(() => _error =
+          'Please confirm the checkbox below before submitting — this tells us you understand deletion cannot be undone.');
       return;
     }
     setState(() {
@@ -55,7 +56,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     final messageLines = [
       'Account email to delete: ${user?.email ?? ''}',
       if (auth.role.isNotEmpty) 'Account type: ${auth.role}',
-      if (_reasonController.text.trim().isNotEmpty) 'Reason (optional): ${_reasonController.text.trim()}',
+      if (_reasonController.text.trim().isNotEmpty)
+        'Reason (optional): ${_reasonController.text.trim()}',
       'Confirmation: user has confirmed they understand this request is permanent, subject to the retained-records exceptions described on the deletion request screen.',
     ];
     try {
@@ -86,13 +88,16 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           // Mirrors web's AccountDeletion.jsx: kicker "Account settings", h1 "Request account &
           // data deletion" — its own lede paragraph is kept below as the existing body text
           // rather than duplicated into PageHeader's one-line subtitle.
-          const PageHeader(kicker: 'Account settings', title: 'Request account & data deletion'),
+          const PageHeader(
+              kicker: 'Account settings',
+              title: 'Request account & data deletion'),
           if (_sent)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
               child: Column(
                 children: [
-                  const Icon(Icons.check_circle_outline, size: 48, color: AppColors.success),
+                  Icon(Icons.check_circle_outline,
+                      size: 48, color: context.palette.success),
                   const SizedBox(height: AppSpacing.md),
                   const Text(
                     'Request received. Our team will verify and process it, and may contact you at your account '
@@ -100,56 +105,65 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  OutlinedButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Back to profile')),
+                  OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Back to profile')),
                 ],
               ),
             )
           else ...[
-                const Text(
-                  'You can request deletion of your BookADoctors account and the personal data associated with '
-                  'it, whether or not you still have the app installed. Simply uninstalling the app does not '
-                  'delete your account or your data — please submit a request below.',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                SectionCard(
-                  title: 'What happens after you submit a request',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Our team verifies the request against your account email, then deletes your account and '
-                        'associated personal data within 30 days. A few things are kept even after deletion, for '
-                        'legal or recordkeeping reasons:',
+            Text(
+              'You can request deletion of your BookADoctors account and the personal data associated with '
+              'it, whether or not you still have the app installed. Simply uninstalling the app does not '
+              'delete your account or your data — please submit a request below.',
+              style: TextStyle(color: context.palette.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            SectionCard(
+              title: 'What happens after you submit a request',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Our team verifies the request against your account email, then deletes your account and '
+                    'associated personal data within 30 days. A few things are kept even after deletion, for '
+                    'legal or recordkeeping reasons:',
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  for (final item in _retainedItems)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('•  '),
+                          Expanded(
+                              child: Text(item,
+                                  style: const TextStyle(fontSize: 13))),
+                        ],
                       ),
-                      const SizedBox(height: AppSpacing.sm),
-                      for (final item in _retainedItems)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: AppSpacing.xs),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('•  '),
-                              Expanded(child: Text(item, style: const TextStyle(fontSize: 13))),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-                TextField(
-                  controller: _reasonController,
-                  decoration: const InputDecoration(
-                    labelText: 'Reason (optional)',
-                    hintText: 'Helps us improve, does not affect your request',
-                    alignLabelWithHint: true,
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                CheckboxListTile(
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            if (_error != null) ...[
+              ErrorBanner(error: _error!),
+              const SizedBox(height: AppSpacing.md)
+            ],
+            TextField(
+              controller: _reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                hintText: 'Helps us improve, does not affect your request',
+                alignLabelWithHint: true,
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Material(
+                type: MaterialType.transparency,
+                child: CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   controlAffinity: ListTileControlAffinity.leading,
                   value: _confirmed,
@@ -159,10 +173,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     '(subject to the exceptions above), and this cannot be undone.',
                     style: TextStyle(fontSize: 13),
                   ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                PrimaryButton(label: 'Submit deletion request', onPressed: _submit, loading: _submitting),
-              ],
+                )),
+            const SizedBox(height: AppSpacing.md),
+            PrimaryButton(
+                label: 'Submit deletion request',
+                onPressed: _submit,
+                loading: _submitting),
+          ],
           // Mirrors AccountDeletion.jsx's closing "Prefer email?" note, pointing at the same
           // inbox this form's request lands in via POST /contact.
           const Padding(
@@ -174,10 +191,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Prefer email? Send the same details to support@bookadoctors.com with the subject '
                   '"Account & data deletion request".',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: TextStyle(
+                      color: context.palette.textSecondary, fontSize: 13),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -185,7 +203,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                     onPressed: () => launchUrl(Uri(
                       scheme: 'mailto',
                       path: 'support@bookadoctors.com',
-                      query: 'subject=${Uri.encodeComponent('Account & data deletion request')}',
+                      query:
+                          'subject=${Uri.encodeComponent('Account & data deletion request')}',
                     )),
                     child: const Text('Email support@bookadoctors.com'),
                   ),

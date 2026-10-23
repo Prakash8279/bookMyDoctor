@@ -9,7 +9,15 @@ import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
 
-const _weekdayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const _weekdayNames = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+];
 
 /// OPD schedule management — the real destination for the old mock's single
 /// `opdEntries` array, now split into two backend resources
@@ -21,7 +29,8 @@ class DoctorClinicHoursScreen extends StatefulWidget {
   const DoctorClinicHoursScreen({super.key});
 
   @override
-  State<DoctorClinicHoursScreen> createState() => _DoctorClinicHoursScreenState();
+  State<DoctorClinicHoursScreen> createState() =>
+      _DoctorClinicHoursScreenState();
 }
 
 class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
@@ -34,7 +43,15 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   // below already keeps the actual data current).
   String _refreshedAt = DateFormat('h:mm a').format(DateTime.now());
 
-  void _refresh() => setState(() => _refreshedAt = DateFormat('h:mm a').format(DateTime.now()));
+  void _refresh() {
+    setState(() {
+      _refreshedAt = DateFormat('h:mm a').format(DateTime.now());
+      _clinicsFuture = _fetchClinics();
+      if (_selectedClinic != null) {
+        _hoursFuture = _loadHours(_selectedClinic!.id);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -45,8 +62,7 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   Future<List<Clinic>> _fetchClinics() async {
     try {
       final res = await ApiClient.instance
-          .get('/clinics', query: {'mine': true, 'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+          .getAll('/clinics', query: {'mine': true, 'pageSize': 50});
       final list = <Clinic>[];
       for (final item in res.list) {
         try {
@@ -55,7 +71,7 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -69,12 +85,10 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   Future<_HoursData> _loadHours(String clinicId) async {
     final selfId = context.read<AuthProvider>().user?.id ?? '';
     final results = await Future.wait([
-      ApiClient.instance
-          .get('/clinics/$clinicId/hours', query: {'doctorId': selfId, 'pageSize': 20})
-          .catchError((_) => ApiResponse(data: [])),
-      ApiClient.instance
-          .get('/clinics/$clinicId/closures', query: {'doctorId': selfId, 'pageSize': 50})
-          .catchError((_) => ApiResponse(data: [])),
+      ApiClient.instance.getAll('/clinics/$clinicId/hours',
+          query: {'doctorId': selfId, 'pageSize': 20}),
+      ApiClient.instance.getAll('/clinics/$clinicId/closures',
+          query: {'doctorId': selfId, 'pageSize': 50}),
     ]);
     final hours = <ClinicHours>[];
     for (final item in results[0].list) {
@@ -96,7 +110,9 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
 
   void _refreshHours() {
     if (_selectedClinic != null) {
-      setState(() => _hoursFuture = _loadHours(_selectedClinic!.id));
+      setState(() {
+        _hoursFuture = _loadHours(_selectedClinic!.id);
+      });
     }
   }
 
@@ -104,14 +120,16 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _HoursForm(clinicId: _selectedClinic!.id, weekday: weekday, existing: existing),
+      builder: (_) => _HoursForm(
+          clinicId: _selectedClinic!.id, weekday: weekday, existing: existing),
     );
     if (saved == true) _refreshHours();
   }
 
   Future<void> _deleteHours(ClinicHours h) async {
     try {
-      await ApiClient.instance.delete('/clinics/${_selectedClinic!.id}/hours/${h.id}');
+      await ApiClient.instance
+          .delete('/clinics/${_selectedClinic!.id}/hours/${h.id}');
       _refreshHours();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -129,7 +147,8 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
 
   Future<void> _deleteClosure(ClinicClosure c) async {
     try {
-      await ApiClient.instance.delete('/clinics/${_selectedClinic!.id}/closures/${c.id}');
+      await ApiClient.instance
+          .delete('/clinics/${_selectedClinic!.id}/closures/${c.id}');
       _refreshHours();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -145,12 +164,37 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
     var displayId = 0;
     final rows = <List<dynamic>>[
       for (final h in data.hours)
-        [++displayId, 'weekly OPD', clinicName, _weekdayNames[h.weekday], '${h.startTime}-${h.endTime}', '${h.slotMinutes} min', h.status],
-      for (final c in data.closures) [++displayId, 'closing date', clinicName, c.closedDate, c.reason ?? '', '', 'closed'],
+        [
+          ++displayId,
+          'weekly OPD',
+          clinicName,
+          _weekdayNames[h.weekday],
+          '${h.startTime}-${h.endTime}',
+          '${h.slotMinutes} min',
+          h.status
+        ],
+      for (final c in data.closures)
+        [
+          ++displayId,
+          'closing date',
+          clinicName,
+          c.closedDate,
+          c.reason ?? '',
+          '',
+          'closed'
+        ],
     ];
     await shareCsv(
       filename: 'opd-schedule.csv',
-      headers: const ['Id', 'Type', 'Clinic', 'Day/Date', 'Hours/Reason', 'Patient time', 'Status'],
+      headers: const [
+        'Id',
+        'Type',
+        'Clinic',
+        'Day/Date',
+        'Hours/Reason',
+        'Patient time',
+        'Status'
+      ],
       rows: rows,
     );
   }
@@ -158,14 +202,17 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: SingleChildScrollView(
+          child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               kicker: 'Production database',
               title: 'OPD schedule',
-              subtitle: "Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates.",
+              subtitle:
+                  "Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates.",
               // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action had no mobile
               // equivalent; the "Live · {time}"/Refresh pair (round 2 audit) was also missing.
               action: Wrap(
@@ -173,121 +220,187 @@ class _DoctorClinicHoursScreenState extends State<DoctorClinicHoursScreen> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: AppColors.success.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(999)),
-                    child: Text('Live · $_refreshedAt', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.success)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                        color: context.palette.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(999)),
+                    child: Text('Live · $_refreshedAt',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: context.palette.success)),
                   ),
                   OutlinedButton(
                     onPressed: _refresh,
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), textStyle: const TextStyle(fontSize: 11)),
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 11)),
                     child: const Text('Refresh'),
                   ),
                   if (_selectedClinic != null)
-                    TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.file_download_outlined, size: 16), label: const Text('Export CSV')),
+                    TextButton.icon(
+                        onPressed: _exportCsv,
+                        icon:
+                            const Icon(Icons.file_download_outlined, size: 16),
+                        label: const Text('Export CSV')),
                 ],
               ),
             ),
           ),
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: _BookingWindowCard(),
           ),
-          Expanded(
-            child: FutureBuilder<List<Clinic>>(
-        future: _clinicsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-          if (snapshot.hasError) return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!));
-          final clinics = snapshot.data ?? [];
-          if (clinics.isEmpty) {
-            return const EmptyStateView(
-              icon: Icons.local_hospital_outlined,
-              title: 'No clinics linked yet',
-              subtitle: 'Ask an admin to link you to a clinic, or add one from "My Clinics"',
-            );
-          }
-          _selectedClinic ??= clinics.first;
-          _hoursFuture ??= _loadHours(_selectedClinic!.id);
+          FutureBuilder<List<Clinic>>(
+            future: _clinicsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: ErrorBanner(error: snapshot.error!));
+              }
+              final clinics = snapshot.data ?? [];
+              if (clinics.isEmpty) {
+                return const EmptyStateView(
+                  icon: Icons.local_hospital_outlined,
+                  title: 'No clinics linked yet',
+                  subtitle:
+                      'Ask an admin to link you to a clinic, or add one from "My Clinics"',
+                );
+              }
+              _selectedClinic ??= clinics.first;
+              _hoursFuture ??= _loadHours(_selectedClinic!.id);
 
-          return ListView(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            children: [
-              DropdownButtonFormField<Clinic>(
-                initialValue: clinics.firstWhere((c) => c.id == _selectedClinic!.id, orElse: () => clinics.first),
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Clinic'),
-                items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (c) {
-                  if (c != null) _selectClinic(c);
-                },
-              ),
-              const SizedBox(height: AppSpacing.md),
-              FutureBuilder<_HoursData>(
-                future: _hoursFuture,
-                builder: (context, hSnap) {
-                  if (hSnap.connectionState != ConnectionState.done) {
-                    return const Padding(padding: EdgeInsets.only(top: AppSpacing.xl), child: LoadingView());
-                  }
-                  if (hSnap.hasError) return ErrorBanner(error: hSnap.error!, onRetry: _refreshHours);
-                  final data = hSnap.data!;
-                  final byWeekday = {for (final h in data.hours) h.weekday: h};
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SectionCard(
-                        title: 'Weekly hours',
-                        child: Column(
-                          children: List.generate(7, (weekday) {
-                            final h = byWeekday[weekday];
-                            return ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(_weekdayNames[weekday]),
-                              subtitle: h == null
-                                  ? const Text('Not set', style: TextStyle(color: AppColors.textSecondary))
-                                  : Text('${h.startTime} – ${h.endTime} · ${h.slotMinutes} min slots · ${h.status}'),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editWeekday(weekday, h)),
-                                  if (h != null)
-                                    IconButton(icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.danger), onPressed: () => _deleteHours(h)),
-                                ],
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      SectionCard(
-                        title: 'Closed dates',
-                        trailing: TextButton.icon(onPressed: _addClosure, icon: const Icon(Icons.add, size: 18), label: const Text('Add')),
-                        child: data.closures.isEmpty
-                            ? const Text('No closures scheduled', style: TextStyle(color: AppColors.textSecondary))
-                            : Column(
-                                children: data.closures.map((c) {
-                                  return ListTile(
-                                    contentPadding: EdgeInsets.zero,
-                                    title: Text(c.closedDate),
-                                    subtitle: c.reason != null ? Text(c.reason!) : null,
-                                    trailing: IconButton(
-                                      icon: const Icon(Icons.delete_outline, size: 20, color: AppColors.danger),
-                                      onPressed: () => _deleteClosure(c),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          );
-        },
-            ),
+              return ListView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(AppSpacing.md),
+                children: [
+                  DropdownButtonFormField<Clinic>(
+                    initialValue: clinics.firstWhere(
+                        (c) => c.id == _selectedClinic!.id,
+                        orElse: () => clinics.first),
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Clinic'),
+                    items: clinics
+                        .map((c) => DropdownMenuItem(
+                            value: c,
+                            child:
+                                Text(c.name, overflow: TextOverflow.ellipsis)))
+                        .toList(),
+                    onChanged: (c) {
+                      if (c != null) _selectClinic(c);
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  FutureBuilder<_HoursData>(
+                    future: _hoursFuture,
+                    builder: (context, hSnap) {
+                      if (hSnap.connectionState != ConnectionState.done) {
+                        return const Padding(
+                            padding: EdgeInsets.only(top: AppSpacing.xl),
+                            child: LoadingView());
+                      }
+                      if (hSnap.hasError) {
+                        return ErrorBanner(
+                            error: hSnap.error!, onRetry: _refreshHours);
+                      }
+                      final data = hSnap.data!;
+                      final byWeekday = {
+                        for (final h in data.hours) h.weekday: h
+                      };
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SectionCard(
+                            title: 'Weekly hours',
+                            child: Column(
+                              children: List.generate(7, (weekday) {
+                                final h = byWeekday[weekday];
+                                return Material(
+                                    type: MaterialType.transparency,
+                                    child: ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(_weekdayNames[weekday]),
+                                      subtitle: h == null
+                                          ? Text('Not set',
+                                              style: TextStyle(
+                                                  color: context
+                                                      .palette.textSecondary))
+                                          : Text(
+                                              '${h.startTime} – ${h.endTime} · ${h.slotMinutes} min per patient (approx.) · ${h.status}'),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                              icon: const Icon(
+                                                  Icons.edit_outlined,
+                                                  size: 20),
+                                              onPressed: () =>
+                                                  _editWeekday(weekday, h)),
+                                          if (h != null)
+                                            IconButton(
+                                                icon: Icon(Icons.delete_outline,
+                                                    size: 20,
+                                                    color:
+                                                        context.palette.danger),
+                                                onPressed: () =>
+                                                    _deleteHours(h)),
+                                        ],
+                                      ),
+                                    ));
+                              }),
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          SectionCard(
+                            title: 'Closed dates',
+                            trailing: TextButton.icon(
+                                onPressed: _addClosure,
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add')),
+                            child: data.closures.isEmpty
+                                ? Text('No closures scheduled',
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary))
+                                : Column(
+                                    children: data.closures.map((c) {
+                                      return Material(
+                                          type: MaterialType.transparency,
+                                          child: ListTile(
+                                            contentPadding: EdgeInsets.zero,
+                                            title: Text(c.closedDate),
+                                            subtitle: c.reason != null
+                                                ? Text(c.reason!)
+                                                : null,
+                                            trailing: IconButton(
+                                              icon: Icon(Icons.delete_outline,
+                                                  size: 20,
+                                                  color:
+                                                      context.palette.danger),
+                                              onPressed: () =>
+                                                  _deleteClosure(c),
+                                            ),
+                                          ));
+                                    }).toList(),
+                                  ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ],
-      ),
+      )),
     );
   }
 }
@@ -329,12 +442,16 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
   void initState() {
     super.initState();
     final profile = context.read<AuthProvider>().profile;
-    _maxDaysCtrl = TextEditingController(text: '${profile?.maxDaysAdvance ?? 7}');
-    _maxOnlineCtrl = TextEditingController(text: profile?.maxOnlineBookingsPerDay?.toString() ?? '');
+    _maxDaysCtrl =
+        TextEditingController(text: '${profile?.maxDaysAdvance ?? 30}');
+    _maxOnlineCtrl = TextEditingController(
+        text: profile?.maxOnlineBookingsPerDay?.toString() ?? '');
     _allowRebooking = profile?.allowRebooking != false;
     _tokenMode = profile?.tokenNumberingMode != 'alternate'
         ? 'sequential'
-        : (profile?.onlineTokenParity == 'even' ? 'alternate_even' : 'alternate_odd');
+        : (profile?.onlineTokenParity == 'even'
+            ? 'alternate_even'
+            : 'alternate_odd');
   }
 
   @override
@@ -348,18 +465,32 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
     final auth = context.read<AuthProvider>();
     final doctorId = auth.user?.id;
     if (doctorId == null) return;
+    final maxDays = int.tryParse(_maxDaysCtrl.text.trim());
+    if (maxDays == null || maxDays < 1 || maxDays > 365) {
+      setState(() => _error = 'Enter a booking window from 1 to 365 days.');
+      return;
+    }
+    final maxOnlineText = _maxOnlineCtrl.text.trim();
+    final maxOnline =
+        maxOnlineText.isEmpty ? null : int.tryParse(maxOnlineText);
+    if (maxOnlineText.isNotEmpty &&
+        (maxOnline == null || maxOnline < 1 || maxOnline > 500)) {
+      setState(
+          () => _error = 'Enter a daily cap from 1 to 500, or leave it blank.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      final maxOnlineText = _maxOnlineCtrl.text.trim();
       await ApiClient.instance.patch('/doctors/$doctorId', body: {
         'onlineBooking': auth.profile?.onlineBooking ?? true,
         'allowRebooking': _allowRebooking,
-        'maxDaysAdvance': int.tryParse(_maxDaysCtrl.text.trim()) ?? 1,
-        'maxOnlineBookingsPerDay': maxOnlineText.isEmpty ? null : int.tryParse(maxOnlineText),
-        'tokenNumberingMode': _tokenMode == 'sequential' ? 'sequential' : 'alternate',
+        'maxDaysAdvance': maxDays,
+        'maxOnlineBookingsPerDay': maxOnline,
+        'tokenNumberingMode':
+            _tokenMode == 'sequential' ? 'sequential' : 'alternate',
         'onlineTokenParity': _tokenMode == 'alternate_even' ? 'even' : 'odd',
       });
       await auth.refreshProfile();
@@ -378,24 +509,31 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Control how far ahead patients can book and whether same-day rebooking is allowed.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          Text(
+            'Set the booking date range. Patients also need OPD hours on the chosen weekday.',
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           TextField(
             controller: _maxDaysCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Days patients can book in advance'),
+            decoration: const InputDecoration(
+                labelText: 'Days patients can book in advance'),
           ),
           const SizedBox(height: AppSpacing.sm),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Allow same-day rebooking'),
-            value: _allowRebooking,
-            onChanged: (v) => setState(() => _allowRebooking = v),
-          ),
+          Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Allow same-day online booking'),
+                value: _allowRebooking,
+                onChanged: (v) => setState(() => _allowRebooking = v),
+              )),
           const SizedBox(height: AppSpacing.sm),
           TextField(
             controller: _maxOnlineCtrl,
@@ -406,33 +544,43 @@ class _BookingWindowCardState extends State<_BookingWindowCard> {
             ),
           ),
           const SizedBox(height: AppSpacing.xs),
-          const Text(
-            "Caps only patients' own online bookings each day — leave blank for no limit. "
-            'Walk-ins your receptionist registers at the desk are never counted or blocked by this.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          Text(
+            'This is your total daily online slots across clinics. Patient minutes only estimate call times; OPD duration does not reduce this count. Leave blank for time-based capacity. '
+            'Walk-ins do not count toward this cap.',
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.sm),
           DropdownButtonFormField<String>(
             initialValue: _tokenMode,
             isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Token numbering for queue'),
+            decoration:
+                const InputDecoration(labelText: 'Token numbering for queue'),
             items: const [
               DropdownMenuItem(value: 'sequential', child: Text('Sequential')),
-              DropdownMenuItem(value: 'alternate_odd', child: Text('Odd / even — online gets odd numbers')),
-              DropdownMenuItem(value: 'alternate_even', child: Text('Odd / even — online gets even numbers')),
+              DropdownMenuItem(
+                  value: 'alternate_odd',
+                  child: Text('Odd / even — online gets odd numbers')),
+              DropdownMenuItem(
+                  value: 'alternate_even',
+                  child: Text('Odd / even — online gets even numbers')),
             ],
             onChanged: (v) => setState(() => _tokenMode = v ?? 'sequential'),
           ),
           const SizedBox(height: AppSpacing.xs),
-          const Text(
+          Text(
             'Sequential gives every booking the next number in one queue. The odd/even options split '
             'online and walk-in bookings into their own alternating sequences — pick whichever parity '
             'you want your OWN online patients to get; walk-ins always get the other one. Helps your '
             'queue display tell them apart at a glance.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.md),
-          PrimaryButton(label: 'Save booking window', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save booking window',
+              onPressed: _submit,
+              loading: _submitting),
         ],
       ),
     );
@@ -443,7 +591,8 @@ class _HoursForm extends StatefulWidget {
   final String clinicId;
   final int weekday;
   final ClinicHours? existing;
-  const _HoursForm({required this.clinicId, required this.weekday, this.existing});
+  const _HoursForm(
+      {required this.clinicId, required this.weekday, this.existing});
 
   @override
   State<_HoursForm> createState() => _HoursFormState();
@@ -469,10 +618,13 @@ class _HoursFormState extends State<_HoursForm> {
 
   TimeOfDay _parseTime(String hhmm) {
     final parts = hhmm.split(':');
-    return TimeOfDay(hour: int.tryParse(parts[0]) ?? 9, minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0);
+    return TimeOfDay(
+        hour: int.tryParse(parts[0]) ?? 9,
+        minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0);
   }
 
-  String _fmt(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   Future<void> _submit() async {
     setState(() {
@@ -513,15 +665,21 @@ class _HoursFormState extends State<_HoursForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(_weekdayNames[widget.weekday], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(_weekdayNames[widget.weekday],
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
                   onPressed: () async {
-                    final picked = await showTimePicker(context: context, initialTime: _start);
+                    final picked = await showTimePicker(
+                        context: context, initialTime: _start);
                     if (picked != null) setState(() => _start = picked);
                   },
                   child: Text('Start: ${_fmt(_start)}'),
@@ -531,7 +689,8 @@ class _HoursFormState extends State<_HoursForm> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () async {
-                    final picked = await showTimePicker(context: context, initialTime: _end);
+                    final picked = await showTimePicker(
+                        context: context, initialTime: _end);
                     if (picked != null) setState(() => _end = picked);
                   },
                   child: Text('End: ${_fmt(_end)}'),
@@ -542,12 +701,17 @@ class _HoursFormState extends State<_HoursForm> {
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<int>(
             initialValue: _slotMinutes,
-            decoration: const InputDecoration(labelText: 'Slot length (minutes)'),
-            items: const [10, 15, 20, 30, 45, 60].map((m) => DropdownMenuItem(value: m, child: Text('$m min'))).toList(),
+            decoration:
+                const InputDecoration(labelText: 'Slot length (minutes)'),
+            items: ({5, 10, 15, 20, 30, 45, 60, 90, 120, _slotMinutes}.toList()
+                  ..sort())
+                .map((m) => DropdownMenuItem(value: m, child: Text('$m min')))
+                .toList(),
             onChanged: (v) => setState(() => _slotMinutes = v ?? 15),
           ),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save', onPressed: _submit, loading: _submitting),
         ],
       ),
     );
@@ -584,9 +748,11 @@ class _ClosureFormState extends State<_ClosureForm> {
       _error = null;
     });
     try {
-      await ApiClient.instance.post('/clinics/${widget.clinicId}/closures', body: {
+      await ApiClient.instance
+          .post('/clinics/${widget.clinicId}/closures', body: {
         'closedDate': DateFormat('yyyy-MM-dd').format(_date!),
-        if (_reasonCtrl.text.trim().isNotEmpty) 'reason': _reasonCtrl.text.trim(),
+        if (_reasonCtrl.text.trim().isNotEmpty)
+          'reason': _reasonCtrl.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -610,9 +776,13 @@ class _ClosureFormState extends State<_ClosureForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Add closed date', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const Text('Add closed date',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           OutlinedButton.icon(
             onPressed: () async {
               final picked = await showDatePicker(
@@ -624,12 +794,18 @@ class _ClosureFormState extends State<_ClosureForm> {
               if (picked != null) setState(() => _date = picked);
             },
             icon: const Icon(Icons.event_outlined, size: 16),
-            label: Text(_date == null ? 'Pick a date' : DateFormat('dd MMM yyyy').format(_date!)),
+            label: Text(_date == null
+                ? 'Pick a date'
+                : DateFormat('dd MMM yyyy').format(_date!)),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _reasonCtrl, decoration: const InputDecoration(labelText: 'Reason (optional)')),
+          TextField(
+              controller: _reasonCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Reason (optional)')),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save', onPressed: _submit, loading: _submitting),
         ],
       ),
     );

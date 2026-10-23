@@ -7,7 +7,7 @@
 // PATCH/POST/PUT/DELETE that updates the store is actually visible on screen, exactly as in the
 // real app.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -135,7 +135,8 @@ describe('PatientDashboard', () => {
     expect(screen.getAllByText('Welcome, Asha.')).toHaveLength(2)
     expect(screen.getByRole('heading', { name: 'Patient services' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Patient services' }).querySelectorAll('a')).toHaveLength(7)
+    expect(screen.getByRole('region', { name: 'Patient services' }).querySelectorAll('a')).toHaveLength(6)
+    expect(within(screen.getByRole('region', { name: 'Patient services' })).queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Quick clinic booking' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Medical records' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Help & policies' }))
@@ -188,6 +189,19 @@ describe('PatientDashboard', () => {
 // Booking
 // =====================================================================
 describe('Booking', () => {
+  it('removes Myself and excludes incomplete profiles for Google-login users too', () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [{ id: 'incomplete', name: 'Google User', relation: 'Self' }], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+    expect(screen.queryByRole('option', { name: 'Myself' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Google User · Self' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Patient/)).toBeRequired()
+    fireEvent.click(screen.getByRole('button', { name: /Add member/ }))
+    for (const label of [/^Member name/, /^Relationship/, /^Member date of birth/, /^Member gender/, /^Member blood group/]) {
+      expect(screen.getByLabelText(label)).toBeRequired()
+    }
+    expect(screen.getByText(/relationship “Self”/)).toBeInTheDocument()
+  })
+
   const DOCTOR = {
     id: 'doc-1',
     name: 'Dr. Asha Rao',
@@ -195,11 +209,22 @@ describe('Booking', () => {
     minBookingAdvanceAmount: 100,
     clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic' }],
   }
-  const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son' }
+  const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }
   const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: false, emergencyFee: 0, gstPercent: 5 }
 
+  it('limits the date picker to the selected doctor’s saved advance-booking days', () => {
+    seedData({ doctors: [{ ...DOCTOR, maxDaysAdvance: 5 }], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+    const dateField = screen.getByLabelText(/Appointment date/i)
+    const earliest = dateField.getAttribute('min')
+    const expected = new Date(`${earliest}T00:00:00.000Z`)
+    expected.setUTCDate(expected.getUTCDate() + 5)
+    expect(dateField).toHaveAttribute('max', expected.toISOString().slice(0, 10))
+    expect(screen.getByText(/5 days ahead/)).toBeInTheDocument()
+  })
+
   it('opens the compact filter panel and closes it after applying filters', () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     const toggle = screen.getByRole('button', { name: 'Filters' })
@@ -220,7 +245,7 @@ describe('Booking', () => {
   })
 
   it("shows the doctor's primary clinic and fee preview once a doctor is chosen", () => {
-    seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     const { container } = renderConnected(Booking, {}, { route: '/patient/book' })
 
     expect(screen.getByText('Select a doctor first')).toBeInTheDocument()
@@ -241,8 +266,59 @@ describe('Booking', () => {
     expect(screen.queryByText(/Emergency booking/i)).not.toBeInTheDocument()
   })
 
+  it('adds a family member during booking and selects the new patient', async () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    apiClient.post.mockResolvedValueOnce({ id: 'fam-new', name: 'Rohan', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' })
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+
+    fireEvent.click(screen.getByRole('button', { name: /Add member/i }))
+    fireEvent.change(screen.getByLabelText(/^Member name/), { target: { value: 'Rohan' } })
+    fireEvent.change(screen.getByLabelText(/^Relationship/), { target: { value: 'Son' } })
+    fireEvent.change(screen.getByLabelText(/^Member date of birth/), { target: { value: '2010-05-01' } })
+    fireEvent.change(screen.getByLabelText(/^Member gender/), { target: { value: 'Male' } })
+    fireEvent.change(screen.getByLabelText(/^Member blood group/), { target: { value: 'B+' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save member' }))
+
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/family-members', { name: 'Rohan', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }))
+    await waitFor(() => expect(screen.getByLabelText(/^Patient/)).toHaveValue('fam-new'))
+    expect(screen.queryByLabelText(/^Member name/)).not.toBeInTheDocument()
+  })
+
+  it('shows slot counts in one compact summary', async () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    apiClient.get.mockImplementation((url) => url === '/appointments/availability'
+      ? Promise.resolve([{ doctorUserId: 'doc-1', clinicId: 'clinic-1', totalSlots: 32, availableSlots: 16, bookedSlots: 16 }])
+      : Promise.resolve([]))
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+
+    const summary = screen.getByRole('group', { name: 'Slot availability' })
+    await waitFor(() => expect(summary).toHaveTextContent('Total 32'))
+    expect(summary).toHaveTextContent('Available 16')
+    expect(summary).toHaveTextContent('Booked 16')
+  })
+
+  it('blocks confirmation for a closing date and enables it again on an open date', async () => {
+    seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    let closed = true
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/appointments/availability'
+      ? [{ doctorUserId: 'doc-1', clinicId: 'clinic-1', totalSlots: closed ? 0 : 50,
+        availableSlots: closed ? 0 : 50, bookedSlots: 0, closed }] : []))
+    renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm booking' })).toBeDisabled())
+    expect(screen.getByRole('alert')).toHaveTextContent('selected closing date')
+    expect(apiClient.post).not.toHaveBeenCalled()
+    closed = false
+    const input = document.querySelector('input[name="date"]')
+    const next = new Date(`${input.value}T12:00:00Z`)
+    next.setUTCDate(next.getUTCDate() + 1)
+    fireEvent.change(input, { target: { value: next.toISOString().slice(0, 10) } })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm booking' })).not.toBeDisabled())
+    expect(screen.queryByText(/selected closing date/)).not.toBeInTheDocument()
+  })
+
   it('confirms a booking with the selected doctor, clinic, date, and family member', async () => {
     vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-23T06:00:00.000Z'))
     try {
       seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) =>
@@ -267,7 +343,7 @@ describe('Booking', () => {
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
 
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Rohan Mehta · Son' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.change(screen.getByLabelText(/^Appointment date/), { target: { value: '2026-09-25' } })
       fireEvent.change(screen.getByLabelText('Reason for visit'), { target: { value: 'Follow up' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
@@ -297,7 +373,7 @@ describe('Booking', () => {
   it('shows the server-provided error message when booking fails, without losing the form', async () => {
     vi.useFakeTimers()
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) =>
         url === '/appointments' ? Promise.resolve({ jobId: 'job-2', status: 'queued' }) : Promise.resolve({})
       )
@@ -308,7 +384,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
 
       await act(async () => {
@@ -331,7 +407,7 @@ describe('Booking', () => {
       consultationFee: 700,
       clinics: [{ id: 'clinic-2', name: 'Apex Multi-speciality Clinic' }],
     }
-    seedData({ doctors: [DOCTOR, DOCTOR_2], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR, DOCTOR_2], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     // Both doctors are initially displayed
@@ -383,7 +459,7 @@ describe('Booking', () => {
       consultationFee: 600,
       clinics: [{ id: 'clinic-a', name: 'Alpha Clinic' }],
     }
-    seedData({ doctors: [DOCTOR_A, DOCTOR_B], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [DOCTOR_A, DOCTOR_B], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     // Select Sorted by -> Clinic Name (A to Z)
@@ -420,7 +496,7 @@ describe('Booking', () => {
       consultationFee: 500,
       clinics: [{ id: 'clinic-2', name: 'Clinic 2' }],
     }
-    seedData({ doctors: [OLDER_DOCTOR, NEWER_DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+    seedData({ doctors: [OLDER_DOCTOR, NEWER_DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book' })
 
     const cards = screen.getAllByRole('heading', { level: 4 })
@@ -438,10 +514,10 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url, _payload) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-3', status: 'queued' })
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_1', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         if (url === '/payments/razorpay/verify') {
           return Promise.resolve({
             payment: { id: 'pay-1', amount: 600 },
@@ -460,7 +536,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -476,7 +552,7 @@ describe('Booking', () => {
         expect(apiClient.post).toHaveBeenCalledWith('/payments/razorpay/order', { appointmentId: 'appt-9', paymentOption: 'full' })
       )
       expect(window.Razorpay).toHaveBeenCalledWith(
-        expect.objectContaining({ key: 'key_1', amount: 60000, currency: 'INR', order_id: 'order_1' })
+        expect.objectContaining({ key: 'key_1', amount: 60000, currency: 'INR', order_id: 'order_1', timeout: expect.any(Number) })
       )
 
       await act(async () => {
@@ -489,6 +565,9 @@ describe('Booking', () => {
         razorpayPaymentId: 'pay_1',
         razorpaySignature: 'sig_1',
       })
+      expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+      expect(screen.queryByText('Token #9')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
       expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
       expect(screen.getByText('Token #9')).toBeInTheDocument()
       expect(screen.getByText('✓ Paid online')).toBeInTheDocument()
@@ -513,10 +592,10 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-5', status: 'queued' })
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_3', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         if (url === '/payments/razorpay/verify') return Promise.reject(new Error('The request took too long to respond. Please check your connection and try again.'))
         return Promise.resolve({})
       })
@@ -536,7 +615,7 @@ describe('Booking', () => {
       })
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -553,6 +632,8 @@ describe('Booking', () => {
       })
 
       await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments/appt-11'))
+      expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
       expect(screen.getByText('Booking confirmed')).toBeInTheDocument()
       expect(screen.getByText('Token #11')).toBeInTheDocument()
       expect(screen.queryByRole('alert')).not.toBeInTheDocument() // no false "payment failed" error shown
@@ -572,12 +653,12 @@ describe('Booking', () => {
       return { open: vi.fn(), on: vi.fn() }
     })
     try {
-      seedData({ doctors: [DOCTOR], familyMembers: [], platformCharges: PLATFORM_CHARGES })
+      seedData({ doctors: [DOCTOR], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
       apiClient.post.mockImplementation((url) => {
         if (url === '/appointments') return Promise.resolve({ jobId: 'job-4', status: 'queued' })
         // Server order amount reflects fees.minBookingAmount (¥33.60 below), NOT the doctor's raw
         // minBookingAdvanceAmount of ₹100 from the DOCTOR fixture.
-        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 3360, currency: 'INR', orderId: 'order_2' })
+        if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 3360, currency: 'INR', orderId: 'order_2', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
         return Promise.resolve({})
       })
       apiClient.get.mockImplementation((url) =>
@@ -601,7 +682,7 @@ describe('Booking', () => {
       )
 
       renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
-      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'Myself' } })
+      fireEvent.change(screen.getByLabelText(/^Patient/), { target: { value: 'fam-1' } })
       fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }))
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1700)
@@ -631,6 +712,14 @@ describe('Booking', () => {
 // PatientAppointments / BookingHistory
 // =====================================================================
 describe('PatientAppointments', () => {
+  it.each([false, true])('shows booking creation separately from the scheduled visit (mobile: %s)', (mobile) => {
+    mockMobileViewport(mobile)
+    seedData({ appointments: [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00', status: 'confirmed', fees: { totalAmount: 500 } }], payments: [] })
+    renderConnected(PatientAppointments)
+    expect(screen.getByText('Booked on: 22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('10:00')).toBeInTheDocument()
+    mockMobileViewport(false)
+  })
   const APPT_COMPLETED = {
     id: 'a1',
     status: 'completed',
@@ -842,12 +931,12 @@ describe('PatientAppointments', () => {
     fireEvent.click(screen.getByRole('button', { name: /View slip/ }))
 
     const preview = await screen.findByRole('dialog', { name: 'Booking slip preview' })
-    const iframe = preview.querySelector('iframe')
-    expect(iframe).toBeTruthy()
-    expect(iframe.getAttribute('src')).toMatch(/^blob:/) // the generated PDF, not a network URL
+    expect(preview.querySelector('iframe')).toBeNull() // mobile preview does not depend on PDF plugins
+    expect(screen.getByRole('article', { name: 'Document contents' })).toBeInTheDocument()
 
     const downloadLink = screen.getByRole('link', { name: /Download/ })
-    expect(downloadLink.getAttribute('href')).toBe(iframe.getAttribute('src')) // same object URL — no second PDF build to download what's already shown
+    expect(downloadLink.getAttribute('href')).toMatch(/^blob:/)
+    expect(screen.getByRole('link', { name: 'Open PDF' })).toHaveAttribute('href', downloadLink.getAttribute('href'))
     expect(downloadLink.getAttribute('download')).toMatch(/^booking-slip-.*\.pdf$/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))
@@ -893,7 +982,7 @@ describe('PatientAppointments', () => {
       try {
         seedData({ appointments: [APPT_PENDING_PAYMENT] })
         apiClient.post.mockImplementation((url) => {
-          if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_9' })
+          if (url === '/payments/razorpay/order') return Promise.resolve({ keyId: 'key_1', amount: 60000, currency: 'INR', orderId: 'order_9', holdExpiresAt: new Date(Date.now() + 9 * 60_000).toISOString() })
           if (url === '/payments/razorpay/verify') {
             return Promise.resolve({
               payment: { id: 'pay-9', amount: 600 },
@@ -917,6 +1006,10 @@ describe('PatientAppointments', () => {
           await capturedOptions.handler({ razorpay_order_id: 'order_9', razorpay_payment_id: 'pay_9', razorpay_signature: 'sig_9' })
         })
 
+        expect(screen.getByText('Payment confirmed')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('button', { name: 'View token now' }))
+        expect(screen.getByText('Token #5')).toBeInTheDocument()
+        fireEvent.click(screen.getByRole('link', { name: 'View my appointments' }))
         expect(await screen.findByText('#5')).toBeInTheDocument() // tokenNumber now assigned
         expect(screen.queryByRole('button', { name: 'Pay ₹600 now' })).not.toBeInTheDocument() // row is no longer pending_payment
       } finally {
@@ -1014,6 +1107,29 @@ describe('BookingHistory', () => {
 describe('Family', () => {
   const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }
 
+  it.each(['Full name', 'Relationship', 'Date of birth', 'Gender', 'Blood group'])('requires %s before saving a family member', (label) => {
+    seedData({ familyMembers: [FAMILY_MEMBER] })
+    renderConnected(Family)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const field = screen.getByLabelText(new RegExp(`^${label}`))
+    expect(field).toBeRequired()
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.submit(field.closest('form'))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('are required')
+  })
+
+  it('rejects future date of birth without submitting to the API', () => {
+    seedData({ familyMembers: [FAMILY_MEMBER] })
+    renderConnected(Family)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const field = screen.getByLabelText(/^Date of birth/)
+    fireEvent.change(field, { target: { value: '2999-01-01' } })
+    fireEvent.submit(field.closest('form'))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('cannot be in the future')
+  })
+
   it('adds a new family member with the entered details', async () => {
     seedData({ familyMembers: [] })
     apiClient.post.mockResolvedValue({ id: 'fam-2', name: 'Meera Mehta', relation: 'Daughter' })
@@ -1021,15 +1137,18 @@ describe('Family', () => {
     renderConnected(Family)
     fireEvent.change(screen.getByLabelText(/^Full name/), { target: { value: 'Meera Mehta' } })
     fireEvent.change(screen.getByLabelText(/^Relationship/), { target: { value: 'Daughter' } })
+    fireEvent.change(screen.getByLabelText(/^Date of birth/), { target: { value: '2010-05-01' } })
+    fireEvent.change(screen.getByLabelText(/^Gender/), { target: { value: 'Female' } })
+    fireEvent.change(screen.getByLabelText(/^Blood group/), { target: { value: 'B+' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith('/family-members', {
         name: 'Meera Mehta',
         relation: 'Daughter',
-        dateOfBirth: undefined,
-        gender: undefined,
-        bloodGroup: undefined,
+        dateOfBirth: '2010-05-01',
+        gender: 'Female',
+        bloodGroup: 'B+',
       })
     )
     expect(await screen.findByText('Meera Mehta')).toBeInTheDocument()
@@ -1145,6 +1264,16 @@ describe('Payments', () => {
   // "baki jagah v same kar do jaha slip download ho raha hai") — the Receipt action must open an
   // in-page preview rather than save a file immediately, with the download action inside it.
   it('View receipt opens an in-page PDF preview instead of downloading immediately, with a Download action inside it', async () => {
+    // This case deliberately has no loaded appointment, only the payment API's booking metadata.
+    seedData({ payments: [{ ...PAYMENT_ROW, appointment: { id: 'a1', createdAt: '2026-10-21T20:40:05Z' } }], appointments: [] })
+    renderConnected(Payments)
+    fireEvent.click(screen.getByRole('button', { name: /View receipt/ }))
+    const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
+    expect(within(preview).getByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+  })
+
+  it('opens a complete receipt preview with a Download action', async () => {
+    // Receipt preview and download share the same document contents.
     seedData({ payments: [PAYMENT_ROW], appointments: [APPT_FOR_PAYMENT] })
     renderConnected(Payments)
 
@@ -1152,12 +1281,12 @@ describe('Payments', () => {
     fireEvent.click(screen.getByRole('button', { name: /View receipt/ }))
 
     const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
-    const iframe = preview.querySelector('iframe')
-    expect(iframe).toBeTruthy()
-    expect(iframe.getAttribute('src')).toMatch(/^blob:/)
+    expect(preview.querySelector('iframe')).toBeNull()
+    expect(screen.getByRole('article', { name: 'Document contents' })).toBeInTheDocument()
 
     const downloadLink = screen.getByRole('link', { name: /Download/ })
-    expect(downloadLink.getAttribute('href')).toBe(iframe.getAttribute('src'))
+    expect(downloadLink.getAttribute('href')).toMatch(/^blob:/)
+    expect(screen.getByRole('link', { name: 'Open PDF' })).toHaveAttribute('href', downloadLink.getAttribute('href'))
     expect(downloadLink.getAttribute('download')).toMatch(/^receipt-.*\.pdf$/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))

@@ -17,7 +17,8 @@ void main() {
       expect(find.text('My Appointments'), findsOneWidget);
     });
 
-    testWidgets('renders the kicker (uppercased) only when provided', (tester) async {
+    testWidgets('renders the kicker (uppercased) only when provided',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -69,7 +70,8 @@ void main() {
       expect(find.text('Upcoming and past visits'), findsNothing);
     });
 
-    testWidgets('renders the trailing action widget when provided', (tester) async {
+    testWidgets('renders the trailing action widget when provided',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -84,7 +86,8 @@ void main() {
       expect(find.byIcon(Icons.add), findsOneWidget);
     });
 
-    testWidgets('stacks a long action below the heading on a narrow phone', (tester) async {
+    testWidgets('stacks a long action below the heading on a narrow phone',
+        (tester) async {
       tester.view.physicalSize = const Size(320, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -106,14 +109,18 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      final titleBottom = tester.getBottomLeft(find.text('Appointments and medical records')).dy;
-      final actionTop = tester.getTopLeft(find.text('Create a new appointment')).dy;
+      final titleBottom = tester
+          .getBottomLeft(find.text('Appointments and medical records'))
+          .dy;
+      final actionTop =
+          tester.getTopLeft(find.text('Create a new appointment')).dy;
       expect(actionTop, greaterThan(titleBottom));
     });
   });
 
   group('narrow layout safety', () {
-    testWidgets('PrimaryButton keeps a long label inside a 280px card', (tester) async {
+    testWidgets('PrimaryButton keeps a long label inside a 280px card',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -131,10 +138,12 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Continue to secure appointment payment'), findsOneWidget);
+      expect(
+          find.text('Continue to secure appointment payment'), findsOneWidget);
     });
 
-    testWidgets('SectionCard stacks a long trailing action on a narrow phone', (tester) async {
+    testWidgets('SectionCard stacks a long trailing action on a narrow phone',
+        (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -154,14 +163,17 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      final titleBottom = tester.getBottomLeft(find.text('Upcoming appointments')).dy;
-      final actionTop = tester.getTopLeft(find.text('View complete appointment history')).dy;
+      final titleBottom =
+          tester.getBottomLeft(find.text('Upcoming appointments')).dy;
+      final actionTop =
+          tester.getTopLeft(find.text('View complete appointment history')).dy;
       expect(actionTop, greaterThan(titleBottom));
     });
   });
 
   group('EmptyStateView', () {
-    testWidgets('always renders the title and the default icon', (tester) async {
+    testWidgets('always renders the title and the default icon',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -202,7 +214,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Book your first appointment to see it here'), findsOneWidget);
+      expect(find.text('Book your first appointment to see it here'),
+          findsOneWidget);
     });
 
     testWidgets('omits the subtitle when not provided', (tester) async {
@@ -214,7 +227,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Book your first appointment to see it here'), findsNothing);
+      expect(find.text('Book your first appointment to see it here'),
+          findsNothing);
     });
 
     testWidgets('renders the action widget only when provided', (tester) async {
@@ -223,7 +237,8 @@ void main() {
           home: Scaffold(
             body: EmptyStateView(
               title: 'No appointments yet',
-              action: ElevatedButton(onPressed: () {}, child: const Text('Book now')),
+              action: ElevatedButton(
+                  onPressed: () {}, child: const Text('Book now')),
             ),
           ),
         ),
@@ -246,7 +261,8 @@ void main() {
   });
 
   group('StatusBadge', () {
-    testWidgets('renders the status text with underscores replaced by spaces', (tester) async {
+    testWidgets('renders the status text with underscores replaced by spaces',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -259,7 +275,8 @@ void main() {
       expect(find.text('in_progress'), findsNothing);
     });
 
-    testWidgets('renders a status with no underscores unchanged', (tester) async {
+    testWidgets('renders a status with no underscores unchanged',
+        (tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(

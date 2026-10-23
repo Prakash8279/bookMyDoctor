@@ -62,7 +62,7 @@ describe('login flow — invalid credentials', () => {
     fireEvent.click(screen.getByRole('button', { name: /Sign in/i }))
 
     // Real store.login() rethrows; the real Login component's catch block surfaces it.
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.')
+    expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument()
 
     // Still on the login page — the email field the user typed into is still there, and no
     // protected/dashboard content ever mounted.

@@ -8,6 +8,7 @@
  * test Postgres exists in this sandbox (see tests/setupEnv.js's header comment for the general
  * policy this suite follows).
  */
+jest.mock('../../../src/config/redis', () => ({})); // Auth unit tests must never open real Redis connections.
 jest.mock('../../../src/config/db', () => ({
   user: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
   patientProfile: { create: jest.fn() },

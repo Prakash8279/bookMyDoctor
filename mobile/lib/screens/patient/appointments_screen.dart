@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../core/csv_export.dart';
 import '../../models/clinical_models.dart';
 import '../../state/auth_provider.dart';
@@ -36,22 +37,37 @@ class _AppointmentMoney {
   });
 }
 
-_AppointmentMoney _computeMoney(Appointment appointment, List<PaymentItem> payments) {
-  final appointmentPayments = payments.where((p) => p.appointment?.id == appointment.id).toList();
-  final payment = appointmentPayments.isNotEmpty ? appointmentPayments.first : null;
-  final fee = appointment.fees.totalAmount ?? payment?.fees.amount ?? appointment.fees.consultationFee ?? 0;
+_AppointmentMoney _computeMoney(
+    Appointment appointment, List<PaymentItem> payments) {
+  final appointmentPayments =
+      payments.where((p) => p.appointment?.id == appointment.id).toList();
+  final payment =
+      appointmentPayments.isNotEmpty ? appointmentPayments.first : null;
+  final fee = appointment.fees.totalAmount ??
+      payment?.fees.amount ??
+      appointment.fees.consultationFee ??
+      0;
   final status = appointment.paymentStatus ?? payment?.status ?? 'pending';
-  final paidFromRecords = appointmentPayments.fold<double>(0, (sum, p) => sum + (p.fees.amount ?? 0));
-  final paid = appointmentPayments.isNotEmpty ? paidFromRecords : (status == 'paid' ? fee : paidFromRecords);
+  final paidFromRecords = appointmentPayments.fold<double>(
+      0, (sum, p) => sum + (p.status == 'paid' ? (p.fees.amount ?? 0) : 0));
+  final paid = appointmentPayments.isNotEmpty
+      ? paidFromRecords
+      : (status == 'paid' ? fee : paidFromRecords);
   final minRemainder = appointment.fees.minBookingRemainder;
-  final due = status == 'paid'
+  final due = status == 'paid' ||
+          status == 'refunded' ||
+          appointment.status == 'cancelled'
       ? 0.0
       : status == 'partial' && minRemainder != null
           ? minRemainder
           : (fee - paid < 0 ? 0.0 : fee - paid);
   final minBookingAmount = appointment.fees.minBookingAmount;
-  final feeMinimumPath = (minBookingAmount != null && minRemainder != null) ? minBookingAmount + minRemainder : null;
-  final displayFee = status == 'partial' && feeMinimumPath != null ? feeMinimumPath : (status == 'paid' ? paid : fee);
+  final feeMinimumPath = (minBookingAmount != null && minRemainder != null)
+      ? minBookingAmount + minRemainder
+      : null;
+  final displayFee = status == 'partial' && feeMinimumPath != null
+      ? feeMinimumPath
+      : (status == 'paid' ? paid : fee);
   return _AppointmentMoney(
     fee: fee,
     displayFee: displayFee,
@@ -87,13 +103,15 @@ class PatientAppointmentsScreen extends StatefulWidget {
   const PatientAppointmentsScreen({super.key, this.isHistory = false});
 
   @override
-  State<PatientAppointmentsScreen> createState() => _PatientAppointmentsScreenState();
+  State<PatientAppointmentsScreen> createState() =>
+      _PatientAppointmentsScreenState();
 }
 
 class _PatientAppointmentsData {
   final List<Appointment> appointments;
   final List<PaymentItem> payments;
-  _PatientAppointmentsData({required this.appointments, required this.payments});
+  _PatientAppointmentsData(
+      {required this.appointments, required this.payments});
 }
 
 class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
@@ -125,31 +143,39 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
       // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
       // receptionist_reports_screen.dart's comment): pageSize over 100 gets rejected outright by
       // the backend's list-query validator (422 "Validation failed"), not clamped.
-      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
+      final res = await ApiClient.instance
+          .getAll('/payments', query: {'pageSize': 100});
       for (final item in res.list) {
         try {
           payments.add(PaymentItem.fromJson(item));
-        } catch (_) {}
+        } catch (_) {
+          rethrow;
+        }
       }
-    } catch (_) {}
-    return _PatientAppointmentsData(appointments: appointments, payments: payments);
+    } catch (_) {
+      rethrow;
+    }
+    return _PatientAppointmentsData(
+        appointments: appointments, payments: payments);
   }
 
   Future<List<Appointment>> _fetchAppointments() async {
     try {
-      final res = await ApiClient.instance.get('/appointments', query: {
+      final res = await ApiClient.instance.getAll('/appointments', query: {
         'pageSize': 50,
         if (_statusFilter != null) 'status': _statusFilter,
-      }).catchError((_) => ApiResponse(data: []));
+      });
       final list = <Appointment>[];
       for (final item in res.list) {
         try {
           list.add(Appointment.fromJson(item));
-        } catch (_) {}
+        } catch (_) {
+          rethrow;
+        }
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -158,16 +184,22 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Cancel appointment?'),
-        content: const Text('This cannot be undone. Cancellation may not be allowed too close to the appointment time.'),
+        content: const Text(
+            'This cannot be undone. Cancellation may not be allowed too close to the appointment time.'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('No')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Yes, cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes, cancel')),
         ],
       ),
     );
     if (confirm != true) return;
     try {
-      await ApiClient.instance.patch('/appointments/${appt.id}/status', body: {'status': 'cancelled'});
+      await ApiClient.instance.patch('/appointments/${appt.id}/status',
+          body: {'status': 'cancelled'});
       if (mounted) {
         showSuccessSnack(context, 'Appointment cancelled');
         _load();
@@ -181,13 +213,29 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   // shape for PatientAppointments (PatientPages.jsx's exportCsv call, ~line 553) — Booking ID via
   // _shortId(), Patient column falls back to the logged-in patient's own name when the booking is
   // for the patient themself (no familyMember set).
-  Future<void> _exportCsv(List<Appointment> appointments, List<PaymentItem> payments) async {
+  Future<void> _exportCsv(
+      List<Appointment> appointments, List<PaymentItem> payments) async {
     final me = context.read<AuthProvider>().user;
     await shareCsv(
       filename: widget.isHistory ? 'booking-history.csv' : 'appointments.csv',
       headers: const [
-        'ID', 'Booking ID', 'Token', 'Date', 'Time', 'Doctor', 'Patient', 'Clinic', 'Status',
-        'Payment', 'Payment method', 'Transaction', 'Fee', 'Paid', 'Due', 'Notes',
+        'ID',
+        'Booking ID',
+        'Booked on (IST)',
+        'Token',
+        'Date',
+        'Time',
+        'Doctor',
+        'Patient',
+        'Clinic',
+        'Status',
+        'Payment',
+        'Payment method',
+        'Transaction',
+        'Fee',
+        'Paid',
+        'Due',
+        'Notes',
       ],
       rows: [
         for (var i = 0; i < appointments.length; i++)
@@ -197,9 +245,10 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
             return [
               'DC${(i + 1).toString().padLeft(2, '0')}',
               _shortId(appt.id),
+              indiaTimestamp(appt.createdAt),
               appt.tokenNumber ?? '',
               appt.appointmentDate,
-              appt.appointmentTime,
+              appt.displayTime,
               appt.doctor?.name ?? '',
               appt.familyMember?.name ?? appt.patient?.name ?? me?.name ?? '',
               appt.clinic?.name ?? '',
@@ -220,7 +269,8 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
   Future<void> _leaveReview(Appointment appt) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _ReviewDialog(doctorName: appt.doctor?.name ?? 'the doctor'),
+      builder: (_) =>
+          _ReviewDialog(doctorName: appt.doctor?.name ?? 'the doctor'),
     );
     if (result == null) return;
     try {
@@ -240,7 +290,8 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
             title: widget.isHistory ? 'Booking history' : 'My appointments',
             subtitle: widget.isHistory
@@ -250,10 +301,14 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
             action: FutureBuilder<_PatientAppointmentsData>(
               future: _future,
               builder: (context, snapshot) {
-                final appointments = snapshot.data?.appointments ?? const <Appointment>[];
-                final payments = snapshot.data?.payments ?? const <PaymentItem>[];
+                final appointments =
+                    snapshot.data?.appointments ?? const <Appointment>[];
+                final payments =
+                    snapshot.data?.payments ?? const <PaymentItem>[];
                 return TextButton.icon(
-                  onPressed: appointments.isEmpty ? null : () => _exportCsv(appointments, payments),
+                  onPressed: appointments.isEmpty
+                      ? null
+                      : () => _exportCsv(appointments, payments),
                   icon: const Icon(Icons.file_download_outlined, size: 16),
                   label: const Text('Export CSV'),
                 );
@@ -268,12 +323,48 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                _StatusChip(label: 'All', selected: _statusFilter == null, onTap: () => setState(() { _statusFilter = null; _load(); })),
-                _StatusChip(label: 'Upcoming / Active', selected: _statusFilter == 'upcoming', onTap: () => setState(() { _statusFilter = 'upcoming'; _load(); })),
-                _StatusChip(label: 'Completed (History)', selected: _statusFilter == 'completed', onTap: () => setState(() { _statusFilter = 'completed'; _load(); })),
-                _StatusChip(label: 'Cancelled', selected: _statusFilter == 'cancelled', onTap: () => setState(() { _statusFilter = 'cancelled'; _load(); })),
-                _StatusChip(label: 'Pending payment', selected: _statusFilter == 'pending_payment', onTap: () => setState(() { _statusFilter = 'pending_payment'; _load(); })),
-                _StatusChip(label: 'Confirmed', selected: _statusFilter == 'confirmed', onTap: () => setState(() { _statusFilter = 'confirmed'; _load(); })),
+                _StatusChip(
+                    label: 'All',
+                    selected: _statusFilter == null,
+                    onTap: () => setState(() {
+                          _statusFilter = null;
+                          _load();
+                        })),
+                _StatusChip(
+                    label: 'Upcoming / Active',
+                    selected: _statusFilter == 'upcoming',
+                    onTap: () => setState(() {
+                          _statusFilter = 'upcoming';
+                          _load();
+                        })),
+                _StatusChip(
+                    label: 'Completed (History)',
+                    selected: _statusFilter == 'completed',
+                    onTap: () => setState(() {
+                          _statusFilter = 'completed';
+                          _load();
+                        })),
+                _StatusChip(
+                    label: 'Cancelled',
+                    selected: _statusFilter == 'cancelled',
+                    onTap: () => setState(() {
+                          _statusFilter = 'cancelled';
+                          _load();
+                        })),
+                _StatusChip(
+                    label: 'Pending payment',
+                    selected: _statusFilter == 'pending_payment',
+                    onTap: () => setState(() {
+                          _statusFilter = 'pending_payment';
+                          _load();
+                        })),
+                _StatusChip(
+                    label: 'Confirmed',
+                    selected: _statusFilter == 'confirmed',
+                    onTap: () => setState(() {
+                          _statusFilter = 'confirmed';
+                          _load();
+                        })),
               ],
             ),
           ),
@@ -282,46 +373,62 @@ class _PatientAppointmentsScreenState extends State<PatientAppointmentsScreen> {
           child: FutureBuilder<_PatientAppointmentsData>(
             future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               if (snapshot.hasError) {
                 return Padding(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   child: ErrorBanner(error: snapshot.error!, onRetry: _load),
                 );
               }
-              final appointments = snapshot.data?.appointments ?? const <Appointment>[];
+              final appointments =
+                  snapshot.data?.appointments ?? const <Appointment>[];
               final payments = snapshot.data?.payments ?? const <PaymentItem>[];
               if (appointments.isEmpty) {
-                return const EmptyStateView(icon: Icons.event_busy, title: 'No appointments here');
+                return const EmptyStateView(
+                    icon: Icons.event_busy, title: 'No appointments here');
               }
               return RefreshIndicator(
                 onRefresh: () async => _load(),
                 child: ListView.separated(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: appointments.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, i) {
                     final appt = appointments[i];
                     return _AppointmentCard(
                       appointment: appt,
                       money: _computeMoney(appt, payments),
-                      onCancel: (appt.status == 'upcoming' || appt.status == 'confirmed' || appt.status == 'pending_payment')
+                      onCancel: (appt.status == 'upcoming' ||
+                              appt.status == 'confirmed' ||
+                              appt.status == 'pending_payment')
                           ? () => _cancel(appt)
                           : null,
                       // PARITY FIX (mobile parity audit — Patient panel): web's review form is
                       // entirely absent from Booking History (`{!history && completed.length > 0
                       // && <form>...}`, PatientPages.jsx) — reviewing only ever happens from My
                       // Appointments. Mobile previously offered "Leave review" on both lists.
-                      onReview: (!widget.isHistory && appt.status == 'completed') ? () => _leaveReview(appt) : null,
-                      onTrackQueue: (appt.status == 'upcoming' || appt.status == 'confirmed')
+                      onReview:
+                          (!widget.isHistory && appt.status == 'completed')
+                              ? () => _leaveReview(appt)
+                              : null,
+                      onTrackQueue: (appt.status == 'upcoming' ||
+                              appt.status == 'confirmed')
                           ? () => Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => QueueTrackerScreen(appointmentId: appt.id)),
+                                MaterialPageRoute(
+                                    builder: (_) => QueueTrackerScreen(
+                                        appointmentId: appt.id)),
                               )
                           : null,
                       onPayNow: appt.status == 'pending_payment'
                           ? () async {
-                              final updated = await Navigator.of(context).push<Appointment>(
-                                MaterialPageRoute(builder: (_) => PaymentRequiredScreen(appointment: appt)),
+                              final updated =
+                                  await Navigator.of(context).push<Appointment>(
+                                MaterialPageRoute(
+                                    builder: (_) => PaymentRequiredScreen(
+                                        appointment: appt)),
                               );
                               if (updated != null && mounted) _load();
                             }
@@ -347,13 +454,15 @@ class _StatusChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _StatusChip({required this.label, required this.selected, required this.onTap});
+  const _StatusChip(
+      {required this.label, required this.selected, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(label: Text(label), selected: selected, onSelected: (_) => onTap()),
+      child: ChoiceChip(
+          label: Text(label), selected: selected, onSelected: (_) => onTap()),
     );
   }
 }
@@ -386,7 +495,7 @@ class _AppointmentCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: context.palette.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -402,12 +511,15 @@ class _AppointmentCard extends StatelessWidget {
                     children: [
                       Text(
                         appointment.doctor?.displayName ?? 'Doctor',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16),
                       ),
                       if (appointment.doctor?.specialization != null)
                         Text(
                           appointment.doctor!.specialization!.name,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 13),
                         ),
                     ],
                   ),
@@ -425,7 +537,7 @@ class _AppointmentCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.palette.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -436,11 +548,13 @@ class _AppointmentCard extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.calendar_today, size: 14, color: AppColors.textSecondary),
+                            Icon(Icons.calendar_today,
+                                size: 14, color: context.palette.textSecondary),
                             const SizedBox(width: 6),
                             Text(
-                              '${appointment.appointmentDate} · ${appointment.appointmentTime}',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                              '${appointment.appointmentDate} · ${appointment.displayTime}',
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w500),
                             ),
                           ],
                         ),
@@ -448,12 +562,16 @@ class _AppointmentCard extends StatelessWidget {
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textSecondary),
+                              Icon(Icons.location_on_outlined,
+                                  size: 14,
+                                  color: context.palette.textSecondary),
                               const SizedBox(width: 6),
                               Expanded(
                                 child: Text(
                                   appointment.clinic!.name!,
-                                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: context.palette.textSecondary),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
@@ -465,18 +583,28 @@ class _AppointmentCard extends StatelessWidget {
                   ),
                   if (appointment.tokenNumber != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
+                        color: context.palette.primaryLight,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                        border: Border.all(
+                            color:
+                                context.palette.primary.withValues(alpha: 0.3)),
                       ),
                       child: Column(
                         children: [
-                          const Text('TOKEN', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                          Text('TOKEN',
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: context.palette.primaryDark)),
                           Text(
                             '#${appointment.tokenNumber}',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.primaryDark),
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: context.palette.primaryDark),
                           ),
                         ],
                       ),
@@ -493,14 +621,18 @@ class _AppointmentCard extends StatelessWidget {
                     appointment.familyMember != null
                         ? 'For: ${appointment.familyMember!.name} (${appointment.familyMember!.relation})'
                         : 'For: Myself',
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(
+                        fontSize: 12, color: context.palette.textSecondary),
                   ),
                 ),
                 // COMPLETENESS FIX (mobile parity audit): booking ID a patient reads off the slip
                 // or quotes at the clinic counter — ports web's shortId() (client/src/lib/format.js).
                 Text(
                   'Booking ${_shortId(appointment.id)}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: context.palette.textSecondary,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ),
@@ -510,14 +642,20 @@ class _AppointmentCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Fee: ₹${fee.toStringAsFixed(0)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                Text('Paid: ₹${money.paid.toStringAsFixed(0)}', style: const TextStyle(fontSize: 12, color: AppColors.success)),
+                Text('Fee: ₹${fee.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+                Text('Paid: ₹${money.paid.toStringAsFixed(0)}',
+                    style: TextStyle(
+                        fontSize: 12, color: context.palette.success)),
                 Text(
                   'Due: ₹${money.due.toStringAsFixed(0)}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: money.due > 0 ? AppColors.danger : AppColors.textSecondary,
+                    color: money.due > 0
+                        ? context.palette.danger
+                        : context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -528,14 +666,19 @@ class _AppointmentCard extends StatelessWidget {
                 money.transactionRef != null && money.transactionRef!.isNotEmpty
                     ? 'Payment: ${money.mode} · Txn ${money.transactionRef}'
                     : 'Payment: ${money.mode == 'pay_at_clinic' ? 'Pay at clinic' : money.mode}',
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                style: TextStyle(
+                    fontSize: 11, color: context.palette.textSecondary),
               ),
             ],
-            if ((appointment.notes ?? appointment.reason) != null && (appointment.notes ?? appointment.reason)!.isNotEmpty) ...[
+            if ((appointment.notes ?? appointment.reason) != null &&
+                (appointment.notes ?? appointment.reason)!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
                 'Note: ${appointment.notes ?? appointment.reason}',
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                style: TextStyle(
+                    fontSize: 11,
+                    color: context.palette.textSecondary,
+                    fontStyle: FontStyle.italic),
               ),
             ],
             const Divider(height: 18),
@@ -548,8 +691,10 @@ class _AppointmentCard extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: onViewSlip,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   icon: const Icon(Icons.remove_red_eye_outlined, size: 15),
                   label: const Text('View slip'),
@@ -560,8 +705,10 @@ class _AppointmentCard extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.charcoal,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      textStyle: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     icon: const Icon(Icons.timelapse, size: 15),
                     label: const Text('Track queue'),
@@ -570,24 +717,29 @@ class _AppointmentCard extends StatelessWidget {
                   ElevatedButton(
                     onPressed: onPayNow,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: context.palette.primary,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      textStyle: const TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                     child: Text('Pay ₹${fee.toStringAsFixed(0)} now'),
                   ),
                 if (onReview != null)
                   TextButton.icon(
                     onPressed: onReview,
-                    icon: const Icon(Icons.star_outline, size: 15, color: AppColors.warning),
-                    label: const Text('Leave review', style: TextStyle(color: AppColors.warning, fontSize: 12)),
+                    icon: const Icon(Icons.star_outline,
+                        size: 15, color: AppColors.warning),
+                    label: const Text('Leave review',
+                        style:
+                            TextStyle(color: AppColors.warning, fontSize: 12)),
                   ),
                 if (onCancel != null)
                   TextButton(
                     onPressed: onCancel,
                     style: TextButton.styleFrom(
-                      foregroundColor: AppColors.danger,
+                      foregroundColor: context.palette.danger,
                       textStyle: const TextStyle(fontSize: 12),
                     ),
                     child: const Text('Cancel'),
@@ -600,8 +752,6 @@ class _AppointmentCard extends StatelessWidget {
     );
   }
 }
-
-
 
 class _ReviewDialog extends StatefulWidget {
   final String doctorName;
@@ -629,7 +779,8 @@ class _ReviewDialogState extends State<_ReviewDialog> {
     super.dispose();
   }
 
-  bool get _isValid => _rating != null && _textController.text.trim().isNotEmpty;
+  bool get _isValid =>
+      _rating != null && _textController.text.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -639,40 +790,56 @@ class _ReviewDialogState extends State<_ReviewDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Rating', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          Text('Rating',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: context.palette.textSecondary)),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
               5,
               (i) => IconButton(
-                icon: Icon(_rating != null && i < _rating! ? Icons.star : Icons.star_border, color: AppColors.warning),
+                icon: Icon(
+                    _rating != null && i < _rating!
+                        ? Icons.star
+                        : Icons.star_border,
+                    color: AppColors.warning),
                 onPressed: () => setState(() => _rating = i + 1),
               ),
             ),
           ),
           if (_rating == null)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 4),
-              child: Text('Please select a rating', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('Please select a rating',
+                  style:
+                      TextStyle(color: context.palette.danger, fontSize: 11)),
             ),
           TextField(
             controller: _textController,
             maxLines: 3,
-            decoration: const InputDecoration(hintText: 'Share your experience'),
+            decoration:
+                const InputDecoration(hintText: 'Share your experience'),
             onChanged: (_) => setState(() => _touchedText = true),
           ),
           if (_touchedText && _textController.text.trim().isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text('Please share a few words about your visit', style: TextStyle(color: AppColors.danger, fontSize: 11)),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Please share a few words about your visit',
+                  style:
+                      TextStyle(color: context.palette.danger, fontSize: 11)),
             ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel')),
         TextButton(
           onPressed: _isValid
-              ? () => Navigator.of(context).pop({'rating': _rating, 'text': _textController.text.trim()})
+              ? () => Navigator.of(context)
+                  .pop({'rating': _rating, 'text': _textController.text.trim()})
               : null,
           child: const Text('Submit'),
         ),

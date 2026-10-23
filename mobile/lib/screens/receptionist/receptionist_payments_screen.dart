@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/admin_period.dart';
+import '../../core/india_time.dart';
+import '../../widgets/admin_period_filter.dart';
 import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
@@ -16,11 +19,14 @@ class ReceptionistPaymentsScreen extends StatefulWidget {
   const ReceptionistPaymentsScreen({super.key});
 
   @override
-  State<ReceptionistPaymentsScreen> createState() => _ReceptionistPaymentsScreenState();
+  State<ReceptionistPaymentsScreen> createState() =>
+      _ReceptionistPaymentsScreenState();
 }
 
-class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen> {
+class _ReceptionistPaymentsScreenState
+    extends State<ReceptionistPaymentsScreen> {
   Future<List<PaymentItem>>? _future;
+  AdminPeriod _period = AdminPeriod.today();
 
   @override
   void initState() {
@@ -30,9 +36,8 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
 
   Future<List<PaymentItem>> _fetch() async {
     try {
-      final res = await ApiClient.instance
-          .get('/payments', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+      final res =
+          await ApiClient.instance.getAll('/payments', query: {'pageSize': 50});
       final list = <PaymentItem>[];
       for (final item in res.list) {
         try {
@@ -41,7 +46,7 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -69,119 +74,166 @@ class _ReceptionistPaymentsScreenState extends State<ReceptionistPaymentsScreen>
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Payments',
               subtitle: 'Record clinic collections and review receipts.',
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: AdminPeriodFilter(
+                value: _period,
+                onChanged: (period) => setState(() => _period = period)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+            child: Text(
+                'Filtered by payment date (IST). All dates includes undated records.',
+                style: TextStyle(fontSize: 11)),
+          ),
           Expanded(
             child: FutureBuilder<List<PaymentItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-                if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
                 }
-                final payments = snapshot.data ?? [];
+                if (snapshot.hasError) {
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
+                }
+                if (!_period.isValid) return const SizedBox.shrink();
+                final payments = (snapshot.data ?? [])
+                    .where((payment) => _period.includes(payment.createdAt))
+                    .toList();
                 if (payments.isEmpty) {
-                  return const EmptyStateView(icon: Icons.receipt_long_outlined, title: 'No payments recorded yet');
+                  return const EmptyStateView(
+                      icon: Icons.receipt_long_outlined,
+                      title: 'No payments in selected dates');
                 }
                 // BUG FIX (mobile parity audit): mirrors web's CashPayment 3-way split
                 // (StaffPages.jsx) — was missing entirely on mobile.
-                final bookingPayments = payments.where(isOnlineBookingPayment).toList();
-                final cashPayments = payments.where((p) => !isOnlineBookingPayment(p) && p.mode.toLowerCase() == 'cash').toList();
-                final clinicOnlinePayments = payments.where((p) => !isOnlineBookingPayment(p) && p.mode.toLowerCase() != 'cash').toList();
-                double sumOf(List<PaymentItem> list) => list.fold<double>(0, (sum, p) => sum + clinicAmount(p));
+                final collected = payments
+                    .where((payment) =>
+                        isRevenuePayment(payment, doctorOnly: true))
+                    .toList();
+                final bookingPayments =
+                    collected.where(isOnlineBookingPayment).toList();
+                final cashPayments = collected
+                    .where((p) =>
+                        !isOnlineBookingPayment(p) &&
+                        p.mode.toLowerCase() == 'cash')
+                    .toList();
+                final clinicOnlinePayments = collected
+                    .where((p) =>
+                        !isOnlineBookingPayment(p) &&
+                        p.mode.toLowerCase() != 'cash')
+                    .toList();
+                double sumOf(List<PaymentItem> list) =>
+                    list.fold<double>(0, (sum, p) => sum + clinicAmount(p));
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     itemCount: payments.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      StatCard(
-                        label: 'PAID ONLINE AT BOOKING',
-                        value: '₹${sumOf(bookingPayments).toStringAsFixed(0)}',
-                        icon: Icons.public,
-                        detail: '${bookingPayments.length} payment(s) · paid before arrival',
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      StatCard(
-                        label: 'CASH COLLECTED AT CLINIC',
-                        value: '₹${sumOf(cashPayments).toStringAsFixed(0)}',
-                        icon: Icons.currency_rupee,
-                        detail: '${cashPayments.length} payment(s)',
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      StatCard(
-                        label: 'ONLINE COLLECTED AT CLINIC',
-                        value: '₹${sumOf(clinicOnlinePayments).toStringAsFixed(0)}',
-                        icon: Icons.wifi,
-                        detail: '${clinicOnlinePayments.length} payment(s) · UPI/Card/Online',
-                      ),
-                    ],
-                  );
-                }
-                final p = payments[i - 1];
-                return Card(
-                  child: ListTile(
-                    onTap: () => showPaymentReceiptSheet(context, p),
-                    title: Text(p.patient?.patientDisplayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 2),
-                        Text(
-                          '${p.doctor?.doctorDisplayName ?? "Doctor"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}',
-                        ),
-                        // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's
-                        // payments table has a dedicated "Booking ID" column (StaffPages.jsx's
-                        // "BOOKING-ID VISIBILITY FIX", follow-up: "payment me v booking id do") —
-                        // this row never showed it.
-                        if (p.appointment?.id != null && p.appointment!.id.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            'Booking ID: #${p.appointment!.id.length > 8 ? p.appointment!.id.substring(0, 8) : p.appointment!.id}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Row(
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, i) {
+                      if (i == 0) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            TextButton.icon(
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size(50, 24),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              onPressed: () => showPaymentReceiptSheet(context, p),
-                              icon: const Icon(Icons.receipt_long_outlined, size: 14),
-                              label: const Text('View receipt', style: TextStyle(fontSize: 12)),
+                            StatCard(
+                              label: 'PAID ONLINE AT BOOKING',
+                              value:
+                                  '₹${sumOf(bookingPayments).toStringAsFixed(0)}',
+                              icon: Icons.public,
+                              detail:
+                                  '${bookingPayments.length} payment(s) · paid before arrival',
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            StatCard(
+                              label: 'CASH COLLECTED AT CLINIC',
+                              value:
+                                  '₹${sumOf(cashPayments).toStringAsFixed(0)}',
+                              icon: Icons.currency_rupee,
+                              detail: '${cashPayments.length} payment(s)',
+                            ),
+                            const SizedBox(height: AppSpacing.sm),
+                            StatCard(
+                              label: 'ONLINE COLLECTED AT CLINIC',
+                              value:
+                                  '₹${sumOf(clinicOnlinePayments).toStringAsFixed(0)}',
+                              icon: Icons.wifi,
+                              detail:
+                                  '${clinicOnlinePayments.length} payment(s) · UPI/Card/Online',
                             ),
                           ],
+                        );
+                      }
+                      final p = payments[i - 1];
+                      return Card(
+                        child: InkWell(
+                          onTap: () => showPaymentReceiptSheet(context, p),
+                          borderRadius: BorderRadius.circular(AppRadius.card),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.sm),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                      p.patient?.patientDisplayName ??
+                                          'Patient',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700)),
+                                  const SizedBox(height: 4),
+                                  Wrap(
+                                      spacing: 10,
+                                      runSpacing: 4,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        if (p.fees.consultationFee != null ||
+                                            p.fees.amount != null)
+                                          Text(
+                                              '₹${(p.fees.amount ?? p.fees.consultationFee)!.toStringAsFixed(0)}',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 15)),
+                                        StatusBadge(status: p.status),
+                                      ]),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                      '${p.doctor?.doctorDisplayName ?? "Doctor"} · ${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'),
+                                  if (p.appointment?.id != null &&
+                                      p.appointment!.id.isNotEmpty)
+                                    Text(
+                                        'Booking ID: #${p.appointment!.id.length > 8 ? p.appointment!.id.substring(0, 8) : p.appointment!.id}',
+                                        style: const TextStyle(fontSize: 11)),
+                                  Text(
+                                      'Payment date: ${indiaTimestamp(p.createdAt)}',
+                                      style: const TextStyle(fontSize: 11)),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton.icon(
+                                        onPressed: () =>
+                                            showPaymentReceiptSheet(context, p),
+                                        icon: const Icon(
+                                            Icons.receipt_long_outlined,
+                                            size: 16),
+                                        label: const Text('View receipt')),
+                                  ),
+                                ]),
+                          ),
                         ),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (p.fees.consultationFee != null || p.fees.amount != null)
-                          Text('₹${(p.fees.amount ?? p.fees.consultationFee)!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                        const SizedBox(height: 4),
-                        StatusBadge(status: p.status),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 );
-              },
-            ),
-          );
               },
             ),
           ),
@@ -211,17 +263,20 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
   void initState() {
     super.initState();
     _appointmentsFuture = ApiClient.instance
-        .get('/appointments', query: {'pageSize': 100})
-        .then((res) {
-          final list = <Appointment>[];
-          for (final item in res.list) {
-            try {
-              final a = Appointment.fromJson(item);
-              if (a.paymentStatus == 'pending') list.add(a);
-            } catch (_) {}
+        .getAll('/appointments', query: {'pageSize': 100}).then((res) {
+      final list = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          final a = Appointment.fromJson(item);
+          if (!['cancelled', 'no_show', 'pending_payment'].contains(a.status) &&
+              ['pending', 'partial'].contains(a.paymentStatus) &&
+              (a.fees.due ?? a.fees.consultationFee ?? 0) > 0) {
+            list.add(a);
           }
-          return list;
-        }).catchError((_) => <Appointment>[]);
+        } catch (_) {}
+      }
+      return list;
+    });
   }
 
   @override
@@ -231,13 +286,37 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
     super.dispose();
   }
 
+  String _appointmentLabel(Appointment appointment) {
+    final id = appointment.id.length > 8
+        ? appointment.id.substring(0, 8)
+        : appointment.id;
+    final patient = appointment.familyMember?.name ??
+        appointment.patient?.name ??
+        'Patient';
+    final token = appointment.tokenNumber == null
+        ? 'Token not assigned'
+        : 'Token #${appointment.tokenNumber}';
+    return '#$id · $patient · $token';
+  }
+
+  Future<void> _pickAppointment(List<Appointment> appointments) async {
+    final picked = await showModalBottomSheet<Appointment>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (context) => _AppointmentPicker(
+        appointments: appointments,
+        labelFor: _appointmentLabel,
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _selectedAppointment = picked);
+    }
+  }
+
   Future<void> _submit() async {
     if (_selectedAppointment == null) {
       setState(() => _error = 'Select an appointment');
-      return;
-    }
-    if (_mode != 'cash' && _transactionRefCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Transaction reference is required for non-cash payments');
       return;
     }
     setState(() {
@@ -253,14 +332,17 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
         // so a UTR typed in for a cash payment was silently dropped instead of saved. Mirrors
         // web's CashPayment, which sends transactionRef whenever it's non-empty, regardless of
         // mode — same conditional-inclusion pattern as payerUpiId right below.
-        if (_transactionRefCtrl.text.trim().isNotEmpty) 'transactionRef': _transactionRefCtrl.text.trim(),
+        if (_transactionRefCtrl.text.trim().isNotEmpty)
+          'transactionRef': _transactionRefCtrl.text.trim(),
         // COMPLETENESS ADD — mirrors web's CashPayment (StaffPages.jsx): a "UPI ID" field
         // that's always available regardless of payment method and gets saved alongside
         // the UTR/transaction reference above.
-        if (_payerUpiIdCtrl.text.trim().isNotEmpty) 'payerUpiId': _payerUpiIdCtrl.text.trim(),
+        if (_payerUpiIdCtrl.text.trim().isNotEmpty)
+          'payerUpiId': _payerUpiIdCtrl.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
+      if (!mounted) return;
       setState(() {
         _error = err.toString();
         _submitting = false;
@@ -275,29 +357,44 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           FutureBuilder<List<Appointment>>(
             future: _appointmentsFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) return ErrorBanner(error: snapshot.error!);
               final appts = snapshot.data ?? [];
               if (appts.isEmpty) {
-                return const Text('No appointments with pending payment right now.', style: TextStyle(color: AppColors.textSecondary));
+                return Text('No appointments with pending payment right now.',
+                    style: TextStyle(color: context.palette.textSecondary));
               }
-              return DropdownButtonFormField<Appointment>(
-                initialValue: _selectedAppointment,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Appointment (payment pending)'),
-                items: appts
-                    .map((a) => DropdownMenuItem(
-                          value: a,
-                          child: Text(
-                            '${a.patient?.name ?? "Patient"} · ${a.appointmentDate} ${a.appointmentTime}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedAppointment = v),
+              return InkWell(
+                key: const ValueKey('unpaid-appointment-picker'),
+                onTap: () => _pickAppointment(appts),
+                borderRadius: BorderRadius.circular(AppRadius.button),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Appointment (payment pending)',
+                    suffixIcon: Icon(Icons.search),
+                  ),
+                  child: Text(
+                    _selectedAppointment == null
+                        ? 'Search by name, booking ID or token'
+                        : _appointmentLabel(_selectedAppointment!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _selectedAppointment == null
+                          ? context.palette.textSecondary
+                          : context.palette.textPrimary,
+                    ),
+                  ),
+                ),
               );
             },
           ),
@@ -315,9 +412,9 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.background,
+                color: context.palette.background,
                 borderRadius: BorderRadius.circular(AppRadius.button),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.palette.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,7 +428,8 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
                     _selectedAppointment!.paymentStatus == 'partial'
                         ? 'An advance has already been paid online for this appointment — Due now: ₹${(_selectedAppointment!.fees.due ?? _selectedAppointment!.fees.consultationFee)?.toStringAsFixed(0) ?? 0} collected at the clinic.'
                         : 'Paid so far: ₹0 · Due now: ₹${(_selectedAppointment!.fees.due ?? _selectedAppointment!.fees.consultationFee)?.toStringAsFixed(0) ?? 0}',
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    style: TextStyle(
+                        color: context.palette.textSecondary, fontSize: 12),
                   ),
                 ],
               ),
@@ -356,16 +454,112 @@ class _NewPaymentScreenState extends State<_NewPaymentScreen> {
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _transactionRefCtrl,
-            decoration: const InputDecoration(labelText: 'UTR / Transaction number', hintText: 'Bank/UPI reference number'),
+            decoration: const InputDecoration(
+                labelText: 'UTR / Transaction number',
+                hintText: 'Bank/UPI reference number'),
           ),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _payerUpiIdCtrl,
-            decoration: const InputDecoration(labelText: 'UPI ID', hintText: 'e.g. name@okhdfcbank'),
+            decoration: const InputDecoration(
+                labelText: 'UPI ID', hintText: 'e.g. name@okhdfcbank'),
           ),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Record payment', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Record payment',
+              onPressed: _submit,
+              loading: _submitting),
         ],
+      ),
+    );
+  }
+}
+
+class _AppointmentPicker extends StatefulWidget {
+  final List<Appointment> appointments;
+  final String Function(Appointment appointment) labelFor;
+
+  const _AppointmentPicker({
+    required this.appointments,
+    required this.labelFor,
+  });
+
+  @override
+  State<_AppointmentPicker> createState() => _AppointmentPickerState();
+}
+
+class _AppointmentPickerState extends State<_AppointmentPicker> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query.trim().toLowerCase();
+    final matches = widget.appointments.where((appointment) {
+      final searchable = [
+        appointment.id,
+        appointment.patient?.name,
+        appointment.familyMember?.name,
+        appointment.tokenNumber?.toString(),
+      ].whereType<String>().join(' ').toLowerCase();
+      return query.isEmpty || searchable.contains(query);
+    }).toList();
+
+    return FractionallySizedBox(
+      heightFactor: 0.78,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.md,
+          MediaQuery.viewInsetsOf(context).bottom + AppSpacing.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Select unpaid appointment',
+                style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Search unpaid appointments',
+                hintText: 'Patient name, booking ID or token number',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (value) => setState(() => _query = value),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Expanded(
+              child: matches.isEmpty
+                  ? const Center(child: Text('No matching appointments.'))
+                  : ListView.separated(
+                      itemCount: matches.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final appointment = matches[index];
+                        final due = appointment.fees.due ??
+                            appointment.fees.consultationFee ??
+                            0;
+                        return ListTile(
+                          key:
+                              ValueKey('payment-appointment-${appointment.id}'),
+                          title: Text(widget.labelFor(appointment)),
+                          subtitle: Text('Due ₹${due.toStringAsFixed(0)}'),
+                          onTap: () => Navigator.of(context).pop(appointment),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

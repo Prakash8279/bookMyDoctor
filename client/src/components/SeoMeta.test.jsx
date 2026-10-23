@@ -36,4 +36,11 @@ describe('SeoMeta', () => {
 
     await waitFor(() => expect(document.querySelector('meta[name="robots"]')).toHaveAttribute('content', 'noindex, nofollow'))
   })
+
+  it('makes the shipping and exchange policy public with its own canonical URL', async () => {
+    renderAt('/shipping-exchange-policy')
+    await waitFor(() => expect(document.title).toBe('Shipping and Exchange Policy | BookADoctors'))
+    expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute('href', 'https://bookadoctors.com/shipping-exchange-policy')
+    expect(document.querySelector('meta[name="robots"]')).toHaveAttribute('content', expect.stringContaining('index, follow'))
+  })
 })

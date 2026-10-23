@@ -41,10 +41,13 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
       // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
       // receptionist_reports_screen.dart's comment): pageSize over 100 gets rejected outright by
       // the backend's list-query validator (422 "Validation failed"), not clamped.
-      final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .get('/geography/cities', query: {'pageSize': 100});
       final list = <City>[];
       for (final item in res.list) {
-        try { list.add(City.fromJson(item)); } catch (_) {}
+        try {
+          list.add(City.fromJson(item));
+        } catch (_) {}
       }
       if (mounted) setState(() => _cities = list);
     } catch (_) {
@@ -54,10 +57,13 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
 
   Future<void> _loadAreas(String cityId) async {
     try {
-      final res = await ApiClient.instance.get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100});
+      final res = await ApiClient.instance
+          .get('/geography/areas', query: {'cityId': cityId, 'pageSize': 100});
       final list = <Area>[];
       for (final item in res.list) {
-        try { list.add(Area.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Area.fromJson(item));
+        } catch (_) {}
       }
       if (mounted) setState(() => _areas = list);
     } catch (_) {
@@ -74,7 +80,9 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
     }).then((res) {
       final list = <Clinic>[];
       for (final item in res.list) {
-        try { list.add(Clinic.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
       }
       return list;
     }).catchError((_) => <Clinic>[]);
@@ -111,7 +119,8 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                 // title+subtitle PageHeader block used across the app.
                 const PageHeader(
                   title: 'Find a clinic',
-                  subtitle: 'Search trusted clinics and hospital branches in your city.',
+                  subtitle:
+                      'Search trusted clinics and hospital branches in your city.',
                 ),
                 Row(
                   children: [
@@ -121,8 +130,10 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'City'),
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('All cities')),
-                          for (final c in _cities) DropdownMenuItem(value: c.id, child: Text(c.name)),
+                          const DropdownMenuItem(
+                              value: null, child: Text('All cities')),
+                          for (final c in _cities)
+                            DropdownMenuItem(value: c.id, child: Text(c.name)),
                         ],
                         onChanged: (value) {
                           setState(() {
@@ -142,8 +153,10 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Area'),
                         items: [
-                          const DropdownMenuItem(value: null, child: Text('All areas')),
-                          for (final a in _areas) DropdownMenuItem(value: a.id, child: Text(a.name)),
+                          const DropdownMenuItem(
+                              value: null, child: Text('All areas')),
+                          for (final a in _areas)
+                            DropdownMenuItem(value: a.id, child: Text(a.name)),
                         ],
                         onChanged: _cityId == null
                             ? null
@@ -155,16 +168,18 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                     ),
                   ],
                 ),
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('Emergency services only'),
-                  value: _emergencyOnly,
-                  onChanged: (value) {
-                    setState(() => _emergencyOnly = value ?? false);
-                    _search();
-                  },
-                ),
+                Material(
+                    type: MaterialType.transparency,
+                    child: CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      title: const Text('Emergency services only'),
+                      value: _emergencyOnly,
+                      onChanged: (value) {
+                        setState(() => _emergencyOnly = value ?? false);
+                        _search();
+                      },
+                    )),
               ],
             ),
           ),
@@ -172,11 +187,14 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
             child: FutureBuilder<List<Clinic>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
-                    child: ErrorBanner(error: snapshot.error!, onRetry: _search),
+                    child:
+                        ErrorBanner(error: snapshot.error!, onRetry: _search),
                   );
                 }
                 final clinics = snapshot.data ?? [];
@@ -195,7 +213,8 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     itemCount: clinics.length + 1,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, i) {
                       if (i == 0) {
                         return Padding(
@@ -219,25 +238,38 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text(clinic.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                                      child: Text(clinic.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 16)),
                                     ),
                                     StatusBadge(status: clinic.approvalStatus),
                                   ],
                                 ),
-                                if (clinic.area != null || clinic.city != null) ...[
+                                if (clinic.area != null ||
+                                    clinic.city != null) ...[
                                   const SizedBox(height: 4),
                                   Text(
-                                    [clinic.area?.name, clinic.city?.name].where((v) => v != null && v.isNotEmpty).join(', '),
-                                    style: const TextStyle(color: AppColors.textSecondary),
+                                    [clinic.area?.name, clinic.city?.name]
+                                        .where((v) => v != null && v.isNotEmpty)
+                                        .join(', '),
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary),
                                   ),
                                 ],
                                 if (clinic.address != null) ...[
                                   const SizedBox(height: AppSpacing.sm),
-                                  Text(clinic.address!, style: const TextStyle(color: AppColors.textSecondary)),
+                                  Text(clinic.address!,
+                                      style: TextStyle(
+                                          color:
+                                              context.palette.textSecondary)),
                                 ],
                                 if (clinic.emergencyAvailable) ...[
                                   const SizedBox(height: AppSpacing.sm),
-                                  const Text('Emergency services available', style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600)),
+                                  Text('Emergency services available',
+                                      style: TextStyle(
+                                          color: context.palette.danger,
+                                          fontWeight: FontWeight.w600)),
                                 ],
                                 const SizedBox(height: AppSpacing.sm),
                                 Row(
@@ -251,8 +283,11 @@ class _ClinicSearchScreenState extends State<ClinicSearchScreen> {
                                       const SizedBox(width: AppSpacing.xs),
                                     ],
                                     TextButton.icon(
-                                      onPressed: () => _showClinicProfile(clinic),
-                                      icon: const Icon(Icons.medical_services_outlined, size: 16),
+                                      onPressed: () =>
+                                          _showClinicProfile(clinic),
+                                      icon: const Icon(
+                                          Icons.medical_services_outlined,
+                                          size: 16),
                                       label: const Text('Doctors & booking →'),
                                     ),
                                   ],
@@ -295,7 +330,8 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
 
   Future<List<DoctorDirectoryItem>> _fetchClinicDoctors() async {
     try {
-      final res = await ApiClient.instance.get('/doctors', query: {'pageSize': 100});
+      final res =
+          await ApiClient.instance.get('/doctors', query: {'pageSize': 100});
       final doctors = <DoctorDirectoryItem>[];
       for (final item in res.list) {
         try {
@@ -319,7 +355,9 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
   @override
   Widget build(BuildContext context) {
     final clinic = widget.clinic;
-    final locationText = [clinic.address, clinic.area?.name, clinic.city?.name].where((s) => s != null && s.isNotEmpty).join(', ');
+    final locationText = [clinic.address, clinic.area?.name, clinic.city?.name]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(', ');
 
     return DraggableScrollableSheet(
       initialChildSize: 0.85,
@@ -327,9 +365,9 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
       maxChildSize: 0.95,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          decoration: BoxDecoration(
+            color: context.palette.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: Column(
             children: [
@@ -339,7 +377,9 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                   margin: const EdgeInsets.symmetric(vertical: 10),
                   width: 40,
                   height: 4,
-                  decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                  decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2)),
                 ),
               ),
               // Header
@@ -351,35 +391,55 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.local_hospital, color: Colors.white70, size: 16),
+                        const Icon(Icons.local_hospital,
+                            color: Colors.white70, size: 16),
                         const SizedBox(width: 6),
                         Text(
-                          clinic.approvalStatus == 'disabled' ? 'Inactive clinic' : 'Active clinic',
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                          clinic.approvalStatus == 'disabled'
+                              ? 'Inactive clinic'
+                              : 'Active clinic',
+                          style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
                         ),
                         const Spacer(),
                         if (clinic.emergencyAvailable)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              color: AppColors.danger.withValues(alpha: 0.2),
+                              color:
+                                  context.palette.danger.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: AppColors.danger),
+                              border: Border.all(color: context.palette.danger),
                             ),
-                            child: const Text('Emergency 24/7', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                            child: const Text('Emergency 24/7',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700)),
                           ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(clinic.name, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+                    Text(clinic.name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800)),
                     if (locationText.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.location_on_outlined, color: Colors.white60, size: 14),
+                          const Icon(Icons.location_on_outlined,
+                              color: Colors.white60, size: 14),
                           const SizedBox(width: 4),
-                          Expanded(child: Text(locationText, style: const TextStyle(color: Colors.white60, fontSize: 13))),
+                          Expanded(
+                              child: Text(locationText,
+                                  style: const TextStyle(
+                                      color: Colors.white60, fontSize: 13))),
                         ],
                       ),
                     ],
@@ -389,9 +449,14 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                         onTap: () => _call(clinic.phone!),
                         child: Row(
                           children: [
-                            const Icon(Icons.phone, color: AppColors.primaryLight, size: 14),
+                            Icon(Icons.phone,
+                                color: context.palette.primaryLight, size: 14),
                             const SizedBox(width: 6),
-                            Text(clinic.phone!, style: const TextStyle(color: AppColors.primaryLight, fontWeight: FontWeight.w600, fontSize: 13)),
+                            Text(clinic.phone!,
+                                style: TextStyle(
+                                    color: context.palette.primaryLight,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13)),
                           ],
                         ),
                       ),
@@ -401,11 +466,14 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
               ),
               // Doctors List Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xs),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.md, AppSpacing.md, AppSpacing.md, AppSpacing.xs),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Doctors at ${clinic.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    Text('Doctors at ${clinic.name}',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -414,13 +482,18 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                 child: FutureBuilder<List<DoctorDirectoryItem>>(
                   future: _doctorsFuture,
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const LoadingView();
+                    }
                     final doctors = snapshot.data ?? [];
                     if (doctors.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Padding(
-                          padding: EdgeInsets.all(AppSpacing.lg),
-                          child: Text('No doctors currently listed at this clinic.', style: TextStyle(color: AppColors.textSecondary)),
+                          padding: const EdgeInsets.all(AppSpacing.lg),
+                          child: Text(
+                              'No doctors currently listed at this clinic.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary)),
                         ),
                       );
                     }
@@ -428,7 +501,8 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                       controller: scrollController,
                       padding: const EdgeInsets.all(AppSpacing.md),
                       itemCount: doctors.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                      separatorBuilder: (_, __) =>
+                          const SizedBox(height: AppSpacing.sm),
                       itemBuilder: (context, index) {
                         final doc = doctors[index];
                         return Card(
@@ -439,64 +513,109 @@ class _ClinicProfileSheetState extends State<_ClinicProfileSheet> {
                               children: [
                                 CircleAvatar(
                                   radius: 22,
-                                  backgroundColor: AppColors.primaryLight,
+                                  backgroundColor: context.palette.primaryLight,
                                   child: Text(
-                                    doc.name.split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0]).join().toUpperCase(),
-                                    style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primaryDark),
+                                    doc.name
+                                        .split(' ')
+                                        .where((s) => s.isNotEmpty)
+                                        .take(2)
+                                        .map((s) => s[0])
+                                        .join()
+                                        .toUpperCase(),
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        color: context.palette.primaryDark),
                                   ),
                                 ),
                                 const SizedBox(width: AppSpacing.sm),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(doc.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                                      Text(doc.name,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15)),
                                       const SizedBox(height: 2),
                                       Text(
                                         '${doc.specialization?.name ?? "General Physician"} · ${doc.experienceYears}y exp',
-                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12),
                                       ),
                                       const SizedBox(height: 2),
-                                      Text('₹${doc.consultationFee.toStringAsFixed(0)} fee', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppColors.primaryDark)),
+                                      Text(
+                                          '₹${doc.consultationFee.toStringAsFixed(0)} fee',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                              color:
+                                                  context.palette.primaryDark)),
                                       const SizedBox(height: AppSpacing.xs),
                                       Wrap(
                                         spacing: AppSpacing.xs,
                                         children: [
                                           OutlinedButton(
                                             style: OutlinedButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4),
                                               minimumSize: Size.zero,
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
                                             ),
                                             onPressed: () {
-                                              Navigator.of(context).push(MaterialPageRoute(
-                                                builder: (_) => DoctorDetailScreen(doctorId: doc.id),
+                                              Navigator.of(context)
+                                                  .push(MaterialPageRoute(
+                                                builder: (_) =>
+                                                    DoctorDetailScreen(
+                                                        doctorId: doc.id),
                                               ));
                                             },
-                                            child: const Text('View profile', style: TextStyle(fontSize: 12)),
+                                            child: const Text('View profile',
+                                                style: TextStyle(fontSize: 12)),
                                           ),
                                           ElevatedButton(
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: AppColors.primaryDark,
+                                              backgroundColor:
+                                                  context.palette.primaryDark,
                                               foregroundColor: Colors.white,
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 4),
                                               minimumSize: Size.zero,
-                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                              tapTargetSize:
+                                                  MaterialTapTargetSize
+                                                      .shrinkWrap,
                                             ),
                                             onPressed: () {
-                                              if (TokenStore.instance.current == null) {
-                                                Navigator.of(context).push(MaterialPageRoute(
-                                                  builder: (_) => const LoginScreen(),
+                                              if (TokenStore.instance.current ==
+                                                  null) {
+                                                Navigator.of(context)
+                                                    .push(MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const LoginScreen(),
                                                 ));
                                               } else {
-                                                Navigator.of(context).push(MaterialPageRoute(
-                                                  builder: (_) => BookAppointmentScreen(
+                                                Navigator.of(context)
+                                                    .push(MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      BookAppointmentScreen(
                                                     preselectedDoctor: doc,
                                                   ),
                                                 ));
                                               }
                                             },
-                                            child: const Text('Book now', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                            child: const Text('Book now',
+                                                style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight:
+                                                        FontWeight.w700)),
                                           ),
                                         ],
                                       ),

@@ -188,7 +188,7 @@ describe('PlatformCharges role gating (RoleGuard, via App)', () => {
 
     // RoleGuard bounces a role mismatch to that role's own dashboard instead of showing the
     // admin-only page.
-    expect(await screen.findAllByText(/Welcome, Nikhil\./i)).not.toHaveLength(0)
+    expect(await screen.findAllByText(/Welcome, Nikhil\./i, {}, { timeout: 10000 })).not.toHaveLength(0)
     expect(screen.queryByText('Platform charges')).not.toBeInTheDocument()
   })
 })

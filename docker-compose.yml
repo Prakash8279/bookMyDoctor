@@ -101,6 +101,9 @@ services:
     volumes:
       - ./server/server/src:/app/src
       - ./server/server/prisma:/app/prisma
+      # Profile photos and clinic QR files must survive container recreation/deploys. This named
+      # volume is shared by every API replica mounted on this host.
+      - uploads_data:/app/uploads
     env_file:
       - ./server/server/.env
 
@@ -161,3 +164,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:

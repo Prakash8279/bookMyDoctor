@@ -61,7 +61,8 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
   // every reported interface is `ConnectivityResult.none`, not just the first one.
   void _handleResult(List<ConnectivityResult> result) {
     if (!mounted) return;
-    setState(() => _offline = result.every((r) => r == ConnectivityResult.none));
+    setState(
+        () => _offline = result.every((r) => r == ConnectivityResult.none));
   }
 
   @override
@@ -75,8 +76,9 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
     if (!_offline) return const SizedBox.shrink();
     return Container(
       width: double.infinity,
-      color: AppColors.danger,
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: AppSpacing.md),
+      color: context.palette.danger,
+      padding:
+          const EdgeInsets.symmetric(vertical: 6, horizontal: AppSpacing.md),
       child: const Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -84,7 +86,8 @@ class _ConnectivityBannerState extends State<ConnectivityBanner> {
           SizedBox(width: 6),
           Text(
             'No internet connection',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12),
           ),
         ],
       ),

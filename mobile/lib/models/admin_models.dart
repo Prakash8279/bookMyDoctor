@@ -60,9 +60,12 @@ class ReceptionistRow {
     this.since,
   });
 
-  factory ReceptionistRow.fromJson(Map<String, dynamic> json) => ReceptionistRow(
+  factory ReceptionistRow.fromJson(Map<String, dynamic> json) =>
+      ReceptionistRow(
         id: asString(json['id']),
-        receptionistNumber: json['receptionistNumber'] == null ? null : asInt(json['receptionistNumber']),
+        receptionistNumber: json['receptionistNumber'] == null
+            ? null
+            : asInt(json['receptionistNumber']),
         name: asString(json['name']),
         email: asString(json['email']),
         phone: json['phone'] as String?,
@@ -114,9 +117,11 @@ class PatientDirectoryItem {
     this.emergencyContact,
   });
 
-  factory PatientDirectoryItem.fromJson(Map<String, dynamic> json) => PatientDirectoryItem(
+  factory PatientDirectoryItem.fromJson(Map<String, dynamic> json) =>
+      PatientDirectoryItem(
         id: asString(json['id']),
-        patientNumber: json['patientNumber'] == null ? null : asInt(json['patientNumber']),
+        patientNumber:
+            json['patientNumber'] == null ? null : asInt(json['patientNumber']),
         name: asString(json['name']),
         email: json['email'] as String?,
         phone: json['phone'] as String?,
@@ -128,7 +133,8 @@ class PatientDirectoryItem {
         bloodGroup: json['bloodGroup'] as String?,
       );
 
-  String get displayName => patientNumber == null ? name : 'DCP$patientNumber · $name';
+  String get displayName =>
+      patientNumber == null ? name : 'DCP$patientNumber · $name';
 
   bool get hasHealthNotes =>
       (medicalHistory != null && medicalHistory!.trim().isNotEmpty) ||
@@ -139,14 +145,18 @@ class PatientDirectoryItem {
   String? get healthNotesSummary {
     if (!hasHealthNotes) return null;
     final parts = <String>[];
-    if (medicalHistory != null && medicalHistory!.trim().isNotEmpty) parts.add('History: $medicalHistory');
+    if (medicalHistory != null && medicalHistory!.trim().isNotEmpty) {
+      parts.add('History: $medicalHistory');
+    }
     if (emergencyContact != null && emergencyContact!.trim().isNotEmpty) {
       parts.add('Emergency contact: $emergencyContact');
     }
     return parts.join(' · ');
   }
 
-  PatientDirectoryItem mergedWithHealthNotes({String? medicalHistory, String? emergencyContact}) => PatientDirectoryItem(
+  PatientDirectoryItem mergedWithHealthNotes(
+          {String? medicalHistory, String? emergencyContact}) =>
+      PatientDirectoryItem(
         id: id,
         patientNumber: patientNumber,
         name: name,
@@ -214,7 +224,8 @@ class AppNotification {
 
   bool get isRead => readAt != null;
 
-  factory AppNotification.fromJson(Map<String, dynamic> json) => AppNotification(
+  factory AppNotification.fromJson(Map<String, dynamic> json) =>
+      AppNotification(
         id: asString(json['id']),
         notificationId: asString(json['notificationId']),
         title: asString(json['title']),
@@ -248,7 +259,8 @@ class BroadcastLogItem {
     required this.readCount,
   });
 
-  factory BroadcastLogItem.fromJson(Map<String, dynamic> json) => BroadcastLogItem(
+  factory BroadcastLogItem.fromJson(Map<String, dynamic> json) =>
+      BroadcastLogItem(
         id: asString(json['id']),
         title: asString(json['title']),
         body: asString(json['body']),
@@ -282,7 +294,9 @@ class ComplaintItem {
 
   factory ComplaintItem.fromJson(Map<String, dynamic> json) => ComplaintItem(
         id: asString(json['id']),
-        raisedBy: json['raisedBy'] == null ? null : NamedRef.fromJson(json['raisedBy'] as Map<String, dynamic>),
+        raisedBy: json['raisedBy'] == null
+            ? null
+            : NamedRef.fromJson(json['raisedBy'] as Map<String, dynamic>),
         subject: asString(json['subject']),
         description: json['description'] as String?,
         status: asString(json['status'], 'open'),
@@ -312,7 +326,8 @@ class ContactRequestItem {
     this.createdAt,
   });
 
-  factory ContactRequestItem.fromJson(Map<String, dynamic> json) => ContactRequestItem(
+  factory ContactRequestItem.fromJson(Map<String, dynamic> json) =>
+      ContactRequestItem(
         id: asString(json['id']),
         name: asString(json['name']),
         email: asString(json['email']),
@@ -341,8 +356,11 @@ class PlatformCharges {
     required this.applyEmergencyFee,
   });
 
-  factory PlatformCharges.fromJson(Map<String, dynamic> json) => PlatformCharges(
-        commissionPercent: json['commissionPercent'] == null ? null : asDouble(json['commissionPercent']),
+  factory PlatformCharges.fromJson(Map<String, dynamic> json) =>
+      PlatformCharges(
+        commissionPercent: json['commissionPercent'] == null
+            ? null
+            : asDouble(json['commissionPercent']),
         patientConvenienceFee: asDouble(json['patientConvenienceFee']),
         emergencyFee: asDouble(json['emergencyFee']),
         gstPercent: asDouble(json['gstPercent']),
@@ -427,8 +445,9 @@ class BookingRules {
         defaultSlotMinutes: asInt(json['defaultSlotMinutes']),
         onlineBookingWindowStart: json['onlineBookingWindowStart'] as String?,
         onlineBookingWindowEnd: json['onlineBookingWindowEnd'] as String?,
-        onlineBookingMaxAdvanceDays:
-            json['onlineBookingMaxAdvanceDays'] == null ? null : asInt(json['onlineBookingMaxAdvanceDays']),
+        onlineBookingMaxAdvanceDays: json['onlineBookingMaxAdvanceDays'] == null
+            ? null
+            : asInt(json['onlineBookingMaxAdvanceDays']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -488,9 +507,12 @@ class ActivityLogEntry {
     this.ipAddress,
   });
 
-  factory ActivityLogEntry.fromJson(Map<String, dynamic> json) => ActivityLogEntry(
+  factory ActivityLogEntry.fromJson(Map<String, dynamic> json) =>
+      ActivityLogEntry(
         id: asString(json['id']),
-        actor: json['actor'] == null ? null : NamedRef.fromJson(json['actor'] as Map<String, dynamic>),
+        actor: json['actor'] == null
+            ? null
+            : NamedRef.fromJson(json['actor'] as Map<String, dynamic>),
         actorRole: json['actorRole'] as String?,
         actionType: asString(json['actionType']),
         targetEntityType: json['targetEntityType'] as String?,

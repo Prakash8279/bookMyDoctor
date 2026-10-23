@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
+import '../../widgets/admin_record_panel.dart';
 import '../../models/admin_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -29,20 +31,15 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
   }
 
   Future<List<ReviewItem>> _fetch() async {
-    try {
-      final res = await ApiClient.instance
-          .get('/reviews', query: {'status': _statusFilter, 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
-      final list = <ReviewItem>[];
-      for (final item in res.list) {
-        try {
-          list.add(ReviewItem.fromJson(item));
-        } catch (_) {}
-      }
-      return list;
-    } catch (_) {
-      return [];
+    final res = await ApiClient.instance
+        .getAll('/reviews', query: {'status': _statusFilter, 'pageSize': 100});
+    final list = <ReviewItem>[];
+    for (final item in res.list) {
+      try {
+        list.add(ReviewItem.fromJson(item));
+      } catch (_) {}
     }
+    return list;
   }
 
   void _load() {
@@ -54,7 +51,8 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
   Future<void> _setStatus(ReviewItem r, String status) async {
     setState(() => _busyId = r.id);
     try {
-      await ApiClient.instance.patch('/reviews/${r.id}/status', body: {'status': status});
+      await ApiClient.instance
+          .patch('/reviews/${r.id}/status', body: {'status': status});
       if (mounted) showSuccessSnack(context, 'Marked $status');
       _load();
     } catch (err) {
@@ -72,15 +70,18 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
           // Mirrors the web app's ReviewModeration `Page` header (AdminPages.jsx /
           // PortalSectionPages.jsx) — same title + subtitle copy.
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Review moderation',
-              subtitle: 'Keep public feedback useful, respectful, and actionable.',
+              subtitle:
+                  'Keep public feedback useful, respectful, and actionable.',
             ),
           ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
+            child: Wrap(
+              runSpacing: 4,
               children: ['pending', 'approved', 'rejected'].map((s) {
                 final selected = _statusFilter == s;
                 return Padding(
@@ -101,20 +102,45 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
             child: FutureBuilder<List<ReviewItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
                 }
                 final reviews = snapshot.data ?? [];
-                if (reviews.isEmpty) return const EmptyStateView(icon: Icons.star_outline, title: 'No reviews here');
+                if (reviews.isEmpty) {
+                  return const EmptyStateView(
+                      icon: Icons.star_outline, title: 'No reviews here');
+                }
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    itemCount: reviews.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, i) {
-                      final r = reviews[i];
+                  child: AdminRecordPanel<ReviewItem>(
+                    items: reviews,
+                    dateOf: (r) => r.createdAt,
+                    filename: 'admin-reviews',
+                    headers: const [
+                      'ID',
+                      'Created on (IST)',
+                      'Patient',
+                      'Doctor',
+                      'Rating',
+                      'Status',
+                      'Review'
+                    ],
+                    rowOf: (r) => [
+                      r.id,
+                      indiaTimestamp(r.createdAt),
+                      r.patient.name,
+                      r.doctor.name,
+                      r.rating,
+                      r.status,
+                      r.text
+                    ],
+                    itemBuilder: (context, r, i) {
                       final busy = _busyId == r.id;
                       return Card(
                         child: Padding(
@@ -124,28 +150,58 @@ class _AdminReviewsScreenState extends State<AdminReviewsScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Expanded(child: Text('Dr. ${r.doctor.name ?? "—"}', style: const TextStyle(fontWeight: FontWeight.w700))),
+                                  Expanded(
+                                      child: Text('Dr. ${r.doctor.name ?? "—"}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700))),
                                   Row(
-                                    children: List.generate(5, (i) => Icon(i < r.rating ? Icons.star : Icons.star_border, size: 16, color: AppColors.warning)),
+                                    children: List.generate(
+                                        5,
+                                        (i) => Icon(
+                                            i < r.rating
+                                                ? Icons.star
+                                                : Icons.star_border,
+                                            size: 16,
+                                            color: AppColors.warning)),
                                   ),
                                 ],
                               ),
-                              Text('By ${r.patient.name ?? "Patient"}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                              Text('By ${r.patient.name ?? "Patient"}',
+                                  style: TextStyle(
+                                      color: context.palette.textSecondary,
+                                      fontSize: 12)),
                               if (r.text != null) ...[
                                 const SizedBox(height: 6),
                                 Text(r.text!),
                               ],
                               if (busy) ...[
                                 const SizedBox(height: AppSpacing.sm),
-                                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                                const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
                               ] else ...[
                                 const SizedBox(height: AppSpacing.sm),
                                 Wrap(
                                   spacing: 8,
                                   children: [
-                                    if (r.status != 'approved') OutlinedButton(onPressed: () => _setStatus(r, 'approved'), child: const Text('Approve')),
-                                    if (r.status != 'rejected') OutlinedButton(onPressed: () => _setStatus(r, 'rejected'), child: const Text('Reject')),
-                                    if (r.status != 'pending') OutlinedButton(onPressed: () => _setStatus(r, 'pending'), child: const Text('Reset to pending')),
+                                    if (r.status != 'approved')
+                                      OutlinedButton(
+                                          onPressed: () =>
+                                              _setStatus(r, 'approved'),
+                                          child: const Text('Approve')),
+                                    if (r.status != 'rejected')
+                                      OutlinedButton(
+                                          onPressed: () =>
+                                              _setStatus(r, 'rejected'),
+                                          child: const Text('Reject')),
+                                    if (r.status != 'pending')
+                                      OutlinedButton(
+                                          onPressed: () =>
+                                              _setStatus(r, 'pending'),
+                                          child:
+                                              const Text('Reset to pending')),
                                   ],
                                 ),
                               ],

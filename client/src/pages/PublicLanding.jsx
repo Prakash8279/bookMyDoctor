@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge } from '../components/Badge'
 import { SiteHeader } from './PublicPages'
@@ -20,6 +20,75 @@ const SPECIALTY_ICONS = [
 /* oxlint-enable react/jsx-key */
 /* oxlint-enable react/jsx-key */
 /* oxlint-enable react/jsx-key */
+
+function PatientStories({ reviews }) {
+  // Admins can receive pending/rejected rows in the shared store. Never expose
+  // those rows (or the old sample quote) on the public homepage.
+  const approvedReviews = reviews.filter((review) =>
+    review.status === 'approved' && typeof review.text === 'string' && review.text.trim()
+  )
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const reviewIds = approvedReviews.map((review) => review.id).join(',')
+
+  useEffect(() => setActiveIndex(0), [reviewIds])
+
+  useEffect(() => {
+    if (approvedReviews.length < 2 || paused || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return undefined
+    const timer = window.setInterval(() => setActiveIndex((index) => (index + 1) % approvedReviews.length), 5000)
+    return () => window.clearInterval(timer)
+  }, [approvedReviews.length, paused])
+
+  if (!approvedReviews.length) return null
+
+  const showPrevious = () => setActiveIndex((index) => (index - 1 + approvedReviews.length) % approvedReviews.length)
+  const showNext = () => setActiveIndex((index) => (index + 1) % approvedReviews.length)
+
+  return <section className="section testimonials">
+    <div className="container">
+      <div className="section-heading centered">
+        <span className="kicker">Patient stories</span>
+        <h2>Less waiting. Better care.</h2>
+      </div>
+      <div
+        className="testimonial-carousel"
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="Approved patient reviews"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocusCapture={() => setPaused(true)}
+        onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPaused(false) }}
+      >
+        <div className="testimonial-viewport">
+          <div className="testimonial-track" style={{ transform: `translateX(-${activeIndex * 100}%)` }}>
+            {approvedReviews.map((review, index) => {
+              const parts = (review.patient?.name || '').trim().split(/\s+/).filter(Boolean)
+              const displayName = parts.length > 1 ? `${parts[0]} ${parts.at(-1)[0]}.` : parts[0] || 'Verified patient'
+              const initials = parts.length > 1 ? `${parts[0][0]}${parts.at(-1)[0]}` : parts[0]?.slice(0, 2) || 'VP'
+              const rating = Math.max(1, Math.min(5, Number(review.rating) || 1))
+              return <blockquote key={review.id} className="testimonial-slide" aria-hidden={index !== activeIndex}>
+                <div className="quote-stars" aria-label={`${rating} out of 5 stars`}>
+                  <span aria-hidden="true">{'★'.repeat(rating)}{'☆'.repeat(5 - rating)}</span>
+                </div>
+                <p>“{review.text.trim()}”</p>
+                <footer>
+                  <span className="avatar avatar-sm" aria-hidden="true">{initials.toUpperCase()}</span>
+                  <div><strong>{displayName}</strong><small>Verified appointment</small></div>
+                </footer>
+              </blockquote>
+            })}
+          </div>
+        </div>
+        {approvedReviews.length > 1 && <div className="testimonial-controls">
+          <button type="button" className="testimonial-arrow" onClick={showPrevious} aria-label="Previous review">←</button>
+          <span aria-live="off">{activeIndex + 1} / {approvedReviews.length}</span>
+          <button type="button" className="testimonial-arrow" onClick={showNext} aria-label="Next review">→</button>
+        </div>}
+      </div>
+    </div>
+  </section>
+}
 
 export function PatientLanding() {
   const navigate = useNavigate()
@@ -54,7 +123,7 @@ export function PatientLanding() {
     navigate(`/search?${params.toString()}`)
   }
 
-  return <><SiteHeader /><main>
+  return <><SiteHeader /><main className="public-landing">
     {/* Hero Section */}
     <section className="hero">
       <div className="hero-orb hero-orb-one"></div>
@@ -303,28 +372,7 @@ export function PatientLanding() {
       </div>
     </section>
 
-    {/* Testimonials Section */}
-    <section className="section testimonials">
-      <div className="container">
-        <div className="section-heading centered">
-          <span className="kicker">Patient stories</span>
-          <h2>Less waiting. Better care.</h2>
-        </div>
-        <div className="testimonial-grid">
-          <blockquote>
-            <div className="quote-stars">★★★★★</div>
-            <p>“Clear explanation and a smooth live-queue experience.”</p>
-            <footer>
-              <span className="avatar avatar-sm">RV</span>
-              <div>
-                <strong>Rahul V.</strong>
-                <small>Verified appointment</small>
-              </div>
-            </footer>
-          </blockquote>
-        </div>
-      </div>
-    </section>
+    <PatientStories reviews={data.reviews || []} />
 
     {/* Doctor CTA Section */}
     <section className="section doctor-cta">

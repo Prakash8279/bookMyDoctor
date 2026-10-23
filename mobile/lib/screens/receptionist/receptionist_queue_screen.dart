@@ -29,7 +29,8 @@ class ReceptionistQueueScreen extends StatefulWidget {
   const ReceptionistQueueScreen({super.key});
 
   @override
-  State<ReceptionistQueueScreen> createState() => _ReceptionistQueueScreenState();
+  State<ReceptionistQueueScreen> createState() =>
+      _ReceptionistQueueScreenState();
 }
 
 class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
@@ -49,9 +50,8 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
   // removed so this always shows the live queue exactly like the website.
   Future<List<QueueTokenItem>> _fetch() async {
     try {
-      final res = await ApiClient.instance
-          .get('/queue', query: {'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+      final res =
+          await ApiClient.instance.getAll('/queue', query: {'pageSize': 100});
       final list = <QueueTokenItem>[];
       for (final item in res.list) {
         try {
@@ -60,7 +60,7 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -101,7 +101,8 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
     if (next == null) return;
     setState(() => _busyId = token.id);
     try {
-      await ApiClient.instance.patch('/queue/${token.id}/status', body: {'status': next});
+      await ApiClient.instance
+          .patch('/queue/${token.id}/status', body: {'status': next});
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -115,7 +116,15 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
   Future<void> _exportCsv(List<QueueTokenItem> tokens) async {
     await shareCsv(
       filename: 'queue-records.csv',
-      headers: const ['Id', 'Token', 'Patient', 'Status', 'Booking', 'Patients ahead', 'Estimated wait (min)'],
+      headers: const [
+        'Id',
+        'Token',
+        'Patient',
+        'Status',
+        'Booking',
+        'Patients ahead',
+        'Estimated wait (min)'
+      ],
       rows: [
         for (var i = 0; i < tokens.length; i++)
           [
@@ -140,10 +149,13 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+              backgroundColor: context.palette.primary.withValues(alpha: 0.1),
               child: Text(
                 '#${t.tokenNumber}',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: AppColors.primary),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: context.palette.primary),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -151,24 +163,33 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(t.patient?.displayName ?? 'Patient',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   // Front-desk data only — queue.service.js#shapeQueuePatientRef
                   // never sends clinical fields to a receptionist caller, only phone.
                   if (t.patient?.phone != null)
-                    Text(t.patient!.phone!, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    Text(t.patient!.phone!,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: context.palette.textSecondary)),
                   const SizedBox(height: 2),
                   Row(
                     children: [
                       StatusBadge(status: t.status),
                       if (t.source != null) ...[
                         const SizedBox(width: 8),
-                        Text(t.source!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        Text(t.source!,
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 11)),
                       ],
                       if (t.status == 'waiting') ...[
                         const SizedBox(width: 8),
                         Text(
                           '${t.patientsAhead} ahead · ~${t.estimatedWaitMinutes} min',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 11),
                         ),
                       ],
                     ],
@@ -177,11 +198,16 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
               ),
             ),
             if (busy)
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
             else if (next != null)
-              OutlinedButton(onPressed: () => _advance(t), child: Text(_actionLabel(next)))
+              OutlinedButton(
+                  onPressed: () => _advance(t), child: Text(_actionLabel(next)))
             else if (t.status == 'completed')
-              const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+              Icon(Icons.check_circle,
+                  color: context.palette.success, size: 20),
           ],
         ),
       ),
@@ -196,104 +222,132 @@ class _ReceptionistQueueScreenState extends State<ReceptionistQueueScreen> {
     // either way an outer Scaffold/AppBar already exists, so one here would
     // just duplicate the title bar.
     return Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-            child: PageHeader(
-              kicker: 'Production database',
-              title: 'Queue monitor',
-              subtitle: 'Operate the clinic waiting line in real time.',
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          child: PageHeader(
+            kicker: 'Production database',
+            title: 'Queue monitor',
+            subtitle: 'Operate the clinic waiting line in real time.',
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'This queue is automatically scoped to your assigned clinic.',
+              style:
+                  TextStyle(fontSize: 12, color: context.palette.textSecondary),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'This queue is automatically scoped to your assigned clinic.',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's action row
+              // (StaffPages.jsx's QueueManagement) has a "Refresh" button next to Export CSV —
+              // mobile only ever had pull-to-refresh, with no visible equivalent action.
+              OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Refresh'),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
-              children: [
-                // COMPLETENESS FIX (mobile parity audit — Receptionist panel): web's action row
-                // (StaffPages.jsx's QueueManagement) has a "Refresh" button next to Export CSV —
-                // mobile only ever had pull-to-refresh, with no visible equivalent action.
-                OutlinedButton.icon(
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('Refresh'),
-                ),
-                const Spacer(),
-                // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action
-                // (StaffPages.jsx `queueRecordCsv`) had no mobile equivalent.
-                FutureBuilder<List<QueueTokenItem>>(
-                  future: _future,
-                  builder: (context, snapshot) {
-                    final tokens = snapshot.data ?? const <QueueTokenItem>[];
-                    return TextButton.icon(
-                      onPressed: tokens.isEmpty ? null : () => _exportCsv(tokens),
-                      icon: const Icon(Icons.file_download_outlined, size: 16),
-                      label: const Text('Export CSV'),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<QueueTokenItem>>(
-              future: _future,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-                if (snapshot.hasError) {
-                  return Padding(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: ErrorBanner(error: snapshot.error!, onRetry: _load),
+              // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action
+              // (StaffPages.jsx `queueRecordCsv`) had no mobile equivalent.
+              FutureBuilder<List<QueueTokenItem>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  final tokens = snapshot.data ?? const <QueueTokenItem>[];
+                  return TextButton.icon(
+                    onPressed: tokens.isEmpty ? null : () => _exportCsv(tokens),
+                    icon: const Icon(Icons.file_download_outlined, size: 16),
+                    label: const Text('Export CSV'),
                   );
-                }
-                final tokens = snapshot.data ?? [];
-                if (tokens.isEmpty) {
-                  return const EmptyStateView(icon: Icons.people_alt_outlined, title: 'No queue tokens for this date');
-                }
-                // BUG FIX (mobile parity audit): web splits into a "Live records" table and a
-                // separate "Completed" table (StaffPages.jsx) — mobile rendered one flat list.
-                final active = tokens.where((t) => t.status != 'completed').toList();
-                final completed = tokens.where((t) => t.status == 'completed').toList();
-                return RefreshIndicator(
-                  onRefresh: () async => _load(),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                    children: [
-                      Text('Live records (${active.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                      const SizedBox(height: AppSpacing.sm),
-                      if (active.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                          child: Text('No live queue tokens right now.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                        )
-                      else
-                        ...active.map((t) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _tokenCard(t))),
-                      const SizedBox(height: AppSpacing.lg),
-                      Text('Completed (${completed.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                      const SizedBox(height: AppSpacing.sm),
-                      if (completed.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                          child: Text('No completed consultations yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                        )
-                      else
-                        ...completed.map((t) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _tokenCard(t))),
-                    ],
-                  ),
-                );
-              },
-            ),
+                },
+              ),
+            ],
           ),
-        ],
-      );
+        ),
+        Expanded(
+          child: FutureBuilder<List<QueueTokenItem>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: ErrorBanner(error: snapshot.error!, onRetry: _load),
+                );
+              }
+              final tokens = snapshot.data ?? [];
+              if (tokens.isEmpty) {
+                return const EmptyStateView(
+                    icon: Icons.people_alt_outlined,
+                    title: 'No queue tokens for this date');
+              }
+              // BUG FIX (mobile parity audit): web splits into a "Live records" table and a
+              // separate "Completed" table (StaffPages.jsx) — mobile rendered one flat list.
+              final active =
+                  tokens.where((t) => t.status != 'completed').toList();
+              final completed =
+                  tokens.where((t) => t.status == 'completed').toList();
+              return RefreshIndicator(
+                onRefresh: () async => _load(),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                  children: [
+                    Text('Live records (${active.length})',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (active.isEmpty)
+                      Padding(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                        child: Text('No live queue tokens right now.',
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 13)),
+                      )
+                    else
+                      ...active.map((t) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: _tokenCard(t))),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text('Completed (${completed.length})',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                    const SizedBox(height: AppSpacing.sm),
+                    if (completed.isEmpty)
+                      Padding(
+                        padding:
+                            const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                        child: Text('No completed consultations yet.',
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 13)),
+                      )
+                    else
+                      ...completed.map((t) => Padding(
+                          padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                          child: _tokenCard(t))),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -6,6 +6,8 @@
  * on SIGTERM/SIGINT; fatal-exit on an unhandled rejection/uncaught exception).
  */
 const worker = require('./bookingWorker');
+const notificationWorker = require('./notificationWorker').createNotificationWorker();
+const { closeNotificationQueue } = require('./notificationQueue');
 const { bookingQueue } = require('./bookingQueue');
 const queueConnection = require('./queueConnection');
 const env = require('../config/env');
@@ -14,6 +16,7 @@ const prisma = require('../config/db');
 const redis = require('../config/redis');
 
 logger.info(`[worker.process] Booking worker starting (${env.nodeEnv}, concurrency=${env.booking.workerConcurrency})...`);
+logger.info('[worker.process] Payment notification delivery worker starting (concurrency=4)');
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 let shuttingDown = false;
@@ -33,6 +36,8 @@ async function shutdown(signal) {
   try {
     // Stops pulling new jobs and waits for in-flight ones to finish (BullMQ's own drain).
     await worker.close();
+    await notificationWorker.close();
+    await closeNotificationQueue();
   } catch (err) {
     logger.error(`[worker.process] Error closing worker: ${err.message}`);
   }

@@ -35,20 +35,17 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
   }
 
   Future<List<ComplaintItem>> _fetch() async {
-    try {
-      final res = await ApiClient.instance
-          .get('/complaints', query: {if (_statusFilter != null) 'status': _statusFilter, 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
-      final list = <ComplaintItem>[];
-      for (final item in res.list) {
-        try {
-          list.add(ComplaintItem.fromJson(item));
-        } catch (_) {}
-      }
-      return list;
-    } catch (_) {
-      return [];
+    final res = await ApiClient.instance.get('/complaints', query: {
+      if (_statusFilter != null) 'status': _statusFilter,
+      'pageSize': 100
+    });
+    final list = <ComplaintItem>[];
+    for (final item in res.list) {
+      try {
+        list.add(ComplaintItem.fromJson(item));
+      } catch (_) {}
     }
+    return list;
   }
 
   void _load() {
@@ -58,7 +55,10 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
   }
 
   Future<void> _respond(ComplaintItem c) async {
-    final saved = await showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => _ComplaintResponseForm(complaint: c));
+    final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => _ComplaintResponseForm(complaint: c));
     if (saved == true) _load();
   }
 
@@ -70,7 +70,8 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
           // Mirrors the web app's Complaints `Page` header (AdminPages.jsx) — same
           // title + subtitle copy.
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Complaints',
               subtitle: 'Respond to and resolve submitted issues.',
@@ -80,7 +81,8 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
             height: 48,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md, vertical: 4),
               itemCount: _filters.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
@@ -101,18 +103,28 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
             child: FutureBuilder<List<ComplaintItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
                 }
                 final complaints = snapshot.data ?? [];
-                if (complaints.isEmpty) return const EmptyStateView(icon: Icons.report_problem_outlined, title: 'No complaints found');
+                if (complaints.isEmpty) {
+                  return const EmptyStateView(
+                      icon: Icons.report_problem_outlined,
+                      title: 'No complaints found');
+                }
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     itemCount: complaints.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, i) {
                       final c = complaints[i];
                       return Card(
@@ -123,22 +135,32 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                             children: [
                               Row(
                                 children: [
-                                  Expanded(child: Text(c.subject, style: const TextStyle(fontWeight: FontWeight.w700))),
+                                  Expanded(
+                                      child: Text(c.subject,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700))),
                                   StatusBadge(status: c.status),
                                 ],
                               ),
                               if (c.raisedBy?.name != null)
-                                Text('By ${c.raisedBy!.name}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                                Text('By ${c.raisedBy!.name}',
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 12)),
                               if (c.description != null) ...[
                                 const SizedBox(height: 6),
                                 Text(c.description!),
                               ],
                               if (c.adminResponse != null) ...[
                                 const SizedBox(height: 6),
-                                Text('Response: ${c.adminResponse}', style: const TextStyle(fontStyle: FontStyle.italic)),
+                                Text('Response: ${c.adminResponse}',
+                                    style: const TextStyle(
+                                        fontStyle: FontStyle.italic)),
                               ],
                               const SizedBox(height: AppSpacing.sm),
-                              OutlinedButton(onPressed: () => _respond(c), child: const Text('Update / Respond')),
+                              OutlinedButton(
+                                  onPressed: () => _respond(c),
+                                  child: const Text('Update / Respond')),
                             ],
                           ),
                         ),
@@ -165,7 +187,8 @@ class _ComplaintResponseForm extends StatefulWidget {
 
 class _ComplaintResponseFormState extends State<_ComplaintResponseForm> {
   late String _status = widget.complaint.status;
-  late final _responseCtrl = TextEditingController(text: widget.complaint.adminResponse ?? '');
+  late final _responseCtrl =
+      TextEditingController(text: widget.complaint.adminResponse ?? '');
   bool _submitting = false;
   String? _error;
 
@@ -181,9 +204,11 @@ class _ComplaintResponseFormState extends State<_ComplaintResponseForm> {
       _error = null;
     });
     try {
-      await ApiClient.instance.patch('/complaints/${widget.complaint.id}', body: {
+      await ApiClient.instance
+          .patch('/complaints/${widget.complaint.id}', body: {
         'status': _status,
-        if (_responseCtrl.text.trim().isNotEmpty) 'adminResponse': _responseCtrl.text.trim(),
+        if (_responseCtrl.text.trim().isNotEmpty)
+          'adminResponse': _responseCtrl.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -197,29 +222,44 @@ class _ComplaintResponseFormState extends State<_ComplaintResponseForm> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(left: AppSpacing.md, right: AppSpacing.md, top: AppSpacing.md, bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.md),
+      padding: EdgeInsets.only(
+          left: AppSpacing.md,
+          right: AppSpacing.md,
+          top: AppSpacing.md,
+          bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(widget.complaint.subject, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(widget.complaint.subject,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           DropdownButtonFormField<String>(
             initialValue: _status,
             decoration: const InputDecoration(labelText: 'Status'),
             items: const [
               DropdownMenuItem(value: 'open', child: Text('Open')),
-              DropdownMenuItem(value: 'in_progress', child: Text('In progress')),
+              DropdownMenuItem(
+                  value: 'in_progress', child: Text('In progress')),
               DropdownMenuItem(value: 'resolved', child: Text('Resolved')),
               DropdownMenuItem(value: 'closed', child: Text('Closed')),
             ],
             onChanged: (v) => setState(() => _status = v ?? _status),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _responseCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'Response (optional)')),
+          TextField(
+              controller: _responseCtrl,
+              maxLines: 4,
+              decoration:
+                  const InputDecoration(labelText: 'Response (optional)')),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save', onPressed: _submit, loading: _submitting),
         ],
       ),
     );

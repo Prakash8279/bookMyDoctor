@@ -21,7 +21,8 @@ class GoogleAuthConfig {
   // zero-config. This is a public identifier, not an OAuth secret.
   static const String webClientId = String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
-    defaultValue: '855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com',
+    defaultValue:
+        '855429506806-s2rgkfeae3k9j14gjbgcg07sni4lrvgi.apps.googleusercontent.com',
   );
 
   static bool get isConfigured {

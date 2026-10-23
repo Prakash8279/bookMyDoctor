@@ -519,11 +519,13 @@ model Appointment {
   clinic           Clinic?            @relation(fields: [clinicId], references: [id])
   appointmentDate  DateTime           @map("appointment_date") @db.Date
   appointmentTime  String             @map("appointment_time") // "HH:MM", paired with a partial unique index — see manual_sql
+  isEstimatedTime Boolean            @default(false) @map("is_estimated_time")
+  estimatedVisitAt DateTime?          @map("estimated_visit_at")
   reason           String?
   isEmergency      Boolean            @default(false) @map("is_emergency")
   status           AppointmentStatus  @default(upcoming)
   source           AppointmentSource
-  tokenNumber      Int                @map("token_number")
+  tokenNumber      Int?               @map("token_number") // assigned only when the booking is confirmed
   consultationFee  Decimal            @default(0) @map("consultation_fee") @db.Decimal(10, 2)
   convenienceFee   Decimal            @default(0) @map("convenience_fee") @db.Decimal(10, 2)
   emergencyFee     Decimal            @default(0) @map("emergency_fee") @db.Decimal(10, 2)
@@ -854,12 +856,16 @@ model BookingRules {
   // Platform-wide online-booking accessibility window (admin/superadmin managed — see
   // AdminPages.jsx's "Booking rules" form and appointments.service.js#runBookingJob's
   // enforcement). Both NULL (the default) = online booking accepted around the clock ("full
-  // time"). Set both together to restrict online booking to a daily HH:MM-HH:MM window
+  // time"). These existing fields now govern TODAY bookings; the advance pair below governs
+  // future appointment dates. Both use business-local time, and closing is exclusive.
+  // Set both together to restrict online booking to a daily HH:MM-HH:MM window
   // platform-wide — e.g. "09:00"-"21:00". Only ever gates ONLINE bookings (source==='online');
   // walk-ins booked by staff at the clinic are never affected, same exemption pattern as every
   // other admin/doctor booking-policy flag in this app.
   onlineBookingWindowStart String? @map("online_booking_window_start") // "HH:MM", 24h
   onlineBookingWindowEnd   String? @map("online_booking_window_end")   // "HH:MM", 24h
+  advanceBookingWindowStart String? @map("advance_booking_window_start")
+  advanceBookingWindowEnd   String? @map("advance_booking_window_end")
   // Platform-wide cap on how many days ahead an ONLINE booking's appointment date may be — a
   // ROLLING window measured from "today" (not a fixed calendar date), so it never needs manual
   // bumping and can't silently expire if left unattended. NULL (default) = no platform-wide cap

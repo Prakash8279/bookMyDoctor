@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
-import '../../core/csv_export.dart';
+import '../../core/branded_pdf.dart';
+import '../../core/india_time.dart';
 import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
 import '../../theme/app_theme.dart';
@@ -18,44 +19,54 @@ import '../../widgets/common_widgets.dart';
 class _PatientPaymentsData {
   final List<PaymentItem> payments;
   final Map<String, Appointment> appointmentsById;
-  _PatientPaymentsData({required this.payments, required this.appointmentsById});
+  _PatientPaymentsData(
+      {required this.payments, required this.appointmentsById});
 }
 
 class PatientPaymentsScreen extends StatelessWidget {
   const PatientPaymentsScreen({super.key});
 
   Future<_PatientPaymentsData> _load() async {
-    final paymentsRes = await ApiClient.instance
-        .get('/payments', query: {'pageSize': 50})
-        .catchError((_) => ApiResponse(data: []));
+    final paymentsRes =
+        await ApiClient.instance.getAll('/payments', query: {'pageSize': 50});
     final payments = <PaymentItem>[];
     for (final item in paymentsRes.list) {
       try {
         payments.add(PaymentItem.fromJson(item));
-      } catch (_) {}
+      } catch (_) {
+        rethrow;
+      }
     }
     final appointmentsById = <String, Appointment>{};
     try {
       // BUG FIX (same root cause as the receptionist Reports/Patients directory bug — see
       // receptionist_reports_screen.dart's comment): pageSize over 100 gets rejected outright by
       // the backend's list-query validator (422 "Validation failed"), not clamped.
-      final apptRes = await ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
+      final apptRes = await ApiClient.instance
+          .getAll('/appointments', query: {'pageSize': 100});
       for (final item in apptRes.list) {
         try {
           final appt = Appointment.fromJson(item);
           appointmentsById[appt.id] = appt;
-        } catch (_) {}
+        } catch (_) {
+          rethrow;
+        }
       }
-    } catch (_) {}
-    return _PatientPaymentsData(payments: payments, appointmentsById: appointmentsById);
+    } catch (_) {
+      rethrow;
+    }
+    return _PatientPaymentsData(
+        payments: payments, appointmentsById: appointmentsById);
   }
 
-  void _showReceipt(BuildContext context, PaymentItem item, Appointment? appointment) {
+  void _showReceipt(
+      BuildContext context, PaymentItem item, Appointment? appointment) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _PaymentReceiptSheet(payment: item, appointment: appointment),
+      builder: (_) =>
+          _PaymentReceiptSheet(payment: item, appointment: appointment),
     );
   }
 
@@ -64,7 +75,8 @@ class PatientPaymentsScreen extends StatelessWidget {
     return Column(
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
             title: 'Payment history',
             subtitle: 'Review clinic receipts and payment status.',
@@ -76,10 +88,12 @@ class PatientPaymentsScreen extends StatelessWidget {
             isEmpty: (data) => data.payments.isEmpty,
             emptyIcon: Icons.receipt_long_outlined,
             emptyTitle: 'No payments yet',
-            emptySubtitle: 'Payments are recorded by the clinic reception after your visit',
+            emptySubtitle:
+                'Payments are recorded by the clinic reception after your visit',
             builder: (context, data) {
               final payments = data.payments;
-              final pendingCount = payments.where((p) => p.status == 'pending').length;
+              final pendingCount =
+                  payments.where((p) => p.status == 'pending').length;
 
               return ListView(
                 padding: const EdgeInsets.all(AppSpacing.md),
@@ -88,9 +102,9 @@ class PatientPaymentsScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: context.palette.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: context.palette.border),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.03),
@@ -102,26 +116,38 @@ class PatientPaymentsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Payment status',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryDark),
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: context.palette.primaryDark),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
+                        Text(
                           'Pending clinic payments',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: context.palette.textPrimary),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           pendingCount > 0
                               ? '$pendingCount visit${pendingCount == 1 ? "" : "s"} awaiting payment'
                               : 'No pending payments',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: context.palette.textSecondary),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
+                        Text(
                           'Payments are collected and recorded by clinic staff at your visit — online self-payment is only for advance booking. This list updates once staff record a payment for a booking.',
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: context.palette.textSecondary,
+                              height: 1.4),
                         ),
                       ],
                     ),
@@ -130,19 +156,30 @@ class PatientPaymentsScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Live records',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: context.palette.textPrimary),
                       ),
                       Text(
                         '${payments.length} record(s)',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: context.palette.textSecondary),
                       ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   for (final p in payments) ...[
-                    _buildPaymentCard(context, p, p.appointment?.id != null ? data.appointmentsById[p.appointment!.id] : null),
+                    _buildPaymentCard(
+                        context,
+                        p,
+                        p.appointment?.id != null
+                            ? data.appointmentsById[p.appointment!.id]
+                            : null),
                     const SizedBox(height: AppSpacing.sm),
                   ],
                 ],
@@ -158,12 +195,13 @@ class PatientPaymentsScreen extends StatelessWidget {
   // Appointment (see _load()/_PatientPaymentsData above) so the card can show Token/Time/Purpose/
   // Appointment status alongside the payment fields — mirrors web's Payments table/list rows
   // (PatientPages.jsx's `rows`), which previously had no mobile equivalent at all.
-  Widget _buildPaymentCard(BuildContext context, PaymentItem p, Appointment? appt) {
+  Widget _buildPaymentCard(
+      BuildContext context, PaymentItem p, Appointment? appt) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: context.palette.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppSpacing.md),
@@ -178,13 +216,18 @@ class PatientPaymentsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        p.doctor?.doctorDisplayName ?? p.clinic?.name ?? 'Consultation Payment',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        p.doctor?.doctorDisplayName ??
+                            p.clinic?.name ??
+                            'Consultation Payment',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 15),
                       ),
                       if (p.clinic?.name != null && p.doctor?.name != null)
                         Text(
                           p.clinic!.name!,
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 12),
                         ),
                     ],
                   ),
@@ -196,7 +239,7 @@ class PatientPaymentsScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.palette.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -208,7 +251,8 @@ class PatientPaymentsScreen extends StatelessWidget {
                       children: [
                         Text(
                           'Receipt #${p.receiptNumber ?? (p.id.length > 8 ? p.id.substring(0, 8) : p.id)}',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -220,7 +264,9 @@ class PatientPaymentsScreen extends StatelessWidget {
                           children: [
                             Text(
                               'Mode: ${p.mode.toUpperCase()}${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: context.palette.textSecondary),
                             ),
                             PaymentSourceBadge(payment: p),
                           ],
@@ -231,7 +277,10 @@ class PatientPaymentsScreen extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     '₹${(p.fees.amount ?? 0).toStringAsFixed(0)}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: context.palette.textPrimary),
                   ),
                 ],
               ),
@@ -247,14 +296,22 @@ class PatientPaymentsScreen extends StatelessWidget {
                 children: [
                   if (appt.tokenNumber != null)
                     _MiniFact(label: 'Token', value: '#${appt.tokenNumber}'),
-                  _MiniFact(label: 'Visit', value: '${appt.appointmentDate} · ${appt.appointmentTime}'),
-                  _MiniFact(label: 'Purpose', value: appt.isEmergency ? 'Emergency consultation' : 'Consultation'),
+                  _MiniFact(
+                      label: 'Visit',
+                      value: '${appt.appointmentDate} · ${appt.displayTime}'),
+                  _MiniFact(
+                      label: 'Purpose',
+                      value: appt.isEmergency
+                          ? 'Emergency consultation'
+                          : 'Consultation'),
                 ],
               ),
               const SizedBox(height: 4),
               Row(
                 children: [
-                  const Text('Appointment status: ', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Appointment status: ',
+                      style: TextStyle(
+                          fontSize: 11, color: context.palette.textSecondary)),
                   StatusBadge(status: appt.status),
                 ],
               ),
@@ -267,17 +324,24 @@ class PatientPaymentsScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Ref: ${p.transactionRef}',
-                      style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: context.palette.textSecondary),
                       overflow: TextOverflow.ellipsis,
                     ),
                   )
                 else
-                  const Text('Paid at clinic', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                  Text('Paid at clinic',
+                      style: TextStyle(
+                          fontSize: 11, color: context.palette.textSecondary)),
                 OutlinedButton.icon(
                   onPressed: () => _showReceipt(context, p, appt),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    textStyle: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   icon: const Icon(Icons.remove_red_eye_outlined, size: 14),
                   label: const Text('View receipt'),
@@ -300,10 +364,14 @@ class _MiniFact extends StatelessWidget {
   Widget build(BuildContext context) {
     return RichText(
       text: TextSpan(
-        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        style: TextStyle(fontSize: 11, color: context.palette.textSecondary),
         children: [
           TextSpan(text: '$label: '),
-          TextSpan(text: value, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          TextSpan(
+              text: value,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: context.palette.textPrimary)),
         ],
       ),
     );
@@ -325,14 +393,18 @@ class _ReceiptBreakdown {
   _ReceiptBreakdown(this.rows, this.amountPaid);
 }
 
-_ReceiptBreakdown _computeReceiptBreakdown(PaymentItem payment, Appointment? appointment) {
+_ReceiptBreakdown _computeReceiptBreakdown(
+    PaymentItem payment, Appointment? appointment) {
   final fees = payment.fees;
   final paidAmount = fees.amount ?? 0;
   final consultationFeeFull = fees.consultationFee ?? 0;
   final convenienceFeeFull = fees.convenienceFee ?? 0;
   final emergencyFeeFull = fees.emergencyFee ?? 0;
   final gstAmountFull = fees.gstAmount ?? 0;
-  final impliedTotal = consultationFeeFull + convenienceFeeFull + emergencyFeeFull + gstAmountFull;
+  final impliedTotal = consultationFeeFull +
+      convenienceFeeFull +
+      emergencyFeeFull +
+      gstAmountFull;
   bool closeTo(double a, double b) => (a - b).abs() < 0.01;
 
   final apptFees = appointment?.fees;
@@ -343,21 +415,42 @@ _ReceiptBreakdown _computeReceiptBreakdown(PaymentItem payment, Appointment? app
   final rows = <MapEntry<String, String>>[];
   if (minBookingAmount != null && closeTo(paidAmount, minBookingAmount)) {
     final platformCharge = convenienceFeeFull + emergencyFeeFull;
-    final minAdvance = apptConsultationFee != null && minBookingRemainder != null
-        ? apptConsultationFee - minBookingRemainder
-        : (paidAmount - platformCharge).clamp(0, double.infinity);
-    final transactionCharge = (paidAmount - minAdvance - platformCharge).clamp(0, double.infinity);
-    rows.add(MapEntry('Consultation fee (minimum booking amount)', '₹${minAdvance.toStringAsFixed(0)}'));
-    if (platformCharge > 0) rows.add(MapEntry('Platform charge', '₹${platformCharge.toStringAsFixed(0)}'));
-    if (transactionCharge > 0) rows.add(MapEntry('Transaction charge', '₹${transactionCharge.toStringAsFixed(0)}'));
-  } else if (minBookingRemainder != null && closeTo(paidAmount, minBookingRemainder)) {
-    rows.add(MapEntry('Consultation fee (remaining balance)', '₹${paidAmount.toStringAsFixed(0)}'));
+    final minAdvance =
+        apptConsultationFee != null && minBookingRemainder != null
+            ? apptConsultationFee - minBookingRemainder
+            : (paidAmount - platformCharge).clamp(0, double.infinity);
+    final transactionCharge =
+        (paidAmount - minAdvance - platformCharge).clamp(0, double.infinity);
+    rows.add(MapEntry('Consultation fee (minimum booking amount)',
+        '₹${minAdvance.toStringAsFixed(0)}'));
+    if (platformCharge > 0) {
+      rows.add(
+          MapEntry('Platform charge', '₹${platformCharge.toStringAsFixed(0)}'));
+    }
+    if (transactionCharge > 0) {
+      rows.add(MapEntry(
+          'Transaction charge', '₹${transactionCharge.toStringAsFixed(0)}'));
+    }
+  } else if (minBookingRemainder != null &&
+      closeTo(paidAmount, minBookingRemainder)) {
+    rows.add(MapEntry('Consultation fee (remaining balance)',
+        '₹${paidAmount.toStringAsFixed(0)}'));
   } else {
     final shareRatio = impliedTotal > 0 ? paidAmount / impliedTotal : 1.0;
-    rows.add(MapEntry('Consultation fee', '₹${(consultationFeeFull * shareRatio).toStringAsFixed(0)}'));
-    if (convenienceFeeFull > 0) rows.add(MapEntry('Platform charge', '₹${(convenienceFeeFull * shareRatio).toStringAsFixed(0)}'));
-    if (emergencyFeeFull > 0) rows.add(MapEntry('Emergency fee', '₹${(emergencyFeeFull * shareRatio).toStringAsFixed(0)}'));
-    if (gstAmountFull > 0) rows.add(MapEntry('Transaction charge', '₹${(gstAmountFull * shareRatio).toStringAsFixed(0)}'));
+    rows.add(MapEntry('Consultation fee',
+        '₹${(consultationFeeFull * shareRatio).toStringAsFixed(0)}'));
+    if (convenienceFeeFull > 0) {
+      rows.add(MapEntry('Platform charge',
+          '₹${(convenienceFeeFull * shareRatio).toStringAsFixed(0)}'));
+    }
+    if (emergencyFeeFull > 0) {
+      rows.add(MapEntry('Emergency fee',
+          '₹${(emergencyFeeFull * shareRatio).toStringAsFixed(0)}'));
+    }
+    if (gstAmountFull > 0) {
+      rows.add(MapEntry('Transaction charge',
+          '₹${(gstAmountFull * shareRatio).toStringAsFixed(0)}'));
+    }
   }
   return _ReceiptBreakdown(rows, paidAmount);
 }
@@ -367,7 +460,8 @@ class _PaymentReceiptSheet extends StatelessWidget {
   final Appointment? appointment;
   const _PaymentReceiptSheet({required this.payment, this.appointment});
 
-  String get _shortId => payment.id.length > 8 ? payment.id.substring(0, 8) : payment.id;
+  String get _shortId =>
+      payment.id.length > 8 ? payment.id.substring(0, 8) : payment.id;
 
   // COMPLETENESS FIX (mobile parity audit — Patient panel, user request: "download ka option
   // ... kahi v" / nowhere at all) — same share-sheet approach as BookingSlipSheet._shareSlip;
@@ -382,10 +476,11 @@ Receipt No: #${payment.receiptNumber ?? _shortId}
 Status: ${isPaid ? "Settled" : "Pending"}
 Amount Paid: ₹${breakdown.amountPaid.toStringAsFixed(0)}
 Payment Mode: ${payment.mode.toUpperCase()} (${isOnlineBookingPayment(payment) ? "At booking" : "At clinic"})
-${payment.transactionRef != null && payment.transactionRef!.isNotEmpty ? "Reference ID: ${payment.transactionRef}\n" : ""}${payment.createdAt != null ? "Date: ${payment.createdAt!.split("T").first}\n" : ""}
+${payment.transactionRef != null && payment.transactionRef!.isNotEmpty ? "Reference ID: ${payment.transactionRef}\n" : ""}Recorded on: ${indiaTimestamp(payment.createdAt)}
+Booked on: ${indiaTimestamp(appointment?.createdAt ?? payment.appointment?.createdAt)}
 FEE BREAKDOWN:
 ${breakdown.rows.map((r) => "${r.key}: ${r.value}").join("\n")}
-${appointment != null ? "\nAPPOINTMENT:\nDate: ${appointment!.appointmentDate}\nTime: ${appointment!.appointmentTime}\n${appointment!.tokenNumber != null ? "Token Number: #${appointment!.tokenNumber}\n" : ""}" : ""}
+${appointment != null ? "\nAPPOINTMENT:\nDate: ${appointment!.appointmentDate}\nTime: ${appointment!.displayTime}\n${appointment!.tokenNumber != null ? "Token Number: #${appointment!.tokenNumber}\n" : ""}" : ""}
 PARTIES:
 Doctor: Dr. ${payment.doctor?.name ?? "—"}
 Clinic: ${payment.clinic?.name ?? "—"}
@@ -395,8 +490,17 @@ This is a digitally generated clinic payment receipt.
 ''';
   }
 
-  Future<void> _shareReceipt(BuildContext context, _ReceiptBreakdown breakdown) async {
-    await shareText(filename: 'payment-receipt-$_shortId.txt', content: _buildReceiptText(breakdown));
+  Future<void> _shareReceipt(
+      BuildContext context, _ReceiptBreakdown breakdown) async {
+    try {
+      await shareBrandedPdf(
+          filename: 'payment-receipt-$_shortId.pdf',
+          title: 'Payment receipt',
+          reference: payment.receiptNumber ?? payment.id,
+          body: _buildReceiptText(breakdown));
+    } catch (error) {
+      if (context.mounted) showErrorSnack(context, error);
+    }
   }
 
   @override
@@ -410,9 +514,9 @@ This is a digitally generated clinic payment receipt.
       maxChildSize: 0.92,
       minChildSize: 0.5,
       builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: context.palette.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: ListView(
@@ -423,17 +527,28 @@ This is a digitally generated clinic payment receipt.
                 width: 40,
                 height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
               ),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('BookADoctors', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary)),
-                    Text('OFFICIAL PAYMENT RECEIPT', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppColors.textSecondary)),
+                    Text('BookADoctors',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: context.palette.primary)),
+                    Text('OFFICIAL PAYMENT RECEIPT',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                            color: context.palette.textSecondary)),
                   ],
                 ),
                 StatusBadge(status: payment.status),
@@ -443,9 +558,10 @@ This is a digitally generated clinic payment receipt.
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight,
+                color: context.palette.primaryLight,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                border: Border.all(
+                    color: context.palette.primary.withValues(alpha: 0.3)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -453,10 +569,17 @@ This is a digitally generated clinic payment receipt.
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('AMOUNT RECEIVED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                      Text('AMOUNT RECEIVED',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: context.palette.primaryDark)),
                       Text(
                         '₹${amount.toStringAsFixed(0)}',
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.primaryDark),
+                        style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: context.palette.primaryDark),
                       ),
                     ],
                   ),
@@ -465,14 +588,19 @@ This is a digitally generated clinic payment receipt.
                     children: [
                       Text(
                         payment.mode.toUpperCase(),
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: context.palette.textPrimary),
                       ),
                       Text(
                         isPaid ? 'Settled' : 'Pending',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: isPaid ? AppColors.success : AppColors.warning,
+                          color: isPaid
+                              ? context.palette.success
+                              : AppColors.warning,
                         ),
                       ),
                     ],
@@ -485,33 +613,44 @@ This is a digitally generated clinic payment receipt.
             // fee breakdown (consultation/platform/transaction charge) rather than a lump total —
             // see _computeReceiptBreakdown's doc comment for the exact-vs-scaled business rule.
             _buildSection(
+              context,
               title: 'Fee Breakdown',
               rows: [
                 ...breakdown.rows,
-                MapEntry('Amount paid', '₹${breakdown.amountPaid.toStringAsFixed(0)}'),
+                MapEntry('Amount paid',
+                    '₹${breakdown.amountPaid.toStringAsFixed(0)}'),
               ],
               boldLastRow: true,
             ),
             const SizedBox(height: AppSpacing.md),
             if (appointment != null) ...[
               _buildSection(
+                context,
                 title: 'Appointment',
                 rows: [
                   MapEntry('Date', appointment!.appointmentDate),
-                  MapEntry('Time', appointment!.appointmentTime),
-                  if (appointment!.tokenNumber != null) MapEntry('Token number', '#${appointment!.tokenNumber}'),
+                  MapEntry('Time', appointment!.displayTime),
+                  if (appointment!.tokenNumber != null)
+                    MapEntry('Token number', '#${appointment!.tokenNumber}'),
                 ],
               ),
               const SizedBox(height: AppSpacing.md),
             ],
             _buildSection(
+              context,
               title: 'Transaction Details',
               rows: [
-                MapEntry('Receipt No', payment.receiptNumber ?? (payment.id.length > 8 ? payment.id.substring(0, 8) : payment.id)),
-                if (payment.transactionRef != null && payment.transactionRef!.isNotEmpty)
+                MapEntry(
+                    'Receipt No',
+                    payment.receiptNumber ??
+                        (payment.id.length > 8
+                            ? payment.id.substring(0, 8)
+                            : payment.id)),
+                if (payment.transactionRef != null &&
+                    payment.transactionRef!.isNotEmpty)
                   MapEntry('Reference ID', payment.transactionRef!),
                 if (payment.createdAt != null)
-                  MapEntry('Date', payment.createdAt!.split('T').first),
+                  MapEntry('Recorded on', indiaTimestamp(payment.createdAt)),
                 // COMPLETENESS FIX (mobile parity audit): web's receipt PDF writes this same
                 // "at booking"/"at clinic" wording as plain text (lib/receiptPdf.js) next to the
                 // payment mode — mirrored here rather than a colored badge since this is a
@@ -524,6 +663,7 @@ This is a digitally generated clinic payment receipt.
             ),
             const SizedBox(height: AppSpacing.md),
             _buildSection(
+              context,
               title: 'Practitioner & Clinic',
               rows: [
                 MapEntry('Doctor', payment.doctor?.doctorDisplayName ?? '—'),
@@ -533,10 +673,11 @@ This is a digitally generated clinic payment receipt.
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
-            const Text(
+            Text(
               'This is a digitally generated clinic payment receipt.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              style:
+                  TextStyle(fontSize: 11, color: context.palette.textSecondary),
             ),
             const SizedBox(height: AppSpacing.md),
             Row(
@@ -548,7 +689,8 @@ This is a digitally generated clinic payment receipt.
                     label: const Text('Download'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
@@ -567,17 +709,24 @@ This is a digitally generated clinic payment receipt.
     );
   }
 
-  Widget _buildSection({required String title, required List<MapEntry<String, String>> rows, bool boldLastRow = false}) {
+  Widget _buildSection(BuildContext context,
+      {required String title,
+      required List<MapEntry<String, String>> rows,
+      bool boldLastRow = false}) {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.palette.surface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: context.palette.textPrimary)),
           const SizedBox(height: 8),
           for (var i = 0; i < rows.length; i++) ...[
             if (boldLastRow && i == rows.length - 1) const Divider(height: 14),
@@ -590,8 +739,10 @@ This is a digitally generated clinic payment receipt.
                     rows[i].key,
                     style: TextStyle(
                       fontSize: boldLastRow && i == rows.length - 1 ? 13 : 12,
-                      fontWeight: boldLastRow && i == rows.length - 1 ? FontWeight.w800 : FontWeight.normal,
-                      color: AppColors.textSecondary,
+                      fontWeight: boldLastRow && i == rows.length - 1
+                          ? FontWeight.w800
+                          : FontWeight.normal,
+                      color: context.palette.textSecondary,
                     ),
                   ),
                   Flexible(
@@ -600,7 +751,9 @@ This is a digitally generated clinic payment receipt.
                       style: TextStyle(
                         fontSize: boldLastRow && i == rows.length - 1 ? 15 : 12,
                         fontWeight: FontWeight.w700,
-                        color: boldLastRow && i == rows.length - 1 ? AppColors.primaryDark : AppColors.textPrimary,
+                        color: boldLastRow && i == rows.length - 1
+                            ? context.palette.primaryDark
+                            : context.palette.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -614,4 +767,3 @@ This is a digitally generated clinic payment receipt.
     );
   }
 }
-

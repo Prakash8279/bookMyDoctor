@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/admin_period.dart';
+import '../../widgets/admin_period_filter.dart';
+import '../../widgets/paged_record_list.dart';
 import '../../core/csv_export.dart';
 import '../../models/admin_models.dart';
 import '../../models/clinical_models.dart';
@@ -33,6 +36,10 @@ class AdminPatientsScreen extends StatefulWidget {
 }
 
 class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
+  AdminPeriod _period = AdminPeriod.today();
+  List<PatientDirectoryItem> _visible(List<PatientDirectoryItem> items) =>
+      items.where((item) => _period.includes(item.registeredAt)).toList();
+
   final _searchController = TextEditingController();
   Timer? _debounce;
   Future<List<PatientDirectoryItem>>? _future;
@@ -52,47 +59,46 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
   }
 
   Future<List<PatientDirectoryItem>> _fetch() async {
-    try {
-      final results = await Future.wait([
-        ApiClient.instance.get('/admin/patients', query: {
-          'pageSize': 100,
-          if (_searchController.text.trim().isNotEmpty) 'search': _searchController.text.trim(),
-        }).catchError((_) => ApiResponse(data: [])),
-        // COMPLETENESS FIX (mobile parity audit): web's ManagePatients "Health notes" column
-        // (AdminPages.jsx#ManagePatients) comes from a `clinicalMap` built out of GET
-        // /appointments's already-loaded `patient` sub-object, NOT the plain directory endpoint
-        // above (which never carries medicalHistory/emergencyContact) — an admin caller to
-        // GET /appointments gets the full clinical view (appointments.service.js#shapePatientRef).
-        ApiClient.instance.get('/appointments', query: {'pageSize': 100}).catchError((_) => ApiResponse(data: [])),
-      ]);
-      final list = <PatientDirectoryItem>[];
-      for (final item in results[0].list) {
-        try {
-          list.add(PatientDirectoryItem.fromJson(item));
-        } catch (_) {}
-      }
-      final clinicalById = <String, PatientRef>{};
-      for (final item in results[1].list) {
-        try {
-          final appointment = Appointment.fromJson(item);
-          final patient = appointment.patient;
-          if (patient != null && patient.id.isNotEmpty && !clinicalById.containsKey(patient.id)) {
-            clinicalById[patient.id] = patient;
-          }
-        } catch (_) {}
-      }
-      return [
-        for (final p in list)
-          clinicalById.containsKey(p.id)
-              ? p.mergedWithHealthNotes(
-                  medicalHistory: clinicalById[p.id]!.medicalHistory,
-                  emergencyContact: clinicalById[p.id]!.emergencyContact,
-                )
-              : p,
-      ];
-    } catch (_) {
-      return [];
+    final results = await Future.wait([
+      ApiClient.instance.getAll('/admin/patients', query: {
+        'pageSize': 100,
+        if (_searchController.text.trim().isNotEmpty)
+          'search': _searchController.text.trim(),
+      }),
+      // COMPLETENESS FIX (mobile parity audit): web's ManagePatients "Health notes" column
+      // (AdminPages.jsx#ManagePatients) comes from a `clinicalMap` built out of GET
+      // /appointments's already-loaded `patient` sub-object, NOT the plain directory endpoint
+      // above (which never carries medicalHistory/emergencyContact) — an admin caller to
+      // GET /appointments gets the full clinical view (appointments.service.js#shapePatientRef).
+      ApiClient.instance.getAll('/appointments', query: {'pageSize': 100}),
+    ]);
+    final list = <PatientDirectoryItem>[];
+    for (final item in results[0].list) {
+      try {
+        list.add(PatientDirectoryItem.fromJson(item));
+      } catch (_) {}
     }
+    final clinicalById = <String, PatientRef>{};
+    for (final item in results[1].list) {
+      try {
+        final appointment = Appointment.fromJson(item);
+        final patient = appointment.patient;
+        if (patient != null &&
+            patient.id.isNotEmpty &&
+            !clinicalById.containsKey(patient.id)) {
+          clinicalById[patient.id] = patient;
+        }
+      } catch (_) {}
+    }
+    return [
+      for (final p in list)
+        clinicalById.containsKey(p.id)
+            ? p.mergedWithHealthNotes(
+                medicalHistory: clinicalById[p.id]!.medicalHistory,
+                emergencyContact: clinicalById[p.id]!.emergencyContact,
+              )
+            : p,
+    ];
   }
 
   void _load() {
@@ -111,10 +117,26 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
   Future<void> _exportCsv(List<PatientDirectoryItem> patients) async {
     await shareCsv(
       filename: 'patients.csv',
-      headers: const ['Id', 'Name', 'Email', 'Phone', 'City', 'Registered', 'Status'],
+      headers: const [
+        'Id',
+        'Name',
+        'Email',
+        'Phone',
+        'City',
+        'Registered',
+        'Status'
+      ],
       rows: [
         for (final p in patients)
-          [p.id, p.name, p.email ?? '', p.phone ?? '', p.city ?? '', _formatDate(p.registeredAt), p.status],
+          [
+            p.id,
+            p.name,
+            p.email ?? '',
+            p.phone ?? '',
+            p.city ?? '',
+            _formatDate(p.registeredAt),
+            p.status
+          ],
       ],
     );
   }
@@ -126,8 +148,12 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
     final next = p.status == 'active' ? 'disabled' : 'active';
     setState(() => _busyId = p.id);
     try {
-      await ApiClient.instance.patch('/admin/patients/${p.id}/status', body: {'status': next});
-      if (mounted) showSuccessSnack(context, next == 'disabled' ? 'Login disabled' : 'Login re-enabled');
+      await ApiClient.instance
+          .patch('/admin/patients/${p.id}/status', body: {'status': next});
+      if (mounted) {
+        showSuccessSnack(context,
+            next == 'disabled' ? 'Login disabled' : 'Login re-enabled');
+      }
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -144,17 +170,33 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
           // Mirrors the web app's ManagePatients `Page` header (AdminPages.jsx) —
           // same title + subtitle copy.
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Patient management',
-              subtitle: 'Every registered patient account — not just ones seen in a booking or payment.',
+              subtitle:
+                  'Every registered patient account — not just ones seen in a booking or payment.',
               // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action — see _exportCsv.
               action: FutureBuilder<List<PatientDirectoryItem>>(
                 future: _future,
                 builder: (context, snapshot) {
-                  final patients = snapshot.data ?? const <PatientDirectoryItem>[];
+                  final patients =
+                      _visible(snapshot.data ?? const <PatientDirectoryItem>[]);
                   return TextButton.icon(
-                    onPressed: patients.isEmpty ? null : () => _exportCsv(patients),
+                    onPressed: patients.isEmpty ||
+                            snapshot.hasError ||
+                            snapshot.connectionState != ConnectionState.done ||
+                            !_period.isValid
+                        ? null
+                        : () async {
+                            try {
+                              await _exportCsv(patients);
+                            } catch (error) {
+                              if (context.mounted) {
+                                showErrorSnack(context, error);
+                              }
+                            }
+                          },
                     icon: const Icon(Icons.file_download_outlined, size: 16),
                     label: const Text('Export CSV'),
                   );
@@ -173,29 +215,35 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
               ),
             ),
           ),
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: AdminPeriodFilter(
+                  value: _period,
+                  onChanged: (period) => setState(() => _period = period))),
           Expanded(
             child: FutureBuilder<List<PatientDirectoryItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     child: ErrorBanner(error: snapshot.error!, onRetry: _load),
                   );
                 }
-                final patients = snapshot.data ?? [];
+                final patients = _visible(snapshot.data ?? []);
                 if (patients.isEmpty) {
-                  return const EmptyStateView(icon: Icons.people_outline, title: 'No patients found');
+                  return const EmptyStateView(
+                      icon: Icons.people_outline, title: 'No patients found');
                 }
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    itemCount: patients.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (context, i) {
-                      final p = patients[i];
+                  child: PagedRecordList<PatientDirectoryItem>(
+                    key: ValueKey(_period.label),
+                    items: patients,
+                    itemBuilder: (context, p, i) {
                       final details = [
                         if (p.gender != null) p.gender,
                         if (p.bloodGroup != null) p.bloodGroup,
@@ -205,64 +253,90 @@ class _AdminPatientsScreenState extends State<AdminPatientsScreen> {
                         // this field already but never displayed it.
                         'Registered: ${_formatDate(p.registeredAt)}',
                       ].join(' · ');
-                      final seqId = p.patientNumber == null ? 'DCP—' : 'DCP${p.patientNumber}';
+                      final seqId = p.patientNumber == null
+                          ? 'DCP—'
+                          : 'DCP${p.patientNumber}';
                       final busy = _busyId == p.id;
                       return Card(
-                        child: ListTile(
-                          title: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.surface,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: AppColors.border),
-                                ),
-                                child: Text('#$seqId', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppColors.primaryDark)),
+                        child: Material(
+                            type: MaterialType.transparency,
+                            child: ListTile(
+                              title: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: context.palette.surface,
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                          color: context.palette.border),
+                                    ),
+                                    child: Text('#$seqId',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11,
+                                            color:
+                                                context.palette.primaryDark)),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(p.name,
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700)),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                              ),
-                            ],
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                [
-                                  if (p.email != null) p.email!,
-                                  if (p.phone != null) p.phone!,
-                                  if (details.isNotEmpty) details,
-                                ].join('\n'),
-                              ),
-                              // COMPLETENESS FIX (mobile parity audit): web's "Health notes"
-                              // column — see _fetch()'s clinicalMap merge above.
-                              if (p.healthNotesSummary != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  p.healthNotesSummary!,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
-                                ),
-                              ],
-                            ],
-                          ),
-                          trailing: busy
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                              : Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    StatusBadge(status: p.status),
-                                    IconButton(
-                                      icon: Icon(p.status == 'active' ? Icons.block : Icons.check_circle_outline, size: 20),
-                                      tooltip: p.status == 'active' ? 'Disable login' : 'Enable login',
-                                      onPressed: () => _toggleStatus(p),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    [
+                                      if (p.email != null) p.email!,
+                                      if (p.phone != null) p.phone!,
+                                      if (details.isNotEmpty) details,
+                                    ].join('\n'),
+                                  ),
+                                  // COMPLETENESS FIX (mobile parity audit): web's "Health notes"
+                                  // column — see _fetch()'s clinicalMap merge above.
+                                  if (p.healthNotesSummary != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      p.healthNotesSummary!,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: context.palette.textSecondary,
+                                          fontStyle: FontStyle.italic),
                                     ),
                                   ],
-                                ),
-                        ),
+                                ],
+                              ),
+                              trailing: busy
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        StatusBadge(status: p.status),
+                                        IconButton(
+                                          icon: Icon(
+                                              p.status == 'active'
+                                                  ? Icons.block
+                                                  : Icons.check_circle_outline,
+                                              size: 20),
+                                          tooltip: p.status == 'active'
+                                              ? 'Disable login'
+                                              : 'Enable login',
+                                          onPressed: () => _toggleStatus(p),
+                                        ),
+                                      ],
+                                    ),
+                            )),
                       );
                     },
                   ),

@@ -14,6 +14,11 @@ build/
 server/server/uploads/
 server/server/server-log.txt
 .vitest/
+client/.codex-test-temp/
+client/.tmp/
+server/server/.jest-cache/
+server/server/.codex-test-temp/
+tmp/
 
 # Flutter (mobile/) — see mobile/.gitignore for the full Flutter-specific set; these are the
 # generic patterns worth having apply at the repo root too.
@@ -35,3 +40,4 @@ coverage/
 .claude/
 Claude outputs/
 _to_delete/
+mobile/lib/Untitled-1.xml

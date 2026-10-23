@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../core/csv_export.dart';
 import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
@@ -38,7 +39,8 @@ class AdminRevenueReportsScreen extends StatefulWidget {
   const AdminRevenueReportsScreen({super.key});
 
   @override
-  State<AdminRevenueReportsScreen> createState() => _AdminRevenueReportsScreenState();
+  State<AdminRevenueReportsScreen> createState() =>
+      _AdminRevenueReportsScreenState();
 }
 
 class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
@@ -50,27 +52,15 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _from = DateTime(now.year, now.month, 1);
+    final now = DateTime.parse(indiaToday());
+    _from = now;
     _to = now;
     _future = _fetch();
   }
 
   Future<List<PaymentItem>> _fetch() async {
-    try {
-      final res = await ApiClient.instance
-          .get('/payments', query: {'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
-      final list = <PaymentItem>[];
-      for (final item in res.list) {
-        try {
-          list.add(PaymentItem.fromJson(item));
-        } catch (_) {}
-      }
-      return list;
-    } catch (_) {
-      return [];
-    }
+    final res = await ApiClient.instance.getAll('/payments');
+    return res.list.map(PaymentItem.fromJson).toList();
   }
 
   void _load() {
@@ -101,7 +91,7 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
 
   bool _inRange(PaymentItem payment) {
     if (payment.createdAt == null) return false;
-    final date = DateTime.tryParse(payment.createdAt!);
+    final date = DateTime.tryParse(indiaRecordDate(payment.createdAt));
     if (date == null) return false;
     final start = DateTime(_from.year, _from.month, _from.day);
     final end = DateTime(_to.year, _to.month, _to.day, 23, 59, 59);
@@ -130,10 +120,12 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
     String money(double value) => '₹${value.toStringAsFixed(0)}';
 
     final doctorRowsHtml = doctorRows
-        .map((d) => '<tr><td>${escape(d.name)}</td><td>${d.payments}</td><td>${escape(money(d.revenue))}</td></tr>')
+        .map((d) =>
+            '<tr><td>${escape(d.name)}</td><td>${d.payments}</td><td>${escape(money(d.revenue))}</td></tr>')
         .join();
     final paymentRowsHtml = payments
-        .map((p) => '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
+        .map((p) =>
+            '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
             '<td>${escape(p.doctor?.name ?? 'Unassigned')}</td>'
             '<td>${escape(p.receiptNumber ?? '')}</td>'
             '<td>${escape(p.bookingId != null ? _shortId(p.bookingId!) : '—')}</td>'
@@ -159,7 +151,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
 
     final fromStr = DateFormat('yyyy-MM-dd').format(_from);
     final toStr = DateFormat('yyyy-MM-dd').format(_to);
-    await shareText(filename: 'bookadoctors-revenue-$fromStr-to-$toStr.xls', content: html);
+    await shareText(
+        filename: 'bookadoctors-revenue-$fromStr-to-$toStr.xls', content: html);
   }
 
   @override
@@ -170,17 +163,21 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
     return Column(
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
             title: 'Revenue reports',
-            subtitle: 'View payment revenue for any selected date range and doctor.',
+            subtitle:
+                'View payment revenue for any selected date range and doctor.',
           ),
         ),
         Expanded(
           child: FutureBuilder<List<PaymentItem>>(
             future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               if (snapshot.hasError) {
                 return Padding(
                   padding: const EdgeInsets.all(AppSpacing.md),
@@ -207,30 +204,41 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                 if (_doctorFilter == 'all') return true;
                 return p.doctor?.id == _doctorFilter;
               }).toList()
-                ..sort((a, b) => (b.createdAt ?? '').compareTo(a.createdAt ?? ''));
+                ..sort(
+                    (a, b) => (b.createdAt ?? '').compareTo(a.createdAt ?? ''));
 
-              final total = filtered.fold<double>(0, (sum, p) => sum + (p.fees.amount ?? p.fees.consultationFee ?? 0));
-              final average = filtered.isEmpty ? 0.0 : total / filtered.length;
-              final commission = filtered.fold<double>(0, (sum, p) => sum + (p.fees.commission ?? 0));
-              final clinicPayout = filtered.fold<double>(0, (sum, p) => sum + (p.fees.clinicPayout ?? 0));
+              final revenuePayments = filtered.where(isRevenuePayment).toList();
+              final total = revenuePayments.fold<double>(
+                  0,
+                  (sum, p) =>
+                      sum + (p.fees.amount ?? p.fees.consultationFee ?? 0));
+              final average = revenuePayments.isEmpty
+                  ? 0.0
+                  : total / revenuePayments.length;
+              final commission = revenuePayments.fold<double>(
+                  0, (sum, p) => sum + (p.fees.commission ?? 0));
+              final clinicPayout = revenuePayments.fold<double>(
+                  0, (sum, p) => sum + (p.fees.clinicPayout ?? 0));
 
               // Doctor-wise revenue breakdown, sorted by revenue descending (highest earners
               // first) — mirrors the "Doctor-wise revenue" table on the web admin page.
               final byDoctor = <String, _DoctorRevenue>{};
-              for (final p in filtered) {
+              for (final p in revenuePayments) {
                 final name = p.doctor?.name ?? 'Unassigned';
-                final entry = byDoctor.putIfAbsent(name, () => _DoctorRevenue(name: name));
+                final entry = byDoctor.putIfAbsent(
+                    name, () => _DoctorRevenue(name: name));
                 entry.payments += 1;
                 entry.revenue += (p.fees.amount ?? p.fees.consultationFee ?? 0);
               }
-              final doctorRows = byDoctor.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
+              final doctorRows = byDoctor.values.toList()
+                ..sort((a, b) => b.revenue.compareTo(a.revenue));
 
               // Payment-mode breakdown, mirrors web's RevenueReports "Payment modes" panel:
               // 3-way rollup (Paid at booking / Cash at clinic / Online at clinic) + per-mode amounts & counts.
               final modeAmounts = <String, double>{};
               final modeCounts = <String, int>{};
               double bookingTotal = 0, cashTotal = 0, onlineTotal = 0;
-              for (final p in filtered) {
+              for (final p in revenuePayments) {
                 final amount = (p.fees.amount ?? p.fees.consultationFee ?? 0);
                 final mode = p.mode.isEmpty ? 'Other' : p.mode;
                 modeCounts[mode] = (modeCounts[mode] ?? 0) + 1;
@@ -245,7 +253,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                   onlineTotal += amount;
                 }
               }
-              final periodLabel = '${dateFormat.format(_from)} to ${dateFormat.format(_to)}';
+              final periodLabel =
+                  '${dateFormat.format(_from)} to ${dateFormat.format(_to)}';
               final selectedDoctorName = _doctorFilter == 'all'
                   ? 'All doctors'
                   : (doctorsById[_doctorFilter] ?? 'Selected doctor');
@@ -259,15 +268,21 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                     if (invalidRange)
                       Container(
                         margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
-                          color: AppColors.danger.withValues(alpha: 0.1),
+                          color: context.palette.danger.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+                          border: Border.all(
+                              color: context.palette.danger
+                                  .withValues(alpha: 0.3)),
                         ),
-                        child: const Text(
+                        child: Text(
                           'From date must be before To date.',
-                          style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600, fontSize: 13),
+                          style: TextStyle(
+                              color: context.palette.danger,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13),
                         ),
                       ),
                     Row(
@@ -275,29 +290,45 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _pickFrom,
-                            icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                            label: Text(dateFormat.format(_from)),
+                            style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 12)),
+                            icon: const Icon(Icons.calendar_today_outlined,
+                                size: 16),
+                            label: Text(dateFormat.format(_from),
+                                style: const TextStyle(fontSize: 12)),
                           ),
                         ),
-                        const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('to')),
+                        const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text('to')),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: _pickTo,
-                            icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                            label: Text(dateFormat.format(_to)),
+                            style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 12)),
+                            icon: const Icon(Icons.calendar_today_outlined,
+                                size: 16),
+                            label: Text(dateFormat.format(_to),
+                                style: const TextStyle(fontSize: 12)),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _doctorFilter,
                       decoration: const InputDecoration(labelText: 'Doctor'),
                       items: [
-                        const DropdownMenuItem(value: 'all', child: Text('All doctors')),
-                        ...doctorEntries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))),
+                        const DropdownMenuItem(
+                            value: 'all', child: Text('All doctors')),
+                        ...doctorEntries.map((e) => DropdownMenuItem(
+                            value: e.key, child: Text(e.value))),
                       ],
-                      onChanged: (v) => setState(() => _doctorFilter = v ?? 'all'),
+                      onChanged: (v) =>
+                          setState(() => _doctorFilter = v ?? 'all'),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     // COMPLETENESS FIX (mobile parity audit): web's "Download Excel" action — see
@@ -310,13 +341,14 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                             : () => _downloadExcel(
                                   periodLabel: periodLabel,
                                   total: total,
-                                  paymentsCount: filtered.length,
+                                  paymentsCount: revenuePayments.length,
                                   commission: commission,
                                   clinicPayout: clinicPayout,
                                   doctorRows: doctorRows,
                                   payments: filtered,
                                 ),
-                        icon: const Icon(Icons.file_download_outlined, size: 16),
+                        icon:
+                            const Icon(Icons.file_download_outlined, size: 16),
                         label: const Text('Download Excel'),
                       ),
                     ),
@@ -328,7 +360,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                             label: 'Selected range revenue',
                             value: '₹${total.toStringAsFixed(0)}',
                             icon: Icons.currency_rupee,
-                            detail: '${filtered.length} payment${filtered.length == 1 ? '' : 's'}',
+                            detail:
+                                '${revenuePayments.length} successful payments',
                           ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
@@ -372,27 +405,39 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         children: [
                           Text(
                             '$periodLabel · $selectedDoctorName',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            style: TextStyle(
+                                color: context.palette.textSecondary,
+                                fontSize: 12),
                           ),
                           const SizedBox(height: AppSpacing.sm),
                           if (doctorRows.isEmpty)
-                            const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
+                            Text('No payments in this period.',
+                                style: TextStyle(
+                                    color: context.palette.textSecondary))
                           else
                             ...doctorRows.map((d) => Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4),
                                   child: Row(
                                     children: [
                                       Expanded(
-                                        child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                        child: Text(d.name,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600),
+                                            overflow: TextOverflow.ellipsis),
                                       ),
                                       Text(
                                         '${d.payments} pmt${d.payments == 1 ? '' : 's'}',
-                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 12),
                                       ),
                                       const SizedBox(width: AppSpacing.sm),
                                       Text(
                                         '₹${d.revenue.toStringAsFixed(0)}',
-                                        style: const TextStyle(fontWeight: FontWeight.w700),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700),
                                       ),
                                     ],
                                   ),
@@ -408,26 +453,42 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                         children: [
                           Row(
                             children: [
-                              Expanded(child: _ModeTotalTile(label: 'PAID AT BOOKING', value: bookingTotal)),
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'PAID AT BOOKING',
+                                      value: bookingTotal)),
                               const SizedBox(width: AppSpacing.sm),
-                              Expanded(child: _ModeTotalTile(label: 'CASH (CLINIC)', value: cashTotal)),
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'CASH (CLINIC)',
+                                      value: cashTotal)),
                               const SizedBox(width: AppSpacing.sm),
-                              Expanded(child: _ModeTotalTile(label: 'ONLINE (CLINIC)', value: onlineTotal)),
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'ONLINE (CLINIC)',
+                                      value: onlineTotal)),
                             ],
                           ),
                           const SizedBox(height: AppSpacing.md),
                           if (modeCounts.isEmpty)
-                            const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
+                            Text('No payments in this period.',
+                                style: TextStyle(
+                                    color: context.palette.textSecondary))
                           else
                             ...modeCounts.entries.map((e) => Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4),
                                   child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(e.key.toUpperCase(), style: const TextStyle(fontSize: 13)),
+                                      Text(e.key.toUpperCase(),
+                                          style: const TextStyle(fontSize: 13)),
                                       Text(
                                         '₹${(modeAmounts[e.key] ?? 0).toStringAsFixed(0)} · ${e.value}',
-                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13),
                                       ),
                                     ],
                                   ),
@@ -436,7 +497,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                       ),
                     ),
                     const SizedBox(height: AppSpacing.lg),
-                    Text('Payments in selected period', style: Theme.of(context).textTheme.titleMedium),
+                    Text('Payments in selected period',
+                        style: Theme.of(context).textTheme.titleMedium),
                     const SizedBox(height: AppSpacing.sm),
                     if (filtered.isEmpty)
                       const Padding(
@@ -449,13 +511,18 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                     else
                       ...filtered.map((p) {
                         final bId = p.bookingId;
-                        final totalAmount = (p.fees.amount ?? p.fees.consultationFee ?? 0);
-                        final doctorName = p.doctor?.name ?? 'Unassigned doctor';
+                        final totalAmount =
+                            (p.fees.amount ?? p.fees.consultationFee ?? 0);
+                        final doctorName =
+                            p.doctor?.name ?? 'Unassigned doctor';
                         final patientName = p.patient?.name ?? 'Patient';
                         final clinicName = p.clinic?.name;
                         final commission = p.fees.commission ?? 0;
-                        final clinicPayout = p.fees.clinicPayout ?? (totalAmount - commission);
-                        final dateStr = p.createdAt != null ? p.createdAt!.split("T").first : "";
+                        final clinicPayout =
+                            p.fees.clinicPayout ?? (totalAmount - commission);
+                        final dateStr = p.createdAt != null
+                            ? p.createdAt!.split("T").first
+                            : "";
 
                         return Card(
                           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -469,7 +536,9 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                                     Expanded(
                                       child: Text(
                                         doctorName,
-                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -477,39 +546,58 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                                     InkWell(
                                       onTap: bId != null
                                           ? () {
-                                              Clipboard.setData(ClipboardData(text: bId));
-                                              ScaffoldMessenger.of(context).showSnackBar(
+                                              Clipboard.setData(
+                                                  ClipboardData(text: bId));
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
                                                 SnackBar(
-                                                  content: Text('Booking ID copied: $bId'),
-                                                  duration: const Duration(seconds: 2),
+                                                  content: Text(
+                                                      'Booking ID copied: $bId'),
+                                                  duration: const Duration(
+                                                      seconds: 2),
                                                 ),
                                               );
                                             }
                                           : null,
                                       borderRadius: BorderRadius.circular(4),
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
-                                          color: bId != null ? AppColors.primaryLight : AppColors.surface,
-                                          borderRadius: BorderRadius.circular(4),
+                                          color: bId != null
+                                              ? context.palette.primaryLight
+                                              : context.palette.surface,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                           border: Border.all(
-                                            color: bId != null ? AppColors.primaryLight : AppColors.border,
+                                            color: bId != null
+                                                ? context.palette.primaryLight
+                                                : context.palette.border,
                                           ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Text(
-                                              bId != null ? 'Booking ID: ${_shortId(bId)}' : 'Booking ID: —',
+                                              bId != null
+                                                  ? 'Booking ID: ${_shortId(bId)}'
+                                                  : 'Booking ID: —',
                                               style: TextStyle(
-                                                color: bId != null ? AppColors.primaryDark : AppColors.textSecondary,
+                                                color: bId != null
+                                                    ? context
+                                                        .palette.primaryDark
+                                                    : context
+                                                        .palette.textSecondary,
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w700,
                                               ),
                                             ),
                                             if (bId != null) ...[
                                               const SizedBox(width: 3),
-                                              const Icon(Icons.copy, size: 10, color: AppColors.primaryDark),
+                                              Icon(Icons.copy,
+                                                  size: 10,
+                                                  color: context
+                                                      .palette.primaryDark),
                                             ],
                                           ],
                                         ),
@@ -522,29 +610,40 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                                   children: [
                                     Expanded(
                                       child: Wrap(
-                                        crossAxisAlignment: WrapCrossAlignment.center,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
                                         spacing: 6,
                                         runSpacing: 4,
                                         children: [
                                           Text(
                                             patientName,
-                                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w500),
                                           ),
-                                          const Text('·', style: TextStyle(color: AppColors.textSecondary)),
+                                          Text('·',
+                                              style: TextStyle(
+                                                  color: context
+                                                      .palette.textSecondary)),
                                           Text(
                                             p.mode.toUpperCase(),
-                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                            style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600),
                                           ),
                                           PaymentSourceBadge(payment: p),
                                         ],
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
                                         Text(
                                           '₹${totalAmount.toStringAsFixed(0)}',
-                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 16),
                                         ),
                                         const SizedBox(height: 2),
                                         StatusBadge(status: p.status),
@@ -561,7 +660,10 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                                       child: Text(
                                         'Receipt: #${p.receiptNumber ?? '—'} · Date: $dateStr'
                                         '${clinicName != null ? " · Clinic: $clinicName" : ""}',
-                                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                                        style: TextStyle(
+                                            color:
+                                                context.palette.textSecondary,
+                                            fontSize: 11),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
@@ -571,7 +673,10 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                                   const SizedBox(height: 3),
                                   Text(
                                     'Doctor share: ₹${clinicPayout.toStringAsFixed(0)} · Commission: ₹${commission.toStringAsFixed(0)}',
-                                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.w500),
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500),
                                   ),
                                 ],
                               ],
@@ -585,7 +690,8 @@ class _AdminRevenueReportsScreenState extends State<AdminRevenueReportsScreen> {
                       child: EmptyStateView(
                         icon: Icons.analytics_outlined,
                         title: 'Analytics not available',
-                        subtitle: 'The current API has no time-series analytics endpoint yet.',
+                        subtitle:
+                            'The current API has no time-series analytics endpoint yet.',
                       ),
                     ),
                   ],
@@ -614,13 +720,19 @@ class _ModeTotalTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: 8),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
+      padding:
+          const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: 8),
+      decoration: BoxDecoration(
+          color: context.palette.surface,
+          borderRadius: BorderRadius.circular(8)),
       child: Column(
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: context.palette.textSecondary),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),

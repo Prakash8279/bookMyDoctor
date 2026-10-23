@@ -219,7 +219,7 @@ print("OK")
       const scriptPath = path.join(dir, 'check.py')
       await fs.writeFile(scriptPath, script)
       try {
-        const { stdout } = await execFileAsync('python3', [scriptPath, pdfPath])
+        const { stdout } = await execFileAsync(process.env.PYTHON_BINARY || 'python3', [scriptPath, pdfPath])
         expect(stdout.trim()).toBe('OK')
       } catch (err) {
         if (err.code === 'ENOENT' || /Python was not found/i.test(err.message || '')) {

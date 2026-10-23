@@ -16,7 +16,12 @@ class PageHeader extends StatelessWidget {
   final String? kicker;
   final Widget? action;
 
-  const PageHeader({super.key, required this.title, this.subtitle, this.kicker, this.action});
+  const PageHeader(
+      {super.key,
+      required this.title,
+      this.subtitle,
+      this.kicker,
+      this.action});
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +34,8 @@ class PageHeader extends StatelessWidget {
             if (kicker != null) ...[
               Text(
                 kicker!.toUpperCase(),
-                style: const TextStyle(
-                  color: AppColors.primaryDark,
+                style: TextStyle(
+                  color: context.palette.primaryDark,
                   fontWeight: FontWeight.w700,
                   fontSize: 11,
                   letterSpacing: 1.1,
@@ -40,11 +45,16 @@ class PageHeader extends StatelessWidget {
             ],
             Text(
               title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: context.palette.textPrimary),
             ),
             if (subtitle != null) ...[
               const SizedBox(height: 4),
-              Text(subtitle!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              Text(subtitle!,
+                  style: TextStyle(
+                      color: context.palette.textSecondary, fontSize: 13)),
             ],
           ],
         );
@@ -90,7 +100,8 @@ class LoadingView extends StatelessWidget {
           const CircularProgressIndicator(),
           if (message != null) ...[
             const SizedBox(height: AppSpacing.md),
-            Text(message!, style: const TextStyle(color: AppColors.textSecondary)),
+            Text(message!,
+                style: TextStyle(color: context.palette.textSecondary)),
           ],
         ],
       ),
@@ -122,7 +133,7 @@ class EmptyStateView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 48, color: AppColors.textSecondary),
+            Icon(icon, size: 48, color: context.palette.textSecondary),
             const SizedBox(height: AppSpacing.md),
             Text(
               title,
@@ -134,7 +145,7 @@ class EmptyStateView extends StatelessWidget {
               Text(
                 subtitle!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: context.palette.textSecondary),
               ),
             ],
             if (action != null) ...[
@@ -166,17 +177,19 @@ class ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.08),
+        color: context.palette.danger.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.danger.withValues(alpha: 0.3)),
+        border:
+            Border.all(color: context.palette.danger.withValues(alpha: 0.3)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, color: AppColors.danger, size: 20),
+          Icon(Icons.error_outline, color: context.palette.danger, size: 20),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
-            child: Text(_message, style: const TextStyle(color: AppColors.danger)),
+            child:
+                Text(_message, style: TextStyle(color: context.palette.danger)),
           ),
           if (onRetry != null)
             TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -196,7 +209,8 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = statusTone(status);
+    final tone = statusTone(status,
+        dark: Theme.of(context).brightness == Brightness.dark);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -205,7 +219,8 @@ class StatusBadge extends StatelessWidget {
       ),
       child: Text(
         status.replaceAll('_', ' '),
-        style: TextStyle(color: tone.foreground, fontWeight: FontWeight.w600, fontSize: 12),
+        style: TextStyle(
+            color: tone.foreground, fontWeight: FontWeight.w600, fontSize: 12),
       ),
     );
   }
@@ -238,14 +253,21 @@ class PrimaryButton extends StatelessWidget {
             ? const SizedBox(
                 height: 20,
                 width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
+                  if (icon != null) ...[
+                    Icon(icon, size: 18),
+                    const SizedBox(width: 8)
+                  ],
                   Flexible(
-                    child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                    child: Text(label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center),
                   ),
                 ],
               ),
@@ -261,7 +283,8 @@ class SectionCard extends StatelessWidget {
   final Widget child;
   final Widget? trailing;
 
-  const SectionCard({super.key, this.title, required this.child, this.trailing});
+  const SectionCard(
+      {super.key, this.title, required this.child, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -278,9 +301,12 @@ class SectionCard extends StatelessWidget {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(title!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        Text(title!,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w700, fontSize: 15)),
                         const SizedBox(height: AppSpacing.xs),
-                        Align(alignment: Alignment.centerLeft, child: trailing!),
+                        Align(
+                            alignment: Alignment.centerLeft, child: trailing!),
                       ],
                     );
                   }
@@ -289,7 +315,8 @@ class SectionCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           title!,
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                       ),
                       if (trailing != null) ...[
@@ -350,7 +377,10 @@ class StatCard extends StatelessWidget {
                       label,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 11),
+                      style: TextStyle(
+                          color: context.palette.textSecondary,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11),
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -358,10 +388,11 @@ class StatCard extends StatelessWidget {
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryLight,
+                      color: context.palette.primaryLight,
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Icon(icon, size: 15, color: AppColors.primaryDark),
+                    child: Icon(icon,
+                        size: 15, color: context.palette.primaryDark),
                   ),
                 ],
               ),
@@ -371,7 +402,10 @@ class StatCard extends StatelessWidget {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   value,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                  style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: context.palette.textPrimary),
                 ),
               ),
               if (detail != null) ...[
@@ -380,7 +414,10 @@ class StatCard extends StatelessWidget {
                   detail!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      color: context.palette.success,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ],
@@ -480,12 +517,12 @@ class _AsyncScreenState<T> extends State<AsyncScreen<T>> {
 void showErrorSnack(BuildContext context, Object error) {
   final message = error is ApiException ? error.message : error.toString();
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: AppColors.danger),
+    SnackBar(content: Text(message), backgroundColor: context.palette.danger),
   );
 }
 
 void showSuccessSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: AppColors.success),
+    SnackBar(content: Text(message), backgroundColor: context.palette.success),
   );
 }

@@ -30,8 +30,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   Future<List<FamilyMember>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/family-members', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+          .getAll('/family-members', query: {'pageSize': 50});
       final list = <FamilyMember>[];
       for (final item in res.list) {
         try {
@@ -40,7 +39,7 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -65,8 +64,12 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       builder: (_) => AlertDialog(
         title: Text('Remove ${member.name}?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Remove')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Remove')),
         ],
       ),
     );
@@ -87,7 +90,15 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
   Future<void> _exportCsv(List<FamilyMember> members) async {
     await shareCsv(
       filename: 'family-members.csv',
-      headers: const ['ID', 'Full name', 'Relationship', 'Date of birth', 'Gender', 'Blood group', 'Age'],
+      headers: const [
+        'ID',
+        'Full name',
+        'Relationship',
+        'Date of birth',
+        'Gender',
+        'Blood group',
+        'Age'
+      ],
       rows: [
         for (var i = 0; i < members.length; i++)
           [
@@ -113,7 +124,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Family members',
               subtitle: 'Manage dependents for appointment booking.',
@@ -123,7 +135,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                 builder: (context, snapshot) {
                   final members = snapshot.data ?? const <FamilyMember>[];
                   return TextButton.icon(
-                    onPressed: members.isEmpty ? null : () => _exportCsv(members),
+                    onPressed:
+                        members.isEmpty ? null : () => _exportCsv(members),
                     icon: const Icon(Icons.file_download_outlined, size: 16),
                     label: const Text('Export CSV'),
                   );
@@ -135,9 +148,14 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
             child: FutureBuilder<List<FamilyMember>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
-                  return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
                 }
                 final members = snapshot.data ?? [];
                 // COMPLETENESS FIX (mobile parity audit — Patient panel): no pull-to-refresh
@@ -152,7 +170,8 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                         EmptyStateView(
                           icon: Icons.family_restroom,
                           title: 'No family members added',
-                          subtitle: 'Add a family member to book appointments on their behalf',
+                          subtitle:
+                              'Add a family member to book appointments on their behalf',
                         ),
                       ],
                     ),
@@ -163,21 +182,30 @@ class _FamilyMembersScreenState extends State<FamilyMembersScreen> {
                   child: ListView.separated(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     itemCount: members.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
                     itemBuilder: (context, i) {
                       final m = members[i];
                       return Card(
-                        child: ListTile(
-                          title: Text(m.name),
-                          subtitle: Text('${m.relation}${m.age != null ? " · ${m.age} yrs" : ""}${m.bloodGroup != null ? " · ${m.bloodGroup}" : ""}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _openForm(existing: m)),
-                              IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.danger), onPressed: () => _delete(m)),
-                            ],
-                          ),
-                        ),
+                        child: Material(
+                            type: MaterialType.transparency,
+                            child: ListTile(
+                              title: Text(m.name),
+                              subtitle: Text(
+                                  '${m.relation}${m.age != null ? " · ${m.age} yrs" : ""}${m.bloodGroup != null ? " · ${m.bloodGroup}" : ""}'),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                      icon: const Icon(Icons.edit_outlined),
+                                      onPressed: () => _openForm(existing: m)),
+                                  IconButton(
+                                      icon: Icon(Icons.delete_outline,
+                                          color: context.palette.danger),
+                                      onPressed: () => _delete(m)),
+                                ],
+                              ),
+                            )),
                       );
                     },
                   ),
@@ -200,15 +228,22 @@ class _FamilyMemberForm extends StatefulWidget {
 }
 
 class _FamilyMemberFormState extends State<_FamilyMemberForm> {
-  late final _nameController = TextEditingController(text: widget.existing?.name ?? '');
-  late final _relationController = TextEditingController(text: widget.existing?.relation ?? '');
+  late final _nameController =
+      TextEditingController(text: widget.existing?.name ?? '');
+  late final _relationController =
+      TextEditingController(text: widget.existing?.relation ?? '');
   String? _gender;
   String? _bloodGroup;
   DateTime? _dateOfBirth;
   bool _submitting = false;
   String? _error;
 
-  static const _genderOptions = ['Female', 'Male', 'Other', 'Prefer not to say'];
+  static const _genderOptions = [
+    'Female',
+    'Male',
+    'Other',
+    'Prefer not to say'
+  ];
 
   @override
   void initState() {
@@ -251,8 +286,13 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
   }
 
   Future<void> _submit() async {
-    if (_nameController.text.trim().isEmpty || _relationController.text.trim().isEmpty) {
-      setState(() => _error = 'Name and relation are required');
+    if (_nameController.text.trim().isEmpty ||
+        _relationController.text.trim().isEmpty ||
+        _dateOfBirth == null ||
+        _gender == null ||
+        _bloodGroup == null) {
+      setState(() => _error =
+          'Name, relation, date of birth, gender and blood group are required');
       return;
     }
     setState(() {
@@ -262,7 +302,8 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
     final body = {
       'name': _nameController.text.trim(),
       'relation': _relationController.text.trim(),
-      if (_dateOfBirth != null) 'dateOfBirth': DateFormat('yyyy-MM-dd').format(_dateOfBirth!),
+      if (_dateOfBirth != null)
+        'dateOfBirth': DateFormat('yyyy-MM-dd').format(_dateOfBirth!),
       if (_gender != null) 'gender': _gender,
       if (_bloodGroup != null) 'bloodGroup': _bloodGroup,
     };
@@ -270,7 +311,8 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
       if (widget.existing == null) {
         await ApiClient.instance.post('/family-members', body: body);
       } else {
-        await ApiClient.instance.patch('/family-members/${widget.existing!.id}', body: body);
+        await ApiClient.instance
+            .patch('/family-members/${widget.existing!.id}', body: body);
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -294,18 +336,32 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(widget.existing == null ? 'Add family member' : 'Edit family member',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Text(
+              widget.existing == null
+                  ? 'Add family member'
+                  : 'Edit family member',
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-          TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name')),
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
+          TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Name *')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _relationController, decoration: const InputDecoration(labelText: 'Relation (e.g. Son, Mother)')),
+          TextField(
+              controller: _relationController,
+              decoration: const InputDecoration(
+                  labelText: 'Relation (e.g. Son, Mother) *')),
           const SizedBox(height: AppSpacing.md),
           OutlinedButton.icon(
             onPressed: _pickDob,
             icon: const Icon(Icons.cake_outlined, size: 18),
-            label: Text(_dateOfBirth == null ? 'Date of birth (optional)' : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
+            label: Text(_dateOfBirth == null
+                ? 'Date of birth *'
+                : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
           ),
           const SizedBox(height: AppSpacing.md),
           // PARITY FIX (mobile parity audit — Patient panel): web's Family form
@@ -314,30 +370,38 @@ class _FamilyMemberFormState extends State<_FamilyMemberForm> {
           // three lowercase options with no "Prefer not to say" choice.
           DropdownButtonFormField<String>(
             initialValue: _gender,
-            decoration: const InputDecoration(labelText: 'Gender (optional)'),
+            decoration: const InputDecoration(labelText: 'Gender *'),
             items: [
-              for (final option in _genderOptions) DropdownMenuItem(value: option, child: Text(option)),
+              for (final option in _genderOptions)
+                DropdownMenuItem(value: option, child: Text(option)),
             ],
             onChanged: (v) => setState(() => _gender = v),
           ),
           const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
             initialValue: _bloodGroup,
-            decoration: const InputDecoration(labelText: 'Blood group (optional)'),
-            items: const [
-              DropdownMenuItem(value: 'A+', child: Text('A+')),
-              DropdownMenuItem(value: 'A-', child: Text('A-')),
-              DropdownMenuItem(value: 'B+', child: Text('B+')),
-              DropdownMenuItem(value: 'B-', child: Text('B-')),
-              DropdownMenuItem(value: 'AB+', child: Text('AB+')),
-              DropdownMenuItem(value: 'AB-', child: Text('AB-')),
-              DropdownMenuItem(value: 'O+', child: Text('O+')),
-              DropdownMenuItem(value: 'O-', child: Text('O-')),
+            decoration: const InputDecoration(labelText: 'Blood group *'),
+            items: [
+              if (_bloodGroup != null &&
+                  !['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown']
+                      .contains(_bloodGroup))
+                DropdownMenuItem(value: _bloodGroup, child: Text(_bloodGroup!)),
+              const DropdownMenuItem(value: 'A+', child: Text('A+')),
+              const DropdownMenuItem(value: 'A-', child: Text('A-')),
+              const DropdownMenuItem(value: 'B+', child: Text('B+')),
+              const DropdownMenuItem(value: 'B-', child: Text('B-')),
+              const DropdownMenuItem(value: 'AB+', child: Text('AB+')),
+              const DropdownMenuItem(value: 'AB-', child: Text('AB-')),
+              const DropdownMenuItem(value: 'O+', child: Text('O+')),
+              const DropdownMenuItem(value: 'O-', child: Text('O-')),
+              const DropdownMenuItem(
+                  value: 'Unknown', child: Text('Unknown')),
             ],
             onChanged: (v) => setState(() => _bloodGroup = v),
           ),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save', onPressed: _submit, loading: _submitting),
         ],
       ),
     );

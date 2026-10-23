@@ -88,7 +88,8 @@ Route<dynamic> onGenerateRoute(RouteSettings settings) {
     case Routes.resetPassword:
       return MaterialPageRoute(
         builder: (_) => ResetPasswordScreen(
-          initialEmail: settings.arguments is String ? settings.arguments! as String : '',
+          initialEmail:
+              settings.arguments is String ? settings.arguments! as String : '',
         ),
       );
     case Routes.login:

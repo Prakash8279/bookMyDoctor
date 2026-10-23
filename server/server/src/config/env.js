@@ -29,6 +29,7 @@ if (missing.length > 0) {
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
 const businessTimeZone = process.env.BUSINESS_TIME_ZONE || 'Asia/Kolkata';
+const uploadBaseUrl = process.env.UPLOAD_BASE_URL || 'http://localhost:4000/uploads';
 
 try {
   new Intl.DateTimeFormat('en-US', { timeZone: businessTimeZone }).format();
@@ -67,6 +68,17 @@ if (isProduction) {
   }
   if (looksLikePlaceholder(jwtAccessSecret) || looksLikePlaceholder(jwtRefreshSecret)) {
     productionErrors.push('JWT secrets still contain placeholder text from .env.example — generate real random secrets.');
+  }
+  try {
+    const uploadUrl = new URL(uploadBaseUrl);
+    if (uploadUrl.protocol !== 'https:') {
+      productionErrors.push('UPLOAD_BASE_URL must use HTTPS in production.');
+    }
+    if (['localhost', '127.0.0.1', '10.0.2.2'].includes(uploadUrl.hostname)) {
+      productionErrors.push('UPLOAD_BASE_URL must be publicly reachable in production, not localhost.');
+    }
+  } catch (_err) {
+    productionErrors.push('UPLOAD_BASE_URL must be a valid absolute URL in production.');
   }
 
   if (productionErrors.length > 0) {
@@ -147,7 +159,7 @@ module.exports = {
 
   upload: {
     dir: process.env.UPLOAD_DIR || './uploads',
-    baseUrl: process.env.UPLOAD_BASE_URL || 'http://localhost:4000/uploads',
+    baseUrl: uploadBaseUrl,
   },
 
   rateLimit: {

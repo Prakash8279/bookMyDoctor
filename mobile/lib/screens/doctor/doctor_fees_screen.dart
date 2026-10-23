@@ -43,7 +43,8 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
   }
 
   Future<void> _save() async {
-    final consultation = double.tryParse(_consultationController.text.trim()) ?? 0;
+    final consultation =
+        double.tryParse(_consultationController.text.trim()) ?? 0;
     setState(() {
       _saving = true;
       _saveError = null;
@@ -92,7 +93,8 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
                   children: [
                     TextField(
                       controller: _consultationController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
                         labelText: 'Consultation fee (₹)',
                         prefixText: '₹ ',
@@ -104,7 +106,10 @@ class _DoctorFeesScreenState extends State<DoctorFeesScreen> {
                       const SizedBox(height: AppSpacing.sm),
                     ],
                     if (_saved) ...[
-                      const Text('Fee schedule saved.', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+                      Text('Fee schedule saved.',
+                          style: TextStyle(
+                              color: context.palette.success,
+                              fontWeight: FontWeight.w600)),
                       const SizedBox(height: AppSpacing.sm),
                     ],
                     SizedBox(

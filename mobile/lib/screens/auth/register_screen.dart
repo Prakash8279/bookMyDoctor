@@ -105,7 +105,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (_loadingSpecializations || _specializations.isNotEmpty) return;
     setState(() => _loadingSpecializations = true);
     try {
-      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .get('/geography/specializations', query: {'pageSize': 100});
       final items = <Specialization>[];
       for (final item in res.list) {
         try {
@@ -138,7 +139,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _sendingEmailOtp = true;
         _error = null;
       });
-      final sent = await context.read<AuthProvider>().sendRegistrationEmailOtp(_emailController.text.trim());
+      final sent = await context
+          .read<AuthProvider>()
+          .sendRegistrationEmailOtp(_emailController.text.trim());
       if (!mounted) return;
       setState(() {
         _sendingEmailOtp = false;
@@ -155,7 +158,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _submitting = true;
       _error = null;
     });
-    final ok = _accountType == 'doctor' ? await _submitDoctor() : await _submitPatient();
+    final ok = _accountType == 'doctor'
+        ? await _submitDoctor()
+        : await _submitPatient();
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!ok) {
@@ -173,7 +178,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       // Mandatory now (this screen's own validator gates _submit before this ever runs) — see
       // the MANDATORY-FIELDS FIX note above.
       phone: _phoneController.text.trim(),
-      city: _cityController.text.trim().isEmpty ? null : _cityController.text.trim(),
+      city: _cityController.text.trim().isEmpty
+          ? null
+          : _cityController.text.trim(),
     );
     if (!ok) _error = auth.lastError;
     return ok;
@@ -195,12 +202,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
         'password': _passwordController.text,
         'emailOtp': _emailOtpController.text.trim(),
         'phone': _phoneController.text.trim(),
-        if (_cityController.text.trim().isNotEmpty) 'city': _cityController.text.trim(),
+        if (_cityController.text.trim().isNotEmpty)
+          'city': _cityController.text.trim(),
         'specializationId': _specializationId,
         'qualification': _qualificationController.text.trim(),
         'registrationNumber': _registrationNumberController.text.trim(),
         'experienceYears': int.tryParse(_experienceYearsController.text.trim()),
-        'consultationFee': double.tryParse(_consultationFeeController.text.trim()) ?? 0,
+        'consultationFee':
+            double.tryParse(_consultationFeeController.text.trim()) ?? 0,
       });
       final data = res.map;
       final tokens = TokenPair.fromJson(data);
@@ -227,7 +236,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   /// for verification" doctor form above, never a generic sign-up shortcut).
   Future<void> _handleGoogleSignIn() async {
     if (!GoogleAuthConfig.isConfigured) {
-      setState(() => _error = 'Google sign-in is not configured for this app yet.');
+      setState(
+          () => _error = 'Google sign-in is not configured for this app yet.');
       return;
     }
     setState(() {
@@ -235,7 +245,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _error = null;
     });
     try {
-      final googleSignIn = GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
+      final googleSignIn =
+          GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
       final account = await googleSignIn.signIn();
       if (account == null) {
         setState(() => _googleSubmitting = false);
@@ -244,7 +255,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final googleAuth = await account.authentication;
       final idToken = googleAuth.idToken;
       if (idToken == null) {
-        throw Exception('Google did not return a usable sign-in token. Please try again.');
+        throw Exception(
+            'Google did not return a usable sign-in token. Please try again.');
       }
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
@@ -252,7 +264,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       setState(() => _googleSubmitting = false);
       if (!ok) {
-        setState(() => _error = auth.lastError ?? 'Google sign-in failed. Please try again.');
+        setState(() => _error =
+            auth.lastError ?? 'Google sign-in failed. Please try again.');
       }
       // On success there's nothing further to do here — AuthProvider's own status change flips
       // the app router over to the signed-in shell (same as the plain-email path's `_submit`,
@@ -282,15 +295,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
+                    Text(
                       'Join as a patient or healthcare professional.',
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: context.palette.textSecondary),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     SegmentedButton<String>(
                       segments: const [
-                        ButtonSegment(value: 'patient', label: Text("I'm a patient"), icon: Icon(Icons.person_outline)),
-                        ButtonSegment(value: 'doctor', label: Text("I'm a doctor"), icon: Icon(Icons.medical_services_outlined)),
+                        ButtonSegment(
+                            value: 'patient',
+                            label: Text("I'm a patient"),
+                            icon: Icon(Icons.person_outline)),
+                        ButtonSegment(
+                            value: 'doctor',
+                            label: Text("I'm a doctor"),
+                            icon: Icon(Icons.medical_services_outlined)),
                       ],
                       selected: {_accountType},
                       onSelectionChanged: (selection) {
@@ -303,7 +322,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       isDoctor
                           ? 'Your account will be reviewed by an admin before you appear in patient search — you can sign in right away to check your status.'
                           : 'Verify your email to activate your patient account.',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      style: TextStyle(
+                          color: context.palette.textSecondary, fontSize: 12),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     if (_error != null) ...[
@@ -316,7 +336,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (v) {
                         final value = (v ?? '').trim();
                         if (value.isEmpty) return 'Name is required';
-                        if (!_namePattern.hasMatch(value)) return 'Enter your name using letters only (at least 2 characters)';
+                        if (!_namePattern.hasMatch(value)) {
+                          return 'Enter your name using letters only (at least 2 characters)';
+                        }
                         return null;
                       },
                     ),
@@ -325,8 +347,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _emailController,
                       enabled: !_emailVerificationSent,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'Email address'),
-                      validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                      decoration:
+                          const InputDecoration(labelText: 'Email address'),
+                      validator: (v) => (v == null || !v.contains('@'))
+                          ? 'Enter a valid email'
+                          : null,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -336,14 +361,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       validator: (v) {
                         final value = (v ?? '').trim();
                         if (value.isEmpty) return 'Phone number is required';
-                        if (!_phonePattern.hasMatch(value)) return 'Enter a valid 10-digit mobile number';
+                        if (!_phonePattern.hasMatch(value)) {
+                          return 'Enter a valid 10-digit mobile number';
+                        }
                         return null;
                       },
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _cityController,
-                      decoration: const InputDecoration(labelText: 'City (optional)'),
+                      decoration:
+                          const InputDecoration(labelText: 'City (optional)'),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -352,14 +380,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       decoration: InputDecoration(
                         labelText: 'Password',
                         suffixIcon: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          icon: Icon(_obscure
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
                       validator: (v) {
                         final value = v ?? '';
                         if (value.isEmpty) return 'Password is required';
-                        if (!_passwordPattern.hasMatch(value)) return 'Password must be at least 8 characters and include both letters and numbers';
+                        if (!_passwordPattern.hasMatch(value)) {
+                          return 'Password must be at least 8 characters and include both letters and numbers';
+                        }
                         return null;
                       },
                     ),
@@ -367,8 +399,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     TextFormField(
                       controller: _confirmController,
                       obscureText: _obscure,
-                      decoration: const InputDecoration(labelText: 'Confirm password'),
-                      validator: (v) => (v == null || v.isEmpty) ? 'Confirm your password' : null,
+                      decoration:
+                          const InputDecoration(labelText: 'Confirm password'),
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? 'Confirm your password'
+                          : null,
                     ),
                     if (_emailVerificationSent) ...[
                       const SizedBox(height: AppSpacing.md),
@@ -397,13 +432,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     _emailVerificationSent = false;
                                     _emailOtpController.clear();
                                   }),
-                          child: const Text('Change email or request a new code'),
+                          child:
+                              const Text('Change email or request a new code'),
                         ),
                       ),
                     ],
                     if (isDoctor) ...[
                       const SizedBox(height: AppSpacing.lg),
-                      const Text('Professional details', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text('Professional details',
+                          style: TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: AppSpacing.md),
                       DropdownButtonFormField<String>(
                         initialValue: _specializationId,
@@ -415,22 +452,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   child: SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
                                   ),
                                 )
                               : null,
                         ),
                         items: [
-                          for (final s in _specializations) DropdownMenuItem(value: s.id, child: Text(s.name)),
+                          for (final s in _specializations)
+                            DropdownMenuItem(value: s.id, child: Text(s.name)),
                         ],
                         onChanged: (v) => setState(() => _specializationId = v),
-                        validator: (v) => (v == null || v.isEmpty) ? 'Select a specialization' : null,
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? 'Select a specialization'
+                            : null,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
                         controller: _qualificationController,
-                        decoration: const InputDecoration(labelText: 'Qualification', hintText: 'e.g. MBBS, MD'),
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Qualification is required' : null,
+                        decoration: const InputDecoration(
+                            labelText: 'Qualification',
+                            hintText: 'e.g. MBBS, MD'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Qualification is required'
+                            : null,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
@@ -439,28 +484,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           labelText: 'Registration number',
                           hintText: 'Medical council registration no.',
                         ),
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Registration number is required' : null,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Registration number is required'
+                            : null,
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
                         controller: _experienceYearsController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Years of experience', hintText: 'e.g. 5'),
+                        decoration: const InputDecoration(
+                            labelText: 'Years of experience',
+                            hintText: 'e.g. 5'),
                         validator: (v) {
                           final value = (v ?? '').trim();
-                          if (value.isEmpty) return 'Years of experience is required';
+                          if (value.isEmpty) {
+                            return 'Years of experience is required';
+                          }
                           final n = int.tryParse(value);
-                          if (n == null || n < 0 || n > 80) return 'Enter a value between 0 and 80';
+                          if (n == null || n < 0 || n > 80) {
+                            return 'Enter a value between 0 and 80';
+                          }
                           return null;
                         },
                       ),
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
                         controller: _consultationFeeController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Consultation fee (₹)', hintText: 'e.g. 500'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'Consultation fee (₹)',
+                            hintText: 'e.g. 500'),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return 'Consultation fee is required';
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Consultation fee is required';
+                          }
                           final n = double.tryParse(v.trim());
                           if (n == null || n < 0) return 'Enter a valid amount';
                           return null;
@@ -474,14 +532,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           : _emailVerificationSent
                               ? 'Verify email & create account'
                               : 'Send email verification code',
-                      onPressed: (_submitting || _sendingEmailOtp) ? null : _submit,
+                      onPressed:
+                          (_submitting || _sendingEmailOtp) ? null : _submit,
                       loading: _submitting || _sendingEmailOtp,
                     ),
                     const SizedBox(height: AppSpacing.sm),
-                    const Row(children: [
-                      Expanded(child: Divider()),
-                      Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
-                      Expanded(child: Divider()),
+                    Row(children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.sm),
+                          child: Text('or',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary))),
+                      const Expanded(child: Divider()),
                     ]),
                     const SizedBox(height: AppSpacing.sm),
                     // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix
@@ -490,9 +554,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     OutlinedButton.icon(
                       onPressed: _googleSubmitting ? null : _handleGoogleSignIn,
                       icon: _googleSubmitting
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('G', style: TextStyle(fontWeight: FontWeight.w800)),
-                      label: Text(_googleSubmitting ? 'Signing in…' : 'Continue with Google'),
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('G',
+                              style: TextStyle(fontWeight: FontWeight.w800)),
+                      label: Text(_googleSubmitting
+                          ? 'Signing in…'
+                          : 'Continue with Google'),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Center(

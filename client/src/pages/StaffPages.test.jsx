@@ -8,7 +8,7 @@
 // this is what lets an action (e.g. a queue status PATCH) that updates the store actually be
 // observed re-rendering the page, exactly as it would in the real app.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -28,6 +28,7 @@ vi.mock('../lib/apiClient', () => ({
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
 import { shortId } from '../lib/format'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import App from '../App'
 import {
   Analytics,
@@ -92,6 +93,36 @@ function setCurrentUser(user) {
 }
 
 describe('DoctorDashboard', () => {
+  it('shows zero and no live records when there is only historical data', () => {
+    renderConnected(DoctorDashboard, { data: {
+      appointments: [{ id: 'old', appointmentDate: '2020-01-01', status: 'cancelled', patient: { name: 'Historical Patient' } }],
+      payments: [{ status: 'paid', createdAt: '2020-01-01T04:30:00Z', fees: { consultationFee: 1501 } }],
+      queueTokens: [{ queueDate: '2020-01-01', status: 'waiting' }],
+    } })
+    expect(within(screen.getByText("TODAY'S BOOKINGS").closest('a')).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByText('WAITING PATIENTS').closest('a')).getByText('0')).toBeInTheDocument()
+    expect(screen.getByText('₹0')).toBeInTheDocument()
+    expect(screen.getByText('No appointments today')).toBeInTheDocument()
+    expect(screen.queryByText('Historical Patient')).not.toBeInTheDocument()
+  })
+
+  it('switches the dashboard date at India midnight while left open', () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-10-21T18:29:50Z'))
+      renderConnected(DoctorDashboard, { data: { appointments: [
+        { id: 'yesterday', appointmentDate: '2026-10-21', status: 'confirmed', patient: { name: 'Before midnight' } },
+        { id: 'today', appointmentDate: '2026-10-22', status: 'confirmed', patient: { name: 'After midnight' } },
+      ] } })
+      expect(screen.getByText('Before midnight')).toBeInTheDocument()
+      expect(screen.queryByText('After midnight')).not.toBeInTheDocument()
+      act(() => { vi.advanceTimersByTime(30000) })
+      expect(screen.queryByText('Before midnight')).not.toBeInTheDocument()
+      expect(screen.getByText('After midnight')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   const DOCTOR = {
     id: 'doc-1',
     name: 'Dr. Nikhil Rao',
@@ -101,21 +132,28 @@ describe('DoctorDashboard', () => {
   it('greets the doctor by first name (honorific stripped) and renders live stats', () => {
     setCurrentUser(DOCTOR)
     const data = {
-      appointments: [{ id: 'a1', status: 'upcoming' }, { id: 'a2', status: 'completed' }],
-      queueTokens: [{ id: 'q1', status: 'waiting' }, { id: 'q2', status: 'completed' }],
-      payments: [{ fees: { consultationFee: 500 } }, { fees: { consultationFee: 300 } }],
+      appointments: [{ id: 'a1', appointmentDate: indiaTodayDate(), status: 'upcoming' }, { id: 'a2', appointmentDate: indiaTodayDate(), status: 'completed' }],
+      queueTokens: [{ id: 'q1', queueDate: indiaTodayDate(), status: 'waiting' }, { id: 'q2', queueDate: indiaTodayDate(), status: 'completed' }],
+      payments: [{ createdAt: new Date().toISOString(), status: 'paid', fees: { consultationFee: 500 } }, { createdAt: new Date().toISOString(), status: 'paid', fees: { consultationFee: 300 } }],
     }
     renderConnected(DoctorDashboard, { data })
 
     expect(screen.getAllByText('Welcome, Nikhil.')).toHaveLength(2)
     expect(screen.getByRole('region', { name: 'Doctor services' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Queue management' })[0]).toHaveAttribute('href', '/doctor/queue')
+    expect(screen.queryByRole('link', { name: 'Consultation & EMR' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'My profile' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Help & policies' })).toBeInTheDocument()
-    // TODAY'S BOOKINGS counts non-completed appointments only (1 of the 2 seeded).
+    // Today's valid bookings include completed visits, not cancelled or unpaid holds.
     const bookingsCard = screen.getByText("TODAY'S BOOKINGS").closest('a')
-    expect(within(bookingsCard).getByText('1')).toBeInTheDocument()
+    expect(within(bookingsCard).getByText('2')).toBeInTheDocument()
+    expect(bookingsCard.parentElement).toHaveClass('doctor-dashboard-stats')
+    expect(bookingsCard.parentElement.querySelectorAll(':scope > a')).toHaveLength(4)
     expect(screen.getByText('₹800')).toBeInTheDocument()
-    expect(screen.getByText('4.6')).toBeInTheDocument()
+    expect(screen.queryByText('4.6')).not.toBeInTheDocument()
+    expect(within(screen.getByText('COMPLETED TODAY').closest('a')).getByText('1')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
@@ -142,7 +180,7 @@ describe('DoctorDashboard', () => {
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/doctors/doc-1', {
       onlineBooking: false,
       allowRebooking: true,
-      maxDaysAdvance: 7,
+      maxDaysAdvance: 30,
     }))
     expect(await screen.findByRole('button', { name: /Go on duty/i })).toBeInTheDocument()
     expect(screen.getByText(/You are hidden from new patient bookings\./)).toBeInTheDocument()
@@ -509,11 +547,102 @@ describe('DoctorProfileEdit', () => {
 })
 
 describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)', () => {
+  it.each([DoctorAppointments, ReceptionAppointments])('loads today visits by default and allows an explicit historical date', async (Component) => {
+    mockGetRoutes({ '/appointments': [] })
+    renderConnected(Component, {})
+    const date = screen.getByLabelText('Filter visit date')
+    expect(date).toHaveValue(indiaTodayDate())
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ date: indiaTodayDate(), page: 1 }) }))
+    fireEvent.change(date, { target: { value: '2026-10-19' } })
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ date: '2026-10-19', page: 1 }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(date).toHaveValue(indiaTodayDate())
+  })
+  it.each([DoctorAppointments, ReceptionAppointments])('shows original booking timestamp separately from the visit', async (Component) => {
+    mockGetRoutes({ '/appointments': [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00', patient: { name: 'Time Test' } }] })
+    renderConnected(Component, {})
+    expect(await screen.findByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('2026-10-25')).toBeInTheDocument()
+  })
+  it('keeps appointment filters directly visible without a collapsible dropdown', async () => {
+    mockGetRoutes({ '/appointments': [] })
+    renderConnected(DoctorAppointments, { data: { appointments: [] } })
+    const filters = screen.getByRole('region', { name: 'Appointment filters' })
+    expect(filters.tagName).toBe('SECTION')
+    expect(within(filters).getByLabelText('Filter visit date')).toBeVisible()
+    expect(within(filters).getByLabelText('Filter appointment status')).toBeVisible()
+    expect(filters.querySelector('details, summary')).toBeNull()
+    fireEvent.change(within(filters).getByLabelText('Filter visit date'), { target: { value: '2026-10-22' } })
+    fireEvent.click(within(filters).getByRole('button', { name: 'Clear filters' }))
+    expect(within(filters).getByLabelText('Filter visit date')).toHaveValue(indiaTodayDate())
+  })
+
   const APPOINTMENTS = [
-    { id: 'a1', status: 'upcoming', tokenNumber: 1, patient: { name: 'Asha' } },
-    { id: 'a2', status: 'confirmed', tokenNumber: 2, patient: { name: 'Ben' } },
+    { id: 'a1', status: 'upcoming', paymentStatus:'paid', tokenNumber: 1, patient: { name: 'Asha' } },
+    { id: 'a2', status: 'confirmed', paymentStatus:'paid', tokenNumber: 2, patient: { name: 'Ben' } },
     { id: 'a3', status: 'completed', tokenNumber: 3, patient: { name: 'Chitra' } },
   ]
+
+  it('downloads appointments for the chosen range from the doctor-scoped API', async () => {
+    apiClient.get.mockImplementation((url, config) => {
+      if (url === '/appointments' && config?.params?.dateFrom) return Promise.resolve([{ ...APPOINTMENTS[0], appointmentDate: '2026-10-21' }])
+      return Promise.resolve(APPOINTMENTS)
+    })
+    const createObjectURL = vi.fn(() => 'blob:test')
+    const revokeObjectURL = vi.fn()
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const originalCreateObjectURL = URL.createObjectURL
+    const originalRevokeObjectURL = URL.revokeObjectURL
+    URL.createObjectURL = createObjectURL
+    URL.revokeObjectURL = revokeObjectURL
+    try {
+      renderConnected(DoctorAppointments, {})
+      expect(screen.getByLabelText('Start date')).toHaveValue(indiaTodayDate())
+      expect(screen.getByLabelText('End date')).toHaveValue(indiaTodayDate())
+      fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-20' } })
+      fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-10-21' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+      await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: { dateFrom: '2026-10-20', dateTo: '2026-10-21', page: 1, pageSize: 100 } }))
+      expect(await screen.findByRole('status')).toHaveTextContent('1 appointment downloaded.')
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      expect(anchorClick).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByRole('button', { name: 'Today' }))
+      expect(screen.getByLabelText('Start date')).toHaveValue(indiaTodayDate())
+      expect(screen.getByLabelText('End date')).toHaveValue(indiaTodayDate())
+    } finally {
+      anchorClick.mockRestore()
+      URL.createObjectURL = originalCreateObjectURL
+      URL.revokeObjectURL = originalRevokeObjectURL
+    }
+  })
+
+  it('rejects an end date before the start date without fetching an export', () => {
+    mockGetRoutes({ '/appointments': APPOINTMENTS })
+    renderConnected(DoctorAppointments, {})
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-10-22' } })
+    fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-10-21' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Start date must be on or before end date.')
+    expect(apiClient.get.mock.calls.filter(([url, config]) => url === '/appointments' && config?.params?.dateFrom)).toHaveLength(0)
+  })
+
+  it('shows a compact mobile booking summary with optional full details', async () => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true, media: '(max-width: 767px)', addEventListener: () => {}, removeEventListener: () => {} })
+    try {
+      mockGetRoutes({ '/appointments': [{ ...APPOINTMENTS[0], appointmentDate: '2026-10-19', appointmentTime: '10:00', paymentStatus: 'pending', fees: { due: 500 }, patient: { name: 'Asha', phone: '9000000001' } }] })
+      renderConnected(DoctorAppointments, {})
+
+      const card = (await screen.findByText('Asha')).closest('li')
+      expect(within(card).getByText('2026-10-19 · 10:00')).toBeInTheDocument()
+      expect(within(card).getByText('Due ₹500.00')).toBeInTheDocument()
+      expect(within(card).getByText('More details').closest('details')).not.toHaveAttribute('open')
+      fireEvent.click(within(card).getByText('More details'))
+      expect(within(card).getByText('More details').closest('details')).toHaveAttribute('open')
+      expect(within(card).getByText('9000000001')).toBeInTheDocument()
+    } finally {
+      delete window.matchMedia
+    }
+  })
 
   it('renders the doctor appointments list from the live store and offers status actions per row', async () => {
     mockGetRoutes({ '/appointments': APPOINTMENTS })
@@ -531,6 +660,17 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     expect(within(chitraRow).queryByRole('button')).not.toBeInTheDocument()
   })
 
+  it('keeps unpaid bookings visible but locks confirm and complete until collection', async () => {
+    mockGetRoutes({'/appointments':[{...APPOINTMENTS[0],paymentStatus:'partial',clinicPaymentComplete:false}]})
+    renderConnected(DoctorAppointments,{})
+    expect(await screen.findByText('Asha')).toBeInTheDocument()
+    expect(screen.getByText('Payment required')).toBeInTheDocument()
+    expect(screen.getByRole('button',{name:'Confirm'})).toBeDisabled()
+    expect(screen.getByRole('button',{name:'Complete'})).toBeDisabled()
+    expect(screen.getByRole('button',{name:'Cancel'})).toBeEnabled()
+    fireEvent.click(screen.getByRole('button',{name:'Complete'}))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+  })
   it('confirms an upcoming appointment via PATCH /appointments/:id/status', async () => {
     mockGetRoutes({ '/appointments': APPOINTMENTS })
     apiClient.patch.mockResolvedValue({ ...APPOINTMENTS[0], status: 'confirmed' })
@@ -648,7 +788,14 @@ describe('ReceptionDashboard', () => {
       },
     })
     expect(screen.getAllByText('Welcome, Meera.')).toHaveLength(2)
+    const patientCard = screen.getByRole('link', { name: /TODAY'S PATIENTS/ })
+    expect(patientCard.parentElement).toHaveClass('receptionist-dashboard-stats', 'grid-cols-2')
+    expect(patientCard.parentElement.querySelectorAll('a')).toHaveLength(4)
     expect(screen.getByRole('region', { name: 'Receptionist services' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'Notifications' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'Doctor availability' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).queryByRole('link', { name: 'My profile' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Receptionist services' })).getAllByRole('link')).toHaveLength(7)
     expect(screen.getAllByRole('link', { name: 'Walk-in registration' })[0]).toHaveAttribute('href', '/receptionist/walk-in')
     expect(await screen.findByText('Dr. Kapoor')).toBeInTheDocument()
   })
@@ -700,7 +847,7 @@ describe('WalkIn', () => {
     await screen.findByRole('option', { name: 'Dr. Kapoor' })
     fireEvent.change(screen.getByLabelText(/^Patient name/), { target: { value: 'Ravi Shah' } })
     fireEvent.change(screen.getByLabelText(/^Phone/), { target: { value: '9876543210' } })
-    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'Dr. Kapoor' } })
+    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'doc-1' } })
     fireEvent.click(screen.getByRole('button', { name: /Register and issue token/i }))
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/appointments', expect.objectContaining({
@@ -709,7 +856,7 @@ describe('WalkIn', () => {
       patientPhone: '9876543210',
     })))
     // The poll sleeps ~1.7s between attempts (real timers) before resolving 'confirmed'.
-    expect(await screen.findByText(/token #42 issued for Ravi Shah/, {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText(/token #42 for Ravi Shah/, {}, { timeout: 3000 })).toBeInTheDocument()
   }, 10000)
 
   it('shows an inline error when registration fails', async () => {
@@ -721,7 +868,7 @@ describe('WalkIn', () => {
     await screen.findByRole('option', { name: 'Dr. Kapoor' })
     fireEvent.change(screen.getByLabelText(/^Patient name/), { target: { value: 'Ravi Shah' } })
     fireEvent.change(screen.getByLabelText(/^Phone/), { target: { value: '9876543210' } })
-    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'Dr. Kapoor' } })
+    fireEvent.change(screen.getByLabelText(/^Doctor\b/), { target: { value: 'doc-1' } })
     fireEvent.click(screen.getByRole('button', { name: /Register and issue token/i }))
 
     expect(await screen.findByText('Doctor is fully booked for this date.')).toBeInTheDocument()
@@ -729,12 +876,22 @@ describe('WalkIn', () => {
 })
 
 describe('CheckIn', () => {
+  it('records a real arrival and updates the visible patient status', async () => {
+    const row = { id: 'arrive-1', appointmentDate: indiaTodayDate(), tokenNumber: 8, status: 'upcoming', paymentStatus: 'paid', patient: {name:'Arriving Patient'} }
+    mockGetRoutes({ '/appointments': [row] })
+    apiClient.post.mockResolvedValue({ ...row, checkedInAt: new Date().toISOString() })
+    renderConnected(CheckIn)
+    fireEvent.click(await screen.findByRole('button', {name:'Check in', exact:true}))
+    await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/appointments/arrive-1/check-in', {}))
+    expect(await screen.findByText('Checked in')).toBeInTheDocument()
+    expect(screen.queryByRole('button',{name:'Check in', exact:true})).not.toBeInTheDocument()
+  })
   it('shows checked-in vs not-checked-in appointments without a manual check-in endpoint', () => {
     renderConnected(CheckIn, {
       data: {
         appointments: [
-          { id: 'a1', status: 'upcoming', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
-          { id: 'a2', status: 'confirmed', doctor: { name: 'Dr. Rao' } },
+          { id: 'a1', appointmentDate: indiaTodayDate(), tokenNumber: 1, status: 'upcoming', paymentStatus:'paid', doctor: { name: 'Dr. Kapoor' }, checkedInAt: '2026-01-01T00:00:00Z' },
+          { id: 'a2', appointmentDate: indiaTodayDate(), tokenNumber: 2, status: 'confirmed', paymentStatus:'paid', doctor: { name: 'Dr. Rao' } },
         ],
       },
     })
@@ -745,6 +902,54 @@ describe('CheckIn', () => {
 })
 
 describe('CashPayment', () => {
+  it.each(['rahul', 'abcd', '9876'])('searches unpaid appointments by name, booking ID or token: %s', (query) => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(CashPayment, { data: { appointments: [
+      { id: 'booking-abcd', tokenNumber: 9876, status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Account Owner' }, familyMember: { name: 'Rahul Verma' }, fees: { due: 500 } },
+      { id: 'other-booking', tokenNumber: 1234, status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Anita' } },
+      { id: 'cancelled-booking', tokenNumber: 9876, status: 'cancelled', paymentStatus: 'pending', patient: { name: 'Cancelled Rahul' } },
+    ], payments: [] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Select Unpaid appointment' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search unpaid appointments' }), { target: { value: query } })
+    const list = screen.getByRole('listbox')
+    expect(within(list).getByRole('option', { name: '#abcd · Rahul Verma · Token #9876 · ₹500' })).toBeInTheDocument()
+    expect(within(list).queryByText(/Anita|Cancelled Rahul/)).not.toBeInTheDocument()
+    fireEvent.click(within(list).getByRole('option'))
+    expect(screen.getByLabelText(/^Unpaid appointment/)).toHaveValue('booking-abcd')
+  })
+
+  it('shows a no-results message without clearing the selected booking', () => {
+    renderConnected(CashPayment, { data: { appointments: [{ id: 'booking-abcd', tokenNumber: 8, patient: { name: 'Rahul' }, paymentStatus: 'pending' }] } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'booking-abcd' } })
+    fireEvent.click(screen.getByRole('button', { name: /#abcd · Rahul · Token #8/ }))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'not-present' } })
+    expect(screen.getByText('No matching appointments.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Unpaid appointment/)).toHaveValue('booking-abcd')
+  })
+  it('excludes cancelled, no-show and refunded bookings from collections but preserves receipt history', async () => {
+    mockGetRoutes({ '/payments': [] })
+    renderConnected(CashPayment, { data: {
+      appointments: [
+        { id: 'active', status: 'upcoming', paymentStatus: 'pending', patient: { name: 'Active Patient' } },
+        { id: 'partial', status: 'completed', paymentStatus: 'partial', patient: { name: 'Balance Due' } },
+        { id: 'cancel', status: 'cancelled', paymentStatus: 'pending', patient: { name: 'Cancelled Patient' } },
+        { id: 'noshow', status: 'no_show', paymentStatus: 'pending', patient: { name: 'No Show Patient' } },
+        { id: 'refund', status: 'upcoming', paymentStatus: 'refunded', patient: { name: 'Refunded Patient' } },
+        { id: 'paid', status: 'confirmed', paymentStatus: 'paid', patient: { name: 'Paid Patient' } },
+      ],
+      payments: [{ id: 'refunded-pay', status: 'refunded', mode: 'online', transactionRef: 'pay_returned', fees: { consultationFee: 500 } }],
+    } })
+    const select = screen.getByLabelText(/^Unpaid appointment/)
+    expect(select).toHaveTextContent('Active Patient')
+    expect(select).toHaveTextContent('Balance Due')
+    expect(select).not.toHaveTextContent('Cancelled Patient')
+    expect(select).not.toHaveTextContent('No Show Patient')
+    expect(select).not.toHaveTextContent('Refunded Patient')
+    expect(select).not.toHaveTextContent('Paid Patient')
+    expect(screen.getByText('PAID ONLINE AT BOOKING').closest('article')).toHaveTextContent('0 payments')
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
+    expect(await screen.findByText('refunded')).toBeInTheDocument()
+  })
   it('records a cash payment for the selected unpaid appointment', async () => {
     mockGetRoutes({ '/payments': [] })
     apiClient.post.mockResolvedValue({ id: 'pay-1' })
@@ -754,7 +959,7 @@ describe('CashPayment', () => {
       },
     })
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
@@ -786,7 +991,7 @@ describe('CashPayment', () => {
     // No summary before an appointment is picked.
     expect(screen.queryByText(/Consultation fee/)).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     expect(screen.getByText('Consultation fee: ₹500')).toBeInTheDocument()
     expect(screen.getByText(/Paid so far: ₹0 · Due now: ₹500/)).toBeInTheDocument()
 
@@ -818,7 +1023,7 @@ describe('CashPayment', () => {
       },
     })
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Asha · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     expect(screen.getByText(/already been paid online/)).toBeInTheDocument()
     expect(screen.getByText(/Due now: ₹400/)).toBeInTheDocument()
   })
@@ -839,7 +1044,7 @@ describe('CashPayment', () => {
 
     // The full UUID must never appear in the dropdown.
     expect(screen.queryByText(/5c1a256d-3583-4400-9dd5-498660ebf63b/)).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#f63b · Rahul Verma · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '5c1a256d-3583-4400-9dd5-498660ebf63b' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
@@ -877,13 +1082,13 @@ describe('CashPayment', () => {
     apiClient.post.mockResolvedValue({ id: 'pay-1' })
     renderConnected(CashPayment)
 
-    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: '#a1 · Rahul Verma · ₹500' } })
+    fireEvent.change(screen.getByLabelText(/^Unpaid appointment/), { target: { value: 'a1' } })
     fireEvent.change(screen.getByLabelText(/^Payment method/), { target: { value: 'Cash' } })
     fireEvent.click(screen.getByRole('button', { name: /Record payment/i }))
 
     await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', expect.anything()))
-    await waitFor(() => expect(screen.queryByText('#a1 · Rahul Verma · ₹500')).not.toBeInTheDocument())
-    expect(screen.getByText('#a2 · Rahul Verma · ₹500')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('#a1 · Rahul Verma · Token not assigned · ₹500')).not.toBeInTheDocument())
+    expect(screen.getByText('#a2 · Rahul Verma · Token not assigned · ₹500')).toBeInTheDocument()
   })
 
   // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua
@@ -911,6 +1116,8 @@ describe('CashPayment', () => {
       },
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
+
     const bookingCard = screen.getByText('PAID ONLINE AT BOOKING').closest('article')
     expect(bookingCard).toHaveTextContent('₹600')
     expect(bookingCard).toHaveTextContent('1 payment')
@@ -936,6 +1143,18 @@ describe('CashPayment', () => {
   // Receipt action must open an in-page preview rather than save a file immediately, with the
   // download action inside it.
   it('View receipt opens an in-page PDF preview instead of downloading immediately, with a Download action inside it', async () => {
+    renderConnected(CashPayment, { data: { appointments: [], payments: [{
+      id: 'pay-booking-time', createdAt: '2026-10-22T05:00:06Z', mode: 'cash', status: 'paid',
+      fees: { consultationFee: 500 }, appointment: { id: 'old-booking', createdAt: '2026-10-21T20:40:05Z' },
+    }] } })
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
+    fireEvent.click(await screen.findByRole('button', { name: /View receipt/ }))
+    const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
+    expect(within(preview).getByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(within(preview).getByText('22/10/2026 10:30:06 IST')).toBeInTheDocument()
+  })
+
+  it('opens a complete clinic receipt preview with a Download action', async () => {
     mockGetRoutes({ '/payments': [] })
     renderConnected(CashPayment, {
       data: {
@@ -954,15 +1173,16 @@ describe('CashPayment', () => {
     })
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
     fireEvent.click(await screen.findByRole('button', { name: /View receipt/ }))
 
     const preview = await screen.findByRole('dialog', { name: 'Payment receipt preview' })
-    const iframe = preview.querySelector('iframe')
-    expect(iframe).toBeTruthy()
-    expect(iframe.getAttribute('src')).toMatch(/^blob:/)
+    expect(preview.querySelector('iframe')).toBeNull()
+    expect(screen.getByRole('article', { name: 'Document contents' })).toBeInTheDocument()
 
     const downloadLink = screen.getByRole('link', { name: /Download/ })
-    expect(downloadLink.getAttribute('href')).toBe(iframe.getAttribute('src'))
+    expect(downloadLink.getAttribute('href')).toMatch(/^blob:/)
+    expect(screen.getByRole('link', { name: 'Open PDF' })).toHaveAttribute('href', downloadLink.getAttribute('href'))
     expect(downloadLink.getAttribute('download')).toMatch(/^receipt-.*\.pdf$/)
 
     fireEvent.click(screen.getByRole('button', { name: 'Close preview' }))
@@ -991,22 +1211,111 @@ describe('CashPayment', () => {
       },
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'All dates' }))
     expect(await screen.findByRole('columnheader', { name: 'Booking ID' })).toBeInTheDocument()
     expect(screen.getByText(shortId('a1'))).toBeInTheDocument()
   })
 })
 
 describe('ClinicSchedule', () => {
+  const editableHours = { id: 'hours-1', kind: 'hours', clinicId: 'mine', weekday: 1,
+    startTime: '10:00', endTime: '18:00', slotMinutes: 15, status: 'active' }
+  const renderEditableSchedule = () => {
+    setCurrentUser({ id: 'doc-1', name: 'Doctor', profile: { maxOnlineBookingsPerDay: 50,
+      maxDaysAdvance: 7, allowRebooking: false, onlineBooking: true, tokenNumberingMode: 'alternate', onlineTokenParity: 'even' } })
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/clinics' ? [{ id: 'mine', name: 'Own Clinic' }]
+      : url === '/clinics/mine/hours' ? [editableHours] : []))
+    useAppStore.setState((state) => ({ data: { ...state.data, opdEntries: [editableHours] } }))
+    renderConnected(ClinicSchedule)
+  }
+
+  it('shows the saved daily slot quota in live records and opens prefilled editing', async () => {
+    renderEditableSchedule()
+    expect(await screen.findByRole('columnheader', { name: 'Online slots' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '50' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByLabelText(/Edit opening time/)).toHaveValue('10:00')
+    expect(screen.getByLabelText(/Edit closing time/)).toHaveValue('18:00')
+    expect(screen.getByLabelText(/Edit patient minutes/)).toHaveValue(15)
+    expect(screen.getByLabelText('Edit daily online slots')).toHaveValue(50)
+  })
+
+  it('updates the selected OPD record without changing the booking policy', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText(/Edit patient minutes/), { target: { value: '5' } })
+    apiClient.put.mockImplementation((url, fields) => Promise.resolve({ ...editableHours, ...fields }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save timing' }))
+    expect(await screen.findByText('OPD timing updated.')).toBeInTheDocument()
+    expect(apiClient.put).toHaveBeenCalledWith('/clinics/mine/hours', {
+      weekday: 1, startTime: '10:00', endTime: '18:00', slotMinutes: 5,
+    })
+    expect(apiClient.patch).not.toHaveBeenCalled()
+    expect(screen.getByRole('cell', { name: '5 min' })).toBeInTheDocument()
+  })
+
+  it('saves daily slots from live records, preserves other policies and refreshes the count', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByLabelText('Edit daily online slots'), { target: { value: '60' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save slots' }))
+    expect(await screen.findByText('Daily online slots updated for all days and clinics.')).toBeInTheDocument()
+    expect(apiClient.patch).toHaveBeenCalledWith('/doctors/doc-1', {
+      onlineBooking: true, allowRebooking: false, maxDaysAdvance: 7, maxOnlineBookingsPerDay: 60,
+      tokenNumberingMode: 'alternate', onlineTokenParity: 'even',
+    })
+    expect(screen.getByRole('cell', { name: '60' })).toBeInTheDocument()
+    expect(apiClient.put).not.toHaveBeenCalled()
+  })
+
+  it('does not show a successful slot update when saving fails', async () => {
+    renderEditableSchedule()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    apiClient.patch.mockRejectedValue(new Error('Could not save slots.'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save slots' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save slots.')
+    expect(screen.queryByText('Daily online slots updated for all days and clinics.')).not.toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '50' })).toBeInTheDocument()
+  })
+
   it('shows an empty state when there is no signed-in doctor', () => {
     setCurrentUser(null)
     renderConnected(ClinicSchedule, { data: {} })
     expect(screen.getByText('No doctor profile yet')).toBeInTheDocument()
   })
 
+  it('never converts a blank advance-booking field into one day', () => {
+    setCurrentUser({ id: 'doc-1', name: 'Dr. Asha', profile: { maxDaysAdvance: 30 } })
+    renderConnected(ClinicSchedule, { data: { clinics: [], opdEntries: [] } })
+    const days = screen.getByLabelText(/Days patients can book in advance/i)
+    expect(days).toHaveValue(30)
+    fireEvent.change(days, { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save booking window/i }))
+    expect(apiClient.patch).not.toHaveBeenCalled()
+  })
+
+  it('Refresh reloads the saved doctor policy and OPD records', async () => {
+    setCurrentUser({ id: 'doc-1', name: 'Dr. Asha', profile: { maxDaysAdvance: 1 } })
+    apiClient.get.mockImplementation((url) => {
+      if (url === '/me') return Promise.resolve({ id: 'doc-1', name: 'Dr. Asha', profile: { maxDaysAdvance: 30 } })
+      if (url === '/clinics') return Promise.resolve([{ id: 'cl1', name: 'Main Clinic' }])
+      return Promise.resolve([])
+    })
+    renderConnected(ClinicSchedule, { data: { clinics: [{ id: 'cl1', name: 'Main Clinic' }], opdEntries: [] } })
+    expect(screen.getByLabelText(/Days patients can book in advance/i)).toHaveValue(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/me'))
+    await waitFor(() => expect(screen.getByLabelText(/Days patients can book in advance/i)).toHaveValue(30))
+    expect(apiClient.get).toHaveBeenCalledWith('/clinics/cl1/hours', { params: {} })
+    expect(apiClient.get).toHaveBeenCalledWith('/clinics/cl1/closures', { params: {} })
+  })
+
   it('saves a new weekly OPD timing for the chosen clinic', async () => {
     setCurrentUser({ id: 'doc-1', name: 'Dr. Asha', profile: {} })
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/clinics' ? [{ id: 'clinic-1', name: 'Heart Care Clinic' }] : []))
     renderConnected(ClinicSchedule, { data: { clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic' }], opdEntries: [] } })
 
+    await waitFor(() => expect(screen.getAllByRole('option', { name: 'Heart Care Clinic' })).toHaveLength(2))
     fireEvent.change(screen.getAllByLabelText(/^Clinic\b/)[0], { target: { value: 'Heart Care Clinic' } })
     fireEvent.change(screen.getByLabelText(/^Day\b/), { target: { value: 'Monday' } })
     fireEvent.click(screen.getByRole('button', { name: /Save OPD timing/i }))
@@ -1017,6 +1326,21 @@ describe('ClinicSchedule', () => {
       endTime: '18:00',
     })))
     expect(await screen.findByText('OPD timing saved.')).toBeInTheDocument()
+  })
+
+  it('loads only assigned clinics and shows the OPD slot estimate', async () => {
+    setCurrentUser({ id: 'doc-1', name: 'Dr. Asha', profile: {} })
+    apiClient.get.mockImplementation((url) => Promise.resolve(url === '/clinics' ? [{ id: 'mine', name: 'Own Clinic' }] : []))
+    renderConnected(ClinicSchedule, { data: { clinics: [{ id: 'other', name: 'Other Clinic' }], opdEntries: [] } })
+
+    await waitFor(() => expect(screen.getAllByRole('option', { name: 'Own Clinic' })).toHaveLength(2))
+    expect(screen.queryAllByRole('option', { name: 'Other Clinic' })).toHaveLength(0)
+    expect(apiClient.get).toHaveBeenCalledWith('/clinics', { params: { mine: true, pageSize: 100 } })
+    expect(apiClient.get).toHaveBeenCalledWith('/clinics/mine/hours', { params: {} })
+    expect(apiClient.get).not.toHaveBeenCalledWith('/clinics/other/hours', expect.anything())
+    expect(screen.getByText(/time-based capacity is 32/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/Patient time \(minutes\)/), { target: { value: '30' } })
+    expect(screen.getByText(/time-based capacity is 16/)).toBeInTheDocument()
   })
 
   // COMPLETENESS ADD tests (request: "doctor ek booking rule do jo booking online wala continues

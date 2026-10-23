@@ -3,7 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api_client.dart';
-import '../core/csv_export.dart';
+import '../core/branded_pdf.dart';
+import '../core/india_time.dart';
 import '../models/admin_models.dart';
 import '../models/clinical_models.dart';
 import '../state/auth_provider.dart';
@@ -67,7 +68,8 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
     try {
       final familyMemberId = appointment.familyMember?.id;
       if (familyMemberId != null) {
-        final res = await ApiClient.instance.get('/family-members', query: {'pageSize': 50});
+        final res = await ApiClient.instance
+            .get('/family-members', query: {'pageSize': 50});
         for (final item in res.list) {
           try {
             final fm = FamilyMember.fromJson(item);
@@ -85,11 +87,16 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
       } else {
         final profile = context.read<AuthProvider>().profile;
         int? age;
-        final dob = profile?.dateOfBirth != null ? DateTime.tryParse(profile!.dateOfBirth!) : null;
+        final dob = profile?.dateOfBirth != null
+            ? DateTime.tryParse(profile!.dateOfBirth!)
+            : null;
         if (dob != null) {
           final now = DateTime.now();
           age = now.year - dob.year;
-          if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) age--;
+          if (now.month < dob.month ||
+              (now.month == dob.month && now.day < dob.day)) {
+            age--;
+          }
         }
         if (!mounted) return;
         setState(() {
@@ -117,10 +124,13 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
   // shapeFees actually sends for a partial online payment — matching
   // screens/patient/appointments_screen.dart's already-correct `_computeMoney`.
   double get _displayFee {
-    final fee = appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
+    final fee =
+        appointment.fees.totalAmount ?? appointment.fees.consultationFee ?? 0;
     final minBookingAmount = appointment.fees.minBookingAmount;
     final minRemainder = appointment.fees.minBookingRemainder;
-    if (appointment.paymentStatus == 'partial' && minBookingAmount != null && minRemainder != null) {
+    if (appointment.paymentStatus == 'partial' &&
+        minBookingAmount != null &&
+        minRemainder != null) {
       return minBookingAmount + minRemainder;
     }
     return fee;
@@ -128,13 +138,16 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
 
   double get _paidAmount {
     if (appointment.paymentStatus == 'paid') return _displayFee;
-    if (appointment.paymentStatus == 'partial') return appointment.fees.minBookingAmount ?? 0;
+    if (appointment.paymentStatus == 'partial') {
+      return appointment.fees.minBookingAmount ?? 0;
+    }
     return 0;
   }
 
   double get _dueAmount {
     if (appointment.paymentStatus == 'paid') return 0;
-    if (appointment.paymentStatus == 'partial' && appointment.fees.minBookingRemainder != null) {
+    if (appointment.paymentStatus == 'partial' &&
+        appointment.fees.minBookingRemainder != null) {
       return appointment.fees.minBookingRemainder!;
     }
     return (_displayFee - _paidAmount).clamp(0, _displayFee);
@@ -148,7 +161,8 @@ class _BookingSlipSheetState extends State<BookingSlipSheet> {
 Booking ID: #$_shortId
 Token Number: #${appointment.tokenNumber ?? "Not yet assigned"}
 Status: ${appointment.status.toUpperCase()}
-Date & Time: ${appointment.appointmentDate} at ${appointment.appointmentTime}
+Booked on: ${indiaTimestamp(appointment.createdAt)}
+Visit: ${appointment.appointmentDate} at ${appointment.displayTime}
 
 DOCTOR & CLINIC:
 Doctor: Dr. ${appointment.doctor?.name ?? "—"}
@@ -186,7 +200,15 @@ Please present this slip at the clinic reception upon arrival.
   // comment) — the patient can save it to Files, print it, or send it via WhatsApp/email from
   // the share sheet, covering the same real-world need as a browser download.
   Future<void> _shareSlip(BuildContext context) async {
-    await shareText(filename: 'booking-slip-$_shortId.txt', content: _buildSlipText());
+    try {
+      await shareBrandedPdf(
+          filename: 'booking-slip-$_shortId.pdf',
+          title: 'Booking slip',
+          reference: appointment.id,
+          body: _buildSlipText());
+    } catch (error) {
+      if (context.mounted) showErrorSnack(context, error);
+    }
   }
 
   @override
@@ -199,9 +221,9 @@ Please present this slip at the clinic reception upon arrival.
       maxChildSize: 0.96,
       minChildSize: 0.5,
       builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: context.palette.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: ListView(
@@ -229,29 +251,33 @@ Please present this slip at the clinic reception upon arrival.
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryLight,
+                          color: context.palette.primaryLight,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.receipt_long, color: AppColors.primaryDark, size: 24),
+                        child: Icon(Icons.receipt_long,
+                            color: context.palette.primaryDark, size: 24),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'BookADoctors',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.palette.primary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               'CLINIC BOOKING SLIP · #$_shortId',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.5,
-                                color: AppColors.textSecondary,
+                                color: context.palette.textSecondary,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -272,32 +298,37 @@ Please present this slip at the clinic reception upon arrival.
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight,
+                color: context.palette.primaryLight,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                border: Border.all(
+                    color: context.palette.primary.withValues(alpha: 0.25)),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                spacing: 16,
+                runSpacing: 12,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'APPOINTMENT TOKEN',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 0.8,
-                          color: AppColors.primaryDark,
+                          color: context.palette.primaryDark,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        appointment.tokenNumber != null ? '#${appointment.tokenNumber}' : 'Not assigned',
-                        style: const TextStyle(
+                        appointment.tokenNumber != null
+                            ? '#${appointment.tokenNumber}'
+                            : 'Not assigned',
+                        style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
-                          color: AppColors.primaryDark,
+                          color: context.palette.primaryDark,
                         ),
                       ),
                     ],
@@ -307,12 +338,16 @@ Please present this slip at the clinic reception upon arrival.
                     children: [
                       Text(
                         appointment.appointmentDate,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        appointment.appointmentTime,
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                        appointment.displayTime,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: context.palette.textSecondary,
+                            fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -332,13 +367,21 @@ Please present this slip at the clinic reception upon arrival.
                 // same complaint and added it as its own row too (receiptPdf.js's
                 // "BOOKING-ID VISIBILITY FIX": "bookinh id ko slip pe dikhai").
                 MapEntry('Booking ID', '#$_shortId'),
-                MapEntry('Doctor', appointment.doctor?.name != null ? 'Dr. ${appointment.doctor!.name}' : '—'),
+                MapEntry('Booked on', indiaTimestamp(appointment.createdAt)),
+                MapEntry(
+                    'Doctor',
+                    appointment.doctor?.name != null
+                        ? 'Dr. ${appointment.doctor!.name}'
+                        : '—'),
                 if (appointment.doctor?.specialization != null)
-                  MapEntry('Specialization', appointment.doctor!.specialization!.name),
+                  MapEntry('Specialization',
+                      appointment.doctor!.specialization!.name),
                 MapEntry('Clinic', appointment.clinic?.name ?? '—'),
-                if (appointment.clinic?.address != null && appointment.clinic!.address!.isNotEmpty)
+                if (appointment.clinic?.address != null &&
+                    appointment.clinic!.address!.isNotEmpty)
                   MapEntry('Address', appointment.clinic!.address!),
-                if (appointment.clinic?.phone != null && appointment.clinic!.phone!.isNotEmpty)
+                if (appointment.clinic?.phone != null &&
+                    appointment.clinic!.phone!.isNotEmpty)
                   MapEntry('Phone', appointment.clinic!.phone!),
               ],
             ),
@@ -351,7 +394,9 @@ Please present this slip at the clinic reception upon arrival.
               rows: [
                 MapEntry(
                   'Patient Name',
-                  appointment.familyMember?.name ?? appointment.patient?.name ?? 'Self',
+                  appointment.familyMember?.name ??
+                      appointment.patient?.name ??
+                      'Self',
                 ),
                 if (appointment.familyMember?.relation != null)
                   MapEntry('Relation', appointment.familyMember!.relation!),
@@ -361,10 +406,12 @@ Please present this slip at the clinic reception upon arrival.
                 // if genuinely unset, rather than showing a blank/placeholder row.
                 if (_patientGender != null) MapEntry('Gender', _patientGender!),
                 if (_patientAge != null) MapEntry('Age', '$_patientAge yrs'),
-                if (_patientBloodGroup != null) MapEntry('Blood Group', _patientBloodGroup!),
+                if (_patientBloodGroup != null)
+                  MapEntry('Blood Group', _patientBloodGroup!),
                 if (appointment.patient?.phone != null)
                   MapEntry('Contact Phone', appointment.patient!.phone!),
-                if (appointment.reason != null && appointment.reason!.isNotEmpty)
+                if (appointment.reason != null &&
+                    appointment.reason!.isNotEmpty)
                   MapEntry('Reason for Visit', appointment.reason!),
               ],
             ),
@@ -380,10 +427,15 @@ Please present this slip at the clinic reception upon arrival.
                 MapEntry('Due at Clinic', '₹${_dueAmount.toStringAsFixed(0)}'),
                 MapEntry(
                   'Payment Status',
-                  isPaid ? 'Paid in Full' : isPartial ? 'Advance Paid (Balance Due)' : 'Pending / Due at Clinic',
+                  isPaid
+                      ? 'Paid in Full'
+                      : isPartial
+                          ? 'Advance Paid (Balance Due)'
+                          : 'Pending / Due at Clinic',
                 ),
                 if (appointment.paymentMethod != null)
-                  MapEntry('Payment Mode', appointment.paymentMethod!.toUpperCase()),
+                  MapEntry(
+                      'Payment Mode', appointment.paymentMethod!.toUpperCase()),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
@@ -392,13 +444,16 @@ Please present this slip at the clinic reception upon arrival.
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.palette.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text(
+              child: Text(
                 'This is a computer-generated booking slip from BookADoctors. Please present this slip at the reception counter upon arrival. Tokens are called in sequence.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.4),
+                style: TextStyle(
+                    fontSize: 11,
+                    color: context.palette.textSecondary,
+                    height: 1.4),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -413,7 +468,8 @@ Please present this slip at the clinic reception upon arrival.
                     label: const Text('Copy'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
@@ -429,7 +485,8 @@ Please present this slip at the clinic reception upon arrival.
                     label: const Text('Download'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
@@ -438,12 +495,14 @@ Please present this slip at the clinic reception upon arrival.
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
+                      backgroundColor: context.palette.primaryDark,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text('Done',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
@@ -462,21 +521,25 @@ Please present this slip at the clinic reception upon arrival.
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.palette.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.palette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, size: 16, color: AppColors.primary),
+              Icon(icon, size: 16, color: context.palette.primary),
               const SizedBox(width: 8),
-              Text(
+              Expanded(
+                  child: Text(
                 title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-              ),
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: context.palette.textPrimary),
+              )),
             ],
           ),
           const SizedBox(height: 10),
@@ -487,13 +550,22 @@ Please present this slip at the clinic reception upon arrival.
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(row.key, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  Flexible(
+                      flex: 4,
+                      child: Text(row.key,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: context.palette.textSecondary))),
                   const SizedBox(width: 12),
                   Flexible(
+                    flex: 6,
                     child: Text(
                       row.value,
                       textAlign: TextAlign.end,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: context.palette.textPrimary),
                     ),
                   ),
                 ],
@@ -527,7 +599,7 @@ Receipt No: #${payment.receiptNumber ?? _shortId}
 Status: ${payment.status.toUpperCase()}
 Amount: ₹${amount.toStringAsFixed(0)}
 Payment Method: ${payment.mode.toUpperCase()}
-${payment.transactionRef != null && payment.transactionRef!.isNotEmpty ? "Transaction Ref: ${payment.transactionRef}\n" : ""}Date: ${payment.createdAt ?? "—"}
+${payment.transactionRef != null && payment.transactionRef!.isNotEmpty ? "Transaction Ref: ${payment.transactionRef}\n" : ""}Recorded on: ${indiaTimestamp(payment.createdAt)}
 
 PARTIES:
 Patient: ${payment.patient?.name ?? "—"}
@@ -549,7 +621,15 @@ Official computer-generated receipt.
   // extended here so the payment receipt sheet also has a "leave the device" option, not just
   // the booking slip.
   Future<void> _shareReceipt(BuildContext context) async {
-    await shareText(filename: 'payment-receipt-$_shortId.txt', content: _buildReceiptText());
+    try {
+      await shareBrandedPdf(
+          filename: 'payment-receipt-$_shortId.pdf',
+          title: 'Payment receipt',
+          reference: payment.receiptNumber ?? payment.id,
+          body: _buildReceiptText());
+    } catch (error) {
+      if (context.mounted) showErrorSnack(context, error);
+    }
   }
 
   @override
@@ -561,9 +641,9 @@ Official computer-generated receipt.
       maxChildSize: 0.95,
       minChildSize: 0.45,
       builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: context.palette.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: ListView(
@@ -590,25 +670,32 @@ Official computer-generated receipt.
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: AppColors.primaryLight,
+                          color: context.palette.primaryLight,
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.paid_outlined, color: AppColors.primaryDark, size: 24),
+                        child: Icon(Icons.paid_outlined,
+                            color: context.palette.primaryDark, size: 24),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'BookADoctors',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.primary),
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: context.palette.primary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               'RECEIPT #${payment.receiptNumber ?? _shortId}',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.palette.textSecondary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -628,9 +715,10 @@ Official computer-generated receipt.
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight,
+                color: context.palette.primaryLight,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.25)),
+                border: Border.all(
+                    color: context.palette.primary.withValues(alpha: 0.25)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -638,17 +726,33 @@ Official computer-generated receipt.
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('AMOUNT RECEIVED', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primaryDark)),
+                      Text('AMOUNT RECEIVED',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: context.palette.primaryDark)),
                       const SizedBox(height: 2),
-                      Text('₹${amount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.primaryDark)),
+                      Text('₹${amount.toStringAsFixed(0)}',
+                          style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: context.palette.primaryDark)),
                     ],
                   ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(payment.mode.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primaryDark)),
-                      if (payment.transactionRef != null && payment.transactionRef!.isNotEmpty)
-                        Text(payment.transactionRef!, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      Text(payment.mode.toUpperCase(),
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: context.palette.primaryDark)),
+                      if (payment.transactionRef != null &&
+                          payment.transactionRef!.isNotEmpty)
+                        Text(payment.transactionRef!,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: context.palette.textSecondary)),
                     ],
                   ),
                 ],
@@ -659,23 +763,32 @@ Official computer-generated receipt.
             Container(
               padding: const EdgeInsets.all(AppSpacing.md),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: context.palette.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.palette.border),
               ),
               child: Column(
                 children: [
-                  _row('Receipt Number', payment.receiptNumber ?? '#$_shortId'),
+                  _row(context, 'Receipt Number',
+                      payment.receiptNumber ?? '#$_shortId'),
                   if (payment.appointment?.id != null)
-                    _row('Booking ID', '#${payment.appointment!.id.length > 8 ? payment.appointment!.id.substring(0, 8) : payment.appointment!.id}'),
-                  _row('Patient Name', payment.patient?.name ?? '—'),
-                  _row('Doctor', payment.doctor?.name != null ? 'Dr. ${payment.doctor!.name}' : '—'),
-                  _row('Clinic', payment.clinic?.name ?? '—'),
-                  _row('Payment Mode', payment.mode.toUpperCase()),
-                  if (payment.transactionRef != null && payment.transactionRef!.isNotEmpty)
-                    _row('UTR / Reference', payment.transactionRef!),
+                    _row(context, 'Booking ID',
+                        '#${payment.appointment!.id.length > 8 ? payment.appointment!.id.substring(0, 8) : payment.appointment!.id}'),
+                  _row(context, 'Patient Name', payment.patient?.name ?? '—'),
+                  _row(
+                      context,
+                      'Doctor',
+                      payment.doctor?.name != null
+                          ? 'Dr. ${payment.doctor!.name}'
+                          : '—'),
+                  _row(context, 'Clinic', payment.clinic?.name ?? '—'),
+                  _row(context, 'Payment Mode', payment.mode.toUpperCase()),
+                  if (payment.transactionRef != null &&
+                      payment.transactionRef!.isNotEmpty)
+                    _row(context, 'UTR / Reference', payment.transactionRef!),
                   if (payment.createdAt != null)
-                    _row('Date Recorded', payment.createdAt!.split('T').first),
+                    _row(context, 'Recorded on',
+                        indiaTimestamp(payment.createdAt)),
                 ],
               ),
             ),
@@ -690,7 +803,8 @@ Official computer-generated receipt.
                     label: const Text('Copy'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
@@ -702,7 +816,8 @@ Official computer-generated receipt.
                     label: const Text('Download'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
@@ -711,12 +826,14 @@ Official computer-generated receipt.
                   child: ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryDark,
+                      backgroundColor: context.palette.primaryDark,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text('Done',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
                   ),
                 ),
               ],
@@ -727,18 +844,23 @@ Official computer-generated receipt.
     );
   }
 
-  Widget _row(String label, String value) {
+  Widget _row(BuildContext context, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12, color: context.palette.textSecondary)),
           Flexible(
             child: Text(
               value,
               textAlign: TextAlign.end,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: context.palette.textPrimary),
             ),
           ),
         ],

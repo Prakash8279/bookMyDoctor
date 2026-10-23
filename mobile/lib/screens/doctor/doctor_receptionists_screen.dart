@@ -15,7 +15,8 @@ class DoctorReceptionistsScreen extends StatefulWidget {
   const DoctorReceptionistsScreen({super.key});
 
   @override
-  State<DoctorReceptionistsScreen> createState() => _DoctorReceptionistsScreenState();
+  State<DoctorReceptionistsScreen> createState() =>
+      _DoctorReceptionistsScreenState();
 }
 
 class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
@@ -30,8 +31,7 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
   Future<List<ReceptionistRow>> _fetch() async {
     try {
       final res = await ApiClient.instance
-          .get('/receptionists', query: {'pageSize': 50})
-          .catchError((_) => ApiResponse(data: []));
+          .getAll('/receptionists', query: {'pageSize': 50});
       final list = <ReceptionistRow>[];
       for (final item in res.list) {
         try {
@@ -40,7 +40,7 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -75,7 +75,8 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Receptionist accounts',
               subtitle: 'Create clinic team logins and assignments.',
@@ -83,43 +84,54 @@ class _DoctorReceptionistsScreenState extends State<DoctorReceptionistsScreen> {
           ),
           Expanded(
             child: FutureBuilder<List<ReceptionistRow>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-          if (snapshot.hasError) {
-            return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
-          }
-          final rows = snapshot.data ?? [];
-          if (rows.isEmpty) {
-            return const EmptyStateView(icon: Icons.support_agent_outlined, title: 'No receptionists yet');
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: rows.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, i) {
-                final r = rows[i];
-                return Card(
-                  child: ListTile(
-                    title: Text('${r.receptionistNumber == null ? "DCR—" : "DCR${r.receptionistNumber}"} · ${r.name}'),
-                    // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's
-                    // receptionist table has a "Since" (joined-date) column (FeaturePages.jsx's
-                    // DoctorStaff DataTable) — was missing here.
-                    subtitle: Text(
-                      '${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'
-                      '${r.since != null ? " · Since ${r.since!.split("T").first}" : ""}',
-                    ),
-                    // Edit + enable/disable buttons removed here too — read-only status badge only,
-                    // matching web's DoctorStaff/ManageReceptionists (create + list only).
-                    trailing: StatusBadge(status: r.status),
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
+                }
+                final rows = snapshot.data ?? [];
+                if (rows.isEmpty) {
+                  return const EmptyStateView(
+                      icon: Icons.support_agent_outlined,
+                      title: 'No receptionists yet');
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _load(),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, i) {
+                      final r = rows[i];
+                      return Card(
+                        child: Material(
+                            type: MaterialType.transparency,
+                            child: ListTile(
+                              title: Text(
+                                  '${r.receptionistNumber == null ? "DCR—" : "DCR${r.receptionistNumber}"} · ${r.name}'),
+                              // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's
+                              // receptionist table has a "Since" (joined-date) column (FeaturePages.jsx's
+                              // DoctorStaff DataTable) — was missing here.
+                              subtitle: Text(
+                                '${r.email}${r.clinicName != null ? " · ${r.clinicName}" : ""}'
+                                '${r.since != null ? " · Since ${r.since!.split("T").first}" : ""}',
+                              ),
+                              // Edit + enable/disable buttons removed here too — read-only status badge only,
+                              // matching web's DoctorStaff/ManageReceptionists (create + list only).
+                              trailing: StatusBadge(status: r.status),
+                            )),
+                      );
+                    },
                   ),
                 );
               },
-            ),
-          );
-        },
             ),
           ),
         ],
@@ -152,14 +164,15 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
   void initState() {
     super.initState();
     _clinicsFuture = ApiClient.instance
-        .get('/clinics', query: {'mine': true, 'pageSize': 50})
-        .then((res) {
-          final list = <Clinic>[];
-          for (final item in res.list) {
-            try { list.add(Clinic.fromJson(item)); } catch (_) {}
-          }
-          return list;
-        }).catchError((_) => <Clinic>[]);
+        .getAll('/clinics', query: {'mine': true, 'pageSize': 50}).then((res) {
+      final list = <Clinic>[];
+      for (final item in res.list) {
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    }).catchError((_) => <Clinic>[]);
   }
 
   @override
@@ -176,8 +189,10 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
       setState(() => _error = 'Name is required');
       return;
     }
-    if (_emailCtrl.text.trim().isEmpty || _passwordCtrl.text.trim().length < 8) {
-      setState(() => _error = 'Email and an 8+ character password are required');
+    if (_emailCtrl.text.trim().isEmpty ||
+        _passwordCtrl.text.trim().length < 8) {
+      setState(
+          () => _error = 'Email and an 8+ character password are required');
       return;
     }
     if (_selectedClinic == null) {
@@ -219,32 +234,57 @@ class _ReceptionistFormState extends State<_ReceptionistForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Add receptionist', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text('Add receptionist',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: AppSpacing.md),
-            if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
-            TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+            if (_error != null) ...[
+              ErrorBanner(error: _error!),
+              const SizedBox(height: AppSpacing.md)
+            ],
+            TextField(
+                controller: _nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name')),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+            TextField(
+                controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email')),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: _passwordCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Password (min 8 chars)')),
+            TextField(
+                controller: _passwordCtrl,
+                obscureText: true,
+                decoration:
+                    const InputDecoration(labelText: 'Password (min 8 chars)')),
             const SizedBox(height: AppSpacing.md),
-            TextField(controller: _phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone (optional)')),
+            TextField(
+                controller: _phoneCtrl,
+                keyboardType: TextInputType.phone,
+                decoration:
+                    const InputDecoration(labelText: 'Phone (optional)')),
             const SizedBox(height: AppSpacing.md),
             FutureBuilder<List<Clinic>>(
               future: _clinicsFuture,
               builder: (context, snapshot) {
                 final clinics = snapshot.data ?? [];
                 return DropdownButtonFormField<Clinic>(
-                  initialValue: _selectedClinic != null && clinics.any((c) => c.id == _selectedClinic!.id) ? clinics.firstWhere((c) => c.id == _selectedClinic!.id) : null,
+                  initialValue: _selectedClinic != null &&
+                          clinics.any((c) => c.id == _selectedClinic!.id)
+                      ? clinics.firstWhere((c) => c.id == _selectedClinic!.id)
+                      : null,
                   isExpanded: true,
                   decoration: const InputDecoration(labelText: 'Clinic'),
-                  items: clinics.map((c) => DropdownMenuItem(value: c, child: Text(c.name, overflow: TextOverflow.ellipsis))).toList(),
+                  items: clinics
+                      .map((c) => DropdownMenuItem(
+                          value: c,
+                          child: Text(c.name, overflow: TextOverflow.ellipsis)))
+                      .toList(),
                   onChanged: (c) => setState(() => _selectedClinic = c),
                 );
               },
             ),
             const SizedBox(height: AppSpacing.lg),
-            PrimaryButton(label: 'Save', onPressed: _submit, loading: _submitting),
+            PrimaryButton(
+                label: 'Save', onPressed: _submit, loading: _submitting),
           ],
         ),
       ),

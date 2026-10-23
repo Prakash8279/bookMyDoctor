@@ -67,4 +67,6 @@ router.patch(
   controller.updateAppointmentStatus
 );
 
+router.post('/:id/check-in', authenticate, authorize('doctor', 'receptionist', 'admin', 'superadmin'),
+  validation.getAppointment, validateRequest, controller.checkInAppointment);
 module.exports = router;

@@ -33,6 +33,7 @@ const { loadCommissionPercentIfAdmin } = require('../../services/commissionLooku
 const { computeMinBookingRemainder, resolvePaymentRowFeeSplit } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('./paymentHold.service');
 const bookingExpiryService = require('../appointments/bookingExpiry.service');
+const { nextQueueTokenNumber } = require('../../utils/queueTokenNumber');
 
 const LIST_CACHE_TTL_SECONDS = 60;
 
@@ -96,7 +97,7 @@ const PAYMENT_SELECT = {
   payerUpiId: true,
   status: true,
   createdAt: true,
-  appointment: { select: { id: true, bookingPaymentPolicy: true } },
+  appointment: { select: { id: true, createdAt: true, bookingPaymentPolicy: true } },
   patient: { select: { id: true, name: true, patientNumber: true } },
   // doctorProfile.minBookingAdvanceAmount added (EXACT PAYMENT-ROW-BREAKDOWN FIX — see
   // shapePaymentFees's own header comment) — needed to tell which of the three real payment
@@ -188,7 +189,7 @@ function shapePayment(row, role, commissionPercent) {
   return {
     id: row.id,
     receiptNumber: row.receiptNumber,
-    appointment: row.appointment ? { id: row.appointment.id } : null,
+    appointment: row.appointment ? { id: row.appointment.id, createdAt: row.appointment.createdAt || null } : null,
     patient: row.patient ? { id: row.patient.id, name: row.patient.name, patientNumber: row.patient.patientNumber ?? null } : null,
     doctor: row.doctor ? { id: row.doctor.id, name: row.doctor.name, doctorNumber: row.doctor.doctorProfile?.doctorNumber ?? null } : null,
     clinic: row.clinic ? { id: row.clinic.id, name: row.clinic.name, address: row.clinic.address, phone: row.clinic.phone } : null,
@@ -273,6 +274,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           status: true,
           source: true,
           appointmentDate: true,
+          appointmentTime: true,
           patientUserId: true,
           doctorUserId: true,
           clinicId: true,
@@ -284,7 +286,8 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
           emergencyFee: true,
           gstAmount: true,
           totalAmount: true,
-          doctor: { select: { doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true } } } },
+          clinic: { select: { name: true } },
+          doctor: { select: { name: true, doctorProfile: { select: { minBookingAdvanceAmount: true, maxOnlineBookingsPerDay: true, tokenNumberingMode: true, onlineTokenParity: true } } } },
         },
       });
 
@@ -330,6 +333,10 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       // example an old checkout tab completed after a retry). Never lose that captured payment:
       // persist it and immediately refund it below. Offline staff entries still fail normally.
       const alreadyPaidByAnotherTransaction = appointment.paymentStatus === 'paid';
+      if (requester.role !== 'patient' &&
+          (['cancelled', 'no_show'].includes(appointment.status) || appointment.paymentStatus === 'refunded')) {
+        throw new ApiError(409, 'APPOINTMENT_NOT_PAYABLE', 'Cannot collect payment for a cancelled, no-show or refunded booking.');
+      }
       if (alreadyPaidByAnotherTransaction && (mode !== 'online' || !transactionRef)) {
         throw new ApiError(409, 'PAYMENT_ALREADY_RECORDED', 'A payment has already been recorded for this appointment.');
       }
@@ -347,7 +354,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         cannotConfirmBooking = true;
         refundOnlyDuplicatePayment = true;
         cannotConfirmReason = 'This appointment was already paid through a different payment attempt.';
-      } else if (appointment.status === 'cancelled' || appointment.status === 'no_show') {
+      } else if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
         cannotConfirmBooking = true;
         cannotConfirmReason = `Appointment status is already "${appointment.status}".`;
       } else if (appointment.status === 'pending_payment' && appointment.source === 'online') {
@@ -528,28 +535,45 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
         select: { id: true },
       });
 
+      const tokenNumber = appointment.status === 'pending_payment'
+        ? await nextQueueTokenNumber(tx, {
+            doctorUserId: appointment.doctorUserId,
+            appointmentDate: appointment.appointmentDate,
+            source: appointment.source,
+            profile: appointment.doctor?.doctorProfile,
+          })
+        : appointment.tokenNumber;
+
       await tx.appointment.update({
         where: { id: appointment.id },
         data: {
           paymentStatus: newPaymentStatus,
           paymentMethod: mode,
-          ...(appointment.status === 'pending_payment' ? { status: 'upcoming' } : {}),
+          ...(appointment.status === 'pending_payment' ? { status: 'upcoming', tokenNumber } : {}),
         },
       });
 
-      if (appointment.status === 'pending_payment') {
-        await tx.queueToken.updateMany({
-          where: { appointmentId: appointment.id, status: 'on_hold' },
-          data: { status: 'waiting' },
+      if (isFullPayment && appointment.status !== 'completed') {
+        await tx.queueToken.upsert({
+          where: { appointmentId: appointment.id },
+          create: { appointmentId: appointment.id, doctorUserId: appointment.doctorUserId, clinicId: appointment.clinicId,
+            tokenNumber, status: 'waiting', queueDate: appointment.appointmentDate },
+          update: { tokenNumber },
         });
+        await tx.queueToken.updateMany({ where: { appointmentId: appointment.id, status: 'on_hold' }, data: { status: 'waiting' } });
+      }
+      if (appointment.status === 'pending_payment') {
         await paymentHoldService.confirmHoldTx(tx, appointment.id, gatewayOrderId);
       }
 
       notifyContext = {
         patientUserId: appointment.patientUserId,
         doctorUserId: appointment.doctorUserId,
-        tokenNumber: appointment.tokenNumber,
+        tokenNumber,
         chargedAmount: chargedAmount.toString(),
+        receiptNumber, appointmentId: appointment.id, appointmentDate: appointment.appointmentDate,
+        appointmentTime: appointment.appointmentTime, doctorName: appointment.doctor?.name,
+        clinicName: appointment.clinic?.name, paymentComplete: isFullPayment, mode,
         justConfirmedBooking: appointment.status === 'pending_payment',
       };
 
@@ -597,8 +621,25 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
   }
 
   if (notifyContext) {
+    const paymentEmail = {
+      emailAmount: new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(notifyContext.chargedAmount)),
+      emailActionPath: '/patient/payments',
+      emailDetails: [
+        { label: 'Receipt number', value: notifyContext.receiptNumber },
+        { label: 'Booking reference', value: notifyContext.appointmentId },
+        { label: 'Doctor', value: notifyContext.doctorName },
+        { label: 'Clinic', value: notifyContext.clinicName },
+        { label: 'Visit date', value: notifyContext.appointmentDate ? new Date(notifyContext.appointmentDate).toISOString().slice(0, 10) : null },
+        { label: 'Visit time (IST)', value: notifyContext.appointmentTime },
+        { label: 'Booking token', value: notifyContext.tokenNumber != null ? `#${notifyContext.tokenNumber}` : null },
+        { label: 'Payment method', value: { cash: 'Cash at clinic', upi: 'UPI at clinic', card: 'Card at clinic', online: 'Online payment' }[notifyContext.mode] || notifyContext.mode },
+        { label: 'Payment status', value: notifyContext.paymentComplete ? 'Paid in full' : 'Advance received — clinic balance pending' },
+        { label: 'Queue admission', value: notifyContext.paymentComplete ? 'Payment cleared for queue admission on the visit date' : 'Complete the remaining clinic payment before joining the queue' },
+      ],
+    };
     if (notifyContext.justConfirmedBooking) {
       await notificationsService.notifySystemEventSafe(notifyContext.patientUserId, {
+        ...paymentEmail,
         title: 'Payment received — booking confirmed',
         body: `Payment of Rs.${notifyContext.chargedAmount} received. Your booking is confirmed, token number #${notifyContext.tokenNumber}.`,
         type: 'payment',
@@ -610,6 +651,7 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
       });
     } else {
       await notificationsService.notifySystemEventSafe(notifyContext.patientUserId, {
+        ...paymentEmail,
         title: 'Payment received',
         body: `Rs.${notifyContext.chargedAmount} was recorded against your appointment (token #${notifyContext.tokenNumber}).`,
         type: 'payment',
@@ -617,6 +659,8 @@ async function createPaymentForAppointment(appointmentId, requester, mode, trans
     }
   }
 
+  // Both online capture and reception collections can admit a fully paid visit.
+  await cacheService.invalidate('cache:queue:list:*');
   return prisma.payment.findUnique({ where: { id: result.id }, select: PAYMENT_SELECT });
 }
 

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../core/csv_export.dart';
 import '../../core/payment_visibility.dart';
 import '../../models/clinical_models.dart';
@@ -36,10 +37,12 @@ class DoctorRevenueReportsScreen extends StatefulWidget {
   const DoctorRevenueReportsScreen({super.key});
 
   @override
-  State<DoctorRevenueReportsScreen> createState() => _DoctorRevenueReportsScreenState();
+  State<DoctorRevenueReportsScreen> createState() =>
+      _DoctorRevenueReportsScreenState();
 }
 
-class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen> {
+class _DoctorRevenueReportsScreenState
+    extends State<DoctorRevenueReportsScreen> {
   late DateTime _from;
   late DateTime _to;
   Future<List<PaymentItem>>? _future;
@@ -63,7 +66,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
   // data with no visible error. Capped to 100 (the actual max) and errors now propagate to the
   // FutureBuilder's `snapshot.hasError` branch instead of being masked.
   Future<List<PaymentItem>> _fetch() async {
-    final res = await ApiClient.instance.get('/payments', query: {'pageSize': 100});
+    final res = await ApiClient.instance.getAll('/payments');
     final list = <PaymentItem>[];
     for (final item in res.list) {
       try {
@@ -101,7 +104,7 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
 
   bool _inRange(PaymentItem payment) {
     if (payment.createdAt == null) return false;
-    final date = DateTime.tryParse(payment.createdAt!);
+    final date = DateTime.tryParse(indiaRecordDate(payment.createdAt));
     if (date == null) return false;
     final start = DateTime(_from.year, _from.month, _from.day);
     final end = DateTime(_to.year, _to.month, _to.day, 23, 59, 59);
@@ -126,9 +129,11 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
         .replaceAll('"', '&quot;');
     String money(double value) => '₹${value.toStringAsFixed(0)}';
 
-    final doctorRowHtml = '<tr><td>${escape(doctorName)}</td><td>$paymentsCount</td><td>${escape(money(total))}</td></tr>';
+    final doctorRowHtml =
+        '<tr><td>${escape(doctorName)}</td><td>$paymentsCount</td><td>${escape(money(total))}</td></tr>';
     final paymentRowsHtml = payments
-        .map((p) => '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
+        .map((p) =>
+            '<tr><td>${escape(p.createdAt != null ? p.createdAt!.split("T").first : '')}</td>'
             '<td>${escape(doctorName)}</td>'
             '<td>${escape(p.receiptNumber ?? '')}</td>'
             '<td>${escape(p.mode)}</td>'
@@ -152,7 +157,8 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
 
     final fromStr = DateFormat('yyyy-MM-dd').format(_from);
     final toStr = DateFormat('yyyy-MM-dd').format(_to);
-    await shareText(filename: 'bookadoctors-revenue-$fromStr-to-$toStr.xls', content: html);
+    await shareText(
+        filename: 'bookadoctors-revenue-$fromStr-to-$toStr.xls', content: html);
   }
 
   @override
@@ -162,242 +168,289 @@ class _DoctorRevenueReportsScreenState extends State<DoctorRevenueReportsScreen>
     // No own Scaffold/AppBar — only ever embedded as a RoleScaffold nav-item body
     // (doctor_home_screen.dart), which already supplies the app bar.
     return Column(
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
-            child: PageHeader(
-              title: 'My revenue reports',
-              subtitle: 'View only your own revenue for any selected date range.',
-            ),
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          child: PageHeader(
+            title: 'My revenue reports',
+            subtitle: 'View only your own revenue for any selected date range.',
           ),
-          Expanded(
-            child: FutureBuilder<List<PaymentItem>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-          if (snapshot.hasError) {
-            return Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: ErrorBanner(error: snapshot.error!, onRetry: _load),
-            );
-          }
-          final all = snapshot.data ?? [];
-          final filtered = all.where(_inRange).toList()
-            ..sort((a, b) => (b.createdAt ?? '').compareTo(a.createdAt ?? ''));
-          final total = filtered.fold<double>(0, (sum, p) => sum + (p.fees.consultationFee ?? 0));
-          final average = filtered.isEmpty ? 0.0 : total / filtered.length;
-          // doctorOnly branch: commission is always hidden ("—"), clinicPayout equals the total
-          // (the doctor's full consultation charges) — mirrors AdminPages.jsx's doctorOnly math.
-          final clinicPayout = total;
+        ),
+        Expanded(
+          child: FutureBuilder<List<PaymentItem>>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
+              if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  child: ErrorBanner(error: snapshot.error!, onRetry: _load),
+                );
+              }
+              final all = snapshot.data ?? [];
+              final filtered = all.where(_inRange).toList()
+                ..sort(
+                    (a, b) => (b.createdAt ?? '').compareTo(a.createdAt ?? ''));
+              final revenuePayments = filtered
+                  .where((p) => isRevenuePayment(p, doctorOnly: true))
+                  .toList();
+              final total = revenuePayments.fold<double>(
+                  0, (sum, p) => sum + (p.fees.consultationFee ?? 0));
+              final average = revenuePayments.isEmpty
+                  ? 0.0
+                  : total / revenuePayments.length;
+              // doctorOnly branch: commission is always hidden ("—"), clinicPayout equals the total
+              // (the doctor's full consultation charges) — mirrors AdminPages.jsx's doctorOnly math.
+              final clinicPayout = total;
 
-          // COMPLETENESS FIX (mobile parity — web's RevenueReports "Payment modes" breakdown,
-          // client/src/pages/AdminPages.jsx#RevenueReports): amount + count per literal mode, plus
-          // the three-way "paid at booking / cash at clinic / online at clinic" rollup that tells
-          // a patient's own Razorpay booking-time payment apart from one collected in person.
-          final modeAmounts = <String, double>{};
-          final modeCounts = <String, int>{};
-          double bookingTotal = 0, cashTotal = 0, onlineTotal = 0;
-          for (final p in filtered) {
-            final amount = p.fees.consultationFee ?? 0;
-            final mode = p.mode.isEmpty ? 'Other' : p.mode;
-            modeCounts[mode] = (modeCounts[mode] ?? 0) + 1;
-            modeAmounts[mode] = (modeAmounts[mode] ?? 0) + amount;
-            final atBooking = isOnlineBookingPayment(p);
-            final isCash = p.mode.toLowerCase() == 'cash';
-            if (atBooking) {
-              bookingTotal += amount;
-            } else if (isCash) {
-              cashTotal += amount;
-            } else {
-              onlineTotal += amount;
-            }
-          }
-          final periodLabel = '${dateFormat.format(_from)} to ${dateFormat.format(_to)}';
+              // COMPLETENESS FIX (mobile parity — web's RevenueReports "Payment modes" breakdown,
+              // client/src/pages/AdminPages.jsx#RevenueReports): amount + count per literal mode, plus
+              // the three-way "paid at booking / cash at clinic / online at clinic" rollup that tells
+              // a patient's own Razorpay booking-time payment apart from one collected in person.
+              final modeAmounts = <String, double>{};
+              final modeCounts = <String, int>{};
+              double bookingTotal = 0, cashTotal = 0, onlineTotal = 0;
+              for (final p in revenuePayments) {
+                final amount = p.fees.consultationFee ?? 0;
+                final mode = p.mode.isEmpty ? 'Other' : p.mode;
+                modeCounts[mode] = (modeCounts[mode] ?? 0) + 1;
+                modeAmounts[mode] = (modeAmounts[mode] ?? 0) + amount;
+                final atBooking = isOnlineBookingPayment(p);
+                final isCash = p.mode.toLowerCase() == 'cash';
+                if (atBooking) {
+                  bookingTotal += amount;
+                } else if (isCash) {
+                  cashTotal += amount;
+                } else {
+                  onlineTotal += amount;
+                }
+              }
+              final periodLabel =
+                  '${dateFormat.format(_from)} to ${dateFormat.format(_to)}';
 
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              children: [
-                Row(
+              return RefreshIndicator(
+                onRefresh: () async => _load(),
+                child: ListView(
+                  padding: const EdgeInsets.all(AppSpacing.md),
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickFrom,
-                        icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                        label: Text(dateFormat.format(_from)),
-                      ),
-                    ),
-                    const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('to')),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _pickTo,
-                        icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                        label: Text(dateFormat.format(_to)),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                // COMPLETENESS FIX (mobile parity audit): web's "Download Excel" action.
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    onPressed: filtered.isEmpty
-                        ? null
-                        : () => _downloadExcel(
-                              periodLabel: periodLabel,
-                              doctorName: doctorName,
-                              total: total,
-                              paymentsCount: filtered.length,
-                              clinicPayout: clinicPayout,
-                              payments: filtered,
-                            ),
-                    icon: const Icon(Icons.file_download_outlined, size: 16),
-                    label: const Text('Download Excel'),
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatCard(
-                        label: 'Selected range revenue',
-                        value: '₹${total.toStringAsFixed(0)}',
-                        icon: Icons.currency_rupee,
-                        detail: '${filtered.length} payment${filtered.length == 1 ? '' : 's'}',
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: StatCard(
-                        label: 'Average payment',
-                        value: '₹${average.toStringAsFixed(0)}',
-                        icon: Icons.trending_up_outlined,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: StatCard(
-                        label: 'Platform commission',
-                        value: '—',
-                        icon: Icons.percent,
-                        detail: 'Shown to admin only',
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: StatCard(
-                        label: 'Clinic payout',
-                        value: '₹${clinicPayout.toStringAsFixed(0)}',
-                        icon: Icons.check_circle_outline,
-                        detail: 'Your consultation charges',
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.md),
-                SectionCard(
-                  title: 'Doctor-wise revenue',
-                  child: filtered.isEmpty
-                      ? const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
-                      : Row(
-                          children: [
-                            Expanded(child: Text(doctorName, overflow: TextOverflow.ellipsis)),
-                            Text('${filtered.length} pmt${filtered.length == 1 ? '' : 's'}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                            const SizedBox(width: AppSpacing.sm),
-                            Text('₹${total.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                          ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickFrom,
+                            icon: const Icon(Icons.calendar_today_outlined,
+                                size: 16),
+                            label: Text(dateFormat.format(_from)),
+                          ),
                         ),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                SectionCard(
-                  title: 'Payment modes',
-                  child: Column(
-                    children: [
-                      Row(
+                        const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text('to')),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _pickTo,
+                            icon: const Icon(Icons.calendar_today_outlined,
+                                size: 16),
+                            label: Text(dateFormat.format(_to)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    // COMPLETENESS FIX (mobile parity audit): web's "Download Excel" action.
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: filtered.isEmpty
+                            ? null
+                            : () => _downloadExcel(
+                                  periodLabel: periodLabel,
+                                  doctorName: doctorName,
+                                  total: total,
+                                  paymentsCount: revenuePayments.length,
+                                  clinicPayout: clinicPayout,
+                                  payments: filtered,
+                                ),
+                        icon:
+                            const Icon(Icons.file_download_outlined, size: 16),
+                        label: const Text('Download Excel'),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: StatCard(
+                            label: 'Selected range revenue',
+                            value: '₹${total.toStringAsFixed(0)}',
+                            icon: Icons.currency_rupee,
+                            detail:
+                                '${revenuePayments.length} successful payments',
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Average payment',
+                            value: '₹${average.toStringAsFixed(0)}',
+                            icon: Icons.trending_up_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: StatCard(
+                            label: 'Platform commission',
+                            value: '—',
+                            icon: Icons.percent,
+                            detail: 'Shown to admin only',
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: StatCard(
+                            label: 'Clinic payout',
+                            value: '₹${clinicPayout.toStringAsFixed(0)}',
+                            icon: Icons.check_circle_outline,
+                            detail: 'Your consultation charges',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    SectionCard(
+                      title: 'Doctor-wise revenue',
+                      child: filtered.isEmpty
+                          ? Text('No payments in this period.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary))
+                          : Row(
+                              children: [
+                                Expanded(
+                                    child: Text(doctorName,
+                                        overflow: TextOverflow.ellipsis)),
+                                Text(
+                                    '${revenuePayments.length} successful payments',
+                                    style: TextStyle(
+                                        color: context.palette.textSecondary,
+                                        fontSize: 12)),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text('₹${total.toStringAsFixed(0)}',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w700)),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    SectionCard(
+                      title: 'Payment modes',
+                      child: Column(
                         children: [
-                          Expanded(child: _ModeTotalTile(label: 'Paid at booking', value: bookingTotal)),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(child: _ModeTotalTile(label: 'Cash (clinic)', value: cashTotal)),
-                          const SizedBox(width: AppSpacing.sm),
-                          Expanded(child: _ModeTotalTile(label: 'Online (clinic)', value: onlineTotal)),
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'Paid at booking',
+                                      value: bookingTotal)),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'Cash (clinic)',
+                                      value: cashTotal)),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                  child: _ModeTotalTile(
+                                      label: 'Online (clinic)',
+                                      value: onlineTotal)),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                          if (modeCounts.isEmpty)
+                            Text('No payments in this period.',
+                                style: TextStyle(
+                                    color: context.palette.textSecondary))
+                          else
+                            Column(
+                              children: modeCounts.entries.map((entry) {
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Text(entry.key)),
+                                      Text(
+                                        '₹${(modeAmounts[entry.key] ?? 0).toStringAsFixed(0)} · ${entry.value}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.w700),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                         ],
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      if (modeCounts.isEmpty)
-                        const Text('No payments in this period.', style: TextStyle(color: AppColors.textSecondary))
-                      else
-                        Column(
-                          children: modeCounts.entries.map((entry) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(
-                                children: [
-                                  Expanded(child: Text(entry.key)),
-                                  Text(
-                                    '₹${(modeAmounts[entry.key] ?? 0).toStringAsFixed(0)} · ${entry.value}',
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                if (filtered.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
-                    child: EmptyStateView(
-                      icon: Icons.receipt_long_outlined,
-                      title: 'No payments in this period',
                     ),
-                  )
-                else
-                  ...filtered.map((p) => Card(
-                        margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                        child: ListTile(
-                          title: Text(p.patient?.patientDisplayName ?? 'Patient'),
-                          subtitle: Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
-                                  '${p.appointment != null ? " · Booking ${_shortId(p.appointment!.id)}" : ""}'
-                                  '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              PaymentSourceBadge(payment: p),
-                            ],
-                          ),
-                          trailing: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              if (p.fees.consultationFee != null)
-                                Text('₹${p.fees.consultationFee!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              StatusBadge(status: p.status),
-                            ],
-                          ),
+                    const SizedBox(height: AppSpacing.lg),
+                    if (filtered.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                        child: EmptyStateView(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'No payments in this period',
                         ),
-                      )),
-              ],
-            ),
-          );
-        },
-            ),
+                      )
+                    else
+                      ...filtered.map((p) => Card(
+                            margin:
+                                const EdgeInsets.only(bottom: AppSpacing.sm),
+                            child: Material(
+                                type: MaterialType.transparency,
+                                child: ListTile(
+                                  title: Text(p.patient?.patientDisplayName ??
+                                      'Patient'),
+                                  subtitle: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
+                                          '${p.appointment != null ? " · Booking ${_shortId(p.appointment!.id)}" : ""}'
+                                          '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      PaymentSourceBadge(payment: p),
+                                    ],
+                                  ),
+                                  trailing: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (p.fees.consultationFee != null)
+                                        Text(
+                                            '₹${p.fees.consultationFee!.toStringAsFixed(0)}',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w700)),
+                                      StatusBadge(status: p.status),
+                                    ],
+                                  ),
+                                )),
+                          )),
+                  ],
+                ),
+              );
+            },
           ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 }
 
@@ -409,13 +462,23 @@ class _ModeTotalTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: 8),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
+      padding:
+          const EdgeInsets.symmetric(vertical: AppSpacing.sm, horizontal: 8),
+      decoration: BoxDecoration(
+          color: context.palette.surface,
+          borderRadius: BorderRadius.circular(8)),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.textSecondary), textAlign: TextAlign.center),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: context.palette.textSecondary),
+              textAlign: TextAlign.center),
           const SizedBox(height: 4),
-          Text('₹${value.toStringAsFixed(0)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          Text('₹${value.toStringAsFixed(0)}',
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
         ],
       ),
     );

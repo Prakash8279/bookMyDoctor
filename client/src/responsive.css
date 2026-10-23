@@ -12,7 +12,6 @@ body,
   min-width: 0;
   max-width: 100%;
 }
-
 img,
 video,
 canvas,
@@ -30,23 +29,79 @@ form,
   min-width: 0;
 }
 
+/* A scrolling table must shrink with its card, never set the page's intrinsic width. */
+.portal-content :is(.data-scroll, .overflow-x-auto) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
+}
+
 /* CSS Grid items default to min-width:auto. A text field or file picker can
    therefore force a nominally one-column mobile grid wider than its card,
    leaving the control's right border clipped by the viewport. Keep every
    portal grid/form child shrinkable; individual data tables remain scrollable
    through their existing .data-scroll wrapper. */
 .portal-content .grid > *,
+.portal-content .flex > *,
 .portal-content form > *,
 .portal-content label {
   min-width: 0;
   max-width: 100%;
 }
 
-.portal-content :is(input, select, textarea) {
+.portal-content :is(input, select, textarea):not(.sr-only) {
   min-width: 0;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+/* Keep the real control behind a custom dropdown/file button visually hidden.
+   Giving it width:100% defeats sr-only and can scroll the viewport on focus. */
+.portal-content :is(input, select, textarea).sr-only {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  max-width: 1px;
+  padding: 0;
+  border-width: 0;
+}
+
+.portal-content input:is([type='date'], [type='time'], [type='datetime-local']) {
+  min-inline-size: 0;
+}
+
+.portal-content input::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: start;
+}
+
+.portal-record-actions,
+.portal-record-actions > .flex {
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.portal-record-actions :is(button, a) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Patient payments/family/notifications also have hand-written definition-list
+   cards. A shrink-0 label must not consume the entire row beside a long value. */
+.portal-content dl > .flex > dt {
+  min-width: 0;
+  max-width: 45%;
+  flex-shrink: 1;
+  overflow-wrap: anywhere;
+}
+
+.portal-content dl > .flex > dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .portal-content input:is([type='checkbox'], [type='radio']) {
@@ -54,6 +109,40 @@ form,
 }
 
 /* Long IDs, e-mail addresses and URLs should wrap instead of widening a card/page. */
+/* The Google iframe has an intrinsic pixel width. Auth grid items must be
+   shrinkable before it loads, otherwise its width expands the entire form. */
+main.auth-page {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+}
+.auth-form-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+.auth-box {
+  min-width: 0;
+  width: 100%;
+  max-width: 470px;
+}
+.auth-box .form-field {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.auth-box :is(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+.google-sign-in,
+.google-sign-in__button {
+  min-width: 0;
+  contain: inline-size;
+}
+.auth-box .form-help {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+@media (max-width: 780px) {
+  main.auth-page { grid-template-columns: minmax(0, 1fr); }
+}
+
 p,
 li,
 dd,
@@ -72,7 +161,255 @@ label,
   overscroll-behavior: contain;
 }
 
+.testimonial-carousel {
+  max-width: 700px;
+  margin-inline: auto;
+}
+
+.testimonial-viewport {
+  overflow: hidden;
+  border-radius: 20px;
+}
+
+.testimonial-track {
+  display: flex;
+  transition: transform 550ms ease;
+}
+
+.testimonial-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+.testimonial-slide p {
+  min-height: 0;
+  margin-top: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.testimonial-slide footer {
+  margin-top: 1rem;
+}
+
+.testimonial-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.875rem;
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.testimonial-arrow {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--ink);
+  font-size: 1.125rem;
+}
+
+[data-theme='dark'] .testimonial-slide p {
+  color: var(--ink);
+}
+
+[data-theme='dark'] .testimonial-arrow {
+  background: #121212;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .testimonial-track { transition: none; }
+}
+
 @media (max-width: 767px) {
+  /* Keep the public homepage scannable on phones without changing portal pages. */
+  .public-landing .hero-grid {
+    padding-block: 1.5rem 2.25rem;
+    gap: 0;
+  }
+
+  .public-landing .hero h1 {
+    max-width: 17ch;
+    margin: 0.625rem 0 0.875rem;
+    font-family: Poppins, Inter, sans-serif;
+    font-size: clamp(2rem, 8vw, 2.5rem);
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    line-height: 1.13;
+  }
+
+  .public-landing .hero-lead {
+    margin-bottom: 1.25rem;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  .public-landing .trust-row {
+    margin-top: 1rem;
+  }
+
+  .public-landing .hero-visual {
+    padding-top: 1.25rem;
+  }
+
+  .public-landing .hero-card-main {
+    padding: 1rem;
+  }
+
+  .public-landing .hero-card-main .queue-empty {
+    min-height: 130px;
+    padding: 1rem;
+  }
+
+  .public-landing .stats-grid {
+    padding-block: 1rem;
+    row-gap: 0.875rem;
+  }
+
+  .public-landing .section {
+    padding-block: 2.5rem;
+  }
+
+  .public-landing .section-heading {
+    margin-bottom: 1.125rem;
+  }
+
+  .public-landing .section-heading h2,
+  .public-landing .queue-feature h2,
+  .public-landing .doctor-cta-card h2 {
+    margin-block: 0.375rem;
+    font-family: Poppins, Inter, sans-serif;
+    font-size: clamp(1.5rem, 6vw, 1.875rem);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 1.2;
+  }
+
+  .public-landing .doctor-card {
+    padding: 0.875rem;
+    border-radius: 16px;
+  }
+
+  .public-landing .doctor-card-top {
+    gap: 0.625rem;
+  }
+
+  .public-landing .doctor-card .avatar-lg {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    border-radius: 13px;
+    font-size: 1rem;
+  }
+
+  .public-landing .doctor-meta {
+    gap: 0.25rem;
+    margin: 0.75rem 0;
+    padding: 0.625rem 0;
+  }
+
+  .public-landing .doctor-card-footer {
+    flex-direction: row;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .public-landing .card-actions {
+    width: auto;
+    min-width: 0;
+    flex: 1;
+    flex-direction: row;
+  }
+
+  .public-landing .card-actions .btn {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 0.375rem;
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .public-landing .step-card {
+    padding: 1.25rem 1rem;
+  }
+
+  .public-landing .step-card > svg {
+    margin-bottom: 0.5rem;
+  }
+
+  .public-landing .queue-feature-grid {
+    gap: 1.5rem;
+  }
+
+  .public-landing .queue-empty-panel {
+    min-height: 150px;
+    padding: 1rem;
+  }
+
+  .public-landing .doctor-cta-card {
+    gap: 0.75rem;
+    padding: 1.25rem;
+  }
+
+  .public-landing .faq-section .section-heading {
+    margin-bottom: 1.125rem;
+  }
+
+  .public-landing .faq-section details {
+    padding: 0.875rem;
+  }
+
+  .public-landing .testimonial-slide {
+    padding: 1.125rem;
+  }
+
+  /* Specializations are data-driven and may grow well beyond the initial few.
+     Keep two compact, readable tiles per row instead of full-width tall cards. */
+  #specializations .specialty-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  #specializations .specialty-card {
+    min-height: 112px;
+    justify-content: flex-start;
+    padding: 0.75rem;
+    border-radius: 14px;
+  }
+
+  #specializations .specialty-icon {
+    width: 34px;
+    height: 34px;
+    margin-bottom: 0.5rem;
+    border-radius: 10px;
+  }
+
+  #specializations .specialty-icon svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  #specializations .specialty-card strong {
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  #specializations .specialty-card small {
+    font-size: 0.6875rem;
+    margin-top: 0.125rem;
+  }
+
+  #specializations .specialty-arrow {
+    display: none;
+  }
+
   /* A 16px control font prevents iOS Safari from zooming the whole page on focus. */
   input,
   select,
@@ -106,7 +443,7 @@ label,
     flex: 1 1 auto;
   }
 
-  .page-heading__action :is(input, select) {
+  .page-heading__action :is(input, select):not(.sr-only) {
     width: 100%;
   }
 
@@ -115,8 +452,54 @@ label,
     padding: 1rem;
   }
 
-  .portal-content :is(.grid-cols-2, .grid-cols-3) {
-    grid-template-columns: minmax(0, 1fr);
+  .portal-content form button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .portal-profile-photo-copy {
+    flex-basis: 11rem;
+    min-width: 0;
+  }
+
+  /* Let Tailwind's responsive grid classes choose column counts. Overriding
+     grid-cols-2/3 here breaks sm:col-span-2 children at 640–767px by creating
+     implicit columns, and stacks intentionally compact stats/date controls. */
+
+  .portal-content .doctor-appointment-export-dates {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-content .doctor-dashboard-stats,
+  .portal-content .receptionist-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .doctor-dashboard-stats > a,
+  .receptionist-dashboard-stats > a {
+    min-width: 0;
+    padding: 0.75rem;
+  }
+
+  .doctor-dashboard-stats > a > div > p,
+  .receptionist-dashboard-stats > a > div > p {
+    font-size: 0.6875rem;
+    line-height: 1.25;
+  }
+
+  .doctor-dashboard-stats > a > div > span,
+  .receptionist-dashboard-stats > a > div > span {
+    width: 1.75rem;
+    height: 1.75rem;
+    flex: 0 0 1.75rem;
+  }
+
+  .doctor-dashboard-stats > a > p,
+  .receptionist-dashboard-stats > a > p {
+    margin-top: 0.5rem;
+    font-size: 1.375rem;
+    line-height: 1.2;
   }
 
   .portal-content :is(.flex.items-center.justify-between, .flex.items-end.justify-between) {
@@ -124,7 +507,7 @@ label,
   }
 
   .portal-content .data-scroll {
-    margin-inline: -0.25rem;
+    margin-inline: 0;
     padding-bottom: 0.25rem;
   }
 
@@ -148,6 +531,16 @@ label,
     padding: 0.75rem;
     padding-top: max(0.75rem, env(safe-area-inset-top));
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .pdf-preview-backdrop.app-modal-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .receipt-preview {
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
   }
 
   .pdf-preview-header {
@@ -206,6 +599,76 @@ label,
 
   .app-modal-panel {
     padding-inline: 0.875rem;
+  }
+}
+
+/* Admin and super-admin retain desktop navigation, but use a drawer through
+   tablet widths so its 288px sidebar cannot squeeze forms and registries. */
+@media (max-width: 1023px) {
+  .admin-portal .portal-header {
+    padding-inline: 0.75rem;
+  }
+
+  .admin-portal .portal-header > div:last-child {
+    flex-shrink: 0;
+  }
+
+  .admin-portal .portal-header > div:last-child > div {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-dashboard-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .admin-dashboard-stats > a,
+  .admin-dashboard-stats > a > article {
+    min-width: 0;
+    height: 100%;
+  }
+
+  .admin-dashboard-stats > a.block,
+  .admin-dashboard-stats article {
+    padding: 0.75rem;
+  }
+
+  .admin-dashboard-stats :is(article, a) > div > p {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+  }
+
+  .admin-dashboard-stats :is(article, a) > div > span {
+    flex: 0 0 1.5rem;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .admin-dashboard-stats :is(article, a) > p:first-of-type {
+    margin-top: 0.5rem;
+    font-size: 1.125rem;
+    line-height: 1.3;
+  }
+
+  .admin-portal .portal-content :is(.flex.gap-2, .flex.gap-3) {
+    flex-wrap: wrap;
+  }
+
+  .admin-portal .page-heading__action > .flex {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-portal .page-heading__action > .flex > :is(button, a) {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .admin-record-details > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 }
 

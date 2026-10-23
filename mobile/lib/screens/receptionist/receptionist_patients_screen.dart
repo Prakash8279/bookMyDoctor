@@ -38,10 +38,12 @@ class ReceptionistPatientsScreen extends StatefulWidget {
   const ReceptionistPatientsScreen({super.key});
 
   @override
-  State<ReceptionistPatientsScreen> createState() => _ReceptionistPatientsScreenState();
+  State<ReceptionistPatientsScreen> createState() =>
+      _ReceptionistPatientsScreenState();
 }
 
-class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen> {
+class _ReceptionistPatientsScreenState
+    extends State<ReceptionistPatientsScreen> {
   Future<List<_PatientRow>>? _future;
 
   @override
@@ -71,7 +73,8 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
   // (pageSize 100) always stayed within range — only this screen's 200 was out of bounds. Capped
   // to 100, the actual max.
   Future<List<_PatientRow>> _fetch() async {
-    final res = await ApiClient.instance.get('/appointments', query: {'pageSize': 100});
+    final res = await ApiClient.instance
+        .getAll('/appointments', query: {'pageSize': 100});
     final appointments = <Appointment>[];
     for (final item in res.list) {
       try {
@@ -111,7 +114,8 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
     return Column(
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
             title: 'Patient directory',
             subtitle: 'View patients connected to this clinic.',
@@ -122,13 +126,15 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: context.palette.surface,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+              border: Border.all(
+                  color: context.palette.border, style: BorderStyle.solid),
             ),
-            child: const Text(
+            child: Text(
               'This list is built from appointments already loaded — the API has no dedicated patient directory.',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style:
+                  TextStyle(fontSize: 12, color: context.palette.textSecondary),
             ),
           ),
         ),
@@ -136,7 +142,9 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
           child: FutureBuilder<List<_PatientRow>>(
             future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               if (snapshot.hasError) {
                 return Padding(
                   padding: const EdgeInsets.all(AppSpacing.md),
@@ -155,7 +163,8 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
                 child: ListView.separated(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: patients.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSpacing.sm),
                   itemBuilder: (context, i) {
                     final patient = patients[i];
                     return Card(
@@ -164,11 +173,21 @@ class _ReceptionistPatientsScreenState extends State<ReceptionistPatientsScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(patient.patientNumber == null ? (patient.name ?? 'Patient') : 'DCP${patient.patientNumber} · ${patient.name ?? "Patient"}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            Text(
+                                patient.patientNumber == null
+                                    ? (patient.name ?? 'Patient')
+                                    : 'DCP${patient.patientNumber} · ${patient.name ?? "Patient"}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700, fontSize: 16)),
                             const SizedBox(height: 4),
-                            Text(patient.phone ?? '—', style: const TextStyle(color: AppColors.textSecondary)),
+                            Text(patient.phone ?? '—',
+                                style: TextStyle(
+                                    color: context.palette.textSecondary)),
                             const SizedBox(height: AppSpacing.sm),
-                            Text('${patient.visits} appointment${patient.visits == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                            Text(
+                                '${patient.visits} appointment${patient.visits == 1 ? '' : 's'}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),

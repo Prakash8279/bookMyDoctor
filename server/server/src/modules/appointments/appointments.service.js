@@ -16,6 +16,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const prisma = require('../../config/db');
 const ApiError = require('../../utils/ApiError');
+const { isClinicPaymentComplete, clinicPaymentWhere } = require('../../utils/clinicPaymentGate');
 const activityLogService = require('../../services/activityLogService');
 const lockService = require('../../services/lockService');
 const cacheService = require('../../services/cacheService');
@@ -36,6 +37,7 @@ const { loadCommissionPercentIfAdmin } = require('../../services/commissionLooku
 const { computeMinBookingAmount, computeMinBookingRemainder } = require('../../utils/minBookingAmount');
 const paymentHoldService = require('../payments/paymentHold.service');
 const bookingExpiryService = require('./bookingExpiry.service');
+const { nextQueueTokenNumber } = require('../../utils/queueTokenNumber');
 const { nextPatientNumber } = require('../../utils/idGenerators');
 
 // Cache TTL for listAppointments — short relative to directory data (30s) because this is
@@ -106,6 +108,8 @@ const APPOINTMENT_SELECT = {
   clinicId: true,
   appointmentDate: true,
   appointmentTime: true,
+  isEstimatedTime: true,
+  estimatedVisitAt: true,
   reason: true,
   isEmergency: true,
   status: true,
@@ -187,7 +191,12 @@ function generateSlotCandidates(startTime, endTime, slotMinutes) {
  * each doctor-clinic assignment because OPD hours are stored at that level. For today, elapsed
  * unbooked times are excluded from `availableSlots`; historical booked rows remain counted.
  */
-async function getDoctorAvailability({ date, doctorId, clinicId }) {
+async function getDoctorAvailability({ date, doctorId, clinicId }, requester) {
+  if (requester?.role === 'receptionist') {
+    const profile = await prisma.receptionistProfile.findUnique({ where: { userId: requester.id }, select: { clinicId: true } });
+    if (!profile?.clinicId) return [];
+    clinicId = profile.clinicId;
+  }
   const selectedDate = new Date(`${date}T00:00:00.000Z`);
   const today = todayBusinessDateOnly();
   if (selectedDate.getTime() < today.getTime()) {
@@ -208,14 +217,18 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
     select: {
       doctorUserId: true,
       clinicId: true,
-      doctor: { select: { name: true, doctorProfile: { select: { emergencyAvailable: true } } } },
+      doctor: { select: { name: true, doctorProfile: { select: { emergencyAvailable: true, maxDaysAdvance: true, maxOnlineBookingsPerDay: true } } } },
       clinic: { select: { name: true } },
     },
   });
-  if (!links.length) return [];
+  const bookableLinks = links.filter((link) => {
+    const maxDays = link.doctor.doctorProfile?.maxDaysAdvance ?? 30;
+    return selectedDate.getTime() <= today.getTime() + maxDays * 24 * 60 * 60 * 1000;
+  });
+  if (!bookableLinks.length) return [];
 
-  const doctorIds = [...new Set(links.map((row) => row.doctorUserId))];
-  const clinicIds = [...new Set(links.map((row) => row.clinicId))];
+  const doctorIds = [...new Set(bookableLinks.map((row) => row.doctorUserId))];
+  const clinicIds = [...new Set(bookableLinks.map((row) => row.clinicId))];
   const [hoursRows, closures, appointments] = await Promise.all([
     prisma.doctorClinicHours.findMany({
       where: { doctorUserId: { in: doctorIds }, clinicId: { in: clinicIds }, weekday, status: 'active' },
@@ -227,11 +240,11 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
     prisma.appointment.findMany({
       where: {
         doctorUserId: { in: doctorIds },
-        clinicId: { in: clinicIds },
         appointmentDate: selectedDate,
         status: { notIn: ['cancelled', 'no_show'] },
       },
-      select: { doctorUserId: true, clinicId: true, appointmentTime: true },
+      select: { doctorUserId: true, clinicId: true, appointmentTime: true, source: true, status: true,
+        paymentHolds: { where: { status: 'PENDING', holdExpiresAt: { gt: new Date() } }, select: { id: true } } },
     }),
   ]);
 
@@ -247,14 +260,21 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
   const isToday = selectedDate.getTime() === today.getTime();
   const now = isToday ? currentBusinessTimeHHMM() : null;
 
-  return links.map((link) => {
+  return bookableLinks.map((link) => {
     const key = keyOf(link.doctorUserId, link.clinicId);
     const hours = hoursByKey.get(key);
     const closed = closedKeys.has(key);
     const candidates = !hours || closed ? [] : generateSlotCandidates(hours.startTime, hours.endTime, hours.slotMinutes);
     const bookedTimes = bookedByKey.get(key) || new Set();
-    const bookedSlots = candidates.filter((time) => bookedTimes.has(time)).length;
-    const availableSlots = candidates.filter((time) => !bookedTimes.has(time) && (!isToday || time >= now)).length;
+    const quota = link.doctor.doctorProfile?.maxOnlineBookingsPerDay;
+    const quotaMode = quota != null;
+    const quotaOccupied = appointments.filter((row) => row.doctorUserId === link.doctorUserId && row.source === 'online'
+      && (['upcoming', 'confirmed', 'completed'].includes(row.status)
+        || (row.status === 'pending_payment' && row.paymentHolds?.length > 0))).length;
+    const totalSlots = !hours || closed ? 0 : quotaMode ? quota : candidates.length;
+    const bookedSlots = quotaMode ? quotaOccupied : candidates.filter((time) => bookedTimes.has(time)).length;
+    const availableSlots = quotaMode ? Math.max(0, totalSlots - bookedSlots)
+      : candidates.filter((time) => !bookedTimes.has(time) && (!isToday || time >= now)).length;
     return {
       doctorUserId: link.doctorUserId,
       doctorName: link.doctor.name,
@@ -262,7 +282,7 @@ async function getDoctorAvailability({ date, doctorId, clinicId }) {
       clinicId: link.clinicId,
       clinicName: link.clinic.name,
       date,
-      totalSlots: candidates.length,
+      totalSlots,
       bookedSlots,
       availableSlots,
       closed,
@@ -457,6 +477,8 @@ function shapeAppointment(row, role, commissionPercent) {
     clinic: row.clinic ? { id: row.clinic.id, name: row.clinic.name, address: row.clinic.address, phone: row.clinic.phone } : null,
     appointmentDate: formatDateOnly(row.appointmentDate),
     appointmentTime: row.appointmentTime,
+    isEstimatedTime: row.isEstimatedTime === true,
+    estimatedVisitAt: row.estimatedVisitAt || null,
     reason: row.reason,
     isEmergency: row.isEmergency,
     status: row.status,
@@ -465,6 +487,7 @@ function shapeAppointment(row, role, commissionPercent) {
       ? null
       : row.tokenNumber,
     paymentStatus: row.paymentStatus,
+    clinicPaymentComplete: isClinicPaymentComplete(row),
     paymentMethod: row.paymentMethod,
     fees: shapeFees(row, role, commissionPercent),
     notes: row.notes,
@@ -522,6 +545,9 @@ async function getVisibleAppointmentOrThrow(id, requester) {
  */
 async function enqueueBooking(body, requester) {
   const isPatient = requester.role === 'patient';
+  if (isPatient && !body.familyMemberId) {
+    throw new ApiError(400, 'PATIENT_PROFILE_REQUIRED', 'Select a complete patient/member profile before booking.');
+  }
   const source = isPatient ? 'online' : 'walk_in';
 
   const patientUserId = isPatient ? requester.id : body.patientUserId;
@@ -854,51 +880,18 @@ async function runBookingJob(payload) {
     throw new ApiError(403, 'ONLINE_BOOKING_DISABLED', 'Online booking is disabled for this doctor at this clinic.');
   }
 
-  // Online-booking accessibility window — a DOCTOR-LEVEL override (doctorProfile.
-  // onlineBookingWindowStart/End, admin- or doctor-set via doctors.service.js#updateBookingSettings)
-  // takes precedence when this doctor has one; otherwise the PLATFORM-WIDE window
-  // (admin/superadmin managed, BookingRules singleton — admin.service.js#updateBookingRules)
-  // applies. Both levels are opt-in: no override AND no platform-wide window set means no
-  // restriction at all, "full time". Fetched only for online bookings — a walk-in never pays for
-  // the extra query, same exemption pattern as every check in this function keyed on `source`.
-  // `bookingRules` is reused just below for the platform-wide max-advance-days cap too (that cap
-  // has no per-doctor override — maxDaysAdvance already IS the per-doctor equivalent).
+  // Platform hours apply to every doctor; doctor-specific hours can only narrow them.
   let bookingRules = null;
   if (source === 'online') {
-    const hasDoctorWindow = doctorProfile.onlineBookingWindowStart && doctorProfile.onlineBookingWindowEnd;
-    bookingRules = hasDoctorWindow
-      ? null
-      : await prisma.bookingRules.findUnique({
-          where: { id: 1 },
-          select: { onlineBookingWindowStart: true, onlineBookingWindowEnd: true, onlineBookingMaxAdvanceDays: true },
-        });
-    const effectiveWindow = hasDoctorWindow
-      ? { start: doctorProfile.onlineBookingWindowStart, end: doctorProfile.onlineBookingWindowEnd }
-      : bookingRules && bookingRules.onlineBookingWindowStart && bookingRules.onlineBookingWindowEnd
-      ? { start: bookingRules.onlineBookingWindowStart, end: bookingRules.onlineBookingWindowEnd }
-      : null;
-    // The max-advance-days cap lives ONLY on the platform-wide row (no per-doctor override for
-    // it), so when this doctor HAS their own window override we still need `bookingRules`
-    // fetched for that cap check further below — fetch it now rather than skip it entirely.
-    if (hasDoctorWindow && bookingRules === null) {
-      bookingRules = await prisma.bookingRules.findUnique({
-        where: { id: 1 },
-        select: { onlineBookingMaxAdvanceDays: true },
-      });
-    }
-    if (effectiveWindow) {
-      // OPD and booking-window values are business-local wall-clock times. Zero-padded 24h HH:MM
-      // strings compare correctly with plain string operators. Doesn't support a window spanning
-      // midnight (e.g. "22:00"-"06:00") — both
-      // admin.validation.js#updateBookingRules and doctors.validation.js#patchDoctor require
-      // start < end at save time, so that case can never be saved in the first place.
+    bookingRules = await prisma.bookingRules.findUnique({ where: { id: 1 } });
+    require('../../utils/platformBookingHours').assertPlatformBookingHours(
+      bookingRules, dateStr, todayBusinessDateOnly().toISOString().slice(0, 10), currentBusinessTimeHHMM()
+    );
+    if (doctorProfile.onlineBookingWindowStart && doctorProfile.onlineBookingWindowEnd) {
       const nowHHMM = currentBusinessTimeHHMM();
-      if (nowHHMM < effectiveWindow.start || nowHHMM > effectiveWindow.end) {
-        throw new ApiError(
-          403,
-          'ONLINE_BOOKING_WINDOW_CLOSED',
-          `Online booking is only available between ${effectiveWindow.start} and ${effectiveWindow.end}. Please try again during that window, or contact the clinic directly.`
-        );
+      if (nowHHMM < doctorProfile.onlineBookingWindowStart || nowHHMM >= doctorProfile.onlineBookingWindowEnd) {
+        throw new ApiError(403, 'ONLINE_BOOKING_WINDOW_CLOSED',
+          `This doctor's online booking is available from ${doctorProfile.onlineBookingWindowStart} to ${doctorProfile.onlineBookingWindowEnd} IST.`);
       }
     }
   }
@@ -990,7 +983,8 @@ async function runBookingJob(payload) {
   // this date automatically — deferred until then because it needs a DB read (which times are
   // already taken) done under the same advisory lock that guarantees no two bookings can race
   // for the same doctor+day.
-  if (timeStr) {
+  const quotaMode = source === 'online' && doctorProfile.maxOnlineBookingsPerDay != null;
+  if (timeStr && !quotaMode) {
     // Same-day bookings must be for a time still ahead of "now" — the calendar-date check above
     // (appointmentDateUTC < todayUTC) only rejects a past DATE, so without this a same-day slot
     // whose TIME has already gone by would otherwise sail through. Current time compared as the
@@ -1020,10 +1014,16 @@ async function runBookingJob(payload) {
   }
 
   // ── Family member (patient-only — the literal fix for the family-member ownership leak) ─
+  if (source === 'online' && !familyMemberId) {
+    throw new ApiError(400, 'PATIENT_PROFILE_REQUIRED', 'Select a complete patient/member profile before booking.');
+  }
   if (familyMemberId) {
-    const fm = await prisma.familyMember.findUnique({ where: { id: familyMemberId }, select: { patientUserId: true } });
+    const fm = await prisma.familyMember.findUnique({ where: { id: familyMemberId }, select: { patientUserId: true, name: true, relation: true, dateOfBirth: true, gender: true, bloodGroup: true } });
     if (!fm || fm.patientUserId !== patientUserId) {
       throw new ApiError(404, 'FAMILY_MEMBER_NOT_FOUND', 'Family member not found.');
+    }
+    if (source === 'online' && !['name', 'relation', 'dateOfBirth', 'gender', 'bloodGroup'].every((field) => String(fm[field] || '').trim())) {
+      throw new ApiError(400, 'PATIENT_PROFILE_INCOMPLETE', 'Complete the selected member’s name, relationship, date of birth, gender and blood group before booking.');
     }
   }
 
@@ -1121,6 +1121,15 @@ async function runBookingJob(payload) {
       // as "belt and suspenders" — this is a third, cheap layer in the same spirit.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`doctor-day:${doctorUserId}:${dateStr}`}))`;
 
+      // A closure may have been saved after the earlier read while this job waited for its lock.
+      // Closure creation takes the same doctor-day lock, so this read is authoritative.
+      const lockedClosure = await tx.doctorClinicClosure.findFirst({
+        where: { doctorUserId, clinicId, closedDate: appointmentDateUTC }, select: { id: true },
+      });
+      if (lockedClosure) {
+        throw new ApiError(400, 'CLINIC_CLOSED_THAT_DATE', 'This doctor is unavailable at this clinic on the selected closing date. Please choose another date.');
+      }
+
       // SECURITY/CORRECTNESS FIX (found in an audit): re-check the doctor's daily online-booking
       // cap HERE, now that the advisory lock above fully serializes every booking attempt for
       // this doctor+day, not just at the top of this function (where it was originally the ONLY
@@ -1133,13 +1142,15 @@ async function runBookingJob(payload) {
       // concurrently. This re-check is the one that's actually authoritative — everything after
       // it (token numbering, the INSERT itself) already relies on this same lock for the exact
       // same reason.
-      if (source === 'online' && doctorProfile.maxOnlineBookingsPerDay != null) {
+      let quotaOccupied = 0;
+      if (quotaMode) {
         await paymentHoldService.cleanExpiredHoldsTx(tx, doctorUserId, appointmentDateUTC);
         const { effectiveOccupied } = await paymentHoldService.getEffectiveOccupancyTx(
           tx,
           doctorUserId,
           appointmentDateUTC
         );
+        quotaOccupied = effectiveOccupied;
         if (effectiveOccupied >= doctorProfile.maxOnlineBookingsPerDay) {
           throw new ApiError(
             400,
@@ -1156,7 +1167,28 @@ async function runBookingJob(payload) {
       // commits or rolls back, so "which times are taken" below can't go stale before the
       // INSERT a few lines later.
       let resolvedTimeStr = timeStr;
-      if (!resolvedTimeStr) {
+      let estimatedVisitAt = null;
+      // Capture one authoritative instant for both the same-day estimate and the row's
+      // creation time. This prevents a quota-based booking made late in the OPD from being
+      // shown an approximate call time that has already passed (opening time + queue index).
+      const bookingCreatedAt = new Date();
+      if (quotaMode) {
+        // First call is opening + one patient's duration. Capacity never depends on closing time.
+        const queueBasedEstimate = new Date(businessDateTimeToUtc(dateStr, hours.startTime).getTime()
+          + (quotaOccupied + 1) * hours.slotMinutes * 60_000);
+        // For a same-day booking the patient cannot be called before they have booked. Give at
+        // least one consultation-duration of notice from the current business-local minute.
+        // Example: booking at 16:10 with 5 minutes per patient => no earlier than 16:15, even
+        // when the queue formula based on a 10:00 opening would otherwise return 10:05.
+        const earliestAfterBooking = isSameDay
+          ? new Date(businessDateTimeToUtc(dateStr, currentBusinessTimeHHMM(bookingCreatedAt)).getTime()
+            + hours.slotMinutes * 60_000)
+          : null;
+        estimatedVisitAt = earliestAfterBooking && queueBasedEstimate < earliestAfterBooking
+          ? earliestAfterBooking
+          : queueBasedEstimate;
+        resolvedTimeStr = currentBusinessTimeHHMM(estimatedVisitAt);
+      } else if (!resolvedTimeStr) {
         const existingForDay = await tx.appointment.findMany({
           where: { doctorUserId, appointmentDate: appointmentDateUTC, status: { notIn: ['cancelled', 'no_show'] } },
           select: { appointmentTime: true },
@@ -1175,52 +1207,10 @@ async function runBookingJob(payload) {
         }
       }
 
-      // NOTE (fix, see verifier finding): PostgreSQL forbids a locking clause
-      // (FOR UPDATE/SHARE/...) on a query whose output rows can't be tied to
-      // individual table rows — an aggregate like MAX() collapses to a single
-      // synthetic row, so `... FOR UPDATE` here is invalid SQL and previously
-      // made every booking attempt fail. `FOR UPDATE` is dropped; it was also
-      // redundant given the `pg_advisory_xact_lock(hashtext(doctorUserId||dateStr))`
-      // taken immediately above on the same (doctorUserId, appointmentDate) key,
-      // which already fully serializes every concurrent transaction computing
-      // MAX(token_number) for this doctor+day — no other transaction can reach
-      // this SELECT (or the subsequent INSERT) until the advisory lock is released
-      // at the end of this transaction.
-      //
-      // FEATURE (request: "doctor ek booking rule do jo booking online wala continues token no
-      // jayega ya odd ya even patient ko mile"): doctorProfile.tokenNumberingMode picks between
-      // two numbering schemes, both still fully covered by the same advisory lock above so
-      // neither branch can race:
-      //   'sequential' (default) — one shared MAX(token_number)+1 count, exactly the
-      //     pre-existing behavior, unaffected by this feature.
-      //   'alternate' — online bookings get their own sequence and walk-in bookings get the
-      //     OTHER one, each tracked as MAX(token_number) restricted to that parity, +2 (or the
-      //     first number of that parity when none exists yet for the day) — so the two sources
-      //     never collide and a queue display can tell them apart from the token number alone.
-      //     Which parity (odd/even) online gets is itself doctor-selectable — see
-      //     doctorProfile.onlineTokenParity (request: "odd ya even select karne ka option do
-      //     doctor jo select kar online ke lie") — 'odd' is the default (online=odd,
-      //     walk-in=even), 'even' flips it (online=even, walk-in=odd).
-      let tokenNumber;
-      if (doctorProfile.tokenNumberingMode === 'alternate') {
-        const onlineWantsOdd = doctorProfile.onlineTokenParity !== 'even';
-        const wantsOdd = source === 'online' ? onlineWantsOdd : !onlineWantsOdd;
-        const parityRow = await tx.$queryRaw`
-          SELECT COALESCE(MAX(token_number), 0) AS max FROM appointments
-          WHERE doctor_user_id = ${doctorUserId} AND appointment_date = ${appointmentDateUTC}::date
-            AND (token_number % 2) = ${wantsOdd ? 1 : 0}
-        `;
-        const currentMax = Number(parityRow[0].max);
-        tokenNumber = currentMax > 0 ? currentMax + 2 : wantsOdd ? 1 : 2;
-      } else {
-        const maxRow = await tx.$queryRaw`
-          SELECT COALESCE(MAX(token_number), 0) AS max FROM appointments
-          WHERE doctor_user_id = ${doctorUserId} AND appointment_date = ${appointmentDateUTC}::date
-        `;
-        tokenNumber = Number(maxRow[0].max) + 1;
-      }
+      const tokenNumber = requiresPrepayment ? null : await nextQueueTokenNumber(tx, {
+        doctorUserId, appointmentDate: appointmentDateUTC, source, profile: doctorProfile,
+      });
 
-      const bookingCreatedAt = new Date();
       let created;
       try {
         created = await tx.appointment.create({
@@ -1231,6 +1221,8 @@ async function runBookingJob(payload) {
             clinicId,
             appointmentDate: appointmentDateUTC,
             appointmentTime: resolvedTimeStr,
+            isEstimatedTime: quotaMode,
+            estimatedVisitAt,
             reason: reason || null,
             isEmergency: false,
             status: requiresPrepayment ? 'pending_payment' : 'upcoming',
@@ -1268,13 +1260,13 @@ async function runBookingJob(payload) {
         throw err;
       }
 
-      await tx.queueToken.create({
+      if (!requiresPrepayment && Number(totalAmount) <= 0) await tx.queueToken.create({
         data: {
           appointmentId: created.id,
           doctorUserId,
           clinicId,
           tokenNumber,
-          status: requiresPrepayment ? 'on_hold' : 'waiting',
+          status: 'waiting',
           queueDate: appointmentDateUTC,
         },
       });
@@ -1339,6 +1331,13 @@ async function runBookingJob(payload) {
             title: 'Booking confirmed',
             body: `Your appointment on ${dateStr} is confirmed. Token number #${result.tokenNumber}.`,
             type: 'appointment',
+            emailActionPath: '/patient/appointments',
+            emailDetails: [
+              { label: 'Booking reference', value: result.appointmentId },
+              { label: 'Visit date', value: dateStr },
+              { label: 'Booking token', value: `#${result.tokenNumber}` },
+              { label: 'Before joining the queue', value: 'Any remaining clinic payment must be completed.' },
+            ],
           }),
           notificationsService.notifySystemEventSafe(doctorUserId, {
             title: 'New booking',
@@ -1507,6 +1506,9 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
   }
 
   // ── "Complete" cannot happen before the visit's own day ─────────────────
+  if (['confirmed', 'completed', 'no_show'].includes(targetStatus) && !isClinicPaymentComplete(row)) {
+    throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Complete the remaining clinic payment before confirming or completing this visit.');
+  }
   // BUG FIX (user report: "koi patient aaj book kiya 2 din bad ka doctor chah kar v aaj complete
   // nahi kar sakta" / "kahi se v conform na ho jab tak same date na ho") — a booking for a future
   // date had no guard anywhere against being marked 'completed' early: not here, not in
@@ -1542,7 +1544,8 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
     // for that status.
     const rules = await prisma.bookingRules.findUnique({ where: { id: 1 }, select: { cancellationWindowHours: true } });
     const windowHours = rules ? rules.cancellationWindowHours : 2;
-    const apptDateTime = businessDateTimeToUtc(formatDateOnly(row.appointmentDate), row.appointmentTime);
+    const apptDateTime = row.estimatedVisitAt ? new Date(row.estimatedVisitAt)
+      : businessDateTimeToUtc(formatDateOnly(row.appointmentDate), row.appointmentTime);
     const hoursUntilAppointment = (apptDateTime.getTime() - Date.now()) / (1000 * 60 * 60);
     if (hoursUntilAppointment < windowHours) {
       throw new ApiError(
@@ -1592,6 +1595,11 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
         where: { appointmentId: id, status: 'PENDING' },
         data: { status: 'CANCELLED' },
       });
+    } else if (['confirmed', 'completed', 'no_show'].includes(targetStatus)) {
+      const updated = await tx.appointment.updateMany({
+        where: { id, status: row.status, ...clinicPaymentWhere() }, data: { status: targetStatus },
+      });
+      if (!updated.count) throw new ApiError(409, 'BOOKING_CHANGED', 'Booking or payment changed. Refresh before continuing.');
     } else {
       await tx.appointment.update({ where: { id }, data: { status: targetStatus } });
     }
@@ -1688,6 +1696,13 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
         title: 'Appointment cancelled',
         body: `Your appointment on ${formatDateOnly(row.appointmentDate)} (token #${row.tokenNumber}) has been cancelled by the clinic. Please contact the clinic for details.`,
         type: 'appointment',
+        emailActionPath: '/patient/appointments',
+        emailDetails: [
+          { label: 'Booking reference', value: row.id },
+          { label: 'Visit date', value: formatDateOnly(row.appointmentDate) },
+          { label: 'Visit time (IST)', value: row.appointmentTime },
+          { label: 'Status', value: 'Cancelled' },
+        ],
       });
     }
   }
@@ -1695,7 +1710,44 @@ async function updateAppointmentStatus(id, targetStatus, actor) {
   return getAppointmentById(id, actor);
 }
 
+async function checkInAppointment(id, actor) {
+  if (!['doctor', 'receptionist', 'admin', 'superadmin'].includes(actor.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only clinic staff can check in patients.');
+  }
+  const row = await getVisibleAppointmentOrThrow(id, actor);
+  const today = todayBusinessDateOnly();
+  if (!['upcoming', 'confirmed'].includes(row.status) || row.paymentStatus === 'refunded' || row.tokenNumber == null) {
+    throw new ApiError(409, 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE', 'Only confirmed, non-cancelled bookings with an issued token can be checked in.');
+  }
+  if (!isClinicPaymentComplete(row)) {
+    throw new ApiError(409, 'CLINIC_PAYMENT_REQUIRED', 'Complete the remaining clinic payment before check-in.');
+  }
+  if (formatDateOnly(row.appointmentDate) !== formatDateOnly(today)) {
+    throw new ApiError(409, 'CHECK_IN_DATE_MISMATCH', 'Check-in is available only on the appointment date (IST).');
+  }
+  if (row.checkedInAt) return getAppointmentById(id, actor);
+  const changed = await prisma.appointment.updateMany({
+    where: { id, status: { in: ['upcoming', 'confirmed'] }, ...clinicPaymentWhere(),
+      tokenNumber: { not: null }, appointmentDate: today, checkedInAt: null },
+    data: { checkedInAt: new Date() },
+  });
+  if (!changed.count) {
+    const current = await getVisibleAppointmentOrThrow(id, actor);
+    if (!current.checkedInAt || !['upcoming', 'confirmed'].includes(current.status) ||
+      !isClinicPaymentComplete(current) || current.tokenNumber == null ||
+      formatDateOnly(current.appointmentDate) !== formatDateOnly(today)) {
+      throw new ApiError(409, 'BOOKING_CHANGED', 'The booking changed. Refresh before checking in.');
+    }
+  }
+  await Promise.all([invalidateAppointmentListCaches(row), queueService.invalidateQueueListCaches(row)]);
+  if (changed.count) await activityLogService.log({ actorUserId: actor.id, actorRole: actor.role,
+    actionType: 'appointment.check_in', targetEntityType: 'appointment', targetEntityId: id,
+    description: 'Clinic staff marked the patient as arrived.' });
+  return getAppointmentById(id, actor);
+}
+
 module.exports = {
+  checkInAppointment,
   enqueueBooking,
   getBookingStatus,
   getDoctorAvailability,

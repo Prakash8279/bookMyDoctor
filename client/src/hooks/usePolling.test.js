@@ -10,6 +10,30 @@ function setDocumentHidden(hidden) {
 }
 
 describe('usePolling', () => {
+  it('does not overlap a slow request with timer or visibility refreshes', async () => {
+    let finish
+    const pending = new Promise((resolve) => { finish = resolve })
+    const load = vi.fn().mockReturnValueOnce(pending)
+    renderHook(() => usePolling(load, { intervalMs: 1000 }))
+    vi.advanceTimersByTime(5000)
+    document.dispatchEvent(new Event('visibilitychange'))
+    expect(load).toHaveBeenCalledTimes(1)
+    finish()
+    await pending
+    await Promise.resolve()
+    await Promise.resolve()
+    vi.advanceTimersByTime(1000)
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('recovers after a failed asynchronous refresh', async () => {
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline'))
+    renderHook(() => usePolling(load, { intervalMs: 1000 }))
+    await Promise.resolve()
+    await Promise.resolve()
+    vi.advanceTimersByTime(1000)
+    expect(load).toHaveBeenCalledTimes(2)
+  })
   beforeEach(() => {
     vi.useFakeTimers()
   })

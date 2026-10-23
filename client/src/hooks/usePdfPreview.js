@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Shared "generate a PDF, show it in-page, offer the actual save from inside that preview" flow.
 //
@@ -23,24 +23,44 @@ import { useState } from 'react'
 export function usePdfPreview() {
   const [preview, setPreview] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const active = useRef(0)
+  const url = useRef(null)
 
-  const close = () => setPreview((prev) => { if (prev) URL.revokeObjectURL(prev.url); return null })
+  const close = useCallback(() => {
+    active.current += 1
+    if (url.current) URL.revokeObjectURL(url.current)
+    url.current = null
+    setPreview(null)
+    setError('')
+    setLoading(false)
+  }, [])
+
+  useEffect(() => () => {
+    active.current += 1
+    if (url.current) URL.revokeObjectURL(url.current)
+  }, [])
 
   const open = async (build) => {
+    const request = ++active.current
     setLoading(true)
+    setError('')
     try {
-      const { blob, filename } = await build()
+      const { blob, filename, document: spec } = await build()
+      if (request !== active.current) return
+      if (!blob?.size || blob.type !== 'application/pdf') throw new Error('Invalid PDF')
       // Revoke any previous preview's URL before replacing it — otherwise repeated opens (e.g.
       // clicking "View" on two different rows in a row) leak one object URL per click.
-      setPreview((prev) => { if (prev) URL.revokeObjectURL(prev.url); return { url: URL.createObjectURL(blob), filename } })
+      const nextUrl = URL.createObjectURL(blob)
+      if (url.current) URL.revokeObjectURL(url.current)
+      url.current = nextUrl
+      setPreview({ url: nextUrl, filename, document: spec })
     } catch {
-      // PDF generation here is entirely local (no network — see lib/pdf.js/lib/brandLogo.js),
-      // so a failure is rare and there's nothing sensible to show inline; leave the preview
-      // closed rather than opening one for a broken/empty file.
+      if (request === active.current) setError('Unable to prepare the PDF. Please try again.')
     } finally {
-      setLoading(false)
+      if (request === active.current) setLoading(false)
     }
   }
 
-  return { preview, loading, open, close }
+  return { preview, loading, error, open, close }
 }

@@ -12,10 +12,12 @@ class DoctorMedicalRecordsScreen extends StatefulWidget {
   const DoctorMedicalRecordsScreen({super.key});
 
   @override
-  State<DoctorMedicalRecordsScreen> createState() => _DoctorMedicalRecordsScreenState();
+  State<DoctorMedicalRecordsScreen> createState() =>
+      _DoctorMedicalRecordsScreenState();
 }
 
-class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen> {
+class _DoctorMedicalRecordsScreenState
+    extends State<DoctorMedicalRecordsScreen> {
   Future<List<MedicalRecordItem>>? _future;
 
   @override
@@ -26,16 +28,15 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
 
   void _load() {
     _future = ApiClient.instance
-        .get('/medical-records', query: {'pageSize': 50})
-        .then((res) {
-          final list = <MedicalRecordItem>[];
-          for (final item in res.list) {
-            try {
-              list.add(MedicalRecordItem.fromJson(item));
-            } catch (_) {}
-          }
-          return list;
-        }).catchError((_) => <MedicalRecordItem>[]);
+        .get('/medical-records', query: {'pageSize': 50}).then((res) {
+      final list = <MedicalRecordItem>[];
+      for (final item in res.list) {
+        try {
+          list.add(MedicalRecordItem.fromJson(item));
+        } catch (_) {}
+      }
+      return list;
+    }).catchError((_) => <MedicalRecordItem>[]);
     if (mounted) setState(() {});
   }
 
@@ -57,7 +58,8 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Consultation & EMR',
               subtitle: 'Capture clinical notes securely for each visit.',
@@ -65,42 +67,59 @@ class _DoctorMedicalRecordsScreenState extends State<DoctorMedicalRecordsScreen>
           ),
           Expanded(
             child: FutureBuilder<List<MedicalRecordItem>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
-          if (snapshot.hasError) {
-            return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
-          }
-          final items = snapshot.data ?? [];
-          if (items.isEmpty) {
-            return const EmptyStateView(icon: Icons.folder_shared_outlined, title: 'No medical records written yet');
-          }
-          return RefreshIndicator(
-            onRefresh: () async => _load(),
-            child: ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-              itemBuilder: (context, i) {
-                final r = items[i];
-                return Card(
-                  child: ExpansionTile(
-                    title: Text(r.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text('${r.patient?.patientDisplayName ?? "Patient"}${r.type != null ? " · ${r.type}" : ""}'),
-                    childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                    children: [
-                      if (r.notes != null) Align(alignment: Alignment.centerLeft, child: Text('Notes: ${r.notes}')),
-                      if (r.carePlan != null) ...[
-                        const SizedBox(height: 6),
-                        Align(alignment: Alignment.centerLeft, child: Text('Care plan: ${r.carePlan}')),
-                      ],
-                    ],
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      child:
+                          ErrorBanner(error: snapshot.error!, onRetry: _load));
+                }
+                final items = snapshot.data ?? [];
+                if (items.isEmpty) {
+                  return const EmptyStateView(
+                      icon: Icons.folder_shared_outlined,
+                      title: 'No medical records written yet');
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _load(),
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: AppSpacing.sm),
+                    itemBuilder: (context, i) {
+                      final r = items[i];
+                      return Card(
+                        child: ExpansionTile(
+                          title: Text(r.title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(
+                              '${r.patient?.patientDisplayName ?? "Patient"}${r.type != null ? " · ${r.type}" : ""}'),
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                          children: [
+                            if (r.notes != null)
+                              Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Notes: ${r.notes}')),
+                            if (r.carePlan != null) ...[
+                              const SizedBox(height: 6),
+                              Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('Care plan: ${r.carePlan}')),
+                            ],
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 );
               },
-            ),
-          );
-        },
             ),
           ),
         ],
@@ -115,10 +134,12 @@ class DoctorNewMedicalRecordScreen extends StatefulWidget {
   final Appointment? initialAppointment;
 
   @override
-  State<DoctorNewMedicalRecordScreen> createState() => _DoctorNewMedicalRecordScreenState();
+  State<DoctorNewMedicalRecordScreen> createState() =>
+      _DoctorNewMedicalRecordScreenState();
 }
 
-class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScreen> {
+class _DoctorNewMedicalRecordScreenState
+    extends State<DoctorNewMedicalRecordScreen> {
   Future<List<Appointment>>? _appointmentsFuture;
   Appointment? _selectedAppointment;
   final _titleCtrl = TextEditingController();
@@ -139,19 +160,21 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
     // status:'confirmed' only, so a doctor couldn't start a fresh EMR entry (outside the
     // appointment-card shortcut) for a patient whose only visible appointment was e.g. completed.
     _appointmentsFuture = ApiClient.instance
-        .get('/appointments', query: {'pageSize': 100})
-        .then((res) {
-          final list = <Appointment>[];
-          for (final item in res.list) {
-            try {
-              list.add(Appointment.fromJson(item));
-            } catch (_) {}
-          }
-          if (widget.initialAppointment != null && !list.any((a) => a.id == widget.initialAppointment!.id)) {
-            list.insert(0, widget.initialAppointment!);
-          }
-          return list;
-        }).catchError((_) => widget.initialAppointment != null ? [widget.initialAppointment!] : <Appointment>[]);
+        .getAll('/appointments', query: {'pageSize': 100}).then((res) {
+      final list = <Appointment>[];
+      for (final item in res.list) {
+        try {
+          list.add(Appointment.fromJson(item));
+        } catch (_) {}
+      }
+      if (widget.initialAppointment != null &&
+          !list.any((a) => a.id == widget.initialAppointment!.id)) {
+        list.insert(0, widget.initialAppointment!);
+      }
+      return list;
+    }).catchError((_) => widget.initialAppointment != null
+            ? [widget.initialAppointment!]
+            : <Appointment>[]);
   }
 
   @override
@@ -182,7 +205,8 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
         'title': _titleCtrl.text.trim(),
         if (_typeCtrl.text.trim().isNotEmpty) 'type': _typeCtrl.text.trim(),
         if (_notesCtrl.text.trim().isNotEmpty) 'notes': _notesCtrl.text.trim(),
-        if (_carePlanCtrl.text.trim().isNotEmpty) 'carePlan': _carePlanCtrl.text.trim(),
+        if (_carePlanCtrl.text.trim().isNotEmpty)
+          'carePlan': _carePlanCtrl.text.trim(),
       });
       if (mounted) Navigator.of(context).pop(true);
     } catch (err) {
@@ -200,11 +224,16 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           FutureBuilder<List<Appointment>>(
             future: _appointmentsFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               final appts = snapshot.data ?? [];
               return DropdownButtonFormField<Appointment>(
                 initialValue: _selectedAppointment,
@@ -214,7 +243,7 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
                     .map((a) => DropdownMenuItem(
                           value: a,
                           child: Text(
-                            '${a.patient?.name ?? "Patient"} · ${a.appointmentDate} ${a.appointmentTime}',
+                            '${a.patient?.name ?? "Patient"} · ${a.appointmentDate} ${a.displayTime}',
                             overflow: TextOverflow.ellipsis,
                           ),
                         ))
@@ -227,15 +256,27 @@ class _DoctorNewMedicalRecordScreenState extends State<DoctorNewMedicalRecordScr
           // COMPLETENESS FIX (mobile parity — content/copy): the web DoctorEmr form labels this
           // same required field (posted as `title`) "Diagnosis", not "Title" (FeaturePages.jsx#
           // DoctorEmr).
-          TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: 'Diagnosis')),
+          TextField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(labelText: 'Diagnosis')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _typeCtrl, decoration: const InputDecoration(labelText: 'Type (optional)')),
+          TextField(
+              controller: _typeCtrl,
+              decoration: const InputDecoration(labelText: 'Type (optional)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _notesCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'Notes (optional)')),
+          TextField(
+              controller: _notesCtrl,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Notes (optional)')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _carePlanCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'Care plan (optional)')),
+          TextField(
+              controller: _carePlanCtrl,
+              maxLines: 4,
+              decoration:
+                  const InputDecoration(labelText: 'Care plan (optional)')),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Save record', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Save record', onPressed: _submit, loading: _submitting),
         ],
       ),
     );

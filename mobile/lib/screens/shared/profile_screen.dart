@@ -9,10 +9,8 @@ import '../../core/api_client.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
 import '../../theme/app_theme.dart';
+import '../../theme/theme_preference.dart';
 import '../../widgets/common_widgets.dart';
-import 'contact_support_screen.dart';
-import 'delete_account_screen.dart';
-import 'legal_policies_screen.dart';
 
 /// COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): maps a picked image's extension to
 /// one of the exact mimetypes services/fileUploadService.js's IMAGE_MIME_EXTENSIONS allowlist
@@ -124,7 +122,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _emergencyContactController.text = profile?.emergencyContact ?? '';
     _medicalHistoryController.text = profile?.medicalHistory ?? '';
     _aboutController.text = profile?.about ?? '';
-    _dateOfBirth = profile?.dateOfBirth != null ? DateTime.tryParse(profile!.dateOfBirth!) : null;
+    _dateOfBirth = profile?.dateOfBirth != null
+        ? DateTime.tryParse(profile!.dateOfBirth!)
+        : null;
     // Defensive normalization (see family_members_screen.dart's identical fix): a profile saved
     // before this parity fix may still carry the old lowercase 'male'/'female'/'other' — match
     // case-insensitively against the current title-cased options rather than showing it as a
@@ -145,9 +145,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _languagesController.text = profile?.languages?.join(', ') ?? '';
     _registrationNumberController.text = profile?.registrationNumber ?? '';
     _experienceController.text = profile?.experienceYears?.toString() ?? '';
-    _minBookingAmountController.text = profile?.minBookingAdvanceAmount?.toStringAsFixed(0) ?? '';
+    _minBookingAmountController.text =
+        profile?.minBookingAdvanceAmount?.toStringAsFixed(0) ?? '';
     _bookingPaymentPolicy = profile?.bookingPaymentPolicy ??
-        ((profile?.minBookingAdvanceAmount ?? 0) > 0 ? 'minimum_or_full' : 'full');
+        ((profile?.minBookingAdvanceAmount ?? 0) > 0
+            ? 'minimum_or_full'
+            : 'full');
     _specializationId = profile?.specializationId;
     _emergencyAvailable = profile?.emergencyAvailable ?? false;
     if (user?.role == 'doctor') _loadSpecializations();
@@ -166,10 +169,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadSpecializations() async {
     try {
-      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .get('/geography/specializations', query: {'pageSize': 100});
       final list = <Specialization>[];
       for (final item in res.list) {
-        try { list.add(Specialization.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Specialization.fromJson(item));
+        } catch (_) {}
       }
       if (mounted) setState(() => _specializations = list);
     } catch (_) {
@@ -200,10 +206,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Builds dropdown items from [options], appending [current] as an extra item when it's
   /// non-null but not one of the known options — otherwise a stored value the backend
   /// accepted but this curated list doesn't know about would crash the dropdown.
-  List<DropdownMenuItem<String>> _dropdownItems(Map<String, String> options, String? current) {
+  List<DropdownMenuItem<String>> _dropdownItems(
+      Map<String, String> options, String? current) {
     return [
-      for (final entry in options.entries) DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-      if (current != null && !options.containsKey(current)) DropdownMenuItem(value: current, child: Text(current)),
+      for (final entry in options.entries)
+        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+      if (current != null && !options.containsKey(current))
+        DropdownMenuItem(value: current, child: Text(current)),
     ];
   }
 
@@ -230,7 +239,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     };
     if (role == 'patient') {
       body.addAll({
-        if (_dateOfBirth != null) 'dateOfBirth': DateFormat('yyyy-MM-dd').format(_dateOfBirth!),
+        if (_dateOfBirth != null)
+          'dateOfBirth': DateFormat('yyyy-MM-dd').format(_dateOfBirth!),
         if (_gender != null) 'gender': _gender,
         if (_bloodGroup != null) 'bloodGroup': _bloodGroup,
         'emergencyContact': _emergencyContactController.text.trim(),
@@ -241,14 +251,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body.addAll({
         'qualification': _qualificationController.text.trim(),
         'bio': _bioController.text.trim(),
-        if (_feeController.text.trim().isNotEmpty) 'consultationFee': num.tryParse(_feeController.text.trim()),
-        'languages': _languagesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+        if (_feeController.text.trim().isNotEmpty)
+          'consultationFee': num.tryParse(_feeController.text.trim()),
+        'languages': _languagesController.text
+            .split(',')
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList(),
         if (_specializationId != null) 'specializationId': _specializationId,
         'registrationNumber': _registrationNumberController.text.trim(),
         if (_experienceController.text.trim().isNotEmpty)
           'experienceYears': int.tryParse(_experienceController.text.trim()),
         'bookingPaymentPolicy': _bookingPaymentPolicy,
-        'minBookingAdvanceAmount': _bookingPaymentPolicy == 'minimum_or_full' && _minBookingAmountController.text.trim().isNotEmpty
+        'minBookingAdvanceAmount': _bookingPaymentPolicy == 'minimum_or_full' &&
+                _minBookingAmountController.text.trim().isNotEmpty
             ? num.tryParse(_minBookingAmountController.text.trim())
             : null,
         'emergencyAvailable': _emergencyAvailable,
@@ -296,18 +312,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Take a photo'), onTap: () => Navigator.of(context).pop(ImageSource.camera)),
-            ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.of(context).pop(ImageSource.gallery)),
+            Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                    leading: const Icon(Icons.photo_camera_outlined),
+                    title: const Text('Take a photo'),
+                    onTap: () =>
+                        Navigator.of(context).pop(ImageSource.camera))),
+            Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                    leading: const Icon(Icons.photo_library_outlined),
+                    title: const Text('Choose from gallery'),
+                    onTap: () =>
+                        Navigator.of(context).pop(ImageSource.gallery))),
           ],
         ),
       ),
     );
     if (source == null) return;
-    final picked = await ImagePicker().pickImage(source: source, maxWidth: 1600, imageQuality: 85);
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 1600, imageQuality: 85);
     if (picked == null || !mounted) return;
     setState(() => _uploadingPhoto = true);
     try {
-      await ApiClient.instance.uploadFile('/media/photo', filePath: picked.path, mimeType: _imageMimeType(picked.path));
+      await ApiClient.instance.uploadFile('/media/photo',
+          filePath: picked.path, mimeType: _imageMimeType(picked.path));
       await auth.refreshProfile();
       if (mounted) showSuccessSnack(context, 'Photo updated');
     } catch (err) {
@@ -330,14 +360,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(leading: const Icon(Icons.photo_camera_outlined), title: const Text('Photograph a document'), onTap: () => Navigator.of(context).pop(ImageSource.camera)),
-            ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from gallery'), onTap: () => Navigator.of(context).pop(ImageSource.gallery)),
+            Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                    leading: const Icon(Icons.photo_camera_outlined),
+                    title: const Text('Photograph a document'),
+                    onTap: () =>
+                        Navigator.of(context).pop(ImageSource.camera))),
+            Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                    leading: const Icon(Icons.photo_library_outlined),
+                    title: const Text('Choose from gallery'),
+                    onTap: () =>
+                        Navigator.of(context).pop(ImageSource.gallery))),
           ],
         ),
       ),
     );
     if (source == null) return;
-    final picked = await ImagePicker().pickImage(source: source, maxWidth: 2000, imageQuality: 90);
+    final picked = await ImagePicker()
+        .pickImage(source: source, maxWidth: 2000, imageQuality: 90);
     if (picked == null || !mounted) return;
     final name = await showDialog<String>(
       context: context,
@@ -345,10 +388,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final ctrl = TextEditingController();
         return AlertDialog(
           title: const Text('Document name'),
-          content: TextField(controller: ctrl, decoration: const InputDecoration(labelText: 'e.g. Registration certificate', hintText: 'Optional')),
+          content: TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                  labelText: 'e.g. Registration certificate',
+                  hintText: 'Optional')),
           actions: [
-            TextButton(onPressed: () => Navigator.of(context).pop(''), child: const Text('Skip')),
-            TextButton(onPressed: () => Navigator.of(context).pop(ctrl.text.trim()), child: const Text('Upload')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(''),
+                child: const Text('Skip')),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(ctrl.text.trim()),
+                child: const Text('Upload')),
           ],
         );
       },
@@ -377,8 +428,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // was already parsed onto VerificationDocument and simply never read.
   Future<void> _openDocument(VerificationDocument doc) async {
     final uri = Uri.tryParse(doc.url);
-    if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (mounted) showErrorSnack(context, Exception('Could not open this document.'));
+    if (uri == null ||
+        !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        showErrorSnack(context, Exception('Could not open this document.'));
+      }
     }
   }
 
@@ -408,6 +462,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
             // Website splits this by role: patient/receptionist/admin/superadmin land on
+            const ThemePreferenceCard(),
             // PortalProfile ("My profile" / "Manage personal, contact, and account security
             // information." — PortalSectionPages.jsx), but doctor has its own DoctorProfileEdit
             // page instead, with a different subtitle describing what it actually edits
@@ -424,7 +479,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // on it by uploading a document below. Mobile only had the equivalent banner on the
             // dashboard (doctor_dashboard_screen.dart), so a doctor who navigated straight to "My
             // profile" never saw why/what to do.
-            if (role == 'doctor' && auth.profile?.doctorStatus != null && auth.profile?.doctorStatus != 'verified') ...[
+            if (role == 'doctor' &&
+                auth.profile?.doctorStatus != null &&
+                auth.profile?.doctorStatus != 'verified') ...[
               Container(
                 margin: const EdgeInsets.only(bottom: AppSpacing.md),
                 padding: const EdgeInsets.all(AppSpacing.md),
@@ -437,11 +494,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   auth.profile?.doctorStatus == 'disabled'
                       ? 'Your account has been disabled by an admin. Contact support if you believe this is a mistake.'
                       : 'Your account is pending admin verification. Upload a verification document below (registration certificate, degree, or ID proof) to help the review team confirm your credentials.',
-                  style: const TextStyle(color: Color(0xFF92400E), fontSize: 13, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: Color(0xFF92400E),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
                 ),
               ),
             ],
-            if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+            if (_error != null) ...[
+              ErrorBanner(error: _error!),
+              const SizedBox(height: AppSpacing.md)
+            ],
             // COMPLETENESS FIX (audit Priority 3 #8 — mobile parity): see _pickAndUploadPhoto —
             // POST /media/photo had no mobile client at all before this.
             Center(
@@ -450,16 +513,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   CircleAvatar(
                     radius: 44,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                    backgroundImage: auth.user?.photoUrl != null ? CachedNetworkImageProvider(auth.user!.photoUrl!) : null,
+                    backgroundColor:
+                        context.palette.primary.withValues(alpha: 0.12),
+                    backgroundImage: auth.user?.photoUrl != null
+                        ? CachedNetworkImageProvider(auth.user!.photoUrl!)
+                        : null,
                     // Website's PortalProfile/DoctorProfileEdit fall back to the user's own
                     // initials (up to 2 letters) rather than a generic person icon.
                     child: auth.user?.photoUrl == null
                         ? Text(
                             (auth.user?.name ?? '').trim().isEmpty
                                 ? 'U'
-                                : (auth.user!.name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).take(2).map((p) => p[0].toUpperCase()).join()),
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.primary),
+                                : (auth.user!.name
+                                    .trim()
+                                    .split(RegExp(r'\s+'))
+                                    .where((p) => p.isNotEmpty)
+                                    .take(2)
+                                    .map((p) => p[0].toUpperCase())
+                                    .join()),
+                            style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: context.palette.primary),
                           )
                         : null,
                   ),
@@ -467,16 +542,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     right: -4,
                     bottom: -4,
                     child: Material(
-                      color: AppColors.primary,
+                      color: context.palette.primary,
                       shape: const CircleBorder(),
                       child: InkWell(
                         customBorder: const CircleBorder(),
-                        onTap: _uploadingPhoto ? null : () => _pickAndUploadPhoto(auth),
+                        onTap: _uploadingPhoto
+                            ? null
+                            : () => _pickAndUploadPhoto(auth),
                         child: Padding(
                           padding: const EdgeInsets.all(6),
                           child: _uploadingPhoto
-                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.camera_alt_outlined, size: 16, color: Colors.white),
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.camera_alt_outlined,
+                                  size: 16, color: Colors.white),
                         ),
                       ),
                     ),
@@ -488,7 +570,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // Website's PortalProfile titles this card "Account information" for a patient and
             // "Profile details" for every other role (PortalSectionPages.jsx#PortalProfile).
             SectionCard(
-              title: role == 'patient' ? 'Account information' : 'Profile details',
+              title:
+                  role == 'patient' ? 'Account information' : 'Profile details',
               child: Column(
                 children: [
                   // PARITY FIX (mobile parity audit — Patient panel): web's "Full name" field is
@@ -497,14 +580,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   TextFormField(
                     controller: _nameController,
                     decoration: const InputDecoration(labelText: 'Full name'),
-                    validator: (value) => (value == null || value.trim().isEmpty) ? 'Full name is required' : null,
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
+                            ? 'Full name is required'
+                            : null,
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  Text(auth.user?.email ?? '', style: const TextStyle(color: AppColors.textSecondary)),
+                  Text(auth.user?.email ?? '',
+                      style: TextStyle(color: context.palette.textSecondary)),
                   const SizedBox(height: AppSpacing.md),
-                  TextField(controller: _phoneController, decoration: const InputDecoration(labelText: 'Phone')),
+                  TextField(
+                      controller: _phoneController,
+                      decoration: const InputDecoration(labelText: 'Phone')),
                   const SizedBox(height: AppSpacing.md),
-                  TextField(controller: _cityController, decoration: const InputDecoration(labelText: 'City')),
+                  TextField(
+                      controller: _cityController,
+                      decoration: const InputDecoration(labelText: 'City')),
                 ],
               ),
             ),
@@ -519,13 +610,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: OutlinedButton.icon(
                         onPressed: _pickDateOfBirth,
                         icon: const Icon(Icons.cake_outlined, size: 18),
-                        label: Text(_dateOfBirth == null ? 'Date of birth' : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
+                        label: Text(_dateOfBirth == null
+                            ? 'Date of birth'
+                            : DateFormat('dd MMM yyyy').format(_dateOfBirth!)),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
                       initialValue: _gender,
-                      decoration: InputDecoration(labelText: 'Gender', errorText: _genderError),
+                      decoration: InputDecoration(
+                          labelText: 'Gender', errorText: _genderError),
                       items: _dropdownItems(_genderOptions, _gender),
                       // PARITY FIX (mobile parity audit — Patient panel): web's PortalProfile
                       // saves gender IMMEDIATELY on change (`onChange={changeGender}` ->
@@ -538,18 +632,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
                       initialValue: _bloodGroup,
-                      decoration: const InputDecoration(labelText: 'Blood group'),
+                      decoration:
+                          const InputDecoration(labelText: 'Blood group'),
                       items: _dropdownItems(_bloodGroupOptions, _bloodGroup),
                       onChanged: (v) => setState(() => _bloodGroup = v),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _emergencyContactController, decoration: const InputDecoration(labelText: 'Emergency contact')),
+                    TextField(
+                        controller: _emergencyContactController,
+                        decoration: const InputDecoration(
+                            labelText: 'Emergency contact')),
                     const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _addressController, decoration: const InputDecoration(labelText: 'Address'), maxLines: 2),
+                    TextField(
+                        controller: _addressController,
+                        decoration: const InputDecoration(labelText: 'Address'),
+                        maxLines: 2),
                     const SizedBox(height: AppSpacing.md),
                     TextField(
                       controller: _medicalHistoryController,
-                      decoration: const InputDecoration(labelText: 'Medical history'),
+                      decoration:
+                          const InputDecoration(labelText: 'Medical history'),
                       maxLines: 3,
                     ),
                   ],
@@ -569,7 +671,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: 'About',
                 child: TextField(
                   controller: _aboutController,
-                  decoration: const InputDecoration(labelText: 'About', hintText: 'Add a short profile description'),
+                  decoration: const InputDecoration(
+                      labelText: 'About',
+                      hintText: 'Add a short profile description'),
                   maxLines: 3,
                 ),
               ),
@@ -583,25 +687,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     DropdownButtonFormField<String>(
                       initialValue: _specializationId,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Specialization'),
+                      decoration:
+                          const InputDecoration(labelText: 'Specialization'),
                       items: [
-                        for (final s in _specializations) DropdownMenuItem(value: s.id, child: Text(s.name)),
+                        for (final s in _specializations)
+                          DropdownMenuItem(value: s.id, child: Text(s.name)),
                         // A specialization already set (via another client) but not in the
                         // fetched list yet must still show — never silently drop it.
-                        if (_specializationId != null && _specializations.every((s) => s.id != _specializationId))
-                          DropdownMenuItem(value: _specializationId, child: Text(auth.profile?.specialization?['name'] as String? ?? 'Current')),
+                        if (_specializationId != null &&
+                            _specializations
+                                .every((s) => s.id != _specializationId))
+                          DropdownMenuItem(
+                              value: _specializationId,
+                              child: Text(auth.profile?.specialization?['name']
+                                      as String? ??
+                                  'Current')),
                       ],
                       onChanged: (v) => setState(() => _specializationId = v),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _qualificationController, decoration: const InputDecoration(labelText: 'Qualification')),
+                    TextField(
+                        controller: _qualificationController,
+                        decoration:
+                            const InputDecoration(labelText: 'Qualification')),
                     const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _registrationNumberController, decoration: const InputDecoration(labelText: 'Registration number')),
+                    TextField(
+                        controller: _registrationNumberController,
+                        decoration: const InputDecoration(
+                            labelText: 'Registration number')),
                     const SizedBox(height: AppSpacing.md),
                     TextField(
                       controller: _experienceController,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Experience (years)'),
+                      decoration: const InputDecoration(
+                          labelText: 'Experience (years)'),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     Row(
@@ -610,7 +729,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: TextFormField(
                             controller: _feeController,
                             keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(labelText: 'Consultation fee (₹)'),
+                            decoration: const InputDecoration(
+                                labelText: 'Consultation fee (₹)'),
                             validator: _validateFee,
                           ),
                         ),
@@ -618,14 +738,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                     const SizedBox(height: AppSpacing.md),
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: _bookingPaymentPolicy,
-                      decoration: const InputDecoration(labelText: 'Booking payment rule'),
+                      decoration: const InputDecoration(
+                          labelText: 'Booking payment rule'),
                       items: const [
-                        DropdownMenuItem(value: 'platform_only', child: Text('₹0 doctor advance — platform charge only')),
-                        DropdownMenuItem(value: 'minimum_or_full', child: Text('Minimum or full — patient chooses')),
-                        DropdownMenuItem(value: 'full', child: Text('Full payment only')),
+                        DropdownMenuItem(
+                            value: 'platform_only',
+                            child: Text(
+                                '₹0 doctor advance — platform charge only')),
+                        DropdownMenuItem(
+                            value: 'minimum_or_full',
+                            child: Text('Minimum or full — patient chooses')),
+                        DropdownMenuItem(
+                            value: 'full', child: Text('Full payment only')),
                       ],
-                      onChanged: (value) => setState(() => _bookingPaymentPolicy = value ?? 'full'),
+                      onChanged: (value) => setState(
+                          () => _bookingPaymentPolicy = value ?? 'full'),
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
@@ -634,21 +763,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           : _bookingPaymentPolicy == 'minimum_or_full'
                               ? 'Patient can choose minimum or full payment. Platform charge applies to both.'
                               : 'Only full payment is shown. Platform charge is included.',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 12, color: context.palette.textSecondary),
                     ),
                     if (_bookingPaymentPolicy == 'minimum_or_full') ...[
                       const SizedBox(height: AppSpacing.md),
                       TextFormField(
                         controller: _minBookingAmountController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                         decoration: const InputDecoration(
                           labelText: 'Minimum booking amount (₹)',
-                          helperText: 'Must be greater than ₹0 and cannot exceed the consultation fee.',
+                          helperText:
+                              'Must be greater than ₹0 and cannot exceed the consultation fee.',
                           helperMaxLines: 2,
                         ),
                         validator: (value) {
                           final amount = num.tryParse(value ?? '');
-                          if (amount == null || amount <= 0) return 'Enter a minimum amount greater than ₹0';
+                          if (amount == null || amount <= 0) {
+                            return 'Enter a minimum amount greater than ₹0';
+                          }
                           return _validateFee(value);
                         },
                       ),
@@ -656,17 +790,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: AppSpacing.md),
                     TextField(
                       controller: _languagesController,
-                      decoration: const InputDecoration(labelText: 'Languages (comma separated)'),
+                      decoration: const InputDecoration(
+                          labelText: 'Languages (comma separated)'),
                     ),
                     const SizedBox(height: AppSpacing.md),
-                    TextField(controller: _bioController, decoration: const InputDecoration(labelText: 'Bio'), maxLines: 3),
+                    TextField(
+                        controller: _bioController,
+                        decoration: const InputDecoration(labelText: 'Bio'),
+                        maxLines: 3),
                     const SizedBox(height: AppSpacing.md),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Available for emergency care'),
-                      value: _emergencyAvailable,
-                      onChanged: (v) => setState(() => _emergencyAvailable = v),
-                    ),
+                    Material(
+                        type: MaterialType.transparency,
+                        child: SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Available for emergency care'),
+                          value: _emergencyAvailable,
+                          onChanged: (v) =>
+                              setState(() => _emergencyAvailable = v),
+                        )),
                   ],
                 ),
               ),
@@ -676,26 +817,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SectionCard(
                 title: 'Verification documents',
                 trailing: TextButton.icon(
-                  onPressed: _uploadingDocument ? null : () => _pickAndUploadDocument(auth),
+                  onPressed: _uploadingDocument
+                      ? null
+                      : () => _pickAndUploadDocument(auth),
                   icon: _uploadingDocument
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.upload_file_outlined, size: 16),
                   label: const Text('Upload'),
                 ),
-                child: (auth.profile?.verificationDocuments ?? const <VerificationDocument>[]).isEmpty
-                    ? const Text('No documents uploaded yet', style: TextStyle(color: AppColors.textSecondary, fontSize: 13))
+                child: (auth.profile?.verificationDocuments ??
+                            const <VerificationDocument>[])
+                        .isEmpty
+                    ? Text('No documents uploaded yet',
+                        style: TextStyle(
+                            color: context.palette.textSecondary, fontSize: 13))
                     : Column(
                         children: auth.profile!.verificationDocuments
-                            .map((doc) => ListTile(
+                            .map((doc) => Material(
+                                type: MaterialType.transparency,
+                                child: ListTile(
                                   contentPadding: EdgeInsets.zero,
-                                  leading: const Icon(Icons.description_outlined, color: AppColors.textSecondary),
-                                  title: Text(doc.name, style: const TextStyle(fontSize: 13)),
-                                  subtitle: doc.uploadedAt != null ? Text(doc.uploadedAt!, style: const TextStyle(fontSize: 11)) : null,
+                                  leading: Icon(Icons.description_outlined,
+                                      color: context.palette.textSecondary),
+                                  title: Text(doc.name,
+                                      style: const TextStyle(fontSize: 13)),
+                                  subtitle: doc.uploadedAt != null
+                                      ? Text(doc.uploadedAt!,
+                                          style: const TextStyle(fontSize: 11))
+                                      : null,
                                   // BUG FIX (mobile parity audit): open the actual uploaded file,
                                   // matching web's "View" link — see _openDocument above.
-                                  trailing: TextButton(onPressed: () => _openDocument(doc), child: const Text('View')),
+                                  trailing: TextButton(
+                                      onPressed: () => _openDocument(doc),
+                                      child: const Text('View')),
                                   onTap: () => _openDocument(doc),
-                                ))
+                                )))
                             .toList(),
                       ),
               ),
@@ -704,38 +863,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
               // (StaffPages.jsx#DoctorProfileEdit) — was entirely absent from mobile. Kept as its
               // own independent save unit exactly like web's separate <form>, not folded into the
               // big profile form above.
-              _BankDetailsSection(initial: auth.profile?.bankDetails, onSaved: auth.refreshProfile),
+              _BankDetailsSection(
+                  initial: auth.profile?.bankDetails,
+                  onSaved: auth.refreshProfile),
             ],
             const SizedBox(height: AppSpacing.lg),
-            PrimaryButton(label: 'Save changes', onPressed: () => _save(auth), loading: _saving),
-            const SizedBox(height: AppSpacing.md),
-            OutlinedButton(onPressed: _openChangePassword, child: const Text('Change password')),
-            const SizedBox(height: AppSpacing.md),
-            // COMPLETENESS FIX (audit Priority 3 #7 — mobile parity): see contact_support_screen.dart
-            // and delete_account_screen.dart — mobile previously had no way to submit a contact
-            // request or an account-deletion request from any role.
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ContactSupportScreen())),
-              icon: const Icon(Icons.support_agent_outlined, size: 18),
-              label: const Text('Contact support'),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            // COMPLETENESS FIX (production-readiness pass, Sept 2026 — "app + website dono me
-            // screen ki tarah" product decision): reachable Privacy Policy / Terms of Service /
-            // Cancellation & Refund Policy screens for every role, mirroring the website's
-            // /privacy, /terms, /cancellation-refund-policy pages — see legal_policies_screen.dart.
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LegalPoliciesScreen())),
-              icon: const Icon(Icons.gavel_outlined, size: 18),
-              label: const Text('Legal & policies'),
-            ),
+            PrimaryButton(
+                label: 'Save changes',
+                onPressed: () => _save(auth),
+                loading: _saving),
             const SizedBox(height: AppSpacing.md),
             OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger, side: const BorderSide(color: AppColors.danger)),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DeleteAccountScreen())),
-              icon: const Icon(Icons.delete_forever_outlined, size: 18),
-              label: const Text('Delete my account'),
+              key: const ValueKey('profile-sign-out'),
+              icon: const Icon(Icons.logout),
+              label: const Text('Sign out'),
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('Sign out?'),
+                    content: const Text(
+                        'You can sign in again to access your account.'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, false),
+                          child: const Text('Cancel')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(dialogContext, true),
+                          child: const Text('Sign out')),
+                    ],
+                  ),
+                );
+                if (confirmed == true && context.mounted) {
+                  await context.read<AuthProvider>().logout();
+                }
+              },
             ),
+            const SizedBox(height: AppSpacing.md),
+            OutlinedButton(
+                onPressed: _openChangePassword,
+                child: const Text('Change password')),
+            const SizedBox(height: AppSpacing.md),
           ],
         ),
       ),
@@ -758,11 +926,16 @@ class _BankDetailsSection extends StatefulWidget {
 }
 
 class _BankDetailsSectionState extends State<_BankDetailsSection> {
-  late final _holderController = TextEditingController(text: widget.initial?.accountHolderName ?? '');
-  late final _bankNameController = TextEditingController(text: widget.initial?.bankName ?? '');
-  late final _accountNumberController = TextEditingController(text: widget.initial?.accountNumber ?? '');
-  late final _ifscController = TextEditingController(text: widget.initial?.ifscCode ?? '');
-  late final _upiController = TextEditingController(text: widget.initial?.upiId ?? '');
+  late final _holderController =
+      TextEditingController(text: widget.initial?.accountHolderName ?? '');
+  late final _bankNameController =
+      TextEditingController(text: widget.initial?.bankName ?? '');
+  late final _accountNumberController =
+      TextEditingController(text: widget.initial?.accountNumber ?? '');
+  late final _ifscController =
+      TextEditingController(text: widget.initial?.ifscCode ?? '');
+  late final _upiController =
+      TextEditingController(text: widget.initial?.upiId ?? '');
   bool _saving = false;
   String? _error;
   bool _saved = false;
@@ -785,11 +958,21 @@ class _BankDetailsSectionState extends State<_BankDetailsSection> {
     });
     try {
       await ApiClient.instance.patch('/me', body: {
-        'bankAccountHolderName': _holderController.text.trim().isEmpty ? null : _holderController.text.trim(),
-        'bankAccountNumber': _accountNumberController.text.trim().isEmpty ? null : _accountNumberController.text.trim(),
-        'bankIfscCode': _ifscController.text.trim().isEmpty ? null : _ifscController.text.trim(),
-        'bankName': _bankNameController.text.trim().isEmpty ? null : _bankNameController.text.trim(),
-        'bankUpiId': _upiController.text.trim().isEmpty ? null : _upiController.text.trim(),
+        'bankAccountHolderName': _holderController.text.trim().isEmpty
+            ? null
+            : _holderController.text.trim(),
+        'bankAccountNumber': _accountNumberController.text.trim().isEmpty
+            ? null
+            : _accountNumberController.text.trim(),
+        'bankIfscCode': _ifscController.text.trim().isEmpty
+            ? null
+            : _ifscController.text.trim(),
+        'bankName': _bankNameController.text.trim().isEmpty
+            ? null
+            : _bankNameController.text.trim(),
+        'bankUpiId': _upiController.text.trim().isEmpty
+            ? null
+            : _upiController.text.trim(),
       });
       await widget.onSaved();
       if (mounted) setState(() => _saved = true);
@@ -807,14 +990,20 @@ class _BankDetailsSectionState extends State<_BankDetailsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Used for payouts. Visible only to you and the platform admin team — never shown to patients or on your public profile.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _holderController, decoration: const InputDecoration(labelText: 'Account holder name')),
+          TextField(
+              controller: _holderController,
+              decoration:
+                  const InputDecoration(labelText: 'Account holder name')),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _bankNameController, decoration: const InputDecoration(labelText: 'Bank name')),
+          TextField(
+              controller: _bankNameController,
+              decoration: const InputDecoration(labelText: 'Bank name')),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _accountNumberController,
@@ -825,17 +1014,21 @@ class _BankDetailsSectionState extends State<_BankDetailsSection> {
           TextField(
             controller: _ifscController,
             textCapitalization: TextCapitalization.characters,
-            decoration: const InputDecoration(labelText: 'IFSC code', hintText: 'e.g. HDFC0001234'),
+            decoration: const InputDecoration(
+                labelText: 'IFSC code', hintText: 'e.g. HDFC0001234'),
           ),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _upiController,
-            decoration: const InputDecoration(labelText: 'UPI ID (optional)', hintText: 'e.g. name@okhdfcbank'),
+            decoration: const InputDecoration(
+                labelText: 'UPI ID (optional)',
+                hintText: 'e.g. name@okhdfcbank'),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'An alternative or addition to the bank account above — fill in either, both, or neither.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 11),
           ),
           const SizedBox(height: AppSpacing.md),
           OutlinedButton(
@@ -844,11 +1037,19 @@ class _BankDetailsSectionState extends State<_BankDetailsSection> {
           ),
           if (_error != null) ...[
             const SizedBox(height: AppSpacing.sm),
-            Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(_error!,
+                style: TextStyle(
+                    color: context.palette.danger,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
           ],
           if (_saved) ...[
             const SizedBox(height: AppSpacing.sm),
-            const Text('Bank details saved.', style: TextStyle(color: AppColors.success, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text('Bank details saved.',
+                style: TextStyle(
+                    color: context.palette.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
           ],
         ],
       ),
@@ -917,29 +1118,41 @@ class _ChangePasswordFormState extends State<_ChangePasswordForm> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Change password', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const Text('Change password',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: AppSpacing.sm),
-          const Text(
+          Text(
             'Changing your password signs you out of this device — you will need to log in again.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: AppSpacing.md),
-          if (_error != null) ...[ErrorBanner(error: _error!), const SizedBox(height: AppSpacing.md)],
+          if (_error != null) ...[
+            ErrorBanner(error: _error!),
+            const SizedBox(height: AppSpacing.md)
+          ],
           TextField(
             controller: _currentController,
             obscureText: true,
             decoration: const InputDecoration(labelText: 'Current password'),
           ),
           const SizedBox(height: AppSpacing.md),
-          TextField(controller: _newController, obscureText: true, decoration: const InputDecoration(labelText: 'New password')),
+          TextField(
+              controller: _newController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'New password')),
           const SizedBox(height: AppSpacing.md),
           TextField(
             controller: _confirmController,
             obscureText: true,
-            decoration: const InputDecoration(labelText: 'Confirm new password'),
+            decoration:
+                const InputDecoration(labelText: 'Confirm new password'),
           ),
           const SizedBox(height: AppSpacing.lg),
-          PrimaryButton(label: 'Change password', onPressed: _submit, loading: _submitting),
+          PrimaryButton(
+              label: 'Change password',
+              onPressed: _submit,
+              loading: _submitting),
         ],
       ),
     );

@@ -114,7 +114,9 @@ void main() {
   });
 
   group('DoctorDirectoryItem.fromJson', () {
-    test('parses a full JSON map, including nested specialization/clinics and the status->doctorStatus mapping', () {
+    test(
+        'parses a full JSON map, including nested specialization/clinics and the status->doctorStatus mapping',
+        () {
       final doctor = DoctorDirectoryItem.fromJson({
         'id': 'd1',
         'name': 'Dr. Smith',
@@ -137,7 +139,12 @@ void main() {
         'emergencyAvailable': true,
         'onlineBooking': true,
         'clinics': [
-          {'id': 'cl1', 'name': 'City Clinic', 'city': 'Mumbai', 'area': 'Andheri'},
+          {
+            'id': 'cl1',
+            'name': 'City Clinic',
+            'city': 'Mumbai',
+            'area': 'Andheri'
+          },
         ],
         'bio': 'Experienced cardiologist',
         'allowRebooking': true,
@@ -175,7 +182,9 @@ void main() {
       expect(doctor.doctorStatus, 'verified');
     });
 
-    test('parses a minimal JSON map without throwing, defaulting numeric/bool/list fields', () {
+    test(
+        'parses a minimal JSON map without throwing, defaulting numeric/bool/list fields',
+        () {
       final doctor = DoctorDirectoryItem.fromJson({
         'id': 'd2',
         'name': 'Dr. Jones',
@@ -223,7 +232,8 @@ void main() {
       expect(doc.uploadedAt, '2024-01-01');
     });
 
-    test('falls back to "Document" for a missing name, and null uploadedAt', () {
+    test('falls back to "Document" for a missing name, and null uploadedAt',
+        () {
       final doc = VerificationDocument.fromJson({
         'url': 'http://example.com/doc.pdf',
       });
@@ -235,7 +245,9 @@ void main() {
   });
 
   group('MeProfile.fromJson', () {
-    test('parses a full JSON map, including nested verificationDocuments and the status->doctorStatus mapping', () {
+    test(
+        'parses a full JSON map, including nested verificationDocuments and the status->doctorStatus mapping',
+        () {
       final profile = MeProfile.fromJson({
         'dateOfBirth': '1990-01-01',
         'gender': 'male',
@@ -263,7 +275,11 @@ void main() {
         'emergencyAvailable': true,
         'minBookingAdvanceAmount': 100,
         'verificationDocuments': [
-          {'name': 'License', 'url': 'http://example.com/doc.pdf', 'uploadedAt': '2024-01-01'},
+          {
+            'name': 'License',
+            'url': 'http://example.com/doc.pdf',
+            'uploadedAt': '2024-01-01'
+          },
         ],
         'clinicId': 'clinic1',
         'since': '2023-01-01',
@@ -297,13 +313,16 @@ void main() {
       expect(profile.minBookingAdvanceAmount, 100.0);
       expect(profile.verificationDocuments, hasLength(1));
       expect(profile.verificationDocuments.first.name, 'License');
-      expect(profile.verificationDocuments.first.url, 'http://example.com/doc.pdf');
+      expect(profile.verificationDocuments.first.url,
+          'http://example.com/doc.pdf');
       expect(profile.verificationDocuments.first.uploadedAt, '2024-01-01');
       expect(profile.clinicId, 'clinic1');
       expect(profile.since, '2023-01-01');
     });
 
-    test('parses a minimal JSON map without throwing, leaving optional fields null/default', () {
+    test(
+        'parses a minimal JSON map without throwing, leaving optional fields null/default',
+        () {
       final profile = MeProfile.fromJson({});
 
       expect(profile.dateOfBirth, isNull);

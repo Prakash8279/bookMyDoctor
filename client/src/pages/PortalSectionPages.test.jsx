@@ -111,10 +111,16 @@ describe('QueueTracker', () => {
 })
 
 describe('PortalAppointments', () => {
+  it('shows booking creation date and time in the shared admin registry', async () => {
+    mockGetRoutes({ '/appointments': [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00' }] })
+    renderConnected(PortalAppointments, { role: 'admin' })
+    expect(await screen.findByText('22/10/2026 02:10:05 IST')).toBeInTheDocument()
+    expect(screen.getByText('2026-10-25')).toBeInTheDocument()
+  })
   const APPOINTMENTS = [
     { id: 'a1', status: 'pending_payment', patient: { name: 'Asha' } },
-    { id: 'a2', status: 'confirmed', patient: { name: 'Ben' } },
-    { id: 'a3', status: 'upcoming', patient: { name: 'Chitra' } },
+    { id: 'a2', status: 'confirmed', paymentStatus:'paid', patient: { name: 'Ben' } },
+    { id: 'a3', status: 'upcoming', paymentStatus:'paid', patient: { name: 'Chitra' } },
   ]
 
   it('admin view: a pending_payment booking can only be cancelled, never confirmed/completed', async () => {
@@ -178,7 +184,7 @@ describe('PortalPatients', () => {
     expect(screen.getByText('Asha Mehta')).toBeInTheDocument()
     expect(screen.getByText('9000000001')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText(/no dedicated patient directory/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Search clinic patient')).toBeInTheDocument()
   })
 })
 
@@ -187,6 +193,7 @@ describe('Specializations', () => {
     apiClient.post.mockResolvedValue({ id: 'spec-2', name: 'Dermatology' })
     renderConnected(Specializations, {})
 
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add specialization' })).not.toBeDisabled())
     fireEvent.click(screen.getByRole('button', { name: 'Add specialization' }))
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Dermatology' } })
     fireEvent.click(screen.getByRole('button', { name: /Save specialization/i }))
@@ -332,7 +339,7 @@ describe('PortalSectionPages role gating (RoleGuard, via App)', () => {
   it('redirects a doctor away from the patient-only /patient/queue route to their own dashboard', async () => {
     mockBootFor(DOCTOR_USER)
     render(<MemoryRouter initialEntries={['/patient/queue']}><App /></MemoryRouter>)
-    expect(await screen.findByText(/Welcome, Nikhil\./i)).toBeInTheDocument()
+    expect(await screen.findAllByText(/Welcome, Nikhil\./i)).toHaveLength(2)
     expect(screen.queryByText('Live queue tracker')).not.toBeInTheDocument()
   })
 })

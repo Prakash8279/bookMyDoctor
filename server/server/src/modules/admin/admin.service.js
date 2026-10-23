@@ -166,6 +166,9 @@ async function updateBookingRules(body, actor) {
     // comment). null is a legitimate, common value for these two: "no restriction".
     onlineBookingWindowStart: body.onlineBookingWindowStart ?? null,
     onlineBookingWindowEnd: body.onlineBookingWindowEnd ?? null,
+    // Older clients must not accidentally clear the new advance-booking policy.
+    ...(body.advanceBookingWindowStart !== undefined ? { advanceBookingWindowStart: body.advanceBookingWindowStart } : {}),
+    ...(body.advanceBookingWindowEnd !== undefined ? { advanceBookingWindowEnd: body.advanceBookingWindowEnd } : {}),
     onlineBookingMaxAdvanceDays: body.onlineBookingMaxAdvanceDays ?? null,
   };
 

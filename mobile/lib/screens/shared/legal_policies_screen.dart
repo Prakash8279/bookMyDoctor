@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
+import '../../widgets/role_scaffold.dart';
+import 'contact_support_screen.dart';
+import 'delete_account_screen.dart';
 
 /// Mobile mirror of the website's three standalone legal pages (client/src/pages/PrivacyPolicy.jsx,
 /// TermsOfService.jsx, CancellationRefundPolicy.jsx) — reachable from every role's "My profile"
@@ -15,31 +18,49 @@ class LegalPoliciesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget tile(IconData icon, String title, String subtitle, List<List<String>> sections, {String? intro}) {
+    Widget tile(IconData icon, String title, String subtitle,
+        List<List<String>> sections,
+        {String? intro}) {
       return Card(
-        child: ListTile(
-          leading: Icon(icon, color: AppColors.primary),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => LegalDocumentScreen(title: title, lastUpdated: _lastUpdated, sections: sections, intro: intro),
-          )),
-        ),
+        child: Material(
+            type: MaterialType.transparency,
+            child: ListTile(
+              leading: Icon(icon, color: AppColors.primary),
+              title: Text(title,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => LegalDocumentScreen(
+                    title: title,
+                    lastUpdated: _lastUpdated,
+                    sections: sections,
+                    intro: intro),
+              )),
+            )),
       );
     }
 
     return Scaffold(
+      appBar: RoleScaffold.of(context) == null
+          ? AppBar(title: const Text('Help & Policies'))
+          : null,
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           const PageHeader(
             title: 'Legal & policies',
-            subtitle: 'Privacy, terms of service, and our cancellation & refund policy.',
+            subtitle:
+                'Privacy, terms of service, and our cancellation & refund policy.',
           ),
-          tile(Icons.privacy_tip_outlined, 'Privacy Policy', 'What we collect, why, and who it’s shared with.', kPrivacySections),
+          tile(
+              Icons.privacy_tip_outlined,
+              'Privacy Policy',
+              'What we collect, why, and who it’s shared with.',
+              kPrivacySections),
           const SizedBox(height: AppSpacing.sm),
-          tile(Icons.description_outlined, 'Terms of Service', 'The terms that govern using BookADoctors.', kTermsSections),
+          tile(Icons.description_outlined, 'Terms of Service',
+              'The terms that govern using BookADoctors.', kTermsSections),
           const SizedBox(height: AppSpacing.sm),
           tile(
             Icons.receipt_long_outlined,
@@ -49,6 +70,19 @@ class LegalPoliciesScreen extends StatelessWidget {
             intro:
                 'Doctor Connect is a technology platform that enables patients to discover doctors and book appointments. Cancellation and refund matters related to an appointment are primarily handled by the respective doctor or clinic.',
           ),
+          const SizedBox(height: AppSpacing.sm),
+          ListTile(
+              leading: const Icon(Icons.contact_support_outlined),
+              title: const Text('Contact Us'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const ContactSupportScreen()))),
+          ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Account Deletion'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const DeleteAccountScreen()))),
         ],
       ),
     );
@@ -81,16 +115,22 @@ class LegalDocumentScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('Last updated: $lastUpdated', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text('Last updated: $lastUpdated',
+              style: TextStyle(
+                  color: context.palette.textSecondary, fontSize: 12)),
           if (intro != null) ...[
             const SizedBox(height: AppSpacing.md),
             Text(intro!, style: const TextStyle(height: 1.5)),
           ],
           const SizedBox(height: AppSpacing.lg),
           for (final section in sections) ...[
-            Text(section[0], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(section[0],
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(section[1], style: const TextStyle(height: 1.5)),
             const SizedBox(height: AppSpacing.lg),

@@ -7,8 +7,10 @@
 library;
 
 import 'core_models.dart';
+import '../core/india_time.dart';
 
 class NamedRef {
+  final String? createdAt;
   final String id;
   final int? patientNumber;
   final int? doctorNumber;
@@ -16,21 +18,35 @@ class NamedRef {
   final String? relation;
   final String? address;
   final String? phone;
-  NamedRef({required this.id, this.patientNumber, this.doctorNumber, this.name, this.relation, this.address, this.phone});
+  NamedRef(
+      {required this.id,
+      this.patientNumber,
+      this.doctorNumber,
+      this.name,
+      this.relation,
+      this.address,
+      this.phone,
+      this.createdAt});
   factory NamedRef.fromJson(Map<String, dynamic>? json) => NamedRef(
         id: json == null ? '' : asString(json['id']),
-        patientNumber: json?['patientNumber'] == null ? null : asInt(json?['patientNumber']),
-        doctorNumber: json?['doctorNumber'] == null ? null : asInt(json?['doctorNumber']),
+        createdAt: json?['createdAt'] as String?,
+        patientNumber: json?['patientNumber'] == null
+            ? null
+            : asInt(json?['patientNumber']),
+        doctorNumber:
+            json?['doctorNumber'] == null ? null : asInt(json?['doctorNumber']),
         name: json?['name'] as String?,
         relation: json?['relation'] as String?,
         address: json?['address'] as String?,
         phone: json?['phone'] as String?,
       );
 
-  String get patientDisplayName =>
-      patientNumber == null ? (name ?? 'Patient') : 'DCP$patientNumber · ${name ?? 'Patient'}';
-  String get doctorDisplayName =>
-      doctorNumber == null ? (name ?? 'Doctor') : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
+  String get patientDisplayName => patientNumber == null
+      ? (name ?? 'Patient')
+      : 'DCP$patientNumber · ${name ?? 'Patient'}';
+  String get doctorDisplayName => doctorNumber == null
+      ? (name ?? 'Doctor')
+      : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
 }
 
 class Fees {
@@ -127,7 +143,8 @@ class PatientRef {
     if (json == null) return PatientRef(id: '');
     return PatientRef(
       id: asString(json['id']),
-      patientNumber: json['patientNumber'] == null ? null : asInt(json['patientNumber']),
+      patientNumber:
+          json['patientNumber'] == null ? null : asInt(json['patientNumber']),
       name: json['name'] as String?,
       phone: json['phone'] as String?,
       gender: json['gender'] as String?,
@@ -138,8 +155,9 @@ class PatientRef {
     );
   }
 
-  String get displayName =>
-      patientNumber == null ? (name ?? 'Patient') : 'DCP$patientNumber · ${name ?? 'Patient'}';
+  String get displayName => patientNumber == null
+      ? (name ?? 'Patient')
+      : 'DCP$patientNumber · ${name ?? 'Patient'}';
 
   /// Age computed from dateOfBirth — null whenever dateOfBirth wasn't sent (receptionist/patient
   /// callers never receive it at all). Mirrors the web app's ageFromDob() in StaffPages.jsx.
@@ -163,7 +181,9 @@ class PatientRef {
     if (gender != null && gender!.trim().isNotEmpty) parts.add(gender!);
     final a = age;
     if (a != null) parts.add('${a}y');
-    if (bloodGroup != null && bloodGroup!.trim().isNotEmpty) parts.add(bloodGroup!);
+    if (bloodGroup != null && bloodGroup!.trim().isNotEmpty) {
+      parts.add(bloodGroup!);
+    }
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
@@ -192,25 +212,36 @@ class DoctorRef {
   final String? name;
   final String? photoUrl;
   final Specialization? specialization;
-  DoctorRef({required this.id, this.doctorNumber, this.name, this.photoUrl, this.specialization});
+  DoctorRef(
+      {required this.id,
+      this.doctorNumber,
+      this.name,
+      this.photoUrl,
+      this.specialization});
   factory DoctorRef.fromJson(Map<String, dynamic>? json) {
     if (json == null) return DoctorRef(id: '');
     return DoctorRef(
       id: asString(json['id']),
-      doctorNumber: json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
+      doctorNumber:
+          json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
       name: json['name'] as String?,
       photoUrl: json['photoUrl'] as String?,
       specialization: json['specialization'] == null
           ? null
-          : Specialization.fromJson(json['specialization'] as Map<String, dynamic>),
+          : Specialization.fromJson(
+              json['specialization'] as Map<String, dynamic>),
     );
   }
 
-  String get displayName =>
-      doctorNumber == null ? (name ?? 'Doctor') : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
+  String get displayName => doctorNumber == null
+      ? (name ?? 'Doctor')
+      : 'DCD$doctorNumber · ${name ?? 'Doctor'}';
 }
 
 class Appointment {
+  final bool isEstimatedTime;
+  final String? estimatedVisitAt;
+  final bool? clinicPaymentComplete;
   final String id;
   final PatientRef? patient;
   final NamedRef? familyMember;
@@ -231,6 +262,9 @@ class Appointment {
   final String? createdAt;
 
   Appointment({
+    this.isEstimatedTime = false,
+    this.estimatedVisitAt,
+    this.clinicPaymentComplete,
     required this.id,
     this.patient,
     this.familyMember,
@@ -252,12 +286,22 @@ class Appointment {
   });
 
   factory Appointment.fromJson(Map<String, dynamic> json) => Appointment(
+        isEstimatedTime: asBool(json['isEstimatedTime']),
+        estimatedVisitAt: json['estimatedVisitAt'] as String?,
+        clinicPaymentComplete: json['clinicPaymentComplete'] as bool?,
         id: asString(json['id']),
-        patient: json['patient'] == null ? null : PatientRef.fromJson(json['patient'] as Map<String, dynamic>),
-        familyMember:
-            json['familyMember'] == null ? null : NamedRef.fromJson(json['familyMember'] as Map<String, dynamic>),
-        doctor: json['doctor'] == null ? null : DoctorRef.fromJson(json['doctor'] as Map<String, dynamic>),
-        clinic: json['clinic'] == null ? null : NamedRef.fromJson(json['clinic'] as Map<String, dynamic>),
+        patient: json['patient'] == null
+            ? null
+            : PatientRef.fromJson(json['patient'] as Map<String, dynamic>),
+        familyMember: json['familyMember'] == null
+            ? null
+            : NamedRef.fromJson(json['familyMember'] as Map<String, dynamic>),
+        doctor: json['doctor'] == null
+            ? null
+            : DoctorRef.fromJson(json['doctor'] as Map<String, dynamic>),
+        clinic: json['clinic'] == null
+            ? null
+            : NamedRef.fromJson(json['clinic'] as Map<String, dynamic>),
         appointmentDate: asString(json['appointmentDate']),
         appointmentTime: asString(json['appointmentTime']),
         reason: json['reason'] as String?,
@@ -272,6 +316,20 @@ class Appointment {
         checkedInAt: json['checkedInAt'] as String?,
         createdAt: json['createdAt'] as String?,
       );
+
+  String get displayTime {
+    if (!isEstimatedTime) return appointmentTime;
+    final instant = DateTime.tryParse(estimatedVisitAt ?? '');
+    if (instant == null) return 'Approx. $appointmentTime';
+    final local = indiaClock(instant);
+    final date = indiaToday(instant);
+    final time =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return 'Approx. ${date == appointmentDate ? '' : '$date '}$time';
+  }
+
+  bool get canStartClinicActions =>
+      clinicPaymentComplete ?? (paymentStatus == 'paid');
 }
 
 /// GET /appointments/booking-status/:jobId polling result.
@@ -297,15 +355,21 @@ class BookingStatus {
   factory BookingStatus.fromJson(Map<String, dynamic> json) => BookingStatus(
         jobId: asString(json['jobId']),
         status: asString(json['status']),
-        appointment: json['appointment'] == null ? null : Appointment.fromJson(json['appointment'] as Map<String, dynamic>),
+        appointment: json['appointment'] == null
+            ? null
+            : Appointment.fromJson(json['appointment'] as Map<String, dynamic>),
         error: json['error'] as Map<String, dynamic>?,
-        queuePosition: json['queuePosition'] == null ? null : asInt(json['queuePosition']),
-        aheadOfYou: json['aheadOfYou'] == null ? null : asInt(json['aheadOfYou']),
-        etaSeconds: json['etaSeconds'] == null ? null : asInt(json['etaSeconds']),
+        queuePosition:
+            json['queuePosition'] == null ? null : asInt(json['queuePosition']),
+        aheadOfYou:
+            json['aheadOfYou'] == null ? null : asInt(json['aheadOfYou']),
+        etaSeconds:
+            json['etaSeconds'] == null ? null : asInt(json['etaSeconds']),
       );
 }
 
 class QueueTokenItem {
+  final String? queueDate;
   final String id;
   final String appointmentId;
   final String tokenNumber;
@@ -316,6 +380,7 @@ class QueueTokenItem {
   final String? source;
 
   QueueTokenItem({
+    this.queueDate,
     required this.id,
     required this.appointmentId,
     required this.tokenNumber,
@@ -327,13 +392,16 @@ class QueueTokenItem {
   });
 
   factory QueueTokenItem.fromJson(Map<String, dynamic> json) => QueueTokenItem(
+        queueDate: json['queueDate'] as String?,
         id: asString(json['id']),
         appointmentId: asString(json['appointmentId']),
         tokenNumber: json['tokenNumber']?.toString() ?? '',
         status: asString(json['status'], 'waiting'),
         patientsAhead: asInt(json['patientsAhead']),
         estimatedWaitMinutes: asInt(json['estimatedWaitMinutes']),
-        patient: json['patient'] == null ? null : PatientRef.fromJson(json['patient'] as Map<String, dynamic>),
+        patient: json['patient'] == null
+            ? null
+            : PatientRef.fromJson(json['patient'] as Map<String, dynamic>),
         source: json['source'] as String?,
       );
 }
@@ -361,12 +429,18 @@ class MedicalRecordItem {
     this.createdAt,
   });
 
-  factory MedicalRecordItem.fromJson(Map<String, dynamic> json) => MedicalRecordItem(
+  factory MedicalRecordItem.fromJson(Map<String, dynamic> json) =>
+      MedicalRecordItem(
         id: asString(json['id']),
-        appointment:
-            json['appointment'] == null ? null : NamedRef.fromJson(json['appointment'] as Map<String, dynamic>),
-        doctor: json['doctor'] == null ? null : NamedRef.fromJson(json['doctor'] as Map<String, dynamic>),
-        patient: json['patient'] == null ? null : NamedRef.fromJson(json['patient'] as Map<String, dynamic>),
+        appointment: json['appointment'] == null
+            ? null
+            : NamedRef.fromJson(json['appointment'] as Map<String, dynamic>),
+        doctor: json['doctor'] == null
+            ? null
+            : NamedRef.fromJson(json['doctor'] as Map<String, dynamic>),
+        patient: json['patient'] == null
+            ? null
+            : NamedRef.fromJson(json['patient'] as Map<String, dynamic>),
         title: asString(json['title']),
         type: json['type'] as String?,
         notes: json['notes'] as String?,
@@ -388,7 +462,9 @@ class PaymentItem {
   final Fees fees;
   final String? createdAt;
 
-  String? get bookingId => (appointment != null && appointment!.id.isNotEmpty) ? appointment!.id : null;
+  String? get bookingId => (appointment != null && appointment!.id.isNotEmpty)
+      ? appointment!.id
+      : null;
 
   PaymentItem({
     required this.id,
@@ -409,12 +485,23 @@ class PaymentItem {
         receiptNumber: json['receiptNumber'] as String?,
         appointment: json['appointment'] is Map<String, dynamic>
             ? NamedRef.fromJson(json['appointment'] as Map<String, dynamic>)
-            : (json['appointmentId'] != null || json['bookingId'] != null || json['appointment_id'] != null)
-                ? NamedRef(id: asString(json['appointmentId'] ?? json['bookingId'] ?? json['appointment_id']))
+            : (json['appointmentId'] != null ||
+                    json['bookingId'] != null ||
+                    json['appointment_id'] != null)
+                ? NamedRef(
+                    id: asString(json['appointmentId'] ??
+                        json['bookingId'] ??
+                        json['appointment_id']))
                 : null,
-        patient: json['patient'] == null ? null : NamedRef.fromJson(json['patient'] as Map<String, dynamic>),
-        doctor: json['doctor'] == null ? null : NamedRef.fromJson(json['doctor'] as Map<String, dynamic>),
-        clinic: json['clinic'] == null ? null : NamedRef.fromJson(json['clinic'] as Map<String, dynamic>),
+        patient: json['patient'] == null
+            ? null
+            : NamedRef.fromJson(json['patient'] as Map<String, dynamic>),
+        doctor: json['doctor'] == null
+            ? null
+            : NamedRef.fromJson(json['doctor'] as Map<String, dynamic>),
+        clinic: json['clinic'] == null
+            ? null
+            : NamedRef.fromJson(json['clinic'] as Map<String, dynamic>),
         mode: asString(json['mode']),
         transactionRef: json['transactionRef'] as String?,
         status: asString(json['status'], 'pending'),

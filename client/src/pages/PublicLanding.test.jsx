@@ -1,6 +1,6 @@
 // Unit tests for the marketing landing pages in PublicLanding.jsx.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { act, render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
@@ -117,6 +117,46 @@ describe('PatientLanding', () => {
   it('links the doctor CTA to doctor registration', () => {
     renderWithLocation(<PatientLanding />)
     expect(screen.getByRole('link', { name: /Join as a doctor/ })).toHaveAttribute('href', '/register?role=doctor')
+  })
+
+  it('does not display a sample story or unapproved reviews', () => {
+    useAppStore.setState({ data: {
+      ...useAppStore.getState().data,
+      reviews: [
+        { id: 'pending', status: 'pending', text: 'Waiting for approval', rating: 5 },
+        { id: 'rejected', status: 'rejected', text: 'Rejected feedback', rating: 1 },
+      ],
+    } })
+    renderWithLocation(<PatientLanding />)
+    expect(screen.queryByText('Rahul V.')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Waiting for approval/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Approved patient reviews' })).not.toBeInTheDocument()
+  })
+
+  it('shows only approved patient reviews and slides between them', () => {
+    vi.useFakeTimers()
+    try {
+      useAppStore.setState({ data: {
+        ...useAppStore.getState().data,
+        reviews: [
+          { id: 'one', status: 'approved', text: 'Helpful doctor', rating: 5, patient: { name: 'Anita Rao' } },
+          { id: 'two', status: 'approved', text: 'Smooth appointment', rating: 4, patient: { name: 'Ravi Kumar' } },
+          { id: 'three', status: 'pending', text: 'Private until approved', rating: 5 },
+        ],
+      } })
+      renderWithLocation(<PatientLanding />)
+      const carousel = screen.getByRole('region', { name: 'Approved patient reviews' })
+      expect(screen.getByText('Anita R.')).toBeInTheDocument()
+      expect(screen.getByText(/Smooth appointment/)).toBeInTheDocument()
+      expect(screen.queryByText(/Private until approved/)).not.toBeInTheDocument()
+      expect(carousel.querySelector('.testimonial-track')).toHaveStyle('transform: translateX(-0%)')
+      act(() => vi.advanceTimersByTime(5000))
+      expect(carousel.querySelector('.testimonial-track')).toHaveStyle('transform: translateX(-100%)')
+      fireEvent.click(screen.getByRole('button', { name: 'Previous review' }))
+      expect(carousel.querySelector('.testimonial-track')).toHaveStyle('transform: translateX(-0%)')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

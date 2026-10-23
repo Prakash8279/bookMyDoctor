@@ -76,7 +76,7 @@ jest.mock('@prisma/client', () => {
 });
 
 jest.mock('../../../src/config/db', () => ({
-  appointment: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
+  appointment: { findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
   user: { findUnique: jest.fn(), findFirst: jest.fn() },
   receptionistProfile: { findUnique: jest.fn() },
   doctorClinic: { findMany: jest.fn(), findUnique: jest.fn() },
@@ -199,6 +199,71 @@ function fullAppointmentRow(overrides = {}) {
 // ═══════════════════════════════════════════════════════════════════════
 // C. getAppointmentById / getVisibleAppointmentOrThrow — visibility + fee/patient masking
 // ═══════════════════════════════════════════════════════════════════════
+describe('appointmentsService.checkInAppointment', () => {
+  const actor = { id: 'recep-1', role: 'receptionist' };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY }));
+    prisma.appointment.updateMany.mockResolvedValue({ count: 1 });
+    loadCommissionPercentIfAdmin.mockResolvedValue(null);
+  });
+  test('records today’s arrival atomically and returns the role-masked appointment', async () => {
+    const checked = fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date() });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY })).mockResolvedValue(checked);
+    const result = await appointmentsService.checkInAppointment('appt-1', actor);
+    expect(result.checkedInAt).toBeTruthy();
+    expect(prisma.appointment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'appt-1', checkedInAt: null, appointmentDate: TODAY }),
+      data: { checkedInAt: expect.any(Date) },
+    }));
+    expect(result.patient.medicalHistory).toBeUndefined();
+  });
+  test('patients cannot mark their own arrival through the staff endpoint', async () => {
+    await expect(appointmentsService.checkInAppointment('appt-1', { id: PATIENT_ID, role: 'patient' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test.each(['pending','partial'])('does not check in a %s balance', async paymentStatus => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({appointmentDate:TODAY,paymentStatus}));
+    await expect(appointmentsService.checkInAppointment('appt-1',actor)).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test('cannot check in a different clinic’s booking', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: 'other' });
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_FOUND' });
+  });
+  test.each(['cancelled', 'no_show', 'pending_payment', 'completed'])('rejects %s bookings', async status => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, status }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE' });
+  });
+  test('does not allow check-in before the visit date', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow());
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'CHECK_IN_DATE_MISMATCH' });
+  });
+  test.each([{ paymentStatus: 'refunded' }, { tokenNumber: null }])('cannot check in refunded/tokenless booking %j', async fields => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, ...fields }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'APPOINTMENT_NOT_CHECKIN_ELIGIBLE' });
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test('a concurrent cancellation cannot be overwritten by check-in', async () => {
+    prisma.appointment.updateMany.mockResolvedValue({ count: 0 });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY }))
+      .mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, status: 'cancelled' }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'BOOKING_CHANGED' });
+  });
+  test('repeated check-in keeps the original arrival time', async () => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date() }));
+    await appointmentsService.checkInAppointment('appt-1', actor);
+    expect(prisma.appointment.updateMany).not.toHaveBeenCalled();
+  });
+  test.each([{ paymentStatus: 'refunded' }, { tokenNumber: null }, { appointmentDate: new Date('2000-01-01') }])('rejects an already-arrived booking that changed concurrently: %j', async fields => {
+    prisma.appointment.updateMany.mockResolvedValue({ count: 0 });
+    prisma.appointment.findUnique.mockResolvedValueOnce(fullAppointmentRow({ appointmentDate: TODAY }))
+      .mockResolvedValue(fullAppointmentRow({ appointmentDate: TODAY, checkedInAt: new Date(), ...fields }));
+    await expect(appointmentsService.checkInAppointment('appt-1', actor)).rejects.toMatchObject({ code: 'BOOKING_CHANGED' });
+  });
+});
+
 describe('appointmentsService.getAppointmentById — visibility (404-not-403 enumeration avoidance)', () => {
   test('throws 404 APPOINTMENT_NOT_FOUND when the row does not exist', async () => {
     prisma.appointment.findUnique.mockResolvedValue(null);
@@ -643,6 +708,11 @@ describe('appointmentsService.listAppointments — forced role-scoping (rule 3)'
 // A. enqueueBooking / getBookingStatus
 // ═══════════════════════════════════════════════════════════════════════
 describe('appointmentsService.enqueueBooking', () => {
+  test('rejects a patient booking without an explicitly selected member profile', async () => {
+    await expect(appointmentsService.enqueueBooking({ doctorUserId: DOCTOR_ID, appointmentDate: TOMORROW_STR }, { id: PATIENT_ID, role: 'patient' }))
+      .rejects.toMatchObject({ code: 'PATIENT_PROFILE_REQUIRED' });
+    expect(bookingQueue.enqueueBookingJob).not.toHaveBeenCalled();
+  });
   test('a patient booking always derives patientUserId/source from req.user, never the request body', async () => {
     bookingQueue.enqueueBookingJob.mockResolvedValue({ id: 'job-1' });
 
@@ -705,6 +775,31 @@ describe('appointmentsService.enqueueBooking', () => {
 });
 
 describe('appointmentsService.getDoctorAvailability', () => {
+  test('an unassigned receptionist cannot see availability from other clinics', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue(null);
+    expect(await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR }, { id: 'recep', role: 'receptionist' })).toEqual([]);
+  });
+  test('availability forces the receptionist’s assigned clinic even if another clinic is requested', async () => {
+    prisma.receptionistProfile.findUnique.mockResolvedValue({ clinicId: CLINIC_ID });
+    prisma.doctorClinic.findMany.mockResolvedValue([]);
+    await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR, clinicId: 'other' }, { id: 'recep', role: 'receptionist' });
+    expect(prisma.doctorClinic.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ clinicId: CLINIC_ID }),
+    }));
+  });
+
+  test('does not offer slots beyond this doctor’s booking window', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID,
+      clinicId: CLINIC_ID,
+      doctor: { name: 'Dr. Asha Rao', doctorProfile: { maxDaysAdvance: 1 } },
+      clinic: { name: 'Heart Care Clinic' },
+    }]);
+    const date = addDaysISO(TODAY, 2);
+    const result = await appointmentsService.getDoctorAvailability({ date, doctorId: DOCTOR_ID });
+    expect(result).toEqual([]);
+    expect(prisma.doctorClinicHours.findMany).not.toHaveBeenCalled();
+  });
   test('returns total, booked, and available slot counts for each doctor-clinic schedule', async () => {
     prisma.doctorClinic.findMany.mockResolvedValue([{
       doctorUserId: DOCTOR_ID,
@@ -746,6 +841,27 @@ describe('appointmentsService.getDoctorAvailability', () => {
     expect(prisma.appointment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ status: { notIn: ['cancelled', 'no_show'] } }),
     }));
+  });
+
+  test('quota availability counts online bookings and valid holds across clinics, not OPD duration or walk-ins', async () => {
+    prisma.doctorClinic.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID,
+      doctor: { name: 'Doctor', doctorProfile: { maxOnlineBookingsPerDay: 5 } }, clinic: { name: 'Clinic' },
+    }]);
+    prisma.doctorClinicHours.findMany.mockResolvedValue([{
+      doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, startTime: '10:00', endTime: '10:05', slotMinutes: 5,
+    }]);
+    prisma.doctorClinicClosure.findMany.mockResolvedValue([]);
+    const row = { doctorUserId: DOCTOR_ID, clinicId: 'other-clinic', source: 'online' };
+    prisma.appointment.findMany.mockResolvedValue([
+      { ...row, status: 'confirmed' },
+      { ...row, status: 'pending_payment', paymentHolds: [{ id: 'active' }] },
+      { ...row, status: 'pending_payment', paymentHolds: [] },
+      { ...row, source: 'walk_in', status: 'confirmed' },
+    ]);
+    const [result] = await appointmentsService.getDoctorAvailability({ date: TOMORROW_STR });
+    expect(result).toMatchObject({ totalSlots: 5, bookedSlots: 2, availableSlots: 3 });
+    expect(prisma.appointment.findMany.mock.calls[0][0].where).not.toHaveProperty('clinicId');
   });
 
   test('returns zero slots when the doctor-clinic schedule is closed for the date', async () => {
@@ -892,7 +1008,7 @@ describe('appointmentsService.runBookingJob', () => {
       appointmentTime: '10:00',
       reason: 'Fever',
       isEmergency: false,
-      familyMemberId: null,
+      familyMemberId: overrides.source === 'walk_in' ? null : 'fam-1',
       patientUserId: PATIENT_ID,
       patientName: null,
       patientPhone: null,
@@ -917,6 +1033,7 @@ describe('appointmentsService.runBookingJob', () => {
 
   function mockHappyPathBase() {
     mockUsers();
+    prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: PATIENT_ID, name: 'Patient', relation: 'Self', dateOfBirth: new Date('2000-01-01'), gender: 'Male', bloodGroup: 'Unknown' });
     prisma.doctorClinic.findUnique.mockResolvedValue({ onlineBooking: true });
     prisma.clinic.findUnique.mockImplementation(({ where }) =>
       Promise.resolve({ id: where.id, approvalStatus: 'active', emergencyAvailable: true })
@@ -941,6 +1058,7 @@ describe('appointmentsService.runBookingJob', () => {
 
     tx = {
       $executeRaw: jest.fn().mockResolvedValue(undefined),
+      doctorClinicClosure: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([{ max: 0 }]),
       appointment: {
         count: jest.fn().mockResolvedValue(0),
@@ -964,6 +1082,16 @@ describe('appointmentsService.runBookingJob', () => {
   });
 
   // ── Doctor / clinic resolution ─────────────────────────────────────
+  test('platform advance hours cannot be bypassed by a doctor-specific booking window', async () => {
+    jest.useFakeTimers({ now: new Date(`${TODAY_STR}T06:00:00.000Z`) });
+    try {
+    mockUsers({ doctor: happyDoctor({ onlineBookingWindowStart: '00:00', onlineBookingWindowEnd: '23:59' }) });
+    prisma.bookingRules.findUnique.mockResolvedValue({ advanceBookingWindowStart: '00:00', advanceBookingWindowEnd: '00:01' });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'ONLINE_BOOKING_WINDOW_CLOSED' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+  });
+
   test('throws 404 DOCTOR_NOT_FOUND when the doctor does not exist, is inactive, or is unverified', async () => {
     mockUsers({ doctor: null });
     await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({
@@ -1096,6 +1224,17 @@ describe('appointmentsService.runBookingJob', () => {
     });
   });
 
+  test('rejects a queued booking if its doctor-clinic date is closed while waiting for the transaction lock', async () => {
+    tx.doctorClinicClosure.findFirst.mockResolvedValue({ id: 'new-closure' });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'CLINIC_CLOSED_THAT_DATE' });
+    expect(tx.doctorClinicClosure.findFirst).toHaveBeenCalledWith({
+      where: { doctorUserId: DOCTOR_ID, clinicId: CLINIC_ID, closedDate: new Date(`${TOMORROW_STR}T00:00:00.000Z`) },
+      select: { id: true },
+    });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+    expect(tx.paymentHold.create).not.toHaveBeenCalled();
+  });
+
   test('throws 400 CLINIC_CLOSED_THAT_DATE when a closure row exists for that date', async () => {
     prisma.doctorClinicClosure.findFirst.mockResolvedValue({ id: 'closure-1' });
     await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({
@@ -1108,7 +1247,7 @@ describe('appointmentsService.runBookingJob', () => {
     mockUsers({ doctor: happyDoctor({ emergencyAvailable: false }) });
     await expect(appointmentsService.runBookingJob(basePayload({ isEmergency: true }))).resolves.toEqual({
       appointmentId: 'appt-new',
-      tokenNumber: 1,
+      tokenNumber: null,
     });
 
     const data = tx.appointment.create.mock.calls[0][0].data;
@@ -1117,6 +1256,15 @@ describe('appointmentsService.runBookingJob', () => {
   });
 
   // ── Family member / patient / receptionist scoping ──────────────────
+  test('rejects legacy self bookings without a member even if they reach the worker directly', async () => {
+    await expect(appointmentsService.runBookingJob(basePayload({ familyMemberId: null }))).rejects.toMatchObject({ code: 'PATIENT_PROFILE_REQUIRED' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+  });
+  test.each(['name', 'relation', 'dateOfBirth', 'gender', 'bloodGroup'])('blocks an owned but incomplete member missing %s', async (field) => {
+    prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: PATIENT_ID, name: 'Patient', relation: 'Self', dateOfBirth: new Date('2000-01-01'), gender: 'Male', bloodGroup: 'Unknown', [field]: null });
+    await expect(appointmentsService.runBookingJob(basePayload())).rejects.toMatchObject({ code: 'PATIENT_PROFILE_INCOMPLETE' });
+    expect(tx.appointment.create).not.toHaveBeenCalled();
+  });
   test('throws 404 FAMILY_MEMBER_NOT_FOUND when the family member does not belong to the booking patient', async () => {
     prisma.familyMember.findUnique.mockResolvedValue({ patientUserId: 'someone-else' });
     await expect(
@@ -1181,12 +1329,12 @@ describe('appointmentsService.runBookingJob', () => {
     await appointmentsService.runBookingJob(basePayload());
 
     const appointment = tx.appointment.create.mock.calls[0][0].data;
-    const queueToken = tx.queueToken.create.mock.calls[0][0].data;
     expect(appointment.bookingPaymentPolicy).toBe('platform_only');
     expect(appointment.status).toBe('pending_payment');
     expect(appointment.consultationFee.toString()).toBe('500');
     expect(appointment.convenienceFee.toString()).toBe('20');
-    expect(queueToken.status).toBe('on_hold');
+    expect(appointment.tokenNumber).toBeNull();
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
     expect(tx.paymentHold.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       appointmentId: 'appt-new', status: 'PENDING',
     }) }));
@@ -1194,13 +1342,14 @@ describe('appointmentsService.runBookingJob', () => {
     expect(hold.holdExpiresAt.getTime() - hold.holdCreatedAt.getTime()).toBe(10 * 60 * 1000);
   });
 
-  test('an online booking with a non-zero total starts pending_payment/on_hold and skips the "booking confirmed" notifications', async () => {
+  test('an unpaid online booking holds a slot without allocating a queue number or sending confirmation', async () => {
     await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
 
     const apptData = tx.appointment.create.mock.calls[0][0].data;
-    const tokenData = tx.queueToken.create.mock.calls[0][0].data;
     expect(apptData.status).toBe('pending_payment');
-    expect(tokenData.status).toBe('on_hold');
+    expect(apptData.tokenNumber).toBeNull();
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
     expect(notificationsService.notifySystemEventSafe).not.toHaveBeenCalled();
   });
 
@@ -1210,9 +1359,8 @@ describe('appointmentsService.runBookingJob', () => {
     );
 
     const apptData = tx.appointment.create.mock.calls[0][0].data;
-    const tokenData = tx.queueToken.create.mock.calls[0][0].data;
     expect(apptData.status).toBe('upcoming');
-    expect(tokenData.status).toBe('waiting');
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
     expect(notificationsService.notifySystemEventSafe).toHaveBeenCalledTimes(2);
     expect(result.appointmentId).toBe('appt-new');
   });
@@ -1245,30 +1393,33 @@ describe('appointmentsService.runBookingJob', () => {
   test('token numbering assigns MAX(token_number)+1, scoped per doctor+day', async () => {
     tx.$queryRaw.mockResolvedValue([{ max: 7 }]);
 
-    const result = await appointmentsService.runBookingJob(basePayload());
+    const result = await appointmentsService.runBookingJob(basePayload({ source: 'walk_in', requestedByUserId: 'recep-1', requestedByRole: 'receptionist' }));
 
     expect(result.tokenNumber).toBe(8);
     expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(8);
-    expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(8);
+    expect(tx.queueToken.create).not.toHaveBeenCalled();
   });
 
   // ── Token-numbering rule (request: "doctor ek booking rule do jo booking online wala
   // continues token no jayega ya odd ya even patient ko mle") — doctorProfile.tokenNumberingMode
   // ─────────────────────────────────────────────────────────────────────────────────────────
   describe('token numbering — doctorProfile.tokenNumberingMode = "alternate"', () => {
+    beforeEach(() => {
+      prisma.platformCharges.findUnique.mockResolvedValue({ applyConvenienceFee: false, patientConvenienceFee: dec(0), gstPercent: dec(0) });
+    });
     test('an ONLINE booking gets the first ODD token (1) when no odd-parity token exists yet that day', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
 
       expect(result.tokenNumber).toBe(1);
       expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(1);
-      expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(1);
+      expect(tx.queueToken.create).not.toHaveBeenCalled();
     });
 
     test('a WALK-IN booking gets the first EVEN token (2) when no even-parity token exists yet that day', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(
@@ -1277,11 +1428,11 @@ describe('appointmentsService.runBookingJob', () => {
 
       expect(result.tokenNumber).toBe(2);
       expect(tx.appointment.create.mock.calls[0][0].data.tokenNumber).toBe(2);
-      expect(tx.queueToken.create.mock.calls[0][0].data.tokenNumber).toBe(2);
+      expect(tx.queueToken.create).not.toHaveBeenCalled();
     });
 
     test('the next ONLINE booking continues the odd sequence (existing odd max + 2), independent of the even sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 5 }]); // highest existing ODD token for this doctor+day
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1290,7 +1441,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the next WALK-IN booking continues the even sequence (existing even max + 2), independent of the odd sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 4 }]); // highest existing EVEN token for this doctor+day
 
       const result = await appointmentsService.runBookingJob(
@@ -1301,7 +1452,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the parity query filters token_number % 2 by source, scoped to this doctor+day, under the same advisory lock', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1313,7 +1464,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('the default ("sequential") mode is unaffected — a doctor who never configured this keeps the pre-existing one-shared-count behavior', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'sequential' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'sequential' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 3 }]);
 
       const online = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1329,7 +1480,7 @@ describe('appointmentsService.runBookingJob', () => {
     // online ke lie") — doctorProfile.onlineTokenParity flips which parity 'alternate' mode
     // assigns to online vs walk-in bookings.
     test('onlineTokenParity="odd" (the default) gives ONLINE the odd sequence, same as no override at all', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'odd' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'odd' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1338,7 +1489,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('onlineTokenParity="even" FLIPS it — ONLINE now gets the even sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1347,7 +1498,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('onlineTokenParity="even" also flips WALK-IN onto the odd sequence', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: 'even' }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(
@@ -1358,7 +1509,7 @@ describe('appointmentsService.runBookingJob', () => {
     });
 
     test('an unset/unrecognized onlineTokenParity behaves exactly like the "odd" default', async () => {
-      mockUsers({ doctor: happyDoctor({ tokenNumberingMode: 'alternate', onlineTokenParity: undefined }) });
+      mockUsers({ doctor: happyDoctor({ bookingPaymentPolicy: 'platform_only', tokenNumberingMode: 'alternate', onlineTokenParity: undefined }) });
       tx.$queryRaw.mockResolvedValue([{ max: 0 }]);
 
       const result = await appointmentsService.runBookingJob(basePayload({ source: 'online' }));
@@ -1384,6 +1535,46 @@ describe('appointmentsService.runBookingJob', () => {
     await expect(
       appointmentsService.runBookingJob(basePayload({ appointmentTime: undefined }))
     ).rejects.toMatchObject({ statusCode: 409, code: 'NO_SLOTS_AVAILABLE' });
+  });
+
+  test.each([[0, '10:05'], [1, '10:10'], [4, '10:25']])('quota booking with %i occupied gets approximate call %s, not a physical slot', async (occupied, expectedTime) => {
+    mockUsers({ doctor: happyDoctor({ maxOnlineBookingsPerDay: 5 }) });
+    prisma.doctorClinicHours.findUnique.mockResolvedValue({ status: 'active', startTime: '10:00', endTime: '10:10', slotMinutes: 5 });
+    tx.appointment.count.mockResolvedValue(occupied);
+    await appointmentsService.runBookingJob(basePayload({ appointmentTime: '23:59' }));
+    expect(tx.appointment.create.mock.calls[0][0].data).toMatchObject({
+      appointmentTime: expectedTime, isEstimatedTime: true, estimatedVisitAt: expect.any(Date),
+    });
+    expect(tx.appointment.findMany).not.toHaveBeenCalled();
+  });
+
+  test('same-day quota estimate is after booking time, never an elapsed opening-time estimate', async () => {
+    jest.useFakeTimers({ now: new Date(`${TODAY_STR}T10:40:00.000Z`) }); // 16:10 IST
+    try {
+      mockUsers({ doctor: happyDoctor({ maxOnlineBookingsPerDay: 50 }) });
+      prisma.doctorClinicHours.findUnique.mockResolvedValue({ status: 'active', startTime: '10:00', endTime: '18:00', slotMinutes: 5 });
+      tx.appointment.count.mockResolvedValue(0);
+
+      await appointmentsService.runBookingJob(basePayload({ appointmentDate: TODAY_STR, appointmentTime: undefined }));
+
+      expect(tx.appointment.create.mock.calls[0][0].data).toMatchObject({
+        appointmentTime: '16:15',
+        isEstimatedTime: true,
+        estimatedVisitAt: new Date(`${TODAY_STR}T10:45:00.000Z`),
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('estimated call retains the next calendar day when quota crosses midnight', async () => {
+    mockUsers({ doctor: happyDoctor({ maxOnlineBookingsPerDay: 5 }) });
+    prisma.doctorClinicHours.findUnique.mockResolvedValue({ status: 'active', startTime: '23:55', endTime: '23:59', slotMinutes: 5 });
+    tx.appointment.count.mockResolvedValue(1);
+    await appointmentsService.runBookingJob(basePayload());
+    const data = tx.appointment.create.mock.calls[0][0].data;
+    expect(data.appointmentTime).toBe('00:05');
+    expect(data.estimatedVisitAt.toISOString()).toBe(`${TOMORROW_STR}T18:35:00.000Z`);
   });
 
   test('the fast-fail daily online-booking cap check rejects an obviously-full day before any lock/OPD work', async () => {
@@ -1575,6 +1766,11 @@ describe('appointmentsService.updateAppointmentStatus', () => {
     await expect(
       appointmentsService.updateAppointmentStatus('appt-1', 'confirmed', { id: PATIENT_ID, role: 'patient' })
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+  test.each(['confirmed','completed','no_show'])('blocks %s on an unpaid booking even for admin', async target => {
+    prisma.appointment.findUnique.mockResolvedValue(fullAppointmentRow({appointmentDate:TODAY,status:'upcoming',paymentStatus:'partial'}));
+    await expect(appointmentsService.updateAppointmentStatus('appt-1',target,{id:'admin-1',role:'admin'})).rejects.toMatchObject({code:'CLINIC_PAYMENT_REQUIRED'});
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

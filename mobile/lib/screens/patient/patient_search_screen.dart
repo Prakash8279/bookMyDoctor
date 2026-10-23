@@ -101,7 +101,8 @@ class _SearchFilters {
 }
 
 class _PatientSearchScreenState extends State<PatientSearchScreen> {
-  late final _nameController = TextEditingController(text: widget.initialQuery ?? '');
+  late final _nameController =
+      TextEditingController(text: widget.initialQuery ?? '');
   List<Specialization> _specializations = [];
   List<DoctorDirectoryItem> _allDoctors = [];
   // BUG FIX ("all city name v show nahi ho raha hai"): City/Area/Clinic options used to be
@@ -143,14 +144,23 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
       _error = null;
     });
     try {
-      final results = await Future.wait([_fetchSpecializations(), _fetchDoctors(), _fetchCities(), _fetchAreas(), _fetchClinics()]);
+      final results = await Future.wait([
+        _fetchSpecializations(),
+        _fetchDoctors(),
+        _fetchCities(),
+        _fetchAreas(),
+        _fetchClinics()
+      ]);
+      if (!mounted) return;
       final specializations = results[0] as List<Specialization>;
       // The specialty grid on the guest home page hands off a specialization ID (its cards are
       // keyed by id, like the website's own /search?specialization=<name> link is not) — resolve
       // it to the matching name here, once, since every filter in this screen otherwise works by
       // name to match SearchResults' own filter shape exactly.
-      if (widget.initialSpecializationId != null && _draft.specialization.isEmpty) {
-        final match = specializations.where((s) => s.id == widget.initialSpecializationId);
+      if (widget.initialSpecializationId != null &&
+          _draft.specialization.isEmpty) {
+        final match = specializations
+            .where((s) => s.id == widget.initialSpecializationId);
         if (match.isNotEmpty) {
           _draft.specialization = match.first.name;
           _applied.specialization = match.first.name;
@@ -165,6 +175,7 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e;
         _loading = false;
@@ -174,27 +185,33 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
 
   Future<List<Specialization>> _fetchSpecializations() async {
     try {
-      final res = await ApiClient.instance.get('/geography/specializations', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .getAll('/geography/specializations', query: {'pageSize': 100});
       final list = <Specialization>[];
       for (final item in res.list) {
-        try { list.add(Specialization.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Specialization.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
   Future<List<DoctorDirectoryItem>> _fetchDoctors() async {
     try {
-      final res = await ApiClient.instance.get('/doctors', query: {'pageSize': 100});
+      final res =
+          await ApiClient.instance.getAll('/doctors', query: {'pageSize': 100});
       final list = <DoctorDirectoryItem>[];
       for (final item in res.list) {
-        try { list.add(DoctorDirectoryItem.fromJson(item)); } catch (_) {}
+        try {
+          list.add(DoctorDirectoryItem.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -202,14 +219,17 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   // clinic_search_screen.dart already uses for its own City/Area filters.
   Future<List<City>> _fetchCities() async {
     try {
-      final res = await ApiClient.instance.get('/geography/cities', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .getAll('/geography/cities', query: {'pageSize': 100});
       final list = <City>[];
       for (final item in res.list) {
-        try { list.add(City.fromJson(item)); } catch (_) {}
+        try {
+          list.add(City.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -218,43 +238,54 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
     // the selected city client-side in _areaOptions below, so picking a City never needs a second
     // network round trip.
     try {
-      final res = await ApiClient.instance.get('/geography/areas', query: {'pageSize': 100});
+      final res = await ApiClient.instance
+          .getAll('/geography/areas', query: {'pageSize': 100});
       final list = <Area>[];
       for (final item in res.list) {
-        try { list.add(Area.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Area.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
   Future<List<Clinic>> _fetchClinics() async {
     try {
-      final res = await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
+      final res =
+          await ApiClient.instance.getAll('/clinics', query: {'pageSize': 100});
       final list = <Clinic>[];
       for (final item in res.list) {
-        try { list.add(Clinic.fromJson(item)); } catch (_) {}
+        try {
+          list.add(Clinic.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
-  List<String> get _cityOptions => (_cities.map((c) => c.name).toList()..sort());
+  List<String> get _cityOptions =>
+      (_cities.map((c) => c.name).toList()..sort());
 
   // Scoped to the DRAFT city selection by matching cityId, exactly like SearchResults'
   // `areaOptions` memo (`area.cityId === selectedCity.id`) — all areas when no city is picked yet.
   List<String> get _areaOptions {
-    if (_draft.city.isEmpty) return (_areas.map((a) => a.name).toList()..sort());
+    if (_draft.city.isEmpty) {
+      return (_areas.map((a) => a.name).toList()..sort());
+    }
     final selectedCity = _cities.where((c) => c.name == _draft.city);
     if (selectedCity.isEmpty) return const [];
     final cityId = selectedCity.first.id;
-    return (_areas.where((a) => a.cityId == cityId).map((a) => a.name).toList()..sort());
+    return (_areas.where((a) => a.cityId == cityId).map((a) => a.name).toList()
+      ..sort());
   }
 
-  List<String> get _clinicOptions => (_clinics.map((c) => c.name).toList()..sort());
+  List<String> get _clinicOptions =>
+      (_clinics.map((c) => c.name).toList()..sort());
 
   // Exact translation of SearchResults' `doctors` useMemo predicate + sort.
   List<DoctorDirectoryItem> get _filteredDoctors {
@@ -264,16 +295,25 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
       final specializationName = doctor.specialization?.name ?? '';
       final fee = doctor.consultationFee;
       final matchesName = f.name.trim().isEmpty ||
-          '${doctor.name} $specializationName'.toLowerCase().contains(f.name.trim().toLowerCase());
-      final matchesCity = f.city.isEmpty || doctor.city == f.city || doctor.clinics.any((c) => c.city == f.city);
-      final matchesArea = f.area.isEmpty || doctor.clinics.any((c) => c.area == f.area);
-      final matchesSpecialization = f.specialization.isEmpty || specializationName == f.specialization;
-      final matchesClinic = f.clinic.isEmpty || doctor.clinics.any((c) => c.name == f.clinic);
+          '${doctor.name} $specializationName'
+              .toLowerCase()
+              .contains(f.name.trim().toLowerCase());
+      final matchesCity = f.city.isEmpty ||
+          doctor.city == f.city ||
+          doctor.clinics.any((c) => c.city == f.city);
+      final matchesArea =
+          f.area.isEmpty || doctor.clinics.any((c) => c.area == f.area);
+      final matchesSpecialization =
+          f.specialization.isEmpty || specializationName == f.specialization;
+      final matchesClinic =
+          f.clinic.isEmpty || doctor.clinics.any((c) => c.name == f.clinic);
       final matchesEmergency = !f.emergency || doctor.emergencyAvailable;
       final matchesActiveClinic = !f.activeClinic || doctor.clinics.isNotEmpty;
       final matchesToday = !f.today || doctor.onlineBooking;
-      final matchesExperience = f.experience.isEmpty || (doctor.experienceYears ?? 0) >= (int.tryParse(f.experience) ?? 0);
-      final matchesRating = f.rating.isEmpty || doctor.rating >= (double.tryParse(f.rating) ?? 0);
+      final matchesExperience = f.experience.isEmpty ||
+          (doctor.experienceYears ?? 0) >= (int.tryParse(f.experience) ?? 0);
+      final matchesRating =
+          f.rating.isEmpty || doctor.rating >= (double.tryParse(f.rating) ?? 0);
       final matchesMaxFee = maxFeeValue == null || fee <= maxFeeValue;
       final matchesFeeRange = f.feeRange.isEmpty ||
           (f.feeRange == 'Under ₹600' && fee < 600) ||
@@ -319,7 +359,9 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   Widget build(BuildContext context) {
     if (_loading) return const LoadingView();
     if (_error != null) {
-      return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: _error!, onRetry: _load));
+      return Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: ErrorBanner(error: _error!, onRetry: _load));
     }
     final doctors = _filteredDoctors;
     return ListView(
@@ -328,7 +370,8 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         const PageHeader(
           kicker: 'Verified healthcare network',
           title: 'Find your doctor',
-          subtitle: 'Compare expertise, location, fees, and live availability before you book.',
+          subtitle:
+              'Compare expertise, location, fees, and live availability before you book.',
         ),
         // "Filters" panel — mirrors SearchResults' `<aside className="filter-panel">` field for
         // field, in the same order, with the same "Clear" action and explicit "Apply filters"
@@ -337,112 +380,166 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         Container(
           padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: AppColors.surface,
-            border: Border.all(color: AppColors.border),
+            color: context.palette.surface,
+            border: Border.all(color: context.palette.border),
             borderRadius: BorderRadius.circular(AppRadius.card),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                  TextButton(onPressed: _clearFilters, child: const Text('Clear')),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              _FilterField(
-                label: 'Doctor or symptom',
-                child: TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(hintText: 'Search name or specialty'),
-                  onChanged: (v) => _draft.name = v,
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                        child: Text('Filters',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w700))),
+                    TextButton(
+                        onPressed: _clearFilters, child: const Text('Clear')),
+                  ],
                 ),
-              ),
-              _dropdownField(
-                label: 'City',
-                value: _draft.city,
-                options: _cityOptions,
-                onChanged: (v) => setState(() {
-                  _draft.city = v;
-                  // Same as web: changing City can invalidate the current Area selection.
-                  if (!_areaOptions.contains(_draft.area)) _draft.area = '';
-                }),
-              ),
-              _dropdownField(label: 'Area', value: _draft.area, options: _areaOptions, onChanged: (v) => setState(() => _draft.area = v)),
-              _dropdownField(
-                label: 'Specialization',
-                value: _draft.specialization,
-                options: _specializations.map((s) => s.name).toList(),
-                onChanged: (v) => setState(() => _draft.specialization = v),
-              ),
-              _dropdownField(label: 'Clinic', value: _draft.clinic, options: _clinicOptions, onChanged: (v) => setState(() => _draft.clinic = v)),
-              _dropdownField(
-                label: 'Fee range',
-                value: _draft.feeRange,
-                options: const ['Under ₹600', '₹600–₹900', 'Above ₹900'],
-                onChanged: (v) => setState(() => _draft.feeRange = v),
-              ),
-              _dropdownField(
-                label: 'Maximum fee',
-                value: _draft.maxFee.isEmpty ? '' : 'Up to ₹${int.parse(_draft.maxFee)}',
-                options: const ['Up to ₹500', 'Up to ₹1000', 'Up to ₹1500'],
-                onChanged: (v) => setState(() => _draft.maxFee = v.replaceAll(RegExp(r'\D'), '')),
-              ),
-              _dropdownField(
-                label: 'Experience',
-                value: _draft.experience,
-                options: const ['5', '10'],
-                onChanged: (v) => setState(() => _draft.experience = v),
-              ),
-              _dropdownField(label: 'Rating', value: _draft.rating, options: const ['4.5', '4'], onChanged: (v) => setState(() => _draft.rating = v)),
-              CheckboxListTile(
-                value: _draft.today,
-                onChanged: (v) => setState(() => _draft.today = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('Today booking'),
-              ),
-              CheckboxListTile(
-                value: _draft.activeClinic,
-                onChanged: (v) => setState(() => _draft.activeClinic = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('Active clinic'),
-              ),
-              CheckboxListTile(
-                value: _draft.emergency,
-                onChanged: (v) => setState(() => _draft.emergency = v ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: const Text('24/7 emergency'),
-              ),
-              _dropdownField(
-                label: 'Sort by',
-                value: switch (_draft.sort) { 'rating' => 'Top rated', 'fee' => 'Fee: low to high', 'experience' => 'Experience', _ => '' },
-                options: const ['Top rated', 'Fee: low to high', 'Experience'],
-                onChanged: (v) => setState(() => _draft.sort = switch (v) { 'Top rated' => 'rating', 'Fee: low to high' => 'fee', 'Experience' => 'experience', _ => '' }),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              PrimaryButton(label: 'Apply filters', onPressed: _applyFilters),
-            ],
+                const SizedBox(height: AppSpacing.sm),
+                _FilterField(
+                  label: 'Doctor or symptom',
+                  child: TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                        hintText: 'Search name or specialty'),
+                    onChanged: (v) => _draft.name = v,
+                  ),
+                ),
+                _dropdownField(
+                  label: 'City',
+                  value: _draft.city,
+                  options: _cityOptions,
+                  onChanged: (v) => setState(() {
+                    _draft.city = v;
+                    // Same as web: changing City can invalidate the current Area selection.
+                    if (!_areaOptions.contains(_draft.area)) _draft.area = '';
+                  }),
+                ),
+                _dropdownField(
+                    label: 'Area',
+                    value: _draft.area,
+                    options: _areaOptions,
+                    onChanged: (v) => setState(() => _draft.area = v)),
+                _dropdownField(
+                  label: 'Specialization',
+                  value: _draft.specialization,
+                  options: _specializations.map((s) => s.name).toList(),
+                  onChanged: (v) => setState(() => _draft.specialization = v),
+                ),
+                _dropdownField(
+                    label: 'Clinic',
+                    value: _draft.clinic,
+                    options: _clinicOptions,
+                    onChanged: (v) => setState(() => _draft.clinic = v)),
+                _dropdownField(
+                  label: 'Fee range',
+                  value: _draft.feeRange,
+                  options: const ['Under ₹600', '₹600–₹900', 'Above ₹900'],
+                  onChanged: (v) => setState(() => _draft.feeRange = v),
+                ),
+                _dropdownField(
+                  label: 'Maximum fee',
+                  value: _draft.maxFee.isEmpty
+                      ? ''
+                      : 'Up to ₹${int.parse(_draft.maxFee)}',
+                  options: const ['Up to ₹500', 'Up to ₹1000', 'Up to ₹1500'],
+                  onChanged: (v) => setState(
+                      () => _draft.maxFee = v.replaceAll(RegExp(r'\D'), '')),
+                ),
+                _dropdownField(
+                  label: 'Experience',
+                  value: _draft.experience,
+                  options: const ['5', '10'],
+                  onChanged: (v) => setState(() => _draft.experience = v),
+                ),
+                _dropdownField(
+                    label: 'Rating',
+                    value: _draft.rating,
+                    options: const ['4.5', '4'],
+                    onChanged: (v) => setState(() => _draft.rating = v)),
+                Material(
+                    type: MaterialType.transparency,
+                    child: CheckboxListTile(
+                      value: _draft.today,
+                      onChanged: (v) =>
+                          setState(() => _draft.today = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text('Today booking'),
+                    )),
+                Material(
+                    type: MaterialType.transparency,
+                    child: CheckboxListTile(
+                      value: _draft.activeClinic,
+                      onChanged: (v) =>
+                          setState(() => _draft.activeClinic = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text('Active clinic'),
+                    )),
+                Material(
+                    type: MaterialType.transparency,
+                    child: CheckboxListTile(
+                      value: _draft.emergency,
+                      onChanged: (v) =>
+                          setState(() => _draft.emergency = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: const Text('24/7 emergency'),
+                    )),
+                _dropdownField(
+                  label: 'Sort by',
+                  value: switch (_draft.sort) {
+                    'rating' => 'Top rated',
+                    'fee' => 'Fee: low to high',
+                    'experience' => 'Experience',
+                    _ => ''
+                  },
+                  options: const [
+                    'Top rated',
+                    'Fee: low to high',
+                    'Experience'
+                  ],
+                  onChanged: (v) => setState(() => _draft.sort = switch (v) {
+                        'Top rated' => 'rating',
+                        'Fee: low to high' => 'fee',
+                        'Experience' => 'experience',
+                        _ => ''
+                      }),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                PrimaryButton(label: 'Apply filters', onPressed: _applyFilters),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.md),
         // Website's SearchResults shows "N doctors found" / "Live verified profiles with
         // transparent fees" above the results grid.
-        Text('${doctors.length} doctor${doctors.length == 1 ? '' : 's'} found', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        const Text('Live verified profiles with transparent fees', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+        Text('${doctors.length} doctor${doctors.length == 1 ? '' : 's'} found',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        Text('Live verified profiles with transparent fees',
+            style:
+                TextStyle(color: context.palette.textSecondary, fontSize: 13)),
         const SizedBox(height: AppSpacing.sm),
         if (doctors.isEmpty)
-          const EmptyStateView(icon: Icons.search_off, title: 'No doctors match these filters', subtitle: 'Try another name or remove a filter.')
+          const EmptyStateView(
+              icon: Icons.search_off,
+              title: 'No doctors match these filters',
+              subtitle: 'Try another name or remove a filter.')
         else
           for (final doctor in doctors)
-            Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _DoctorCard(doctor: doctor)),
+            Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: _DoctorCard(doctor: doctor)),
       ],
     );
   }
@@ -467,24 +564,30 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         borderRadius: BorderRadius.circular(12),
         elevation: 4,
         menuMaxHeight: 280,
-        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary),
-        hint: Text('Select $label', style: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 14)),
-        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500),
+        icon: Icon(Icons.keyboard_arrow_down_rounded,
+            color: context.palette.textSecondary),
+        hint: Text('Select $label',
+            style: const TextStyle(color: Color(0xFF9E9E9E), fontSize: 14)),
+        style: TextStyle(
+            color: context.palette.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          fillColor: context.palette.surface,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: context.palette.border),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: context.palette.border),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(AppRadius.button),
-            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+            borderSide: BorderSide(color: context.palette.primary, width: 1.5),
           ),
         ),
         items: [
@@ -514,7 +617,9 @@ class _FilterField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(label,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
           const SizedBox(height: 4),
           child,
         ],
@@ -540,7 +645,8 @@ class _DoctorCard extends StatelessWidget {
             );
           } else {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+              MaterialPageRoute(
+                  builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
             );
           }
         },
@@ -551,13 +657,21 @@ class _DoctorCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                backgroundColor:
+                    context.palette.primary.withValues(alpha: 0.12),
                 // CachedNetworkImageProvider is a drop-in ImageProvider that disk-caches
                 // doctor photos, avoiding a re-download on every list rebuild/scroll.
-                backgroundImage: doctor.photoUrl != null ? CachedNetworkImageProvider(doctor.photoUrl!) : null,
+                backgroundImage: doctor.photoUrl != null
+                    ? CachedNetworkImageProvider(doctor.photoUrl!)
+                    : null,
                 child: doctor.photoUrl == null
-                    ? Text(doctor.name.isNotEmpty ? doctor.name[0].toUpperCase() : '?',
-                        style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold))
+                    ? Text(
+                        doctor.name.isNotEmpty
+                            ? doctor.name[0].toUpperCase()
+                            : '?',
+                        style: TextStyle(
+                            color: context.palette.primary,
+                            fontWeight: FontWeight.bold))
                     : null,
               ),
               const SizedBox(width: AppSpacing.md),
@@ -565,9 +679,13 @@ class _DoctorCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(doctor.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    Text(doctor.name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 16)),
                     if (doctor.specialization != null)
-                      Text(doctor.specialization!.name, style: const TextStyle(color: AppColors.textSecondary)),
+                      Text(doctor.specialization!.name,
+                          style:
+                              TextStyle(color: context.palette.textSecondary)),
                     const SizedBox(height: 4),
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
@@ -577,16 +695,20 @@ class _DoctorCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.star, size: 16, color: AppColors.warning),
+                            const Icon(Icons.star,
+                                size: 16, color: AppColors.warning),
                             const SizedBox(width: 2),
-                            Text('${doctor.rating.toStringAsFixed(1)} (${doctor.reviewCount})'),
+                            Text(
+                                '${doctor.rating.toStringAsFixed(1)} (${doctor.reviewCount})'),
                           ],
                         ),
-                        if (doctor.experienceYears != null) Text('${doctor.experienceYears} yrs exp'),
+                        if (doctor.experienceYears != null)
+                          Text('${doctor.experienceYears} yrs exp'),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text('₹${doctor.consultationFee.toStringAsFixed(0)} consultation',
+                    Text(
+                        '₹${doctor.consultationFee.toStringAsFixed(0)} consultation',
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     // COMPLETENESS FIX (mobile parity audit): web's DoctorCard (PublicPages.jsx)
                     // shows the clinic location and today's booking availability inline — mobile
@@ -595,10 +717,15 @@ class _DoctorCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.location_on_outlined, size: 13, color: AppColors.textSecondary),
+                          Icon(Icons.location_on_outlined,
+                              size: 13, color: context.palette.textSecondary),
                           const SizedBox(width: 3),
                           Expanded(
-                            child: Text(_location!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis),
+                            child: Text(_location!,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.palette.textSecondary),
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ],
                       ),
@@ -606,12 +733,23 @@ class _DoctorCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        Icon(Icons.schedule_outlined, size: 13, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary),
+                        Icon(Icons.schedule_outlined,
+                            size: 13,
+                            color: doctor.onlineBooking
+                                ? context.palette.success
+                                : context.palette.textSecondary),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            doctor.onlineBooking ? 'Today queue open' : 'Not accepting bookings today',
-                            style: TextStyle(fontSize: 12, color: doctor.onlineBooking ? AppColors.success : AppColors.textSecondary, fontWeight: FontWeight.w600),
+                            doctor.onlineBooking
+                                ? 'Today queue open'
+                                : 'Not accepting bookings today',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: doctor.onlineBooking
+                                    ? context.palette.success
+                                    : context.palette.textSecondary,
+                                fontWeight: FontWeight.w600),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -627,10 +765,15 @@ class _DoctorCard extends StatelessWidget {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      DoctorDetailScreen(doctorId: doctor.id)),
                             ),
-                            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6)),
-                            child: const Text('View profile', style: TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6)),
+                            child: const Text('View profile',
+                                style: TextStyle(fontSize: 12)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -638,18 +781,25 @@ class _DoctorCard extends StatelessWidget {
                           child: ElevatedButton(
                             onPressed: () {
                               final auth = context.read<AuthProvider>();
-                              if (!auth.isLoggedIn || TokenStore.instance.current == null) {
+                              if (!auth.isLoggedIn ||
+                                  TokenStore.instance.current == null) {
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                  MaterialPageRoute(
+                                      builder: (_) => const LoginScreen()),
                                 );
                               } else {
                                 Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)),
+                                  MaterialPageRoute(
+                                      builder: (_) => BookAppointmentScreen(
+                                          preselectedDoctor: doctor)),
                                 );
                               }
                             },
-                            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 6)),
-                            child: const Text('Book now', style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6)),
+                            child: const Text('Book now',
+                                style: TextStyle(fontSize: 12)),
                           ),
                         ),
                       ],
@@ -658,9 +808,10 @@ class _DoctorCard extends StatelessWidget {
                 ),
               ),
               if (doctor.emergencyAvailable)
-                const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: Icon(Icons.emergency, color: AppColors.danger, size: 20),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Icon(Icons.emergency,
+                      color: context.palette.danger, size: 20),
                 ),
             ],
           ),
@@ -672,7 +823,9 @@ class _DoctorCard extends StatelessWidget {
   String? get _location {
     if (doctor.clinics.isEmpty) return null;
     final clinic = doctor.clinics.first;
-    final areaCity = [clinic.area, clinic.city].where((s) => s != null && s.isNotEmpty).join(', ');
+    final areaCity = [clinic.area, clinic.city]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(', ');
     return areaCity.isEmpty ? clinic.name : '${clinic.name}, $areaCity';
   }
 }

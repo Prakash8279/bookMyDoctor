@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
+import '../../widgets/admin_record_panel.dart';
 import '../../models/admin_models.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
@@ -13,8 +15,7 @@ class AdminActivityLogScreen extends StatelessWidget {
 
   Future<List<ActivityLogEntry>> _load() async {
     final res = await ApiClient.instance
-        .get('/admin/activity-log', query: {'pageSize': 100})
-        .catchError((_) => ApiResponse(data: []));
+        .getAll('/admin/activity-log', query: {'pageSize': 100});
     final list = <ActivityLogEntry>[];
     for (final item in res.list) {
       try {
@@ -33,7 +34,8 @@ class AdminActivityLogScreen extends StatelessWidget {
         // `builder`, which only runs once data has loaded and is non-empty) so the
         // header still renders during the loading/error/empty states too.
         const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(
             title: 'Activity logs',
             subtitle: 'Audit important platform actions.',
@@ -45,12 +47,33 @@ class AdminActivityLogScreen extends StatelessWidget {
             isEmpty: (list) => list.isEmpty,
             emptyIcon: Icons.history,
             emptyTitle: 'No activity recorded yet',
-            builder: (context, entries) => ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              itemCount: entries.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final e = entries[i];
+            builder: (context, entries) => AdminRecordPanel<ActivityLogEntry>(
+              items: entries,
+              dateOf: (entry) => entry.createdAt,
+              filename: 'activity-log',
+              headers: const [
+                'ID',
+                'Created (IST)',
+                'Actor',
+                'Role',
+                'Action',
+                'Target type',
+                'Target ID',
+                'Description',
+                'IP address'
+              ],
+              rowOf: (entry) => [
+                entry.id,
+                indiaTimestamp(entry.createdAt),
+                entry.actor?.name ?? 'System',
+                entry.actorRole,
+                entry.actionType,
+                entry.targetEntityType,
+                entry.targetEntityId,
+                entry.description,
+                entry.ipAddress
+              ],
+              itemBuilder: (context, e, i) {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Column(
@@ -63,13 +86,15 @@ class AdminActivityLogScreen extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${e.actor?.name ?? "System"}${e.actorRole != null ? " (${e.actorRole})" : ""}${e.createdAt != null ? " · ${e.createdAt!.split("T").first}" : ""}',
-                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        style: TextStyle(
+                            color: context.palette.textSecondary, fontSize: 12),
                       ),
                       // COMPLETENESS FIX (mobile parity audit): web's AuditLog table has its own
                       // "Target" and "IP address" columns (AdminPages.jsx) — mobile only ever
                       // showed the description/actor line above even though the API already
                       // sends this data (admin.service.js's activity-log select/shape).
-                      if (e.targetEntityType != null || e.ipAddress != null) ...[
+                      if (e.targetEntityType != null ||
+                          e.ipAddress != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           [
@@ -77,7 +102,9 @@ class AdminActivityLogScreen extends StatelessWidget {
                               'Target: ${e.targetEntityType}${e.targetEntityId != null ? " #${e.targetEntityId}" : ""}',
                             if (e.ipAddress != null) 'IP: ${e.ipAddress}',
                           ].join(' · '),
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 11),
                         ),
                       ],
                     ],

@@ -18,7 +18,8 @@ class ReceptionistDoctorsScreen extends StatefulWidget {
   const ReceptionistDoctorsScreen({super.key});
 
   @override
-  State<ReceptionistDoctorsScreen> createState() => _ReceptionistDoctorsScreenState();
+  State<ReceptionistDoctorsScreen> createState() =>
+      _ReceptionistDoctorsScreenState();
 }
 
 class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
@@ -35,7 +36,9 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
     setState(() {
       _future = (clinicId == null || clinicId.isEmpty)
           ? Future.value(null)
-          : ApiClient.instance.get('/clinics/$clinicId').then((res) => Clinic.fromJson(res.map));
+          : ApiClient.instance
+              .get('/clinics/$clinicId')
+              .then((res) => Clinic.fromJson(res.map));
     });
   }
 
@@ -44,124 +47,183 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
     return Column(
       children: [
         const Padding(
-          padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+          padding: EdgeInsets.fromLTRB(
+              AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
           child: PageHeader(title: 'Assigned doctors'),
         ),
         Expanded(
           child: FutureBuilder<Clinic?>(
             future: _future,
             builder: (context, snapshot) {
-              if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const LoadingView();
+              }
               if (snapshot.hasError) {
-                return Padding(padding: const EdgeInsets.all(AppSpacing.md), child: ErrorBanner(error: snapshot.error!, onRetry: _load));
+                return Padding(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: ErrorBanner(error: snapshot.error!, onRetry: _load));
               }
               final clinic = snapshot.data;
               if (clinic == null) {
-                return const EmptyStateView(icon: Icons.local_hospital_outlined, title: 'No clinic assignment on file');
+                return const EmptyStateView(
+                    icon: Icons.local_hospital_outlined,
+                    title: 'No clinic assignment on file');
               }
               if (clinic.doctors.isEmpty) {
-                return const EmptyStateView(icon: Icons.medical_services_outlined, title: 'No doctors linked to this clinic yet');
+                return const EmptyStateView(
+                    icon: Icons.medical_services_outlined,
+                    title: 'No doctors linked to this clinic yet');
               }
               return RefreshIndicator(
                 onRefresh: () async => _load(),
                 child: ListView.separated(
                   padding: const EdgeInsets.all(AppSpacing.md),
                   itemCount: clinic.doctors.length,
-            separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-            itemBuilder: (context, i) {
-              final d = clinic.doctors[i];
-              return Card(
-                child: ExpansionTile(
-                  title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  // Mirrors the web app's ReceptionAvailability page, which shows this same
-                  // on/off flag as a StatusPill rather than plain text.
-                  subtitle: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // BUG FIX (mobile parity audit): web shows each doctor's specialization
-                          // (ReceptionAvailability) — was omitted entirely from this list.
-                          Text(
-                            d.specialization?.name ?? 'Specialization not added',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: AppSpacing.sm),
+                  itemBuilder: (context, i) {
+                    final d = clinic.doctors[i];
+                    return Card(
+                      child: ExpansionTile(
+                        title: Text(d.name,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        // Mirrors the web app's ReceptionAvailability page, which shows this same
+                        // on/off flag as a StatusPill rather than plain text.
+                        subtitle: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // BUG FIX (mobile parity audit): web shows each doctor's specialization
+                                // (ReceptionAvailability) — was omitted entirely from this list.
+                                Text(
+                                  d.specialization?.name ??
+                                      'Specialization not added',
+                                  style: TextStyle(
+                                      color: context.palette.textSecondary,
+                                      fontSize: 13),
+                                ),
+                                const SizedBox(height: 4),
+                                StatusBadge(
+                                    status:
+                                        d.onlineBooking ? 'active' : 'paused'),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          StatusBadge(status: d.onlineBooking ? 'active' : 'paused'),
+                        ),
+                        childrenPadding: const EdgeInsets.fromLTRB(
+                            AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                        children: [
+                          FutureBuilder<ApiResponse>(
+                            future: ApiClient.instance
+                                .get('/appointments/availability', query: {
+                              'date': DateFormat('yyyy-MM-dd')
+                                  .format(DateTime.now()),
+                              'doctorId': d.doctorUserId,
+                              'clinicId': clinic.id,
+                            }),
+                            builder: (context, slotSnapshot) {
+                              final row =
+                                  slotSnapshot.data?.list.isNotEmpty == true
+                                      ? slotSnapshot.data!.list.first
+                                      : null;
+                              if (slotSnapshot.connectionState !=
+                                  ConnectionState.done) {
+                                return const Padding(
+                                    padding:
+                                        EdgeInsets.only(bottom: AppSpacing.sm),
+                                    child: LinearProgressIndicator());
+                              }
+                              if (row == null) return const SizedBox.shrink();
+                              return Container(
+                                margin: const EdgeInsets.only(
+                                    bottom: AppSpacing.sm),
+                                padding: const EdgeInsets.all(AppSpacing.sm),
+                                decoration: BoxDecoration(
+                                    color: context.palette.surface,
+                                    borderRadius: BorderRadius.circular(10)),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _slotMetric(
+                                        context, 'Total', row['totalSlots']),
+                                    _slotMetric(context, 'Available',
+                                        row['availableSlots'],
+                                        color: context.palette.success),
+                                    _slotMetric(
+                                        context, 'Booked', row['bookedSlots'],
+                                        color: context.palette.primary),
+                                    _slotMetric(
+                                        context,
+                                        'Emergency',
+                                        row['emergencyAvailable'] == true
+                                            ? 'Yes'
+                                            : 'No',
+                                        color: row['emergencyAvailable'] == true
+                                            ? context.palette.danger
+                                            : context.palette.textSecondary),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                          FutureBuilder<ApiResponse>(
+                            future: ApiClient.instance
+                                .get('/clinics/${clinic.id}/hours', query: {
+                              'doctorId': d.doctorUserId,
+                              'pageSize': 20
+                            }),
+                            builder: (context, hSnap) {
+                              if (hSnap.connectionState !=
+                                  ConnectionState.done) {
+                                return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    child: LoadingView());
+                              }
+                              final rawList = hSnap.data?.list ?? [];
+                              final hours = <ClinicHours>[];
+                              for (final item in rawList) {
+                                try {
+                                  hours.add(ClinicHours.fromJson(item));
+                                } catch (_) {}
+                              }
+                              hours.sort(
+                                  (a, b) => a.weekday.compareTo(b.weekday));
+                              if (hours.isEmpty) {
+                                return Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text('No OPD hours set at this clinic',
+                                      style: TextStyle(
+                                          color: context.palette.textSecondary,
+                                          fontSize: 12)),
+                                );
+                              }
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: hours
+                                    .map((h) => Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 2),
+                                          child: Text(
+                                            '${_weekdayShort[h.weekday]}: ${h.startTime} – ${h.endTime}${h.status != 'active' ? " (${h.status})" : ""}',
+                                            style:
+                                                const TextStyle(fontSize: 13),
+                                          ),
+                                        ))
+                                    .toList(),
+                              );
+                            },
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-                  childrenPadding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
-                  children: [
-                    FutureBuilder<ApiResponse>(
-                      future: ApiClient.instance.get('/appointments/availability', query: {
-                        'date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
-                        'doctorId': d.doctorUserId,
-                        'clinicId': clinic.id,
-                      }),
-                      builder: (context, slotSnapshot) {
-                        final row = slotSnapshot.data?.list.isNotEmpty == true ? slotSnapshot.data!.list.first : null;
-                        if (slotSnapshot.connectionState != ConnectionState.done) {
-                          return const Padding(padding: EdgeInsets.only(bottom: AppSpacing.sm), child: LinearProgressIndicator());
-                        }
-                        if (row == null) return const SizedBox.shrink();
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                          padding: const EdgeInsets.all(AppSpacing.sm),
-                          decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(10)),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _slotMetric('Total', row['totalSlots']),
-                              _slotMetric('Available', row['availableSlots'], color: AppColors.success),
-                              _slotMetric('Booked', row['bookedSlots'], color: AppColors.primary),
-                              _slotMetric('Emergency', row['emergencyAvailable'] == true ? 'Yes' : 'No', color: row['emergencyAvailable'] == true ? AppColors.danger : AppColors.textSecondary),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    FutureBuilder<ApiResponse>(
-                      future: ApiClient.instance.get('/clinics/${clinic.id}/hours', query: {'doctorId': d.doctorUserId, 'pageSize': 20}),
-                      builder: (context, hSnap) {
-                        if (hSnap.connectionState != ConnectionState.done) {
-                          return const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: LoadingView());
-                        }
-                        final rawList = hSnap.data?.list ?? [];
-                        final hours = <ClinicHours>[];
-                        for (final item in rawList) {
-                          try { hours.add(ClinicHours.fromJson(item)); } catch (_) {}
-                        }
-                        hours.sort((a, b) => a.weekday.compareTo(b.weekday));
-                        if (hours.isEmpty) {
-                          return const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text('No OPD hours set at this clinic', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                          );
-                        }
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: hours
-                              .map((h) => Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                    child: Text(
-                                      '${_weekdayShort[h.weekday]}: ${h.startTime} – ${h.endTime}${h.status != 'active' ? " (${h.status})" : ""}',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                  ))
-                              .toList(),
-                        );
-                      },
-                    ),
-                  ],
+                    );
+                  },
                 ),
               );
-            },
-          ),
-        );
             },
           ),
         ),
@@ -170,9 +232,17 @@ class _ReceptionistDoctorsScreenState extends State<ReceptionistDoctorsScreen> {
   }
 }
 
-Widget _slotMetric(String label, dynamic value, {Color color = AppColors.textPrimary}) => Column(
+Widget _slotMetric(BuildContext context, String label, dynamic value,
+        {Color? color}) =>
+    Column(
       children: [
-        Text('$value', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        Text('$value',
+            style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: color ?? context.palette.textPrimary)),
+        Text(label,
+            style:
+                TextStyle(fontSize: 10, color: context.palette.textSecondary)),
       ],
     );

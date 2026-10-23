@@ -184,6 +184,11 @@ describe('apiClient — response success interceptor', () => {
     expect(result.__pagination).toBe(pagination)
     expect(Object.keys(result)).not.toContain('__pagination') // non-enumerable
   })
+  it('preserves the server truncation warning for complete-data consumers', () => {
+    const result = successHandler({ data: { success: true, data: [{id:1}], truncated:true } })
+    expect(result.__truncated).toBe(true)
+    expect(Object.keys(result)).not.toContain('__truncated')
+  })
 })
 
 describe('apiClient — response error interceptor: silent refresh via httpOnly cookie', () => {

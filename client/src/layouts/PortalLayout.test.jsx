@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { PortalLayout, PublicPageShell } from './PortalLayout'
 import { useAppStore } from '../store/useAppStore'
@@ -23,6 +23,26 @@ function renderLayout(role, onLogout = () => {}) {
 }
 
 describe('PortalLayout', () => {
+  it.each(['admin', 'superadmin'])('keeps the %s sidebar as a mobile/tablet drawer with usable close controls', (role) => {
+    const { container } = renderLayout(role)
+    expect(container.firstChild).toHaveClass('admin-portal', 'lg:flex')
+    const aside = container.querySelector('aside')
+    expect(aside).toHaveClass('lg:sticky', 'lg:translate-x-0', 'shrink-0', 'max-w-[calc(100vw-1rem)]')
+    expect(aside).not.toHaveClass('md:sticky', 'md:translate-x-0')
+    const toggle = screen.getByRole('button', { name: 'Open navigation' })
+    expect(toggle).toHaveClass('lg:hidden')
+    expect(toggle).toHaveAttribute('aria-controls', 'portal-navigation')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(aside).toHaveClass('translate-x-0')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(aside).toHaveClass('-translate-x-full')
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('button', { name: 'Close menu' }))
+    expect(aside).toHaveClass('-translate-x-full')
+    expect(screen.queryByRole('navigation', { name: /bottom navigation/i })).not.toBeInTheDocument()
+  })
   it('renders the routed child content inside the main area', () => {
     renderLayout('doctor')
     expect(screen.getByText('Page Content')).toBeInTheDocument()
@@ -50,7 +70,9 @@ describe('PortalLayout', () => {
     expect(screen.queryByRole('button', { name: 'Open navigation' })).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Doctor bottom navigation' })).toBeInTheDocument()
     expect(screen.getByRole('main')).toHaveClass('portal-content--with-bottom-nav')
-    expect(screen.getByRole('link', { name: 'Schedule' })).toHaveAttribute('href', '/doctor/schedule')
+    const bottomNav = screen.getByRole('navigation', { name: 'Doctor bottom navigation' })
+    expect(within(bottomNav).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/doctor/reports')
+    expect(within(bottomNav).queryByRole('link', { name: 'Schedule' })).not.toBeInTheDocument()
   })
 
   it('uses the compact mobile layout for receptionist while retaining the desktop sidebar', () => {

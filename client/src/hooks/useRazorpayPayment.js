@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
+import { usePaymentVerification } from './usePaymentVerification'
 
 // PENDING-PAYMENT RESUME FIX (multi-agent senior-dev payment audit, "payment sahi nahi hua hai"):
 // before this hook existed, the ONLY place in the app that could ever pay for a `pending_payment`
@@ -21,10 +22,22 @@ import { loadRazorpayScript } from '../lib/loadRazorpayScript'
 // failure, so a lost response doesn't wrongly tell the patient to pay again.
 export function useRazorpayPayment() {
   const createRazorpayOrder = useAppStore((state) => state.createRazorpayOrder)
-  const verifyRazorpayPayment = useAppStore((state) => state.verifyRazorpayPayment)
-  const getAppointment = useAppStore((state) => state.getAppointment)
+  const confirmation = usePaymentVerification()
   const [payingId, setPayingId] = useState(null) // the appointment id currently mid-flow, or null
   const [paymentError, setPaymentError] = useState('')
+  const checkoutRef = useRef(null)
+  const expiryTimerRef = useRef(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      window.clearTimeout(expiryTimerRef.current)
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
+    }
+  }, [])
 
   /**
    * @param {object} appointment - needs .id and, for the Checkout description, .doctor?.name
@@ -34,13 +47,20 @@ export function useRazorpayPayment() {
    *   appointment once payment is confirmed (or reconciled as already-paid)
    */
   const payNow = async (appointment, paymentOption, { currentUser = {}, onUpdated } = {}) => {
+    if (checkoutRef.current || payingId) return
     setPaymentError('')
     setPayingId(appointment.id)
     try {
       await loadRazorpayScript().catch(() => {
         throw new Error('Payment gateway failed to load. Check your internet connection and try again.')
       })
+      if (!mountedRef.current) return
       const order = await createRazorpayOrder(appointment.id, paymentOption)
+      if (!mountedRef.current) return
+      const checkoutSecondsLeft = Math.floor((Date.parse(order.holdExpiresAt) - Date.now()) / 1000)
+      if (!Number.isFinite(checkoutSecondsLeft) || checkoutSecondsLeft <= 0) {
+        throw new Error('Your ten-minute payment window expired. Please choose an available slot again.')
+      }
       const checkout = new window.Razorpay({
         key: order.keyId,
         amount: order.amount,
@@ -49,43 +69,47 @@ export function useRazorpayPayment() {
         name: 'BookADoctors',
         description: `Consultation with ${appointment.doctor?.name || 'doctor'}${paymentOption === 'minimum' ? ' · Booking amount' : ''}`,
         prefill: { name: currentUser.name || '', email: currentUser.email || '', contact: currentUser.phone || '' },
+        timeout: checkoutSecondsLeft,
         theme: { color: '#ad5d3b' },
-        modal: { ondismiss: () => setPayingId(null) },
+        modal: { ondismiss: () => {
+          window.clearTimeout(expiryTimerRef.current)
+          checkoutRef.current = null
+          setPayingId(null)
+        } },
         handler: async (response) => {
-          try {
-            const { appointment: updated } = await verifyRazorpayPayment({
+          if (!mountedRef.current) return
+          window.clearTimeout(expiryTimerRef.current)
+          checkoutRef.current = null
+          setPaymentError('')
+          await confirmation.start({
               appointmentId: appointment.id,
               razorpayOrderId: response.razorpay_order_id,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
-            })
-            onUpdated?.(updated)
-          } catch (verifyError) {
-            try {
-              const fresh = await getAppointment(appointment.id)
-              if (fresh && fresh.status !== 'pending_payment') {
-                onUpdated?.(fresh)
-                return
-              }
-            } catch {
-              /* couldn't even re-check — fall through to showing the original error below */
-            }
-            setPaymentError(verifyError.message)
-          } finally {
-            setPayingId(null)
-          }
+            }, onUpdated)
+          if (mountedRef.current) setPayingId(null)
         },
       })
       checkout.on('payment.failed', (failure) => {
         setPaymentError(failure?.error?.description || 'Payment failed. Please try again.')
         setPayingId(null)
       })
+      checkoutRef.current = checkout
+      expiryTimerRef.current = window.setTimeout(() => {
+        checkoutRef.current = null
+        checkout.close?.()
+        setPaymentError('Your ten-minute payment window expired. Please choose an available slot again.')
+        setPayingId(null)
+      }, Math.max(0, Date.parse(order.holdExpiresAt) - Date.now()))
       checkout.open()
     } catch (orderError) {
+      window.clearTimeout(expiryTimerRef.current)
+      checkoutRef.current?.close?.()
+      checkoutRef.current = null
       setPaymentError(orderError.message)
       setPayingId(null)
     }
   }
 
-  return { payNow, payingId, paymentError, setPaymentError }
+  return { payNow, payingId, paymentError, setPaymentError, verification: confirmation.verification, retryVerification: confirmation.retry }
 }

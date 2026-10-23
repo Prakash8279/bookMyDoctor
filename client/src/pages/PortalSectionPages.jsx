@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { appointmentTimeLabel, bookingCreatedAtLabel } from '../lib/appointmentTime'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { DataTable } from '../components/DataTable'
+import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { FormField } from '../components/FormField'
 import { Select } from '../components/Select'
 import { LiveQueueWidget } from '../components/LiveQueueWidget'
@@ -11,6 +12,12 @@ import { formatDate, sequenceId, shortId, stableId } from '../lib/format'
 import { CONTACT_STATUS_LABELS } from '../lib/statusLabels'
 import { useDeleteWithConfirm } from '../hooks/useDeleteWithConfirm'
 import { usePolling } from '../hooks/usePolling'
+import { useListLoad } from '../hooks/useListLoad'
+import apiClient from '../lib/apiClient'
+import { fetchAllClinicRows } from '../lib/clinicWorkspace'
+import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
+import { ProfileAvatar } from '../components/ProfileAvatar'
 
 const Page = ({ title, subtitle, children, action }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal ${className}`} {...props}>{children}</button>
@@ -100,6 +107,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
   const [listError, setListError] = useState('')
   const [busyId, setBusyId] = useState(null)
   const [actionError, setActionError] = useState('')
+  const loadVersion = useRef(0)
   // ADMIN FILTER FIX (user request: "ye filter appli karne ka option do admin supar admin ko
   // city wise doctor name se v aur date se v", then "starting end date dono select karne ka
   // option do") — city/doctor/date-range filters for the admin/superadmin "Appointments registry"
@@ -110,25 +118,28 @@ export function PortalAppointments({ data, role = 'patient' }) {
   // appointments.controller.js). Blank values are stripped by cleanParams() before the request, so
   // an empty field simply means "no filter" — no separate "all cities"/"all doctors" sentinel
   // option needed.
-  const [filters, setFilters] = useState({ cityId: '', doctorId: '', dateFrom: '', dateTo: '' })
+  const [filters, setFilters] = useState(() => ({ cityId: '', doctorId: '', dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() }))
 
   // Appointments aren't part of the admin/superadmin bulk load (plan §4.2
   // admin branch) — fetch them here for the platform-wide registry view.
-  const load = (activeFilters = filters) => {
+  const load = useCallback((activeFilters) => {
+    const version = ++loadVersion.current
+    if (!activeFilters.dateFrom || !activeFilters.dateTo || activeFilters.dateFrom > activeFilters.dateTo) {
+      setListError('Select a valid start and end date.')
+      setLoading(false)
+      return Promise.resolve()
+    }
     setLoading(true)
     setListError('')
-    return fetchAppointments(activeFilters).catch((err) => setListError(err.message || 'Could not load appointments.')).finally(() => setLoading(false))
-  }
+    return fetchAppointments({ ...activeFilters, allPages: true })
+      .catch((err) => { if (version === loadVersion.current) setListError(err.message || 'Could not load appointments.') })
+      .finally(() => { if (version === loadVersion.current) setLoading(false) })
+  }, [fetchAppointments])
   useEffect(() => {
     if (role !== 'admin') return undefined
-    let cancelled = false
-    setLoading(true)
-    setListError('')
-    fetchAppointments({})
-      .catch((err) => { if (!cancelled) setListError(err.message || 'Could not load appointments.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-  }, [fetchAppointments, role])
+    load({ cityId: '', doctorId: '', dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() })
+    return () => { loadVersion.current += 1 }
+  }, [load, role])
   // Re-fetch immediately on every filter change (city/doctor/date), same "apply on change"
   // pattern as Revenue reports' date-range/doctor filter above — no separate "Apply" button.
   const updateFilter = (key) => (event) => {
@@ -137,7 +148,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
     load(nextFilters)
   }
   const clearFilters = () => {
-    const cleared = { cityId: '', doctorId: '', dateFrom: '', dateTo: '' }
+    const cleared = { cityId: '', doctorId: '', dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() }
     setFilters(cleared)
     load(cleared)
   }
@@ -166,8 +177,8 @@ export function PortalAppointments({ data, role = 'patient' }) {
   // always fail with a 409 on one of these, so show Cancel instead of those two.
   const statusActions = (item) => <div className="flex gap-2">
     {item.status === 'pending_payment' && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'cancelled')} className="touch-target text-xs font-semibold text-error">Cancel</button>}
-    {item.status !== 'pending_payment' && item.status !== 'confirmed' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark">Confirm</button>}
-    {item.status !== 'pending_payment' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark">Complete</button>}
+    {item.status !== 'pending_payment' && item.status !== 'confirmed' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">Confirm</button>}
+    {item.status !== 'pending_payment' && !TERMINAL.includes(item.status) && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">Complete</button>}
   </div>
   if (role === 'admin') {
     return <Page
@@ -186,21 +197,22 @@ export function PortalAppointments({ data, role = 'patient' }) {
         <label className="text-xs font-semibold text-muted">To
           <input aria-label="Filter by end date" type="date" value={filters.dateTo} onChange={updateFilter('dateTo')} className="mt-1 block min-h-11 rounded-button border border-border bg-white px-3 text-sm" />
         </label>
-        {hasActiveFilters && <button type="button" onClick={clearFilters} className="touch-target text-xs font-semibold text-primary-dark underline">Clear filters</button>}
+        {hasActiveFilters && <button type="button" onClick={clearFilters} className="touch-target text-xs font-semibold text-primary-dark underline">Today / clear filters</button>}
       </div>}
     >
       {invalidDateRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
       <ErrorNote>{actionError}</ErrorNote>
-      <DataTable loading={loading} error={listError} onRetry={() => load()} rows={rows} columns={[
+      <DataTable dateField={false} loading={loading} error={listError} onRetry={() => load(filters)} rows={rows} columns={[
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         // BOOKING-ID VISIBILITY FIX (user request: "booking id appointment me do admin supar
         // admin ke") — 'ID' above is just this row's own display sequence number (DC01, DC02...),
         // not the real booking id. Same shortId() format already used on doctor/receptionist's
         // Appointments table and every payment table fixed earlier in this series.
         { key: 'bookingId', label: 'Booking ID', render: (item) => shortId(item.id) },
+        { key: 'createdAt', label: 'Booked on (IST)', render: bookingCreatedAtLabel },
         { key: 'token', label: 'Token', render: (item) => item.tokenNumber != null ? `#${item.tokenNumber}` : '—' },
         { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
-        { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+        { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
         { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
         { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
         { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
@@ -221,34 +233,46 @@ export function PortalAppointments({ data, role = 'patient' }) {
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable rows={rows} columns={[
       { key: 'id', label: 'Id', render: (item, index) => sequenceId(index) },
+      { key: 'createdAt', label: 'Booked on (IST)', render: bookingCreatedAtLabel },
       { key: 'date', label: 'Date', render: (item) => item.appointmentDate || '—' },
-      { key: 'time', label: 'Time', render: (item) => item.appointmentTime || '—' },
+      { key: 'time', label: 'Time', render: (item) => appointmentTimeLabel(item) },
       { key: 'doctorId', label: 'Doctor ID', render: (item) => stableId(item.doctor?.doctorNumber, 'DCD') },
       { key: 'doctorName', label: 'Doctor', render: (item) => item.doctor?.name || '—' },
       { key: 'patientId', label: 'Patient ID', render: (item) => stableId(item.patient?.patientNumber, 'DCP') },
       { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || item.familyMember?.name || '—' },
       { key: 'clinicName', label: 'Clinic', render: (item) => item.clinic?.name || '—' },
       { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
-      { key: 'actionCol', label: 'Actions', render: (item) => role === 'patient' ? <button onClick={() => window.alert(`${item.doctor?.name || 'Doctor'}\n${item.clinic?.name || 'Clinic'}\n${item.appointmentDate || ''} · ${item.appointmentTime || ''}\nStatus: ${item.status}`)} className="touch-target text-sm font-semibold text-primary-dark">Details</button> : statusActions(item) },
+      { key: 'actionCol', label: 'Actions', render: (item) => role === 'patient' ? <button onClick={() => window.alert(`${item.doctor?.name || 'Doctor'}\n${item.clinic?.name || 'Clinic'}\n${item.appointmentDate || ''} · ${appointmentTimeLabel(item)}\nStatus: ${item.status}`)} className="touch-target text-sm font-semibold text-primary-dark">Details</button> : statusActions(item) },
     ]} />
   </Page>
 }
 
 export function PortalPatients({ data }) {
+  const [allAppointments, setAllAppointments] = useState(null)
+  const [search, setSearch] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    fetchAllClinicRows(apiClient, '/appointments').then((rows) => { if (!cancelled) setAllAppointments(rows) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Could not load clinic patients.') })
+    return () => { cancelled = true }
+  }, [])
+  const appointments = allAppointments || data.appointments || []
   // §6.7 — no /patients endpoint exists; derive a best-effort distinct
   // patient list from appointments already bulk-loaded for the receptionist
   // role.
   const patientMap = new Map()
-  for (const appointment of data.appointments || []) {
+  for (const appointment of appointments) {
     if (appointment.patient?.id) patientMap.set(appointment.patient.id, appointment.patient)
   }
   const patients = Array.from(patientMap.values()).map((patient) => ({
     ...patient,
-    appointmentCount: (data.appointments || []).filter((item) => item.patient?.id === patient.id).length,
+    appointmentCount: appointments.filter((item) => item.patient?.id === patient.id).length,
   }))
   return <Page title="Patient directory" subtitle="View patients connected to this clinic.">
-    <p className="mb-4 rounded-button border border-dashed border-border bg-surface px-3 py-2.5 text-sm text-muted">This list is built from appointments already loaded — the API has no dedicated patient directory (plan §6.7).</p>
-    <DataTable rows={patients} columns={[
+    <FormField label="Search clinic patient" placeholder="Patient name or phone" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <ErrorNote>{error}</ErrorNote>
+    <DataTable rows={patients.filter((patient) => `${patient.name || ''} ${patient.phone || ''}`.toLowerCase().includes(search.toLowerCase()))} columns={[
       { key: 'name', label: 'Patient' },
       // Front-desk data only — appointments.service.js#shapePatientRef deliberately never sends
       // gender/DOB/blood group/medical history to a receptionist caller, so only phone (useful
@@ -260,6 +284,8 @@ export function PortalPatients({ data }) {
 }
 
 export function Specializations({ data }) {
+  const fetchSpecializations = useAppStore((state) => state.fetchSpecializations)
+  const { loading, error: listError, refresh } = useListLoad('admin:specializations', () => fetchSpecializations())
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ name: '', description: '' })
   const [error, setError] = useState('')
@@ -288,10 +314,10 @@ export function Specializations({ data }) {
     errorFallback: 'Could not delete this specialization.',
     deleteFn: (item) => deleteSpecialization(item.id),
   })
-  return <Page title="Specializations" subtitle="Maintain the live medical specialty catalogue." action={<Button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add specialization'}</Button>}>
+  return <Page title="Specializations" subtitle="Maintain the live medical specialty catalogue." action={<Button disabled={loading} onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add specialization'}</Button>}>
     {adding && <form onSubmit={add} className="mb-5 grid max-w-xl gap-3 rounded-card border border-border bg-white p-4 shadow-card"><FormField label="Name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /><FormField label="Description" type="textarea" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /><Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save specialization'}</Button><ErrorNote>{error}</ErrorNote></form>}
     {!adding && <ErrorNote>{error}</ErrorNote>}
-    <DataTable rows={data.specializations || []} columns={[
+    <DataTable loading={loading} error={listError} onRetry={refresh} rows={data.specializations || []} columns={[
       { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
       { key: 'name', label: 'Name' },
       {
@@ -356,7 +382,7 @@ export function ReviewModeration({ data }) {
   }
   return <Page title="Review moderation" subtitle="Keep public feedback useful, respectful, and actionable.">
     <ErrorNote>{actionError}</ErrorNote>
-    <DataTable loading={loading} error={listError} onRetry={load} rows={reviews} columns={[
+    <DataTable dateField="createdAt" loading={loading} error={listError} onRetry={load} rows={reviews} columns={[
       { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
       { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) },
       { key: 'patientName', label: 'Patient', render: (item) => item.patient?.name || 'Verified patient' },
@@ -424,7 +450,7 @@ export function ContactInbox({ data }) {
       <ErrorNote>{formError}</ErrorNote>
       {saved && <p role="status" className="text-sm font-semibold text-success">Response saved.</p>}
     </form>
-    <DataTable loading={loading} error={listError} onRetry={load} rows={requests} columns={[{ key: 'id', label: 'ID', render: (item, index) => sequenceId(index) }, { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'subject', label: 'Subject' }, { key: 'message', label: 'Message' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'response', label: 'Response', render: (item) => item.response || '—' }]} />
+    <DataTable dateField="createdAt" loading={loading} error={listError} onRetry={load} rows={requests} columns={[{ key: 'id', label: 'ID', render: (item, index) => sequenceId(index) }, { key: 'date', label: 'Date', render: (item) => formatDate(item.createdAt) }, { key: 'name', label: 'Name' }, { key: 'email', label: 'Email' }, { key: 'subject', label: 'Subject' }, { key: 'message', label: 'Message' }, { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> }, { key: 'response', label: 'Response', render: (item) => item.response || '—' }]} />
   </Page>
 }
 
@@ -529,8 +555,8 @@ export function PortalProfile({ data: _data, role = 'patient' }) {
       <h2 className="text-lg">{role === 'patient' ? 'Account information' : 'Profile details'}</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2 flex flex-wrap items-center gap-4 rounded-button bg-surface p-3">
-          <span className="grid h-16 w-16 shrink-0 overflow-hidden place-items-center rounded-full bg-primary-light text-lg font-bold text-primary-dark">{current.photoUrl ? <img src={current.photoUrl} alt="Profile" className="h-full w-full object-cover" /> : (current.name || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>
-          <div className="min-w-[11rem] flex-1">
+          <ProfileAvatar src={current.photoUrl} alt="Profile" fallback={(current.name || 'U').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()} className="h-16 w-16 shrink-0 rounded-full bg-primary-light text-lg font-bold text-primary-dark" />
+          <div className="portal-profile-photo-copy min-w-0 flex-1">
             <span className="mb-1.5 block text-sm font-medium text-ink">Profile photo</span>
             <label htmlFor="portal-profile-photo" className={`inline-flex min-h-10 max-w-full items-center justify-center rounded-button border border-primary-dark px-3 py-2 text-sm font-semibold transition-colors ${uploadingPhoto ? 'cursor-wait bg-primary-light text-primary-dark opacity-70' : 'cursor-pointer bg-white text-primary-dark hover:bg-primary-light'}`}>
               <input id="portal-profile-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} disabled={uploadingPhoto} className="sr-only" />

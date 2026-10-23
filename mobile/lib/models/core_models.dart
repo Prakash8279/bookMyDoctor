@@ -5,10 +5,12 @@
 /// backend source stays easy.
 library;
 
-num asNum(dynamic v) => v == null ? 0 : (v is num ? v : num.parse(v.toString()));
+num asNum(dynamic v) =>
+    v == null ? 0 : (v is num ? v : num.parse(v.toString()));
 double asDouble(dynamic v) => asNum(v).toDouble();
 int asInt(dynamic v) => asNum(v).toInt();
-String asString(dynamic v, [String fallback = '']) => v == null ? fallback : v.toString();
+String asString(dynamic v, [String fallback = '']) =>
+    v == null ? fallback : v.toString();
 bool asBool(dynamic v, [bool fallback = false]) => v is bool ? v : fallback;
 
 class AppUser {
@@ -54,9 +56,11 @@ class VerificationDocument {
   final String url;
   final String? uploadedAt;
 
-  VerificationDocument({required this.name, required this.url, this.uploadedAt});
+  VerificationDocument(
+      {required this.name, required this.url, this.uploadedAt});
 
-  factory VerificationDocument.fromJson(Map<String, dynamic> json) => VerificationDocument(
+  factory VerificationDocument.fromJson(Map<String, dynamic> json) =>
+      VerificationDocument(
         name: asString(json['name'], 'Document'),
         url: asString(json['url']),
         uploadedAt: json['uploadedAt'] as String?,
@@ -77,7 +81,12 @@ class BankDetails {
   final String? bankName;
   final String? upiId;
 
-  BankDetails({this.accountHolderName, this.accountNumber, this.ifscCode, this.bankName, this.upiId});
+  BankDetails(
+      {this.accountHolderName,
+      this.accountNumber,
+      this.ifscCode,
+      this.bankName,
+      this.upiId});
 
   factory BankDetails.fromJson(Map<String, dynamic>? json) {
     if (json == null) return BankDetails();
@@ -187,29 +196,43 @@ class MeProfile {
       specialization: json['specialization'] as Map<String, dynamic>?,
       qualification: json['qualification'] as String?,
       registrationNumber: json['registrationNumber'] as String?,
-      experienceYears: json['experienceYears'] == null ? null : asInt(json['experienceYears']),
-      consultationFee: json['consultationFee'] == null ? null : asDouble(json['consultationFee']),
-      emergencyFee: json['emergencyFee'] == null ? null : asDouble(json['emergencyFee']),
-      languages: (json['languages'] as List?)?.map((e) => e.toString()).toList(),
+      experienceYears: json['experienceYears'] == null
+          ? null
+          : asInt(json['experienceYears']),
+      consultationFee: json['consultationFee'] == null
+          ? null
+          : asDouble(json['consultationFee']),
+      emergencyFee:
+          json['emergencyFee'] == null ? null : asDouble(json['emergencyFee']),
+      languages:
+          (json['languages'] as List?)?.map((e) => e.toString()).toList(),
       bio: json['bio'] as String?,
       doctorStatus: json['status'] as String?,
       onlineBooking: json['onlineBooking'] as bool?,
       allowRebooking: json['allowRebooking'] as bool?,
-      maxDaysAdvance: json['maxDaysAdvance'] == null ? null : asInt(json['maxDaysAdvance']),
-      maxOnlineBookingsPerDay: json['maxOnlineBookingsPerDay'] == null ? null : asInt(json['maxOnlineBookingsPerDay']),
+      maxDaysAdvance:
+          json['maxDaysAdvance'] == null ? null : asInt(json['maxDaysAdvance']),
+      maxOnlineBookingsPerDay: json['maxOnlineBookingsPerDay'] == null
+          ? null
+          : asInt(json['maxOnlineBookingsPerDay']),
       tokenNumberingMode: json['tokenNumberingMode'] as String?,
       onlineTokenParity: json['onlineTokenParity'] as String?,
       rating: json['rating'] == null ? null : asDouble(json['rating']),
-      reviewCount: json['reviewCount'] == null ? null : asInt(json['reviewCount']),
+      reviewCount:
+          json['reviewCount'] == null ? null : asInt(json['reviewCount']),
       emergencyAvailable: json['emergencyAvailable'] as bool?,
-      minBookingAdvanceAmount:
-          json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+      minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null
+          ? null
+          : asDouble(json['minBookingAdvanceAmount']),
       bookingPaymentPolicy: json['bookingPaymentPolicy'] as String?,
       verificationDocuments: (json['verificationDocuments'] as List?)
-              ?.map((e) => VerificationDocument.fromJson(e as Map<String, dynamic>))
+              ?.map((e) =>
+                  VerificationDocument.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const [],
-      bankDetails: json['bankDetails'] == null ? null : BankDetails.fromJson(json['bankDetails'] as Map<String, dynamic>),
+      bankDetails: json['bankDetails'] == null
+          ? null
+          : BankDetails.fromJson(json['bankDetails'] as Map<String, dynamic>),
       clinicId: json['clinicId'] as String?,
       since: json['since'] as String?,
     );
@@ -232,8 +255,10 @@ class City {
   final String name;
   final String? state;
   City({required this.id, required this.name, this.state});
-  factory City.fromJson(Map<String, dynamic> json) =>
-      City(id: asString(json['id']), name: asString(json['name']), state: json['state'] as String?);
+  factory City.fromJson(Map<String, dynamic> json) => City(
+      id: asString(json['id']),
+      name: asString(json['name']),
+      state: json['state'] as String?);
 }
 
 class Area {
@@ -241,7 +266,11 @@ class Area {
   final String name;
   final String? pincode;
   final String cityId;
-  Area({required this.id, required this.name, this.pincode, required this.cityId});
+  Area(
+      {required this.id,
+      required this.name,
+      this.pincode,
+      required this.cityId});
   factory Area.fromJson(Map<String, dynamic> json) => Area(
         id: asString(json['id']),
         name: asString(json['name']),
@@ -255,7 +284,8 @@ class Specialization {
   final String name;
   final String? icon;
   final String? description;
-  Specialization({required this.id, required this.name, this.icon, this.description});
+  Specialization(
+      {required this.id, required this.name, this.icon, this.description});
   factory Specialization.fromJson(Map<String, dynamic> json) => Specialization(
         id: asString(json['id']),
         name: asString(json['name']),
@@ -349,23 +379,33 @@ class DoctorDirectoryItem {
     this.createdAt,
   });
 
-  String get displayName => doctorNumber == null ? name : 'DCD$doctorNumber · $name';
+  String get displayName =>
+      doctorNumber == null ? name : 'DCD$doctorNumber · $name';
 
-  factory DoctorDirectoryItem.fromJson(Map<String, dynamic> json) => DoctorDirectoryItem(
+  factory DoctorDirectoryItem.fromJson(Map<String, dynamic> json) =>
+      DoctorDirectoryItem(
         id: asString(json['id']),
-        doctorNumber: json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
+        doctorNumber:
+            json['doctorNumber'] == null ? null : asInt(json['doctorNumber']),
         name: asString(json['name']),
         photoUrl: json['photoUrl'] as String?,
         city: json['city'] as String?,
         specialization: json['specialization'] == null
             ? null
-            : Specialization.fromJson(json['specialization'] as Map<String, dynamic>),
+            : Specialization.fromJson(
+                json['specialization'] as Map<String, dynamic>),
         qualification: json['qualification'] as String?,
         registrationNumber: json['registrationNumber'] as String?,
-        experienceYears: json['experienceYears'] == null ? null : asInt(json['experienceYears']),
+        experienceYears: json['experienceYears'] == null
+            ? null
+            : asInt(json['experienceYears']),
         consultationFee: asDouble(json['consultationFee']),
-        emergencyFee: json['emergencyFee'] == null ? null : asDouble(json['emergencyFee']),
-        languages: (json['languages'] as List? ?? []).map((e) => e.toString()).toList(),
+        emergencyFee: json['emergencyFee'] == null
+            ? null
+            : asDouble(json['emergencyFee']),
+        languages: (json['languages'] as List? ?? [])
+            .map((e) => e.toString())
+            .toList(),
         rating: asDouble(json['rating']),
         reviewCount: asInt(json['reviewCount']),
         emergencyAvailable: asBool(json['emergencyAvailable']),
@@ -382,16 +422,22 @@ class DoctorDirectoryItem {
             .toList(),
         bio: json['bio'] as String?,
         allowRebooking: json['allowRebooking'] as bool?,
-        maxDaysAdvance: json['maxDaysAdvance'] == null ? null : asInt(json['maxDaysAdvance']),
+        maxDaysAdvance: json['maxDaysAdvance'] == null
+            ? null
+            : asInt(json['maxDaysAdvance']),
         accountStatus: json['accountStatus'] as String?,
         doctorStatus: json['status'] as String?,
         scheduleSummary: json['scheduleSummary'] as String?,
         schedule: (json['schedule'] as List? ?? [])
             .map((e) => DoctorScheduleSlot.fromJson(e as Map<String, dynamic>))
             .toList(),
-        minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null ? null : asDouble(json['minBookingAdvanceAmount']),
+        minBookingAdvanceAmount: json['minBookingAdvanceAmount'] == null
+            ? null
+            : asDouble(json['minBookingAdvanceAmount']),
         bookingPaymentPolicy: json['bookingPaymentPolicy'] as String?,
-        createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'].toString()),
+        createdAt: json['createdAt'] == null
+            ? null
+            : DateTime.tryParse(json['createdAt'].toString()),
       );
 }
 
@@ -399,11 +445,14 @@ class DoctorScheduleSlot {
   final String day;
   final String hours;
   final int? slotMinutes;
-  DoctorScheduleSlot({required this.day, required this.hours, this.slotMinutes});
-  factory DoctorScheduleSlot.fromJson(Map<String, dynamic> json) => DoctorScheduleSlot(
+  DoctorScheduleSlot(
+      {required this.day, required this.hours, this.slotMinutes});
+  factory DoctorScheduleSlot.fromJson(Map<String, dynamic> json) =>
+      DoctorScheduleSlot(
         day: asString(json['day']),
         hours: asString(json['hours']),
-        slotMinutes: json['slotMinutes'] == null ? null : asInt(json['slotMinutes']),
+        slotMinutes:
+            json['slotMinutes'] == null ? null : asInt(json['slotMinutes']),
       );
 }
 
@@ -426,20 +475,25 @@ class ClinicDoctorLink {
     required this.onlineBooking,
     this.specialization,
   });
-  factory ClinicDoctorLink.fromJson(Map<String, dynamic> json) => ClinicDoctorLink(
+  factory ClinicDoctorLink.fromJson(Map<String, dynamic> json) =>
+      ClinicDoctorLink(
         doctorUserId: asString(json['doctorUserId']),
         name: asString(json['name']),
         photoUrl: json['photoUrl'] as String?,
         isOwner: asBool(json['isOwner']),
         isPrimary: asBool(json['isPrimary']),
         onlineBooking: asBool(json['onlineBooking']),
-        specialization: json['specialization'] == null ? null : Specialization.fromJson(json['specialization'] as Map<String, dynamic>),
+        specialization: json['specialization'] == null
+            ? null
+            : Specialization.fromJson(
+                json['specialization'] as Map<String, dynamic>),
       );
 }
 
 /// GET /clinics/:id full detail shape (list rows use a subset of this).
 class Clinic {
   final String id;
+  final String? createdAt;
   final String name;
   final String? phone;
   final String? address;
@@ -456,6 +510,7 @@ class Clinic {
 
   Clinic({
     required this.id,
+    this.createdAt,
     required this.name,
     this.phone,
     this.address,
@@ -473,6 +528,7 @@ class Clinic {
 
   factory Clinic.fromJson(Map<String, dynamic> json) => Clinic(
         id: asString(json['id']),
+        createdAt: json['createdAt'] as String?,
         name: asString(json['name']),
         phone: json['phone'] as String?,
         address: json['address'] as String?,
@@ -483,8 +539,12 @@ class Clinic {
         paymentUpiEnabled: asBool(json['paymentUpiEnabled']),
         paymentUpiId: json['paymentUpiId'] as String?,
         paymentQrUrl: json['paymentQrUrl'] as String?,
-        city: json['city'] == null ? null : City.fromJson(json['city'] as Map<String, dynamic>),
-        area: json['area'] == null ? null : Area.fromJson(json['area'] as Map<String, dynamic>),
+        city: json['city'] == null
+            ? null
+            : City.fromJson(json['city'] as Map<String, dynamic>),
+        area: json['area'] == null
+            ? null
+            : Area.fromJson(json['area'] as Map<String, dynamic>),
         doctors: (json['doctors'] as List? ?? [])
             .map((e) => ClinicDoctorLink.fromJson(e as Map<String, dynamic>))
             .toList(),

@@ -1,7 +1,7 @@
 // Rasterizes the app's REAL brand mark — a heart with an ECG/pulse line through it, on a
 // terracotta rounded-square background (the same PNG used as the mobile app's icon:
-// mobile/assets/branding/app_icon.png, cropped to drop its safe-zone margin and copied in here as
-// assets/brand-logo.png) — into raw RGB pixel bytes, so lib/pdf.js's from-scratch, dependency-free
+// mobile/assets/branding/app_icon.png, generated from the same approved square master and copied
+// in here as assets/brand-logo.png) — into raw RGB pixel bytes, so lib/pdf.js's dependency-free
 // PDF writer can embed it as an Image XObject in every receipt/slip header (see lib/receiptPdf.js).
 //
 // CORRECTION: an earlier version of this file built a generic "heart-pulse" stock icon (open loop
@@ -71,7 +71,10 @@ export function loadBrandLogoRgb() {
         return
       }
       const image = new Image()
+      // A blocked image request must never leave View slip stuck on Opening indefinitely.
+      const timeout = setTimeout(() => resolve(null), 3000)
       image.onload = () => {
+        clearTimeout(timeout)
         try {
           ctx.drawImage(image, 0, 0, RASTER_SIZE, RASTER_SIZE)
           const { data } = ctx.getImageData(0, 0, RASTER_SIZE, RASTER_SIZE)
@@ -82,7 +85,7 @@ export function loadBrandLogoRgb() {
           resolve(null)
         }
       }
-      image.onerror = () => resolve(null)
+      image.onerror = () => { clearTimeout(timeout); resolve(null) }
       image.src = logoUrl
     } catch {
       resolve(null)

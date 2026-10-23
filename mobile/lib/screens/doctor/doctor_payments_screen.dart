@@ -22,14 +22,17 @@ class DoctorPaymentsScreen extends StatelessWidget {
 
   Future<List<PaymentItem>> _load() async {
     try {
-      final res = await ApiClient.instance.get('/payments', query: {'pageSize': 50});
+      final res =
+          await ApiClient.instance.getAll('/payments', query: {'pageSize': 50});
       final list = <PaymentItem>[];
       for (final item in res.list) {
-        try { list.add(PaymentItem.fromJson(item)); } catch (_) {}
+        try {
+          list.add(PaymentItem.fromJson(item));
+        } catch (_) {}
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -46,7 +49,8 @@ class DoctorPaymentsScreen extends StatelessWidget {
       builder: (context, payments) => Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Payments',
               subtitle: 'Payments recorded for your consultations.',
@@ -56,39 +60,46 @@ class DoctorPaymentsScreen extends StatelessWidget {
             child: ListView.separated(
               padding: const EdgeInsets.all(AppSpacing.md),
               itemCount: payments.length,
-              separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+              separatorBuilder: (_, __) =>
+                  const SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, i) {
                 final p = payments[i];
                 return Card(
-                  child: ListTile(
-                    title: Text(p.patient?.patientDisplayName ?? 'Patient'),
-                    // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's payments
-                    // table (embedded in AdminPages.jsx#RevenueReports, doctorOnly branch) also
-                    // shows the Booking ID (shortId of the appointment) and an "At booking"/
-                    // "At clinic" PaymentSourceBadge next to the mode — both were missing here.
-                    subtitle: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
-                            '${p.appointment != null ? " · Booking ${_shortId(p.appointment!.id)}" : ""}'
-                            '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                  child: Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        title: Text(p.patient?.patientDisplayName ?? 'Patient'),
+                        // COMPLETENESS FIX (mobile parity audit round 2, doctor panel): web's payments
+                        // table (embedded in AdminPages.jsx#RevenueReports, doctorOnly branch) also
+                        // shows the Booking ID (shortId of the appointment) and an "At booking"/
+                        // "At clinic" PaymentSourceBadge next to the mode — both were missing here.
+                        subtitle: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${p.mode.toUpperCase()}${p.receiptNumber != null ? " · #${p.receiptNumber}" : ""}'
+                                '${p.appointment != null ? " · Booking ${_shortId(p.appointment!.id)}" : ""}'
+                                '${p.createdAt != null ? " · ${p.createdAt!.split("T").first}" : ""}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            PaymentSourceBadge(payment: p),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        PaymentSourceBadge(payment: p),
-                      ],
-                    ),
-                    trailing: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (p.fees.consultationFee != null) Text('₹${p.fees.consultationFee!.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                        StatusBadge(status: p.status),
-                      ],
-                    ),
-                  ),
+                        trailing: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (p.fees.consultationFee != null)
+                              Text(
+                                  '₹${p.fees.consultationFee!.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                            StatusBadge(status: p.status),
+                          ],
+                        ),
+                      )),
                 );
               },
             ),

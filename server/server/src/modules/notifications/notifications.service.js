@@ -70,7 +70,7 @@ function shapeNotification(row) {
  * @param {string} userId
  * @param {{title:string, body:string, type?:string}} content
  */
-async function notifySystemEvent(userId, { title, body, type = 'system' }) {
+async function notifySystemEvent(userId, { title, body, type = 'system', emailDetails, emailAmount, emailActionPath }) {
   const notification = await prisma.notification.create({
     data: { title, body, type, audience: 'single_user', targetUserId: userId, senderUserId: null },
   });
@@ -89,9 +89,16 @@ async function notifySystemEvent(userId, { title, body, type = 'system' }) {
   // Best-effort (both helpers already swallow their own errors) and fire-and-forget from this
   // function's point of view — awaited so a failure surfaces in logs promptly, never so it can
   // block or fail the in-app write above, which has already committed by this point.
+  if (type === 'payment') {
+    const { enqueueNotification } = require('../../jobs/notificationQueue');
+    await enqueueNotification(notification.id, userId, { emailDetails, emailAmount, emailActionPath });
+    return;
+  }
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } }).catch(() => null);
   await Promise.all([
-    emailService.sendEmail({ to: user?.email, subject: title, text: body }),
+    emailService.sendEmail({ to: user?.email, subject: title, text: body, type,
+      ...(emailDetails ? { details: emailDetails } : {}), ...(emailAmount != null ? { amount: emailAmount } : {}),
+      ...(emailActionPath ? { actionPath: emailActionPath } : {}) }),
     pushService.sendPush(userId, { title, body }),
   ]);
 }

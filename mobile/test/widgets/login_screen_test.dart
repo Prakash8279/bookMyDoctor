@@ -20,17 +20,22 @@ Widget _wrap(Widget child) {
 
 void main() {
   group('LoginScreen', () {
-    testWidgets('renders the welcome header, both fields and the sign-in button', (tester) async {
+    testWidgets(
+        'renders the welcome header, both fields and the sign-in button',
+        (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
       expect(find.text('Welcome back'), findsOneWidget);
-      expect(find.widgetWithText(TextFormField, 'Email address'), findsOneWidget);
+      expect(
+          find.widgetWithText(TextFormField, 'Email address'), findsOneWidget);
       expect(find.widgetWithText(TextFormField, 'Password'), findsOneWidget);
       expect(find.widgetWithText(ElevatedButton, 'Sign in'), findsOneWidget);
       expect(find.text('Continue with Google'), findsOneWidget);
     });
 
-    testWidgets('shows validation errors when the sign-in form is submitted empty', (tester) async {
+    testWidgets(
+        'shows validation errors when the sign-in form is submitted empty',
+        (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
       await tester.tap(find.widgetWithText(ElevatedButton, 'Sign in'));
@@ -40,11 +45,14 @@ void main() {
       expect(find.text('Enter your password'), findsOneWidget);
     });
 
-    testWidgets('shows only the email error when just the email is invalid', (tester) async {
+    testWidgets('shows only the email error when just the email is invalid',
+        (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
-      await tester.enterText(find.widgetWithText(TextFormField, 'Email address'), 'not-an-email');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Password'), 'Some#Password1');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Email address'), 'not-an-email');
+      await tester.enterText(
+          find.widgetWithText(TextFormField, 'Password'), 'Some#Password1');
       await tester.tap(find.widgetWithText(ElevatedButton, 'Sign in'));
       await tester.pump();
 
@@ -52,7 +60,8 @@ void main() {
       expect(find.text('Enter your password'), findsNothing);
     });
 
-    testWidgets('toggles the password field between obscured and visible', (tester) async {
+    testWidgets('toggles the password field between obscured and visible',
+        (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
       expect(find.byIcon(Icons.visibility_off_outlined), findsOneWidget);
@@ -65,12 +74,13 @@ void main() {
       expect(find.byIcon(Icons.visibility_off_outlined), findsNothing);
     });
 
-
-    testWidgets('shows the forgot-password and create-account links', (tester) async {
+    testWidgets('shows the forgot-password and create-account links',
+        (tester) async {
       await tester.pumpWidget(_wrap(const LoginScreen()));
 
       expect(find.text('Forgot password?'), findsOneWidget);
-      expect(find.text('New to BookADoctors? Create an account'), findsOneWidget);
+      expect(
+          find.text('New to BookADoctors? Create an account'), findsOneWidget);
       expect(find.text('Browse without logging in'), findsOneWidget);
     });
   });

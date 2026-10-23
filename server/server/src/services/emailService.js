@@ -8,6 +8,8 @@
 const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
 const env = require('../config/env');
+const { notificationTemplate } = require('./emailTemplates');
+const { EMAIL_LOGO_CID, emailLogoAttachment } = require('./emailBrandAsset');
 
 let cachedTransporter = null;
 
@@ -31,6 +33,9 @@ function getTransporter() {
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '587', 10),
       secure: process.env.SMTP_SECURE === 'true',
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
       auth: emailUser ? { user: emailUser, pass: emailPass } : undefined,
     });
   }
@@ -63,6 +68,7 @@ const smtpProvider = {
       subject,
       text,
       html: html || text,
+      ...(html?.includes(`cid:${EMAIL_LOGO_CID}`) ? { attachments: [emailLogoAttachment()] } : {}),
     });
     logger.info(`[email:smtp] message sent to=${to} messageId=${info.messageId}`);
     return info;
@@ -101,12 +107,14 @@ function hasLiveEmailTransport() {
  * Best-effort, never throws — email delivery (real or placeholder) is always a side effect.
  * @param {{to?:string|null, subject:string, text:string, html?:string}} message
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, type, details, actionPath, amount, throwOnError = false }) {
   if (!to) return; // no address on file — silently skip
   try {
-    return await resolveProvider().send({ to, subject, text, html });
+    const formatted = html ? { subject, text, html } : notificationTemplate({ email: to, subject, text, type, details, actionPath, amount });
+    return await resolveProvider().send({ to, ...formatted });
   } catch (err) {
     logger.warn(`[email] sendEmail failed for ${to}: ${err.message}`);
+    if (throwOnError) throw err;
   }
 }
 
@@ -123,7 +131,8 @@ async function sendVerificationEmail({ to, subject, text, html }) {
   }
 
   try {
-    return await resolveProvider().send({ to, subject, text, html });
+    const formatted = html ? { subject, text, html } : notificationTemplate({ email: to, subject, text, type: 'system' });
+    return await resolveProvider().send({ to, ...formatted });
   } catch (err) {
     logger.warn(`[email:verification] delivery failed: ${err.message}`);
     throw err;

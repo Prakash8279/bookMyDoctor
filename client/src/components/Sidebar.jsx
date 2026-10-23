@@ -1,7 +1,8 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAppStore } from '../store/useAppStore'
 import brandLogoUrl from '../assets/brand-logo.png'
+import { ProfileAvatar } from './ProfileAvatar'
 
 const ICONS = {
   'layout-dashboard': <><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>,
@@ -37,7 +38,7 @@ function NavIcon({ name }) {
 
 const menu = {
   patient: [['Dashboard', '/patient/dashboard', 'layout-dashboard'], ['Book appointment', '/patient/book', 'calendar-days'], ['My appointments', '/patient/appointments', 'clipboard-list'], ['Queue tracker', '/patient/queue', 'ticket-check'], ['Payments', '/patient/payments', 'credit-card'], ['Family members', '/patient/family', 'users-round'], ['Notifications', '/patient/notifications', 'bell'], ['My profile', '/patient/profile', 'user-round']],
-  doctor: [['Dashboard', '/doctor/dashboard', 'layout-dashboard'], ['Queue management', '/doctor/queue', 'ticket-check'], ['Appointments', '/doctor/appointments', 'calendar-days'], ['Consultation & EMR', '/doctor/emr', 'file-heart'], ['Analytics', '/doctor/analytics', 'chart-no-axes-combined'], ['Patient reviews', '/doctor/reviews', 'message-square-warning'], ['Notifications', '/doctor/notifications', 'bell'], ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'], ['Reports', '/doctor/reports', 'file-text'], ['My profile', '/doctor/profile', 'user-round']],
+  doctor: [['Dashboard', '/doctor/dashboard', 'layout-dashboard'], ['Queue management', '/doctor/queue', 'ticket-check'], ['Appointments', '/doctor/appointments', 'calendar-days'], ['Analytics', '/doctor/analytics', 'chart-no-axes-combined'], ['Patient reviews', '/doctor/reviews', 'message-square-warning'], ['Notifications', '/doctor/notifications', 'bell'], ['Clinic settings', '/doctor/clinic', 'building2'], ['OPD schedule', '/doctor/schedule', 'clock3'], ['Receptionists', '/doctor/receptionists', 'users-round'], ['Reports', '/doctor/reports', 'file-text'], ['My profile', '/doctor/profile', 'user-round']],
   receptionist: [['Dashboard', '/receptionist/dashboard', 'layout-dashboard'], ['Walk-in registration', '/receptionist/walk-in', 'user-round'], ['Queue monitor', '/receptionist/queue', 'ticket-check'], ['Check-in', '/receptionist/check-in', 'clipboard-list'], ['Appointments', '/receptionist/appointments', 'calendar-days'], ['Doctor availability', '/receptionist/availability', 'clock3'], ['Payments', '/receptionist/payments', 'wallet-cards'], ['Patients', '/receptionist/patients', 'users-round'], ['Notifications', '/receptionist/notifications', 'bell'], ['Reports', '/receptionist/reports', 'chart-no-axes-combined'], ['My profile', '/receptionist/profile', 'user-round']],
   admin: [['Dashboard', '/admin/dashboard', 'layout-dashboard'], ['Doctors', '/admin/doctors', 'stethoscope'], ['Patients', '/admin/patients', 'users-round'], ['Receptionists', '/admin/receptionists', 'users-round'], ['Clinics', '/admin/clinics', 'building2'], ['Cities & areas', '/admin/cities', 'map-pinned'], ['Specializations', '/admin/specializations', 'activity'], ['Appointments', '/admin/appointments', 'calendar-days'], ['Revenue', '/admin/revenue', 'receipt-indian-rupee'], ['Refunds & reconciliation', '/admin/payment-operations', 'wallet-cards'], ['Review moderation', '/admin/reviews', 'message-square-warning'], ['Complaints', '/admin/complaints', 'message-square-warning'], ['Contact inbox', '/admin/contacts', 'file-text'], ['Notifications', '/admin/notifications', 'bell'], ['Activity logs', '/admin/activity-logs', 'clipboard-list'], ['Settings', '/admin/settings', 'settings'], ['My profile', '/admin/profile', 'user-round']],
   // The first 10 entries are Super Admin's own pages. Everything after that (rendered under the
@@ -63,7 +64,13 @@ const roleLabelFor = (role) => ROLE_LABELS[role] || (role.charAt(0).toUpperCase(
 const roleSuffixFor = (role) => (role === 'admin' || role === 'superadmin' ? 'control panel' : 'portal')
 
 export function Sidebar({ role, open, onClose, onLogout }) {
-  const items = menu[role] || []
+  useEffect(() => {
+    if (!open) return undefined
+    const closeOnEscape = (event) => { if (event.key === 'Escape') onClose?.() }
+    document.addEventListener('keydown', closeOnEscape)
+    return () => document.removeEventListener('keydown', closeOnEscape)
+  }, [open, onClose])
+  const items = (menu[role] || []).filter(([, path]) => !(['patient', 'receptionist'].includes(role) && path.endsWith('/notifications')))
   const currentUser = useAppStore((state) => state.currentUser)
   const roleLabel = roleLabelFor(role)
   const displayName = currentUser?.name || `${roleLabel} account`
@@ -73,7 +80,8 @@ export function Sidebar({ role, open, onClose, onLogout }) {
   // try/catch is needed at this call site.
   const logout = async () => { localStorage.removeItem('dc-role'); localStorage.removeItem('dc-email'); await onLogout?.(); onClose?.() }
   return <>
-    <aside className={`fixed inset-y-0 left-0 z-40 w-72 overflow-y-auto bg-charcoal p-4 text-white transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+    <aside id="portal-navigation" aria-label="Portal navigation" className={`fixed inset-y-0 left-0 z-40 w-72 max-w-[calc(100vw-1rem)] shrink-0 overflow-y-auto overscroll-contain bg-charcoal p-4 text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <div className="flex justify-end lg:hidden"><button type="button" aria-label="Close menu" onClick={onClose} className="touch-target grid h-10 w-10 place-items-center rounded-button text-xl text-white">×</button></div>
       <Link to="/" className="flex items-center gap-3 px-2 py-3" onClick={onClose}>
         <span className="brand-mark"><img src={brandLogoUrl} alt="BookADoctors" className="h-full w-full rounded-[13px] object-cover" /></span>
         <span className="font-sans text-lg">BookADoctors</span>
@@ -95,12 +103,13 @@ export function Sidebar({ role, open, onClose, onLogout }) {
       </nav>
       <button onClick={logout} className="mt-8 flex w-full items-center gap-3 rounded-button px-3 py-2.5 text-left text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white"><NavIcon name="log-out" /><span>Sign out</span></button>
     </aside>
-    {open && <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-30 bg-charcoal/40 md:hidden" />}
+    {open && <button aria-label="Close navigation" onClick={onClose} className="fixed inset-0 z-30 bg-charcoal/40 lg:hidden" />}
   </>
 }
 
-export function PortalHeader({ role, onMenu, showMenu = true }) {
+export function PortalHeader({ role, onMenu, showMenu = true, menuOpen = false }) {
   const currentUser = useAppStore((state) => state.currentUser)
+  const unreadCount = useAppStore((state) => (state.data.notifications || []).filter((item) => !item.readAt).length)
   const location = useLocation()
   const roleLabel = roleLabelFor(role)
   const displayName = currentUser?.name || `${roleLabel} account`
@@ -109,5 +118,12 @@ export function PortalHeader({ role, onMenu, showMenu = true }) {
   const pageLabel = (menu[role] || []).find(([, path]) => path === location.pathname)?.[0]
     || (role === 'patient' && location.pathname === '/patient/complaints' ? 'Help & Policies' : null)
     || (role === 'superadmin' ? 'Control center' : 'Dashboard')
-  return <header className="portal-header sticky top-0 z-20 flex min-h-16 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur md:px-7">{showMenu ? <><button onClick={onMenu} className="touch-target grid place-items-center rounded-button md:hidden" aria-label="Open navigation"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button><div className="hidden min-w-0 md:block"><p className="text-base text-charcoal">{pageLabel}</p></div></> : <><Link to="/" className="flex min-w-0 items-center gap-2.5 lg:hidden" aria-label="BookADoctors public home"><span className="brand-mark h-9 w-9"><img src={brandLogoUrl} alt="" className="h-full w-full rounded-[12px] object-cover" /></span><span className="truncate font-sans text-base text-charcoal sm:text-lg">BookADoctors</span></Link><div className="hidden min-w-0 lg:block"><p className="text-base text-charcoal">{pageLabel}</p></div></>}<div className="flex items-center gap-2 sm:gap-3"><Link to={profilePath} aria-label="Open profile" title={displayName} className="grid h-9 w-9 overflow-hidden place-items-center rounded-full bg-primary-light font-semibold uppercase text-primary-dark">{currentUser?.photoUrl ? <img src={currentUser.photoUrl} alt={`${displayName} profile`} className="h-full w-full object-cover" /> : initials}</Link><div className="hidden min-w-0 sm:block"><p className="truncate text-sm font-bold text-charcoal">{displayName}</p><p className="text-xs text-muted">{roleLabel} {roleSuffixFor(role)}</p></div></div></header>
+  return <header className="portal-header sticky top-0 z-20 flex min-h-16 items-center justify-between gap-3 border-b border-border bg-surface/95 px-4 backdrop-blur md:px-7">
+    {showMenu ? <><button onClick={onMenu} className="touch-target grid shrink-0 place-items-center rounded-button lg:hidden" aria-label="Open navigation" aria-expanded={menuOpen} aria-controls="portal-navigation"><svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2"><path d="M4 7h16M4 12h16M4 17h16" /></svg></button><div className="min-w-0 flex-1"><p className="truncate text-base text-charcoal">{pageLabel}</p></div></> : <><Link to="/" className="flex min-w-0 items-center gap-2.5 lg:hidden" aria-label="BookADoctors public home"><span className="brand-mark h-9 w-9"><img src={brandLogoUrl} alt="" className="h-full w-full rounded-[12px] object-cover" /></span><span className="truncate font-sans text-base text-charcoal sm:text-lg">BookADoctors</span></Link><div className="hidden min-w-0 lg:block"><p className="text-base text-charcoal">{pageLabel}</p></div></>}
+    <div className="flex items-center gap-2 sm:gap-3">
+      {['doctor', 'patient', 'receptionist'].includes(role) && <Link to={`/${role}/notifications`} aria-label="Notifications" title="Notifications" className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full border border-border bg-white text-primary-dark"><NavIcon name="bell" />{unreadCount > 0 && <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-primary-dark px-1 text-[10px] font-bold text-white" aria-label={`${unreadCount} unread notifications`}>{unreadCount > 9 ? '9+' : unreadCount}</span>}</Link>}
+      <Link to={profilePath} aria-label="Open profile" title={displayName}><ProfileAvatar src={currentUser?.photoUrl} alt={`${displayName} profile`} fallback={initials} className="h-9 w-9 rounded-full bg-primary-light font-semibold uppercase text-primary-dark" /></Link>
+      <div className="hidden min-w-0 sm:block"><p className="truncate text-sm font-bold text-charcoal">{displayName}</p><p className="text-xs text-muted">{roleLabel} {roleSuffixFor(role)}</p></div>
+    </div>
+  </header>
 }

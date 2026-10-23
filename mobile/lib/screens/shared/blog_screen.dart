@@ -25,9 +25,12 @@ class BlogScreen extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           const PageHeader(title: 'BookADoctors Blog'),
-          const Text(
+          Text(
             'Guides for healthier choices, clinic visits, and managing your care.',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.5),
+            style: TextStyle(
+                color: context.palette.textSecondary,
+                fontSize: 15,
+                height: 1.5),
           ),
           const SizedBox(height: AppSpacing.lg),
           for (final title in _posts)
@@ -35,9 +38,10 @@ class BlogScreen extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: SectionCard(
                 title: title,
-                child: const Text(
+                child: Text(
                   'A practical BookADoctors guide.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: TextStyle(
+                      color: context.palette.textSecondary, fontSize: 13),
                 ),
               ),
             ),

@@ -43,7 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
   /// confusing null-idToken failure after the picker closes.
   Future<void> _handleGoogleSignIn() async {
     if (!GoogleAuthConfig.isConfigured) {
-      setState(() => _error = 'Google sign-in is not configured for this app yet.');
+      setState(
+          () => _error = 'Google sign-in is not configured for this app yet.');
       return;
     }
     setState(() {
@@ -51,7 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     try {
-      final googleSignIn = GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
+      final googleSignIn =
+          GoogleSignIn(serverClientId: GoogleAuthConfig.webClientId);
       final account = await googleSignIn.signIn();
       if (account == null) {
         // User closed the picker without choosing an account — not an error worth showing.
@@ -61,7 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final googleAuth = await account.authentication;
       final idToken = googleAuth.idToken;
       if (idToken == null) {
-        throw Exception('Google did not return a usable sign-in token. Please try again.');
+        throw Exception(
+            'Google did not return a usable sign-in token. Please try again.');
       }
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
@@ -69,7 +72,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       setState(() => _googleSubmitting = false);
       if (!ok) {
-        setState(() => _error = auth.lastError ?? 'Google sign-in failed. Please try again.');
+        setState(() => _error =
+            auth.lastError ?? 'Google sign-in failed. Please try again.');
       } else if (Navigator.of(context).canPop()) {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
@@ -89,11 +93,13 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
     final auth = context.read<AuthProvider>();
-    final ok = await auth.login(_emailController.text.trim(), _passwordController.text);
+    final ok = await auth.login(
+        _emailController.text.trim(), _passwordController.text);
     if (!mounted) return;
     setState(() => _submitting = false);
     if (!ok) {
-      setState(() => _error = auth.lastError ?? 'Login failed. Please try again.');
+      setState(
+          () => _error = auth.lastError ?? 'Login failed. Please try again.');
     } else {
       if (Navigator.of(context).canPop()) {
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -118,18 +124,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     // COMPLETENESS FIX (brand consistency): the actual brand mark — same image as
                     // the web favicon/sidebar and this app's own launcher icon — instead of a
                     // generic placeholder icon. See splash_screen.dart's doc comment.
-                    const Image(image: AssetImage('assets/branding/app_icon.png'), width: 64, height: 64),
+                    const Image(
+                        image: AssetImage('assets/branding/app_icon.png'),
+                        width: 64,
+                        height: 64),
                     const SizedBox(height: AppSpacing.md),
                     const Text(
                       'Welcome back',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
+                      style:
+                          TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: AppSpacing.xs),
-                    const Text(
+                    Text(
                       'Sign in to manage appointments, queues, and health records.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: AppColors.textSecondary),
+                      style: TextStyle(color: context.palette.textSecondary),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     if (_error != null) ...[
@@ -139,8 +149,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(labelText: 'Email address', hintText: 'you@example.com'),
-                      validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                      decoration: const InputDecoration(
+                          labelText: 'Email address',
+                          hintText: 'you@example.com'),
+                      validator: (v) => (v == null || !v.contains('@'))
+                          ? 'Enter a valid email'
+                          : null,
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -149,19 +163,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: InputDecoration(
                         labelText: 'Password',
                         suffixIcon: IconButton(
-                          icon: Icon(_obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                          icon: Icon(_obscure
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
                           onPressed: () => setState(() => _obscure = !_obscure),
                         ),
                       ),
-                      validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
+                      validator: (v) => (v == null || v.isEmpty)
+                          ? 'Enter your password'
+                          : null,
                     ),
                     const SizedBox(height: AppSpacing.lg),
-                    PrimaryButton(label: 'Sign in', onPressed: _submit, loading: _submitting),
+                    PrimaryButton(
+                        label: 'Sign in',
+                        onPressed: _submit,
+                        loading: _submitting),
                     const SizedBox(height: AppSpacing.sm),
-                    const Row(children: [
-                      Expanded(child: Divider()),
-                      Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm), child: Text('or', style: TextStyle(color: AppColors.textSecondary))),
-                      Expanded(child: Divider()),
+                    Row(children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.sm),
+                          child: Text('or',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary))),
+                      const Expanded(child: Divider()),
                     ]),
                     const SizedBox(height: AppSpacing.sm),
                     // GOOGLE SIGN-IN FEATURE (user request: "google work nahi kar rah hai fix
@@ -170,21 +196,30 @@ class _LoginScreenState extends State<LoginScreen> {
                     OutlinedButton.icon(
                       onPressed: _googleSubmitting ? null : _handleGoogleSignIn,
                       icon: _googleSubmitting
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('G', style: TextStyle(fontWeight: FontWeight.w800)),
-                      label: Text(_googleSubmitting ? 'Signing in…' : 'Continue with Google'),
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Text('G',
+                              style: TextStyle(fontWeight: FontWeight.w800)),
+                      label: Text(_googleSubmitting
+                          ? 'Signing in…'
+                          : 'Continue with Google'),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Center(
                       child: TextButton(
-                        onPressed: () => Navigator.of(context).pushNamed(Routes.forgotPassword),
+                        onPressed: () => Navigator.of(context)
+                            .pushNamed(Routes.forgotPassword),
                         child: const Text('Forgot password?'),
                       ),
                     ),
                     Center(
                       child: TextButton(
-                        onPressed: () => Navigator.of(context).pushNamed(Routes.register),
-                        child: const Text('New to BookADoctors? Create an account'),
+                        onPressed: () =>
+                            Navigator.of(context).pushNamed(Routes.register),
+                        child: const Text(
+                            'New to BookADoctors? Create an account'),
                       ),
                     ),
                     // COMPLETENESS FIX (mobile parity): the web app has a whole public/signed-out
@@ -203,7 +238,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: OutlinedButton(
                         onPressed: () => Navigator.of(context).canPop()
                             ? Navigator.of(context).pop()
-                            : Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const GuestHomeScreen())),
+                            : Navigator.of(context).pushReplacement(
+                                MaterialPageRoute(
+                                    builder: (_) => const GuestHomeScreen())),
                         child: const Text('Browse without logging in'),
                       ),
                     ),

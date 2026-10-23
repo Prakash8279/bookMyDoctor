@@ -48,8 +48,7 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
   Future<List<QueueTokenItem>> _fetch(String dateStr) async {
     try {
       final res = await ApiClient.instance
-          .get('/queue', query: {'date': dateStr, 'pageSize': 100})
-          .catchError((_) => ApiResponse(data: []));
+          .getAll('/queue', query: {'date': dateStr, 'pageSize': 100});
       final list = <QueueTokenItem>[];
       for (final item in res.list) {
         try {
@@ -58,7 +57,7 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
       }
       return list;
     } catch (_) {
-      return [];
+      rethrow;
     }
   }
 
@@ -113,7 +112,8 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
     if (next == null) return;
     setState(() => _busyIds.add(token.id));
     try {
-      await ApiClient.instance.patch('/queue/${token.id}/status', body: {'status': next});
+      await ApiClient.instance
+          .patch('/queue/${token.id}/status', body: {'status': next});
       _load();
     } catch (err) {
       if (mounted) showErrorSnack(context, err);
@@ -127,7 +127,15 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
   Future<void> _exportCsv(List<QueueTokenItem> tokens) async {
     await shareCsv(
       filename: 'queue-records.csv',
-      headers: const ['Id', 'Token', 'Patient', 'Status', 'Booking', 'Patients ahead', 'Estimated wait (min)'],
+      headers: const [
+        'Id',
+        'Token',
+        'Patient',
+        'Status',
+        'Booking',
+        'Patients ahead',
+        'Estimated wait (min)'
+      ],
       rows: [
         for (var i = 0; i < tokens.length; i++)
           [
@@ -152,10 +160,13 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
         child: Row(
           children: [
             CircleAvatar(
-              backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+              backgroundColor: context.palette.primary.withValues(alpha: 0.1),
               child: Text(
                 '#${t.tokenNumber}',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: AppColors.primary),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    color: context.palette.primary),
               ),
             ),
             const SizedBox(width: AppSpacing.md),
@@ -163,13 +174,18 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(t.patient?.displayName ?? 'Patient', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(t.patient?.displayName ?? 'Patient',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   // Phone + clinical vitals — queue.service.js#shapeQueuePatientRef
                   // only ever sends these to a doctor caller (never receptionist).
-                  if (t.patient?.phone != null || t.patient?.vitalsSummary != null)
+                  if (t.patient?.phone != null ||
+                      t.patient?.vitalsSummary != null)
                     Text(
-                      [t.patient?.phone, t.patient?.vitalsSummary].whereType<String>().join(' · '),
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      [t.patient?.phone, t.patient?.vitalsSummary]
+                          .whereType<String>()
+                          .join(' · '),
+                      style: TextStyle(
+                          fontSize: 11, color: context.palette.textSecondary),
                     ),
                   if (t.patient?.hasHealthNotes ?? false)
                     Text(
@@ -186,18 +202,23 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
                       // BUG FIX (mobile parity audit): web's "Booking" column (Online/Walk-in
                       // pill) — `t.source` was already parsed onto the model but never rendered.
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: AppColors.border.withValues(alpha: 0.5),
+                          color: context.palette.border.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: Text(_bookingLabel(t.source), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                        child: Text(_bookingLabel(t.source),
+                            style: const TextStyle(
+                                fontSize: 10, fontWeight: FontWeight.w600)),
                       ),
                       if (t.status == 'waiting') ...[
                         const SizedBox(width: 8),
                         Text(
                           '${t.patientsAhead} ahead · ~${t.estimatedWaitMinutes} min',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                              color: context.palette.textSecondary,
+                              fontSize: 11),
                         ),
                       ],
                     ],
@@ -206,11 +227,16 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
               ),
             ),
             if (busy)
-              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
             else if (next != null)
-              OutlinedButton(onPressed: () => _advance(t), child: Text(_actionLabel(next)))
+              OutlinedButton(
+                  onPressed: () => _advance(t), child: Text(_actionLabel(next)))
             else if (t.status == 'completed')
-              const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+              Icon(Icons.check_circle,
+                  color: context.palette.success, size: 20),
           ],
         ),
       ),
@@ -223,7 +249,8 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
       body: Column(
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
+            padding: EdgeInsets.fromLTRB(
+                AppSpacing.md, AppSpacing.md, AppSpacing.md, 0),
             child: PageHeader(
               title: 'Live OPD queue',
               subtitle: 'Call patients and update the live waiting line.',
@@ -231,14 +258,16 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
           ),
           Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 OutlinedButton.icon(
                   onPressed: _pickDate,
                   icon: const Icon(Icons.calendar_today_outlined, size: 16),
                   label: Text(DateFormat('dd MMM yyyy').format(_date)),
                 ),
-                const Spacer(),
                 // COMPLETENESS FIX (mobile parity audit): web's "Export CSV" action
                 // (StaffPages.jsx `queueRecordCsv`) had no mobile equivalent.
                 FutureBuilder<List<QueueTokenItem>>(
@@ -246,7 +275,8 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
                   builder: (context, snapshot) {
                     final tokens = snapshot.data ?? const <QueueTokenItem>[];
                     return TextButton.icon(
-                      onPressed: tokens.isEmpty ? null : () => _exportCsv(tokens),
+                      onPressed:
+                          tokens.isEmpty ? null : () => _exportCsv(tokens),
                       icon: const Icon(Icons.file_download_outlined, size: 16),
                       label: const Text('Export CSV'),
                     );
@@ -259,7 +289,9 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
             child: FutureBuilder<List<QueueTokenItem>>(
               future: _future,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) return const LoadingView();
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const LoadingView();
+                }
                 if (snapshot.hasError) {
                   return Padding(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -268,37 +300,60 @@ class _DoctorQueueScreenState extends State<DoctorQueueScreen> {
                 }
                 final tokens = snapshot.data ?? [];
                 if (tokens.isEmpty) {
-                  return const EmptyStateView(icon: Icons.people_alt_outlined, title: 'No queue tokens for this date');
+                  return const EmptyStateView(
+                      icon: Icons.people_alt_outlined,
+                      title: 'No queue tokens for this date');
                 }
                 // BUG FIX (mobile parity audit): web splits into a "Live records" table and a
                 // separate "Completed" table (StaffPages.jsx `activeRows`/`completedRows`) —
                 // mobile used to render one flat, unsectioned list.
-                final active = tokens.where((t) => t.status != 'completed').toList();
-                final completed = tokens.where((t) => t.status == 'completed').toList();
+                final active =
+                    tokens.where((t) => t.status != 'completed').toList();
+                final completed =
+                    tokens.where((t) => t.status == 'completed').toList();
                 return RefreshIndicator(
                   onRefresh: () async => _load(),
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
+                    padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.md, 0, AppSpacing.md, AppSpacing.md),
                     children: [
-                      Text('Live records (${active.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                      Text('Live records (${active.length})',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
                       const SizedBox(height: AppSpacing.sm),
                       if (active.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                          child: Text('No live queue tokens right now.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.md),
+                          child: Text('No live queue tokens right now.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 13)),
                         )
                       else
-                        ...active.map((t) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _tokenCard(t))),
+                        ...active.map((t) => Padding(
+                            padding:
+                                const EdgeInsets.only(bottom: AppSpacing.sm),
+                            child: _tokenCard(t))),
                       const SizedBox(height: AppSpacing.lg),
-                      Text('Completed (${completed.length})', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                      Text('Completed (${completed.length})',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14)),
                       const SizedBox(height: AppSpacing.sm),
                       if (completed.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                          child: Text('No completed consultations yet.', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.md),
+                          child: Text('No completed consultations yet.',
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 13)),
                         )
                       else
-                        ...completed.map((t) => Padding(padding: const EdgeInsets.only(bottom: AppSpacing.sm), child: _tokenCard(t))),
+                        ...completed.map((t) => Padding(
+                            padding:
+                                const EdgeInsets.only(bottom: AppSpacing.sm),
+                            child: _tokenCard(t))),
                     ],
                   ),
                 );

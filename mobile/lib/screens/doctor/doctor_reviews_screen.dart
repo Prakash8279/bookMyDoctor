@@ -18,8 +18,7 @@ class DoctorReviewsScreen extends StatelessWidget {
 
   Future<List<ReviewItem>> _load(String doctorId) async {
     final res = await ApiClient.instance
-        .get('/reviews', query: {'doctorId': doctorId, 'pageSize': 100})
-        .catchError((_) => ApiResponse(data: []));
+        .getAll('/reviews', query: {'doctorId': doctorId, 'pageSize': 100});
     final list = <ReviewItem>[];
     for (final item in res.list) {
       try {
@@ -41,27 +40,34 @@ class DoctorReviewsScreen extends StatelessWidget {
         isEmpty: (list) => list.isEmpty,
         emptyIcon: Icons.star_outline,
         emptyTitle: 'No reviews yet',
-        emptySubtitle: 'Feedback your patients leave after completed consultations will show up here',
+        emptySubtitle:
+            'Feedback your patients leave after completed consultations will show up here',
         builder: (context, reviews) {
           final average = reviews.isEmpty
               ? 0.0
-              : reviews.map((r) => r.rating).reduce((a, b) => a + b) / reviews.length;
+              : reviews.map((r) => r.rating).reduce((a, b) => a + b) /
+                  reviews.length;
           return ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
               const PageHeader(
                 title: 'Patient reviews',
-                subtitle: 'Feedback your patients have left after completed consultations.',
+                subtitle:
+                    'Feedback your patients have left after completed consultations.',
               ),
               SectionCard(
                 child: Row(
                   children: [
                     Text(
                       '★ ${average.toStringAsFixed(1)}',
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.warning),
+                      style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.warning),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    Text('${reviews.length} review(s)', style: const TextStyle(color: AppColors.textSecondary)),
+                    Text('${reviews.length} review(s)',
+                        style: TextStyle(color: context.palette.textSecondary)),
                   ],
                 ),
               ),
@@ -78,20 +84,29 @@ class DoctorReviewsScreen extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 r.patient.name ?? 'Patient',
-                                style: const TextStyle(fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700),
                               ),
                             ),
                             Row(
                               children: List.generate(
                                 5,
-                                (i) => Icon(i < r.rating ? Icons.star : Icons.star_border, size: 16, color: AppColors.warning),
+                                (i) => Icon(
+                                    i < r.rating
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    size: 16,
+                                    color: AppColors.warning),
                               ),
                             ),
                           ],
                         ),
                         if (r.createdAt != null) ...[
                           const SizedBox(height: 2),
-                          Text(r.createdAt!.split('T').first, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                          Text(r.createdAt!.split('T').first,
+                              style: TextStyle(
+                                  color: context.palette.textSecondary,
+                                  fontSize: 12)),
                         ],
                         if (r.text != null && r.text!.isNotEmpty) ...[
                           const SizedBox(height: AppSpacing.sm),
