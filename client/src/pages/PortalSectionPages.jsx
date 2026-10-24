@@ -18,6 +18,7 @@ import { fetchAllClinicRows } from '../lib/clinicWorkspace'
 import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { ProfileAvatar } from '../components/ProfileAvatar'
+import { nextPatientAppointment, todaysQueueAppointment } from '../lib/patientQueueAppointment'
 
 const Page = ({ title, subtitle, children, action }) => <section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, className = '', ...props }) => <button className={`touch-target rounded-button bg-primary-dark px-4 py-2.5 text-sm font-semibold text-white hover:bg-charcoal ${className}`} {...props}>{children}</button>
@@ -29,7 +30,11 @@ const ErrorNote = ({ children }) => children ? <p role="alert" className="mt-3 t
 export function QueueTracker({ data, role = 'patient' }) {
   const fetchMyQueueStatus = useAppStore((state) => state.fetchMyQueueStatus)
   const fetchQueue = useAppStore((state) => state.fetchQueue)
-  const appointment = (data.appointments || []).find((item) => ['upcoming', 'confirmed'].includes(item.status))
+  const fetchAppointments = useAppStore((state) => state.fetchAppointments)
+  const appointment = role === 'patient'
+    ? todaysQueueAppointment(data.appointments)
+    : (data.appointments || []).find((item) => ['upcoming', 'confirmed'].includes(item.status))
+  const nextAppointment = role === 'patient' ? nextPatientAppointment(data.appointments) : null
   const tokens = data.queueTokens || []
   const [myStatus, setMyStatus] = useState(null)
   const [statusError, setStatusError] = useState('')
@@ -49,23 +54,24 @@ export function QueueTracker({ data, role = 'patient' }) {
   // an appointment to poll for -> loading, until the first poll's `finally` below clears it.
   useEffect(() => {
     if (role === 'patient') setLoading(Boolean(appointment))
-  }, [role, appointment])
+  }, [role, appointment?.id])
   usePolling(
     () => {
-      fetchMyQueueStatus(appointment.id)
-        .then((result) => { if (!patientCancelledRef.current) { setMyStatus(result); setStatusError('') } })
+      return fetchMyQueueStatus(appointment.id)
+        .then((result) => { if (!patientCancelledRef.current) { setMyStatus({ ...result, appointmentId: appointment.id }); setStatusError('') } })
         .catch((err) => { if (!patientCancelledRef.current) setStatusError(err.message || 'Could not load your live queue status.') })
         .finally(() => { if (!patientCancelledRef.current) setLoading(false) })
     },
     { enabled: role === 'patient' && Boolean(appointment) }
   )
+  usePolling(() => fetchAppointments().catch(() => {}), { enabled: role === 'patient', intervalMs: 60000 })
 
   // Staff view (kept for role !== 'patient' — no route mounts it that way today, but this is the
   // one path that legitimately reads the doctor/receptionist-only GET /queue list). Same shared
   // hook, same pause-on-hidden-tab behavior.
   usePolling(() => { fetchQueue({}).catch(() => {}) }, { enabled: role !== 'patient' })
 
-  const widgetQueue = appointment && myStatus
+  const widgetQueue = appointment && myStatus?.appointmentId === appointment.id
     ? { appointmentId: appointment.id, token: myStatus.token, nowServing: myStatus.nowServing, patientsAhead: myStatus.patientsAhead, estimatedWait: myStatus.estimatedWaitMinutes, doctorStatus: myStatus.status }
     : null
 
@@ -73,8 +79,8 @@ export function QueueTracker({ data, role = 'patient' }) {
     <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
       {role === 'patient' ? (
         appointment
-          ? <LiveQueueWidget appointmentId={appointment.id} initialQueue={widgetQueue} loading={loading} error={statusError} onRetry={() => fetchMyQueueStatus(appointment.id).then(setMyStatus).catch((err) => setStatusError(err.message))} />
-          : <div className="rounded-card border border-border bg-white p-6 text-center shadow-card"><p className="text-4xl">◷</p><h2 className="mt-3 text-xl">No active queue</h2><p className="mt-1 text-sm text-muted">Your live token will appear here after an appointment is checked in.</p></div>
+          ? <LiveQueueWidget appointmentId={appointment.id} initialQueue={widgetQueue} loading={loading} error={statusError} reservedToken={appointment.tokenNumber} paymentPending={!clinicPaymentComplete(appointment)} onRetry={() => fetchMyQueueStatus(appointment.id).then((result) => { setMyStatus({ ...result, appointmentId: appointment.id }); setStatusError('') }).catch((err) => setStatusError(err.message))} />
+          : <div className="rounded-card border border-border bg-white p-6 text-center shadow-card"><p className="text-4xl">◷</p><h2 className="mt-3 text-xl">No live queue today</h2><p className="mt-1 text-sm text-muted">{nextAppointment ? `Your next appointment is on ${nextAppointment.appointmentDate}${nextAppointment.tokenNumber != null ? ` with reserved token #${nextAppointment.tokenNumber}` : ''}. The live queue opens on the visit date after clinic payment is complete.` : 'You have no active appointment for today. Past visits do not appear in the live queue.'}</p></div>
       ) : (
         appointment ? <LiveQueueWidget appointmentId={appointment.id} initialQueue={tokens.find((item) => item.appointmentId === appointment.id) ? (() => { const t = tokens.find((item) => item.appointmentId === appointment.id); return { appointmentId: appointment.id, token: t.tokenNumber, patientsAhead: t.patientsAhead, estimatedWait: t.estimatedWaitMinutes, doctorStatus: t.status } })() : null} /> : <div className="rounded-card border border-border bg-white p-6 text-center shadow-card"><p className="text-4xl">◷</p><h2 className="mt-3 text-xl">No active queue</h2><p className="mt-1 text-sm text-muted">Your live token will appear here after an appointment is checked in.</p></div>
       )}

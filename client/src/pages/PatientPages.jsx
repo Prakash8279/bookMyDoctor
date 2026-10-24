@@ -21,6 +21,9 @@ import { PaymentVerification } from '../components/PaymentVerification'
 import { isConfirmedPayment, usePaymentVerification } from '../hooks/usePaymentVerification'
 import { PdfPreviewModal } from '../components/PdfPreviewModal'
 import { PatientNavIcon } from '../components/PatientNavIcon'
+import { nextPatientAppointment, todaysQueueAppointment } from '../lib/patientQueueAppointment'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
+import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 
 const nameWithStableId = (name, number, prefix) => number == null ? (name || '—') : `${stableId(number, prefix)} · ${name || '—'}`
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
@@ -63,8 +66,8 @@ export function PatientDashboard({ data }) {
   const currentUser = useAppStore((state) => state.currentUser) || { name: 'Patient', city: '' }
   const fetchMyQueueStatus = useAppStore((state) => state.fetchMyQueueStatus)
   const userAppointments = data.appointments || []
-  const upcomingAppointments = userAppointments.filter((item) => ['upcoming', 'confirmed'].includes(item.status))
-  const upcoming = upcomingAppointments[0]
+  const queueAppointment = todaysQueueAppointment(userAppointments)
+  const upcoming = queueAppointment || nextPatientAppointment(userAppointments)
   const [queueStatus, setQueueStatus] = useState(null)
   const [queueStatusError, setQueueStatusError] = useState('')
 
@@ -79,13 +82,15 @@ export function PatientDashboard({ data }) {
   useEffect(() => () => { cancelledRef.current = true }, [])
   usePolling(
     () => {
-      if (!upcoming) return
-      fetchMyQueueStatus(upcoming.id)
-        .then((result) => { if (!cancelledRef.current) { setQueueStatus(result); setQueueStatusError('') } })
+      if (!queueAppointment) return
+      return fetchMyQueueStatus(queueAppointment.id)
+        .then((result) => { if (!cancelledRef.current) { setQueueStatus({ ...result, appointmentId: queueAppointment.id }); setQueueStatusError('') } })
         .catch((err) => { if (!cancelledRef.current) setQueueStatusError(err.message || 'Could not load live queue status.') })
     },
-    { enabled: Boolean(upcoming) }
+    { enabled: Boolean(queueAppointment) }
   )
+
+  const activeQueueStatus = queueStatus?.appointmentId === upcoming?.id ? queueStatus : null
 
   return (
     <Page
@@ -114,7 +119,7 @@ export function PatientDashboard({ data }) {
             <div>
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-dark/10 px-3 py-1 text-xs font-semibold text-teal-dark">
-                  <span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Live Next Visit
+                  <span className="h-2 w-2 rounded-full bg-success animate-pulse" /> Next Visit
                 </span>
                 <StatusPill status={upcoming.status || 'upcoming'} />
               </div>
@@ -129,7 +134,7 @@ export function PatientDashboard({ data }) {
                 </div>
                 <div className="rounded-button border border-border bg-surface p-3">
                   <span className="text-muted block text-xs">Patients ahead</span>
-                  <strong className="text-xl font-sans text-ink">{queueStatus?.patientsAhead ?? '—'} patients</strong>
+                  <strong className="text-xl font-sans text-ink">{activeQueueStatus?.patientsAhead ?? '—'} patients</strong>
                 </div>
               </div>
             </div>
@@ -151,9 +156,12 @@ export function PatientDashboard({ data }) {
 
           <LiveQueueWidget
             appointmentId={upcoming.id}
-            initialQueue={queueStatus ? { appointmentId: upcoming.id, token: queueStatus.token, nowServing: queueStatus.nowServing, patientsAhead: queueStatus.patientsAhead, estimatedWait: queueStatus.estimatedWaitMinutes, doctorStatus: queueStatus.status } : null}
+            initialQueue={activeQueueStatus ? { appointmentId: upcoming.id, token: activeQueueStatus.token, nowServing: activeQueueStatus.nowServing, patientsAhead: activeQueueStatus.patientsAhead, estimatedWait: activeQueueStatus.estimatedWaitMinutes, doctorStatus: activeQueueStatus.status } : null}
+            reservedToken={upcoming.tokenNumber}
+            paymentPending={!clinicPaymentComplete(upcoming)}
+            upcomingDate={upcoming.appointmentDate !== indiaTodayDate() ? upcoming.appointmentDate : null}
             error={queueStatusError}
-            onRetry={() => fetchMyQueueStatus(upcoming.id).then(setQueueStatus).catch((err) => setQueueStatusError(err.message))}
+            onRetry={() => fetchMyQueueStatus(upcoming.id).then((result) => { setQueueStatus({ ...result, appointmentId: upcoming.id }); setQueueStatusError('') }).catch((err) => setQueueStatusError(err.message))}
           />
         </div>
       ) : (

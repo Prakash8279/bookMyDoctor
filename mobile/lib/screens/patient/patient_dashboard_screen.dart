@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../models/admin_models.dart';
 import '../../models/clinical_models.dart';
 import '../../state/auth_provider.dart';
@@ -99,11 +100,16 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
     // `pendingPaymentAppt` as a fallback below — but it must not inflate the UPCOMING stat count
     // or silently take over the queue widget the way lumping it into one list did before.
     final upcomingConfirmed = appointments
-        .where((a) => a.status == 'upcoming' || a.status == 'confirmed')
+        .where((a) =>
+            (a.status == 'upcoming' || a.status == 'confirmed') &&
+            a.appointmentDate.compareTo(indiaToday()) >= 0)
         .toList();
+    upcomingConfirmed
+        .sort((a, b) => a.appointmentDate.compareTo(b.appointmentDate));
     Appointment? pendingPaymentAppt;
     for (final a in appointments) {
-      if (a.status == 'pending_payment') {
+      if (a.status == 'pending_payment' &&
+          a.appointmentDate.compareTo(indiaToday()) >= 0) {
         pendingPaymentAppt = a;
         break;
       }
@@ -113,7 +119,9 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
         : pendingPaymentAppt;
     Map<String, dynamic>? queueStatus;
 
-    if (nextAppt != null && nextAppt.status != 'pending_payment') {
+    if (nextAppt != null &&
+        nextAppt.status != 'pending_payment' &&
+        nextAppt.appointmentDate == indiaToday()) {
       try {
         final qRes = await ApiClient.instance.get('/queue/mine/${nextAppt.id}');
         queueStatus = qRes.map;
@@ -187,11 +195,16 @@ class _PatientDashboardScreenState extends State<PatientDashboardScreen> {
           // web's `['upcoming', 'confirmed']` filter exactly, while `nextUpcoming` still falls
           // back to a pending-payment booking so the "Pay to confirm" CTA keeps working.
           final upcomingConfirmed = appointments
-              .where((a) => a.status == 'upcoming' || a.status == 'confirmed')
+              .where((a) =>
+                  (a.status == 'upcoming' || a.status == 'confirmed') &&
+                  a.appointmentDate.compareTo(indiaToday()) >= 0)
               .toList();
+          upcomingConfirmed
+              .sort((a, b) => a.appointmentDate.compareTo(b.appointmentDate));
           Appointment? pendingPaymentAppt;
           for (final a in appointments) {
-            if (a.status == 'pending_payment') {
+            if (a.status == 'pending_payment' &&
+                a.appointmentDate.compareTo(indiaToday()) >= 0) {
               pendingPaymentAppt = a;
               break;
             }

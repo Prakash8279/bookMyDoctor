@@ -23,6 +23,7 @@ vi.mock('../lib/apiClient', () => ({
 import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
 import { shortId } from '../lib/format'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import App from '../App'
 import {
   ContactInbox,
@@ -82,7 +83,7 @@ function setCurrentUser(user) {
 describe('QueueTracker', () => {
   it('shows the live queue widget for a patient with an active appointment', async () => {
     mockGetRoutes({ '/queue/mine/appt-1': { token: 5, nowServing: 3, patientsAhead: 2, estimatedWaitMinutes: 10, status: 'waiting' } })
-    renderConnected(QueueTracker, { data: { appointments: [{ id: 'appt-1', status: 'confirmed' }] }, role: 'patient' })
+    renderConnected(QueueTracker, { data: { appointments: [{ id: 'appt-1', status: 'confirmed', appointmentDate: indiaTodayDate() }] }, role: 'patient' })
 
     expect(await screen.findByLabelText('Live queue status')).toBeInTheDocument()
     expect(screen.getByText('5')).toBeInTheDocument()
@@ -91,12 +92,25 @@ describe('QueueTracker', () => {
 
   it('shows a no-active-queue state for a patient with no upcoming/confirmed appointment', () => {
     renderConnected(QueueTracker, { data: { appointments: [] }, role: 'patient' })
-    expect(screen.getByText('No active queue')).toBeInTheDocument()
+    expect(screen.getByText('No live queue today')).toBeInTheDocument()
+  })
+
+  it('does not use yesterday\'s still-upcoming booking as today\'s queue', () => {
+    renderConnected(QueueTracker, { data: { appointments: [{ id: 'old', status: 'upcoming', appointmentDate: '2020-01-01', tokenNumber: 1 }] }, role: 'patient' })
+    expect(screen.getByText('No live queue today')).toBeInTheDocument()
+    expect(apiClient.get).not.toHaveBeenCalledWith('/queue/mine/old')
+  })
+
+  it('shows a reserved token without live position while clinic payment is incomplete', async () => {
+    mockGetRoutes({ '/queue/mine/appt-partial': { token: null, status: null, nowServing: null, patientsAhead: null, estimatedWaitMinutes: null } })
+    renderConnected(QueueTracker, { data: { appointments: [{ id: 'appt-partial', status: 'upcoming', appointmentDate: indiaTodayDate(), tokenNumber: 7, clinicPaymentComplete: false }] }, role: 'patient' })
+    expect(await screen.findByText('Reserved token #7')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Live queue status')).not.toBeInTheDocument()
   })
 
   it('shows an error state and lets the patient retry when their queue status fails to load', async () => {
     apiClient.get.mockRejectedValue(new Error('Queue service unavailable.'))
-    renderConnected(QueueTracker, { data: { appointments: [{ id: 'appt-1', status: 'upcoming' }] }, role: 'patient' })
+    renderConnected(QueueTracker, { data: { appointments: [{ id: 'appt-1', status: 'upcoming', appointmentDate: indiaTodayDate() }] }, role: 'patient' })
     expect(await screen.findByRole('alert')).toHaveTextContent(/temporarily unavailable/i)
   })
 

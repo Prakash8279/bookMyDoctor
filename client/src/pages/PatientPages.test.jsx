@@ -28,6 +28,7 @@ import apiClient, { getTokens } from '../lib/apiClient'
 import { useAppStore } from '../store/useAppStore'
 import { formatDate, shortId } from '../lib/format'
 import { visiblePaymentAmount } from '../lib/paymentVisibility'
+import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import {
   Booking,
   BookingHistory,
@@ -111,7 +112,7 @@ describe('PatientDashboard', () => {
     status: 'upcoming',
     doctor: { name: 'Dr. Asha Rao' },
     clinic: { name: 'Heart Care Clinic' },
-    appointmentDate: '2026-09-20',
+    appointmentDate: indiaTodayDate(),
     appointmentTime: '10:00 AM',
     tokenNumber: 12,
     paymentStatus: 'pending',

@@ -22,18 +22,28 @@ describe('LiveQueueWidget', () => {
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
-  it('shows a pre-check-in message when there is no queue data at all', () => {
+  it('shows a clear no-token message when there is no queue data', () => {
     render(<LiveQueueWidget appointmentId="apt-1" />)
-    expect(screen.getByText('Your token will appear after check-in')).toBeInTheDocument()
+    expect(screen.getByText('No live queue token yet')).toBeInTheDocument()
   })
 
-  it('shows a pre-check-in message when initialQueue explicitly has a null token', () => {
+  it('explains that a reserved token is not live until the clinic payment is complete', () => {
     render(
       <LiveQueueWidget
+        reservedToken={3}
+        paymentPending
         initialQueue={{ token: null, nowServing: null, patientsAhead: null, estimatedWait: null, doctorStatus: 'closed' }}
       />
     )
-    expect(screen.getByText('Your token will appear after check-in')).toBeInTheDocument()
+    expect(screen.getByText('Reserved token #3')).toBeInTheDocument()
+    expect(screen.getByText(/remaining clinic payment must be completed/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Live queue status')).not.toBeInTheDocument()
+  })
+
+  it('does not show a future appointment as a live queue', () => {
+    render(<LiveQueueWidget reservedToken={4} upcomingDate="2026-10-26" />)
+    expect(screen.getByText('Your visit is on 2026-10-26')).toBeInTheDocument()
+    expect(screen.getByText(/Reserved token #4/)).toBeInTheDocument()
   })
 
   it('renders live queue details when a token is present', () => {
@@ -57,7 +67,7 @@ describe('LiveQueueWidget', () => {
       />
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.queryByText('Your token will appear after check-in')).not.toBeInTheDocument()
+    expect(screen.queryByText('No live queue token yet')).not.toBeInTheDocument()
   })
 
   it('updates its displayed queue when the initialQueue prop changes', () => {

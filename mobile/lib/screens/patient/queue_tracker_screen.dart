@@ -195,7 +195,7 @@ class _QueueTrackerScreenState extends State<QueueTrackerScreen>
             icon: Icons.hourglass_empty,
             title: 'No active queue',
             subtitle:
-                'Your live token will appear here after this appointment is checked in.',
+                'Only today’s fully paid appointments appear in the live queue. A reserved token from a partial payment does not join the queue until the remaining clinic payment is complete.',
           ),
         ],
       );
