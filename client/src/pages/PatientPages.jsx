@@ -24,6 +24,7 @@ import { PatientNavIcon } from '../components/PatientNavIcon'
 import { nextPatientAppointment, todaysQueueAppointment } from '../lib/patientQueueAppointment'
 import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
+import { clinicDirectionsUrl, clinicDistanceKm } from '../lib/clinicLocation'
 
 const nameWithStableId = (name, number, prefix) => number == null ? (name || '—') : `${stableId(number, prefix)} · ${name || '—'}`
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
@@ -360,6 +361,32 @@ export function Booking({ data }) {
   const [doctorFilters, setDoctorFilters] = useState(emptyDoctorFilters)
   const [appliedDoctorFilters, setAppliedDoctorFilters] = useState(emptyDoctorFilters)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [patientLocation, setPatientLocation] = useState(null)
+  const [nearbyRadius, setNearbyRadius] = useState(25)
+  const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const nearby = appliedDoctorFilters.sort === 'nearest'
+  const activateNearby = () => {
+    if (!navigator.geolocation) {
+      setLocationError('Location is unavailable in this browser. Search by city instead.')
+      return
+    }
+    setLocating(true)
+    setLocationError('')
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setPatientLocation({ latitude: coords.latitude, longitude: coords.longitude })
+        setDoctorFilters((current) => ({ ...current, sort: 'nearest', city: '', area: '' }))
+        setAppliedDoctorFilters((current) => ({ ...current, sort: 'nearest', city: '', area: '' }))
+        setLocating(false)
+      },
+      () => {
+        setLocationError('Allow location access to sort nearby doctors, or search by city.')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    )
+  }
   const updateDoctorFilter = (key) => (event) => setDoctorFilters((current) => ({ ...current, [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value }))
   const filteredDoctors = useMemo(() => {
     const result = (data.doctors || []).filter((item) => {
@@ -384,9 +411,11 @@ export function Booking({ data }) {
         (!appliedDoctorFilters.experience || (item.experienceYears || 0) >= Number(appliedDoctorFilters.experience)) &&
         (!appliedDoctorFilters.rating || (item.rating || 0) >= Number(appliedDoctorFilters.rating)) &&
         (!appliedDoctorFilters.maxFee || fee <= maxFee) &&
-        (!appliedDoctorFilters.fee || (appliedDoctorFilters.fee === 'Under ₹600' ? fee < 600 : appliedDoctorFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
+        (!appliedDoctorFilters.fee || (appliedDoctorFilters.fee === 'Under ₹600' ? fee < 600 : appliedDoctorFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900)) &&
+        (!nearby || (clinicDistanceKm(patientLocation, itemClinics[0]) ?? Infinity) <= nearbyRadius)
     })
     return [...result].sort((left, right) => {
+      if (nearby) return (clinicDistanceKm(patientLocation, left.clinics?.[0]) ?? Infinity) - (clinicDistanceKm(patientLocation, right.clinics?.[0]) ?? Infinity)
       if (appliedDoctorFilters.sort === 'clinic_asc') {
         const cLeft = left.clinics?.[0]?.name || ''
         const cRight = right.clinics?.[0]?.name || ''
@@ -417,8 +446,8 @@ export function Booking({ data }) {
       }
       return 0
     })
-  }, [data, appliedDoctorFilters])
-  const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters) }
+  }, [data, appliedDoctorFilters, nearby, patientLocation, nearbyRadius])
+  const clearDoctorFilters = () => { setDoctorFilters(emptyDoctorFilters); setAppliedDoctorFilters(emptyDoctorFilters); setLocationError('') }
   const saveBookingMember = async () => {
     if (!memberName.trim() || !memberRelation.trim() || !memberDob || !memberGender || !memberBloodGroup.trim()) {
       setMemberError('Name, relationship, date of birth, gender and blood group are required.')
@@ -634,6 +663,7 @@ export function Booking({ data }) {
   const previewPaymentPolicy = doctor?.bookingPaymentPolicy || (Number(doctor?.minBookingAdvanceAmount) > 0 ? 'minimum_or_full' : 'full')
   const sortOptions = [
     'Default',
+    'Nearest first',
     'Clinic Name (A to Z)',
     'Clinic Name (Z to A)',
     'Doctor Name (A to Z)',
@@ -643,6 +673,7 @@ export function Booking({ data }) {
 
   const getSortKeyFromLabel = (label) => {
     switch (label) {
+      case 'Nearest first': return 'nearest'
       case 'Clinic Name (A to Z)': return 'clinic_asc'
       case 'Clinic Name (Z to A)': return 'clinic_desc'
       case 'Doctor Name (A to Z)': return 'doctor_asc'
@@ -654,6 +685,7 @@ export function Booking({ data }) {
 
   const getSortLabelFromKey = (key) => {
     switch (key) {
+      case 'nearest': return 'Nearest first'
       case 'clinic_asc': return 'Clinic Name (A to Z)'
       case 'clinic_desc': return 'Clinic Name (Z to A)'
       case 'doctor_asc': return 'Doctor Name (A to Z)'
@@ -671,6 +703,7 @@ export function Booking({ data }) {
 
   const handleSortChange = (event) => {
     const key = getSortKeyFromLabel(event.target.value)
+    if (key === 'nearest' && !patientLocation) { activateNearby(); return }
     setDoctorFilters((current) => ({ ...current, sort: key }))
     setAppliedDoctorFilters((current) => ({ ...current, sort: key }))
   }
@@ -970,6 +1003,19 @@ export function Booking({ data }) {
         </div>
       </div>
 
+      <div className="mb-4 flex flex-wrap items-center gap-2 max-w-4xl">
+        <button
+          type="button"
+          className={`touch-target rounded-button px-4 text-sm font-semibold ${nearby ? 'bg-primary-dark text-white' : 'border border-border bg-white text-primary-dark'}`}
+          onClick={nearby ? () => { setDoctorFilters((current) => ({ ...current, sort: '' })); setAppliedDoctorFilters((current) => ({ ...current, sort: '' })) } : activateNearby}
+          disabled={locating}
+        >
+          {locating ? 'Finding location…' : nearby ? '✓ Near me · nearest first' : '⌖ Near me · sort by distance'}
+        </button>
+        {nearby && <label className="flex items-center gap-2 text-sm text-muted">Within <select aria-label="Nearby radius" className="rounded-button border border-border bg-white px-2 py-2 text-ink" value={nearbyRadius} onChange={(event) => setNearbyRadius(Number(event.target.value))}><option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option></select></label>}
+        {locationError && <p role="alert" className="w-full text-sm text-error">{locationError}</p>}
+      </div>
+
       {/* Direct Filter Results: Doctor Cards List */}
       <section className="max-w-4xl mb-6">
         <div className="mb-3 flex items-center justify-between">
@@ -981,8 +1027,8 @@ export function Booking({ data }) {
         {filteredDoctors.length === 0 ? (
           <div className="rounded-card border border-border bg-white p-8 text-center shadow-card">
             <p className="text-3xl">🔍</p>
-            <h4 className="mt-2 text-base font-bold text-ink">No doctors found matching these filters</h4>
-            <p className="mt-1 text-sm text-muted">Try clearing or adjusting your filter criteria.</p>
+            <h4 className="mt-2 text-base font-bold text-ink">{nearby ? 'No mapped clinics nearby' : 'No doctors found matching these filters'}</h4>
+            <p className="mt-1 text-sm text-muted">{nearby ? 'Try a larger distance or turn off Near me. Clinics need a saved map pin to appear here.' : 'Try clearing or adjusting your filter criteria.'}</p>
             <button type="button" className="btn-primary mt-4" onClick={clearDoctorFilters}>
               Clear filters
             </button>
@@ -1034,6 +1080,8 @@ export function Booking({ data }) {
                           📍 {clinicLocation}
                         </p>
                       )}
+                      {itemClinic && <a className="ml-5 inline-block text-[11px] font-semibold text-primary-dark hover:underline" href={clinicDirectionsUrl(itemClinic)} target="_blank" rel="noopener noreferrer">Google Maps directions →</a>}
+                      {nearby && <p className="pl-5 text-[11px] font-semibold text-primary-dark">Approx. {clinicDistanceKm(patientLocation, itemClinic)?.toFixed(1)} km away</p>}
                     </div>
 
                     <div className="mt-2 flex items-end justify-between gap-2 text-xs sm:mt-2.5">

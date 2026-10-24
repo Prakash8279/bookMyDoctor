@@ -482,6 +482,26 @@ describe('Booking', () => {
     expect(reversedCards[1]).toHaveTextContent('Dr. Bimal')
   })
 
+  it('shows Near me on the booking search and sorts mapped primary clinics by distance', async () => {
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition: (success) => success({ coords: { latitude: 19.12, longitude: 72.85 } }),
+    } })
+    const distant = { id: 'doc-far', name: 'Dr. Far', clinics: [{ id: 'clinic-far', name: 'Far Clinic', latitude: 19.4, longitude: 73.1 }] }
+    const close = { id: 'doc-close', name: 'Dr. Close', clinics: [{ id: 'clinic-close', name: 'Close Clinic', latitude: 19.1201, longitude: 72.8501 }] }
+    seedData({ doctors: [distant, close], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+    fireEvent.click(screen.getByRole('button', { name: '⌖ Near me · sort by distance' }))
+    expect(await screen.findByText('Matching Doctors (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Dr. Close' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Dr. Far' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Approx\. 0\.0 km away/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Google Maps directions →' })).toHaveAttribute('href', expect.stringContaining('destination=19.1201%2C72.8501'))
+    fireEvent.change(screen.getByLabelText('Nearby radius'), { target: { value: '50' } })
+    const cards = screen.getAllByRole('heading', { level: 4 })
+    expect(cards[0]).toHaveTextContent('Dr. Close')
+    expect(cards[1]).toHaveTextContent('Dr. Far')
+  })
+
   it('sorts doctors by default by join date (most recently joined first)', () => {
     const OLDER_DOCTOR = {
       id: 'doc-old',
