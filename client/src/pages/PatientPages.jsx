@@ -26,6 +26,7 @@ import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 import { clinicDirectionsUrl, clinicDistanceKm } from '../lib/clinicLocation'
 import { PatientAppointmentMobileSummary } from '../components/PatientAppointmentMobileSummary'
+import { ProfileAvatar } from '../components/ProfileAvatar'
 
 const nameWithStableId = (name, number, prefix) => number == null ? (name || '—') : `${stableId(number, prefix)} · ${name || '—'}`
 import { loadRazorpayScript } from '../lib/loadRazorpayScript'
@@ -1051,9 +1052,7 @@ export function Booking({ data }) {
                   <div>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-light text-xs font-bold uppercase text-primary-dark sm:h-11 sm:w-11 sm:text-sm">
-                          {initials}
-                        </span>
+                        <ProfileAvatar src={item.photoUrl} alt={`${item.name} profile photo`} fallback={initials} className="h-9 w-9 shrink-0 rounded-full bg-primary-light text-xs font-bold uppercase text-primary-dark sm:h-11 sm:w-11 sm:text-sm" />
                         <div className="min-w-0">
                           <h4 className="truncate text-sm font-bold text-ink transition-colors group-hover:text-primary-dark sm:text-base">
                             {item.name}

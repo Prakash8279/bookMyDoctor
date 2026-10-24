@@ -213,6 +213,12 @@ describe('Booking', () => {
   const FAMILY_MEMBER = { id: 'fam-1', name: 'Rohan Mehta', relation: 'Son', dateOfBirth: '2010-05-01', gender: 'Male', bloodGroup: 'B+' }
   const PLATFORM_CHARGES = { applyConvenienceFee: true, patientConvenienceFee: 20, applyEmergencyFee: false, emergencyFee: 0, gstPercent: 5 }
 
+  it('shows the uploaded doctor photo in the booking search card', () => {
+    seedData({ doctors: [{ ...DOCTOR, photoUrl: 'https://api.bookadoctors.com/uploads/doctor.jpg' }], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
+    renderConnected(Booking, {}, { route: '/patient/book' })
+    expect(screen.getByRole('img', { name: 'Dr. Asha Rao profile photo' })).toHaveAttribute('src', 'https://api.bookadoctors.com/uploads/doctor.jpg')
+  })
+
   it('limits the date picker to the selected doctor’s saved advance-booking days', () => {
     seedData({ doctors: [{ ...DOCTOR, maxDaysAdvance: 5 }], familyMembers: [FAMILY_MEMBER], platformCharges: PLATFORM_CHARGES })
     renderConnected(Booking, {}, { route: '/patient/book?doctorId=doc-1' })
