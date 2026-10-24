@@ -142,7 +142,8 @@ const derivePatients = (appointments = []) => {
 
 const AppointmentTable = ({ data }) => {
   const isMobile = useIsMobile()
-  const [dateFilter, setDateFilter] = useState(indiaTodayDate)
+  const [dateFromFilter, setDateFromFilter] = useState(indiaTodayDate)
+  const [dateToFilter, setDateToFilter] = useState(indiaTodayDate)
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
   const updateAppointmentStatus = useAppStore((state) => state.updateAppointmentStatus)
@@ -155,8 +156,8 @@ const AppointmentTable = ({ data }) => {
   const load = useCallback(() => {
     setLoading(true)
     setLoadError('')
-    return fetchAppointments({ page, pageSize: 50, date: dateFilter || undefined, status: statusFilter || undefined }).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load appointments.'))).finally(() => setLoading(false))
-  }, [fetchAppointments, page, dateFilter, statusFilter])
+    return fetchAppointments({ page, pageSize: 50, dateFrom: dateFromFilter || undefined, dateTo: dateToFilter || undefined, status: statusFilter || undefined }).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load appointments.'))).finally(() => setLoading(false))
+  }, [fetchAppointments, page, dateFromFilter, dateToFilter, statusFilter])
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
@@ -166,7 +167,8 @@ const AppointmentTable = ({ data }) => {
       if (today === previousToday) return
       const previous = previousToday
       previousToday = today
-      setDateFilter((current) => current === previous ? today : current)
+      setDateFromFilter((current) => current === previous ? today : current)
+      setDateToFilter((current) => current === previous ? today : current)
       setPage(1)
     }, 30_000)
     return () => window.clearInterval(timer)
@@ -218,9 +220,10 @@ const AppointmentTable = ({ data }) => {
     <section aria-label="Appointment filters" className="mb-3 rounded-button border border-border bg-white p-3">
       <h2 className="text-sm font-semibold">Appointment filters</h2>
       <div className="mt-2 flex flex-wrap items-end gap-2">
-        <div className="w-full sm:w-44"><FormField label="Filter visit date" type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} /></div>
+        <div className="w-full sm:w-44"><FormField label="Filter start date" type="date" value={dateFromFilter} onChange={(e) => { const next = e.target.value; setDateFromFilter(next); if (next && dateToFilter && next > dateToFilter) setDateToFilter(next); setPage(1) }} /></div>
+        <div className="w-full sm:w-44"><FormField label="Filter end date" type="date" value={dateToFilter} onChange={(e) => { const next = e.target.value; setDateToFilter(next); if (next && dateFromFilter && next < dateFromFilter) setDateFromFilter(next); setPage(1) }} /></div>
         <div className="w-full sm:w-56"><FormField label="Filter appointment status" type="select" options={['upcoming', 'pending_payment', 'confirmed', 'completed', 'cancelled', 'no_show']} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} /></div>
-        <Button tone="secondary" onClick={() => { setDateFilter(indiaTodayDate()); setStatusFilter(''); setPage(1) }}>Clear filters</Button>
+        <Button tone="secondary" onClick={() => { const today = indiaTodayDate(); setDateFromFilter(today); setDateToFilter(today); setStatusFilter(''); setPage(1) }}>Today / clear</Button>
       </div>
     </section>
     <ErrorNote>{actionError}</ErrorNote>

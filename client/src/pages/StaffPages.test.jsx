@@ -547,16 +547,20 @@ describe('DoctorProfileEdit', () => {
 })
 
 describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)', () => {
-  it.each([DoctorAppointments, ReceptionAppointments])('loads today visits by default and allows an explicit historical date', async (Component) => {
+  it.each([DoctorAppointments, ReceptionAppointments])('loads today by default and filters an inclusive visit-date range', async (Component) => {
     mockGetRoutes({ '/appointments': [] })
     renderConnected(Component, {})
-    const date = screen.getByLabelText('Filter visit date')
-    expect(date).toHaveValue(indiaTodayDate())
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ date: indiaTodayDate(), page: 1 }) }))
-    fireEvent.change(date, { target: { value: '2026-10-19' } })
-    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ date: '2026-10-19', page: 1 }) }))
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
-    expect(date).toHaveValue(indiaTodayDate())
+    const start = screen.getByLabelText('Filter start date')
+    const end = screen.getByLabelText('Filter end date')
+    expect(start).toHaveValue(indiaTodayDate())
+    expect(end).toHaveValue(indiaTodayDate())
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ dateFrom: indiaTodayDate(), dateTo: indiaTodayDate(), page: 1 }) }))
+    fireEvent.change(start, { target: { value: '2026-10-19' } })
+    fireEvent.change(end, { target: { value: '2026-10-22' } })
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledWith('/appointments', { params: expect.objectContaining({ dateFrom: '2026-10-19', dateTo: '2026-10-22', page: 1 }) }))
+    fireEvent.click(screen.getByRole('button', { name: 'Today / clear' }))
+    expect(start).toHaveValue(indiaTodayDate())
+    expect(end).toHaveValue(indiaTodayDate())
   })
   it.each([DoctorAppointments, ReceptionAppointments])('shows original booking timestamp separately from the visit', async (Component) => {
     mockGetRoutes({ '/appointments': [{ id: 'booking-time', createdAt: '2026-10-21T20:40:05Z', appointmentDate: '2026-10-25', appointmentTime: '10:00', patient: { name: 'Time Test' } }] })
@@ -569,12 +573,13 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     renderConnected(DoctorAppointments, { data: { appointments: [] } })
     const filters = screen.getByRole('region', { name: 'Appointment filters' })
     expect(filters.tagName).toBe('SECTION')
-    expect(within(filters).getByLabelText('Filter visit date')).toBeVisible()
+    expect(within(filters).getByLabelText('Filter start date')).toBeVisible()
+    expect(within(filters).getByLabelText('Filter end date')).toBeVisible()
     expect(within(filters).getByLabelText('Filter appointment status')).toBeVisible()
     expect(filters.querySelector('details, summary')).toBeNull()
-    fireEvent.change(within(filters).getByLabelText('Filter visit date'), { target: { value: '2026-10-22' } })
-    fireEvent.click(within(filters).getByRole('button', { name: 'Clear filters' }))
-    expect(within(filters).getByLabelText('Filter visit date')).toHaveValue(indiaTodayDate())
+    fireEvent.change(within(filters).getByLabelText('Filter start date'), { target: { value: '2026-10-22' } })
+    fireEvent.click(within(filters).getByRole('button', { name: 'Today / clear' }))
+    expect(within(filters).getByLabelText('Filter start date')).toHaveValue(indiaTodayDate())
   })
 
   const APPOINTMENTS = [
@@ -623,7 +628,7 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2026-10-21' } })
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Start date must be on or before end date.')
-    expect(apiClient.get.mock.calls.filter(([url, config]) => url === '/appointments' && config?.params?.dateFrom)).toHaveLength(0)
+    expect(apiClient.get.mock.calls.filter(([url, config]) => url === '/appointments' && config?.params?.pageSize === 100)).toHaveLength(0)
   })
 
   it('shows a compact mobile booking summary with optional full details', async () => {
