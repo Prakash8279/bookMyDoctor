@@ -1080,6 +1080,23 @@ describe('PatientAppointments', () => {
       expect(screen.getByRole('button', { name: /View slip/ })).toBeInTheDocument()
     })
 
+    it('shows a compact visit summary and clinic directions with full details on demand', () => {
+      mockMobileViewport(true)
+      seedData({
+        appointments: [{ ...APPT_COMPLETED, clinic: { id: 'clinic-1', name: 'Heart Care Clinic', address: 'Andheri West, Mumbai' } }],
+        clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic', latitude: 19.1201, longitude: 72.8501 }],
+        payments: [PAYMENT1],
+      })
+      renderConnected(PatientAppointments)
+      expect(screen.getByText('Token')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Google Maps directions →' })).toHaveAttribute('href', expect.stringContaining('destination=19.1201%2C72.8501'))
+      const details = screen.getByText('More details').closest('details')
+      expect(details).not.toHaveAttribute('open')
+      fireEvent.click(screen.getByText('More details'))
+      expect(details).toHaveAttribute('open')
+      expect(within(details).getByText('Payment method')).toBeInTheDocument()
+    })
+
     it('still shows Pay/Pay min/Cancel actions on a pending_payment card', () => {
       mockMobileViewport(true)
       const APPT_PENDING = {
