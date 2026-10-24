@@ -1365,7 +1365,7 @@ export function PatientAppointments({ data, history = false }) {
             </button>
           ))}
         </div>
-        {isMobile ? <ul className="grid gap-3">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-button border border-border p-3"><PatientAppointmentMobileSummary
+        {isMobile ? <ul className="grid gap-4 rounded-button bg-surface p-2">{filteredRecords.map(({ appointment, payment, fee, displayFee, paid, due, status, mode }, index) => <li key={appointment.id} className="rounded-card border border-border border-l-4 border-l-primary bg-white p-3 shadow-card"><PatientAppointmentMobileSummary
           appointment={appointment}
           clinic={appointment.clinic ? { ...appointment.clinic, ...((data.clinics || []).find((item) => item.id === appointment.clinic.id) || {}) } : null}
           index={index}
