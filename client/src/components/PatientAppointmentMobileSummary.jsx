@@ -21,9 +21,9 @@ export function PatientAppointmentMobileSummary({ appointment, clinic, index, pa
       <div><span className="block text-muted">Token</span><strong className="text-base text-primary-dark">{appointment.tokenNumber != null ? `#${appointment.tokenNumber}` : '—'}</strong><span className="mt-1 block"><StatusPill status={paymentStatus} /></span></div>
     </div>
     <div className="mt-3 flex min-w-0 items-start justify-between gap-2 text-xs"><span className="min-w-0 text-muted">Patient <strong className="text-ink">{patientName}</strong></span><span className="shrink-0 font-semibold text-ink">Due ₹{due}</span></div>
-    <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+    <div className="mt-2 flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
       <span className="min-w-0 font-medium text-ink [overflow-wrap:anywhere]">{appointment.clinic?.name || 'Clinic not available'}</span>
-      {directions && <a className="shrink-0 font-semibold text-primary-dark hover:underline" href={directions} target="_blank" rel="noopener noreferrer">Google Maps directions →</a>}
+      {directions && <a className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-button border border-border bg-surface px-2.5 font-semibold text-primary-dark hover:border-primary-dark" href={directions} target="_blank" rel="noopener noreferrer" title="Open clinic location in Google Maps"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></svg>Location</a>}
     </div>
     <details className="mt-3 border-t border-border pt-2 text-xs">
       <summary className="cursor-pointer py-1 font-semibold text-primary-dark">More details</summary>

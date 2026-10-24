@@ -1089,7 +1089,7 @@ describe('PatientAppointments', () => {
       })
       renderConnected(PatientAppointments)
       expect(screen.getByText('Token')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'Google Maps directions →' })).toHaveAttribute('href', expect.stringContaining('destination=19.1201%2C72.8501'))
+      expect(screen.getByRole('link', { name: 'Location' })).toHaveAttribute('href', expect.stringContaining('destination=19.1201%2C72.8501'))
       const details = screen.getByText('More details').closest('details')
       expect(details).not.toHaveAttribute('open')
       fireEvent.click(screen.getByText('More details'))
