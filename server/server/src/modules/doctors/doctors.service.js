@@ -108,6 +108,8 @@ const DOCTOR_CLINICS_SELECT = {
         id: true,
         name: true,
         approvalStatus: true,
+        latitude: true,
+        longitude: true,
         city: { select: { name: true } },
         area: { select: { name: true } },
       },
@@ -237,7 +239,7 @@ function shapeDoctor(user, { includeDetail = false, includeContact = false } = {
   // so every row reaching here already has an active clinic — no JS-side filter needed.
   const clinics = (user.doctorClinics || [])
     .map((dc) => dc.clinic)
-    .map((c) => ({ id: c.id, name: c.name, city: c.city ? c.city.name : null, area: c.area ? c.area.name : null }));
+    .map((c) => ({ id: c.id, name: c.name, city: c.city ? c.city.name : null, area: c.area ? c.area.name : null, latitude: c.latitude, longitude: c.longitude }));
 
   const { schedule, scheduleSummary } = buildSchedule(user.doctorClinicHours, clinics[0]?.id || null);
 

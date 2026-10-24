@@ -29,8 +29,10 @@ import 'payment_required_screen.dart';
 ///   PaymentRequiredScreen when prepayment is required
 class BookAppointmentScreen extends StatefulWidget {
   final DoctorDirectoryItem? preselectedDoctor;
+  final String? preselectedClinicId;
 
-  const BookAppointmentScreen({super.key, this.preselectedDoctor});
+  const BookAppointmentScreen(
+      {super.key, this.preselectedDoctor, this.preselectedClinicId});
 
   @override
   State<BookAppointmentScreen> createState() => _BookAppointmentScreenState();
@@ -86,7 +88,11 @@ class _BookAppointmentScreenState extends State<BookAppointmentScreen> {
     super.initState();
     _selectedDoctor = widget.preselectedDoctor;
     if (_selectedDoctor != null && _selectedDoctor!.clinics.isNotEmpty) {
-      _selectedClinic = _selectedDoctor!.clinics.first;
+      final matchingClinic = _selectedDoctor!.clinics
+          .where((clinic) => clinic.id == widget.preselectedClinicId);
+      _selectedClinic = matchingClinic.isNotEmpty
+          ? matchingClinic.first
+          : _selectedDoctor!.clinics.first;
     }
     _loadOptions();
   }

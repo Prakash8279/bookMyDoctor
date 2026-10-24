@@ -106,6 +106,8 @@ function buildClinicDetail(overrides = {}) {
     name: 'City Clinic',
     phone: '9999999999',
     address: '123 Main St',
+    latitude: null,
+    longitude: null,
     approvalStatus: 'active',
     rejectionReason: null,
     emergencyAvailable: false,
@@ -169,6 +171,17 @@ describe('clinicsService.createClinic', () => {
       expect.objectContaining({ data: expect.objectContaining({ clinicNumber: 101 }) })
     );
     expect(idGenerators.nextClinicNumber).toHaveBeenCalledTimes(1);
+  });
+
+  test('stores the clinic map pin for nearby search', async () => {
+    prisma.city.findUnique.mockResolvedValue({ id: 'city-1' });
+    prisma.clinic.create.mockResolvedValue({ id: 'clinic-1' });
+    prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail({ latitude: 19.12, longitude: 72.85 }));
+
+    const clinic = await clinicsService.createClinic({ name: 'City Clinic', cityId: 'city-1', latitude: 19.12, longitude: 72.85 }, ADMIN);
+
+    expect(prisma.clinic.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ latitude: 19.12, longitude: 72.85 }) }));
+    expect(clinic).toEqual(expect.objectContaining({ latitude: 19.12, longitude: 72.85 }));
   });
 
   // FROM-SCRATCH FIX documented in createClinic's own comment: a doctor-created clinic used to go
@@ -452,6 +465,15 @@ describe('clinicsService.updateClinic', () => {
     });
     expect(cacheService.invalidate).toHaveBeenCalledWith('cache:clinics:list:*');
     expect(doctorsService.invalidateDoctorCaches).toHaveBeenCalledWith(undefined);
+  });
+
+  test('updates and clears both clinic map coordinates together', async () => {
+    prisma.clinic.findUnique.mockResolvedValue(buildClinicDetail());
+    prisma.clinic.update.mockResolvedValue({});
+    await clinicsService.updateClinic('clinic-1', { latitude: 19.12, longitude: 72.85 }, ADMIN);
+    expect(prisma.clinic.update).toHaveBeenCalledWith({ where: { id: 'clinic-1' }, data: { latitude: 19.12, longitude: 72.85 } });
+    await clinicsService.updateClinic('clinic-1', { latitude: null, longitude: null }, ADMIN);
+    expect(prisma.clinic.update).toHaveBeenLastCalledWith({ where: { id: 'clinic-1' }, data: { latitude: null, longitude: null } });
   });
 });
 

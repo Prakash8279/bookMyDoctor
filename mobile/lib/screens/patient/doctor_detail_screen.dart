@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/clinic_location.dart';
 import '../../core/india_time.dart';
 import '../../core/token_store.dart';
 import '../../models/admin_models.dart';
@@ -20,7 +21,8 @@ import 'queue_tracker_screen.dart';
 
 class DoctorDetailScreen extends StatefulWidget {
   final String doctorId;
-  const DoctorDetailScreen({super.key, required this.doctorId});
+  final String? clinicId;
+  const DoctorDetailScreen({super.key, required this.doctorId, this.clinicId});
 
   @override
   State<DoctorDetailScreen> createState() => _DoctorDetailScreenState();
@@ -79,8 +81,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     // detail it actually needs (GET /clinics/:id, same endpoint the web app's clinics list is
     // built from) to get the real phone/address — a patient couldn't see either at all before.
     Clinic? primaryClinicDetail;
-    final primaryClinicId =
-        doctor.clinics.isNotEmpty ? doctor.clinics.first.id : null;
+    final chosenClinic =
+        doctor.clinics.where((clinic) => clinic.id == widget.clinicId);
+    final primaryClinicId = chosenClinic.isNotEmpty
+        ? chosenClinic.first.id
+        : (doctor.clinics.isNotEmpty ? doctor.clinics.first.id : null);
     if (primaryClinicId != null) {
       try {
         final clinicRes =
@@ -122,8 +127,11 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
           }
           final data = snapshot.data!;
           final doctor = data.doctor;
-          final primaryClinic =
-              doctor.clinics.isNotEmpty ? doctor.clinics.first : null;
+          final chosenClinic =
+              doctor.clinics.where((clinic) => clinic.id == widget.clinicId);
+          final primaryClinic = chosenClinic.isNotEmpty
+              ? chosenClinic.first
+              : (doctor.clinics.isNotEmpty ? doctor.clinics.first : null);
           final initials = doctor.name
               .split(' ')
               .where((s) => s.isNotEmpty)
@@ -587,6 +595,23 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               ],
                             ),
                           ],
+                          if (primaryClinic != null) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () async {
+                                final uri = clinicDirectionsUri(primaryClinic,
+                                    detail: data.primaryClinicDetail);
+                                if (uri != null) {
+                                  await launchUrl(uri,
+                                      mode: LaunchMode.externalApplication);
+                                }
+                              },
+                              icon: const Icon(Icons.directions_outlined,
+                                  size: 18),
+                              label:
+                                  const Text('Open directions in Google Maps'),
+                            ),
+                          ],
                           if (data.primaryClinicDetail?.phone != null &&
                               data.primaryClinicDetail!.phone!.isNotEmpty) ...[
                             const SizedBox(height: 6),
@@ -619,7 +644,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                                 color: context.palette.textPrimary),
                           ),
                           const SizedBox(height: AppSpacing.xs),
-                          if (doctor.schedule.isNotEmpty) ...[
+                          if (doctor.schedule.isNotEmpty &&
+                              doctor.clinics.isNotEmpty &&
+                              primaryClinic?.id == doctor.clinics.first.id) ...[
                             for (final slot in doctor.schedule)
                               Container(
                                 margin: const EdgeInsets.only(bottom: 6),
@@ -651,8 +678,12 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               ),
                           ] else ...[
                             Text(
-                              doctor.scheduleSummary ??
-                                  'Weekly OPD schedule not added yet.',
+                              doctor.clinics.isNotEmpty &&
+                                      primaryClinic?.id !=
+                                          doctor.clinics.first.id
+                                  ? 'Select a date during booking to see this clinic’s hours.'
+                                  : (doctor.scheduleSummary ??
+                                      'Weekly OPD schedule not added yet.'),
                               style: TextStyle(
                                   color: context.palette.textSecondary,
                                   fontSize: 13),
@@ -773,7 +804,8 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
     }
     Navigator.of(context).push(
       MaterialPageRoute(
-          builder: (_) => BookAppointmentScreen(preselectedDoctor: doctor)),
+          builder: (_) => BookAppointmentScreen(
+              preselectedDoctor: doctor, preselectedClinicId: widget.clinicId)),
     );
   }
 }

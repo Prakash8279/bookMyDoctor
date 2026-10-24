@@ -12,6 +12,7 @@ import { usePolling } from '../hooks/usePolling'
 import { ProfileAvatar } from '../components/ProfileAvatar'
 import { todaysQueueAppointment } from '../lib/patientQueueAppointment'
 import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
+import { clinicDirectionsUrl, nearestDoctorClinic } from '../lib/clinicLocation'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
 
@@ -173,12 +174,14 @@ export function SiteHeader() {
 
 
 
-export function DoctorCard({ doctor }) {
+export function DoctorCard({ doctor, distanceKm = null, clinicOverride = null }) {
   const initials = (doctor.name || '').split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'
-  const primaryClinic = doctor.clinics?.[0]
+  const primaryClinic = clinicOverride || doctor.clinics?.[0]
+  const profileUrl = `/doctors/${doctor.id}${clinicOverride ? `?clinicId=${clinicOverride.id}` : ''}`
   const specializationName = doctor.specialization?.name || 'General practice'
   const location = [primaryClinic?.name || 'Clinic not added', [primaryClinic?.area, primaryClinic?.city || doctor.city].filter(Boolean).join(', ')].filter(Boolean).join(', ')
   const queueOpen = doctor.onlineBooking !== false
+  const directionsUrl = clinicDirectionsUrl(primaryClinic)
   return <article className="rounded-card border border-border bg-white p-4 shadow-card">
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-start gap-3">
@@ -193,14 +196,16 @@ export function DoctorCard({ doctor }) {
     </div>
     <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm text-muted">
       <p className="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>{primaryClinic ? <Link className="font-semibold text-primary-dark" to={`/clinics?clinic=${encodeURIComponent(primaryClinic.name)}`}>{location}</Link> : location}</p>
+      {distanceKm != null && <p className="text-xs font-semibold text-primary-dark">Approx. {distanceKm.toFixed(1)} km away</p>}
       <p className="flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>{queueOpen ? 'Today queue open' : 'Not accepting bookings today'}</p>
     </div>
     {doctor.emergencyAvailable && <p className="mt-2 text-sm font-semibold text-error">Emergency available</p>}
     <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
       <div><span className="block text-xs text-muted">Consultation</span><strong className="text-lg">₹{Number(doctor.consultationFee) || 0}</strong></div>
-      <div className="flex gap-2 shrink-0">
-        <Link className="touch-target inline-flex items-center rounded-button border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface" to={`/doctors/${doctor.id}`}>View profile</Link>
-        <Link className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3 text-sm font-semibold text-white hover:bg-charcoal" to={`/doctors/${doctor.id}`}>Book now</Link>
+      <div className="flex flex-wrap gap-2">
+        {directionsUrl && <a className="touch-target inline-flex items-center rounded-button border border-border bg-white px-3 text-sm font-semibold text-primary-dark hover:bg-surface" href={directionsUrl} target="_blank" rel="noopener noreferrer">Directions</a>}
+        <Link className="touch-target inline-flex items-center rounded-button border border-border bg-white px-3 text-sm font-semibold text-ink hover:bg-surface" to={profileUrl}>View profile</Link>
+        <Link className="touch-target inline-flex items-center rounded-button bg-primary-dark px-3 text-sm font-semibold text-white hover:bg-charcoal" to={profileUrl}>Book now</Link>
       </div>
     </div>
   </article>
@@ -212,6 +217,11 @@ export function SearchResults({ data }) {
   const queryKey = params.toString()
   const [filters, setFilters] = useState(() => parseSearchFilters(queryKey))
   const [appliedFilters, setAppliedFilters] = useState(() => parseSearchFilters(queryKey))
+  const [patientLocation, setPatientLocation] = useState(null)
+  const [nearby, setNearby] = useState(false)
+  const [nearbyRadius, setNearbyRadius] = useState(25)
+  const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState('')
   const cities = useMemo(() => data.cities || [], [data.cities])
   const areas = useMemo(() => data.areas || [], [data.areas])
   useEffect(() => { const next = parseSearchFilters(queryKey); setFilters(next); setAppliedFilters(next) }, [queryKey])
@@ -221,6 +231,16 @@ export function SearchResults({ data }) {
     const scoped = selectedCity ? areas.filter((area) => area.cityId === selectedCity.id) : areas
     return scoped.map((area) => area.name)
   }, [cities, areas, filters.city])
+  const useMyLocation = () => {
+    if (!navigator.geolocation) { setLocationError('This browser does not support location. You can still search by city and area.'); return }
+    setLocating(true)
+    setLocationError('')
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => { setPatientLocation({ latitude: coords.latitude, longitude: coords.longitude }); setNearby(true); setLocating(false); setFilters((current) => ({ ...current, city: '', area: '' })); setAppliedFilters((current) => ({ ...current, city: '', area: '' })) },
+      () => { setLocationError('Location access is unavailable. Allow it in your browser or search by city and area.'); setLocating(false) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    )
+  }
   const doctors = useMemo(() => {
     const result = (data.doctors || []).filter((doctor) => {
       const specializationName = doctor.specialization?.name || ''
@@ -234,11 +254,11 @@ export function SearchResults({ data }) {
         'bookmydocme', 'bookadocme'
       ].includes(queryTerm)
       const matchesName = !appliedFilters.name || isBrandSearch || `${doctor.name} ${specializationName}`.toLowerCase().includes(appliedFilters.name.trim().toLowerCase())
-      return matchesName && (!appliedFilters.city || doctor.city === appliedFilters.city || doctorClinics.some((clinic) => clinic.city === appliedFilters.city)) && (!appliedFilters.area || doctorClinics.some((clinic) => clinic.area === appliedFilters.area)) && (!appliedFilters.specialization || specializationName === appliedFilters.specialization) && (!appliedFilters.clinic || doctorClinics.some((clinic) => clinic.name === appliedFilters.clinic)) && (!appliedFilters.emergency || doctor.emergencyAvailable) && (!appliedFilters.activeClinic || doctorClinics.length > 0) && (!appliedFilters.today || doctor.onlineBooking !== false) && (!appliedFilters.experience || (doctor.experienceYears || 0) >= Number(appliedFilters.experience)) && (!appliedFilters.rating || (doctor.rating || 0) >= Number(appliedFilters.rating)) && (!appliedFilters.maxFee || fee <= maxFee) && (!appliedFilters.fee || (appliedFilters.fee === 'Under ₹600' ? fee < 600 : appliedFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900))
+      return matchesName && (!appliedFilters.city || doctor.city === appliedFilters.city || doctorClinics.some((clinic) => clinic.city === appliedFilters.city)) && (!appliedFilters.area || doctorClinics.some((clinic) => clinic.area === appliedFilters.area)) && (!appliedFilters.specialization || specializationName === appliedFilters.specialization) && (!appliedFilters.clinic || doctorClinics.some((clinic) => clinic.name === appliedFilters.clinic)) && (!appliedFilters.emergency || doctor.emergencyAvailable) && (!appliedFilters.activeClinic || doctorClinics.length > 0) && (!appliedFilters.today || doctor.onlineBooking !== false) && (!appliedFilters.experience || (doctor.experienceYears || 0) >= Number(appliedFilters.experience)) && (!appliedFilters.rating || (doctor.rating || 0) >= Number(appliedFilters.rating)) && (!appliedFilters.maxFee || fee <= maxFee) && (!appliedFilters.fee || (appliedFilters.fee === 'Under ₹600' ? fee < 600 : appliedFilters.fee === '₹600–₹900' ? fee >= 600 && fee <= 900 : fee > 900)) && (!nearby || (nearestDoctorClinic(doctor, patientLocation)?.distanceKm ?? Infinity) <= nearbyRadius)
     })
-    return [...result].sort((left, right) => appliedFilters.sort === 'rating' ? (right.rating || 0) - (left.rating || 0) : appliedFilters.sort === 'fee' ? (Number(left.consultationFee) || 0) - (Number(right.consultationFee) || 0) : appliedFilters.sort === 'experience' ? (right.experienceYears || 0) - (left.experienceYears || 0) : 0)
-  }, [data, appliedFilters])
-  const clearFilters = () => { const empty = { name: '', city: '', area: '', specialization: '', clinic: '', fee: '', maxFee: '', experience: '', rating: '', today: false, activeClinic: false, emergency: false, sort: '' }; setFilters(empty); setAppliedFilters(empty) }
+    return [...result].sort((left, right) => nearby ? (nearestDoctorClinic(left, patientLocation)?.distanceKm ?? Infinity) - (nearestDoctorClinic(right, patientLocation)?.distanceKm ?? Infinity) : appliedFilters.sort === 'rating' ? (right.rating || 0) - (left.rating || 0) : appliedFilters.sort === 'fee' ? (Number(left.consultationFee) || 0) - (Number(right.consultationFee) || 0) : appliedFilters.sort === 'experience' ? (right.experienceYears || 0) - (left.experienceYears || 0) : 0)
+  }, [data, appliedFilters, nearby, patientLocation, nearbyRadius])
+  const clearFilters = () => { const empty = { name: '', city: '', area: '', specialization: '', clinic: '', fee: '', maxFee: '', experience: '', rating: '', today: false, activeClinic: false, emergency: false, sort: '' }; setFilters(empty); setAppliedFilters(empty); setNearby(false); setLocationError('') }
   return <><SiteHeader /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
     <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">Verified healthcare network</p>
     <h1 className="mt-2 text-3xl font-bold font-sans">Find your doctor</h1>
@@ -264,9 +284,11 @@ export function SearchResults({ data }) {
         </div>
       </aside>
       <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2"><button type="button" className={`touch-target rounded-button px-4 text-sm font-semibold ${nearby ? 'bg-primary-dark text-white' : 'border border-border bg-white text-primary-dark'}`} onClick={nearby ? () => setNearby(false) : useMyLocation} disabled={locating}>{locating ? 'Finding location…' : nearby ? '✓ Near me' : '⌖ Doctors near me'}</button>{nearby && <label className="flex items-center gap-2 text-sm text-muted">Within <select aria-label="Nearby radius" className="rounded-button border border-border bg-white px-2 py-2 text-ink" value={nearbyRadius} onChange={(event) => setNearbyRadius(Number(event.target.value))}><option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option></select></label>}</div>
+        {locationError && <p role="alert" className="mb-3 text-sm text-error">{locationError}</p>}
         <h2 className="mb-1 text-xl font-sans">{doctors.length} doctors found</h2>
         <p className="mb-3 text-sm text-muted">Live verified profiles with transparent fees</p>
-        {doctors.length ? <div className="grid gap-4 sm:grid-cols-2">{doctors.map((doctor) => <DoctorCard key={doctor.id} doctor={doctor} />)}</div> : <EmptyState title="No doctors match these filters" message="Try another name or remove a filter." />}
+        {doctors.length ? <div className="grid gap-4 sm:grid-cols-2">{doctors.map((doctor) => { const nearest = nearby ? nearestDoctorClinic(doctor, patientLocation) : null; return <DoctorCard key={doctor.id} doctor={doctor} clinicOverride={nearest?.clinic} distanceKm={nearest?.distanceKm} /> })}</div> : <EmptyState title={nearby ? 'No mapped clinics nearby' : 'No doctors match these filters'} message={nearby ? 'Try a larger distance or switch off Near me. Clinics without a map pin can still be found by city or area.' : 'Try another name or remove a filter.'} />}
       </div>
     </div>
   </main></> 
@@ -278,6 +300,7 @@ function DoctorProfileLayout({ doctor, primaryClinic, clinic, reviews, schedule,
   const rating = Number(doctor.rating) || 0
   const bookingUrl = `/patient/book?doctorId=${doctor.id}${primaryClinic ? `&clinicId=${primaryClinic.id}` : ''}`
   const specialty = doctor.specialization?.name || 'General practice'
+  const directionsUrl = clinicDirectionsUrl(clinic || primaryClinic, clinicAddress)
   return <>
     <SiteHeader />
     <main className="min-h-screen bg-surface pb-10">
@@ -318,6 +341,7 @@ function DoctorProfileLayout({ doctor, primaryClinic, clinic, reviews, schedule,
             <section className="rounded-card border border-border bg-white p-5 shadow-card sm:p-6">
               <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-xl font-semibold text-ink">Clinic & visiting hours</h2><p className="mt-1 text-sm text-muted">{primaryClinic?.name || 'Clinic not added'}</p></div>{primaryClinic && <Link className="text-sm font-semibold text-primary-dark hover:underline" to={`/clinics?clinic=${encodeURIComponent(primaryClinic.name)}`}>View clinic team →</Link>}</div>
               <p className="mt-4 text-sm text-ink">⌖ {clinicAddress}</p>
+              {directionsUrl && <a className="mt-3 inline-flex min-h-10 items-center rounded-button border border-border bg-surface px-3 text-sm font-semibold text-primary-dark hover:bg-primary-light" href={directionsUrl} target="_blank" rel="noopener noreferrer">Open directions in Google Maps →</a>}
               {clinic?.phone && <a className="mt-2 inline-block text-sm font-semibold text-primary-dark hover:underline" href={`tel:${clinic.phone.replace(/\s/g, '')}`}>{clinic.phone}</a>}
               <h3 className="mt-5 border-t border-border pt-4 text-sm font-semibold text-ink">Weekly OPD schedule</h3>
               {schedule.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{schedule.slice(0, 7).map((slot, index) => <div className="flex min-w-0 items-center justify-between gap-3 rounded-button bg-surface px-3 py-2.5 text-sm" key={`${slot.day || 'slot'}-${index}`}><span className="text-muted">{slot.day || 'OPD'}</span><strong className="text-right text-ink">{slot.hours || slot.time || slot}</strong></div>)}</div> : <p className="mt-2 text-sm text-muted">The clinic has not added weekly hours yet.</p>}
@@ -348,6 +372,7 @@ function DoctorProfileLayout({ doctor, primaryClinic, clinic, reviews, schedule,
 
 export function DoctorProfile({ data }) {
   const { doctorId } = useParams()
+  const [params] = useSearchParams()
   const getDoctor = useAppStore((state) => state.getDoctor)
   const [profileLoading, setProfileLoading] = useState(true)
   const [profileError, setProfileError] = useState('')
@@ -362,7 +387,7 @@ export function DoctorProfile({ data }) {
   }, [doctorId, getDoctor])
   const doctor = (data.doctors || []).find((item) => item.id === doctorId)
   if (!doctor) return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">{profileLoading ? <LoadingSkeleton rows={4} /> : <>{profileError && <p role="alert" className="mb-4 text-sm text-error">{profileError}</p>}<EmptyState title="No doctor profile yet" message="Doctor profiles added in this browser will appear here." /></>}</main></>
-  const primaryClinic = doctor.clinics?.[0]
+  const primaryClinic = doctor.clinics?.find((item) => item.id === params.get('clinicId')) || doctor.clinics?.[0]
   const appointment = todaysQueueAppointment((data.appointments || []).filter((item) => item.doctor?.id === doctor.id))
   const clinic = (data.clinics || []).find((item) => item.id === primaryClinic?.id)
   const reviews = (data.reviews || []).filter((item) => (item.status || 'approved') === 'approved' && (item.doctor?.id || item.doctorId) === doctor.id)
@@ -370,7 +395,7 @@ export function DoctorProfile({ data }) {
   // (doctors.service.js#buildSchedule) — this used to be a hardcoded empty array, which is why
   // this section always showed "Weekly OPD schedule not added yet." even for a doctor who had
   // actually set one.
-  const schedule = doctor.schedule || []
+  const schedule = primaryClinic?.id === doctor.clinics?.[0]?.id ? (doctor.schedule || []) : []
   // Online payment is mandatory for a paid online booking (see appointments.service.js's
   // AppointmentStatus.pending_payment) — a patient either pays the full consultation fee, or, if
   // the doctor has configured one, just this minimum advance amount (remainder due at the

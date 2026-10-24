@@ -387,6 +387,10 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
       TextEditingController(text: widget.existing?.phone ?? '');
   late final _addressCtrl =
       TextEditingController(text: widget.existing?.address ?? '');
+  late final _latitudeCtrl =
+      TextEditingController(text: widget.existing?.latitude?.toString() ?? '');
+  late final _longitudeCtrl =
+      TextEditingController(text: widget.existing?.longitude?.toString() ?? '');
   City? _selectedCity;
   Area? _selectedArea;
   Future<List<City>>? _citiesFuture;
@@ -443,6 +447,8 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _latitudeCtrl.dispose();
+    _longitudeCtrl.dispose();
     super.dispose();
   }
 
@@ -455,6 +461,17 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
       setState(() => _error = 'City is required');
       return;
     }
+    final latitude = double.tryParse(_latitudeCtrl.text.trim());
+    final longitude = double.tryParse(_longitudeCtrl.text.trim());
+    if ((_latitudeCtrl.text.trim().isNotEmpty ||
+            _longitudeCtrl.text.trim().isNotEmpty) &&
+        (latitude == null ||
+            longitude == null ||
+            latitude.abs() > 90 ||
+            longitude.abs() > 180)) {
+      setState(() => _error = 'Enter valid latitude and longitude together');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -464,6 +481,13 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
       if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
       if (_addressCtrl.text.trim().isNotEmpty)
         'address': _addressCtrl.text.trim(),
+      if (latitude != null && longitude != null) ...{
+        'latitude': latitude,
+        'longitude': longitude,
+      } else if (widget.existing?.latitude != null) ...{
+        'latitude': null,
+        'longitude': null,
+      },
       if (_selectedCity != null) 'cityId': _selectedCity!.id,
       if (_selectedArea != null) 'areaId': _selectedArea!.id,
     };
@@ -511,6 +535,26 @@ class _ClinicFormScreenState extends State<_ClinicFormScreen> {
               controller: _addressCtrl,
               decoration:
                   const InputDecoration(labelText: 'Address (optional)')),
+          const SizedBox(height: AppSpacing.sm),
+          Text('Map pin for nearby search and directions',
+              style: TextStyle(
+                  color: context.palette.textSecondary, fontSize: 12)),
+          const SizedBox(height: AppSpacing.sm),
+          Row(children: [
+            Expanded(
+                child: TextField(
+                    controller: _latitudeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(labelText: 'Latitude'))),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+                child: TextField(
+                    controller: _longitudeCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true, signed: true),
+                    decoration: const InputDecoration(labelText: 'Longitude'))),
+          ]),
           const SizedBox(height: AppSpacing.md),
           FutureBuilder<List<City>>(
             future: _citiesFuture,

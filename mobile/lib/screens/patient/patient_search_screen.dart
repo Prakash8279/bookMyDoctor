@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/api_client.dart';
+import '../../core/nearby_clinics.dart';
 import '../../core/token_store.dart';
 import '../../models/core_models.dart';
 import '../../state/auth_provider.dart';
@@ -117,6 +119,11 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
   List<Clinic> _clinics = [];
   bool _loading = true;
   Object? _error;
+  Position? _patientPosition;
+  bool _nearby = false;
+  bool _locating = false;
+  int _nearbyRadiusKm = 25;
+  String? _locationError;
 
   late _SearchFilters _draft = _SearchFilters(
     name: widget.initialQuery ?? '',
@@ -319,6 +326,13 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           (f.feeRange == 'Under ₹600' && fee < 600) ||
           (f.feeRange == '₹600–₹900' && fee >= 600 && fee <= 900) ||
           (f.feeRange == 'Above ₹900' && fee > 900);
+      final matchesNearby = !_nearby ||
+          (_patientPosition != null &&
+              (nearestDoctorClinic(doctor, _patientPosition!.latitude,
+                              _patientPosition!.longitude)
+                          ?.distanceKm ??
+                      double.infinity) <=
+                  _nearbyRadiusKm);
       return matchesName &&
           matchesCity &&
           matchesArea &&
@@ -330,9 +344,20 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           matchesExperience &&
           matchesRating &&
           matchesMaxFee &&
-          matchesFeeRange;
+          matchesFeeRange &&
+          matchesNearby;
     }).toList();
     result.sort((a, b) {
+      if (_nearby && _patientPosition != null) {
+        return (nearestDoctorClinic(a, _patientPosition!.latitude,
+                        _patientPosition!.longitude)
+                    ?.distanceKm ??
+                double.infinity)
+            .compareTo(nearestDoctorClinic(b, _patientPosition!.latitude,
+                        _patientPosition!.longitude)
+                    ?.distanceKm ??
+                double.infinity);
+      }
       switch (f.sort) {
         case 'rating':
           return b.rating.compareTo(a.rating);
@@ -353,7 +378,51 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         _nameController.clear();
         _draft = _SearchFilters();
         _applied = _SearchFilters();
+        _nearby = false;
+        _locationError = null;
       });
+
+  Future<void> _useMyLocation() async {
+    if (_nearby) {
+      setState(() => _nearby = false);
+      return;
+    }
+    setState(() {
+      _locating = true;
+      _locationError = null;
+    });
+    try {
+      if (!await Geolocator.isLocationServiceEnabled())
+        throw StateError(
+            'Turn on location services or search by city and area.');
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied)
+        permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever)
+        throw StateError(
+            'Allow location permission or search by city and area.');
+      final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              timeLimit: Duration(seconds: 15)));
+      if (!mounted) return;
+      setState(() {
+        _patientPosition = position;
+        _nearby = true;
+        _draft.city = '';
+        _draft.area = '';
+        _applied.city = '';
+        _applied.area = '';
+      });
+    } catch (error) {
+      if (mounted)
+        setState(() =>
+            _locationError = error.toString().replaceFirst('Bad state: ', ''));
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +591,38 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.md),
+        Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                  onPressed: _locating ? null : _useMyLocation,
+                  icon: const Icon(Icons.my_location, size: 18),
+                  label: Text(_locating
+                      ? 'Finding location…'
+                      : _nearby
+                          ? 'Near me ✓'
+                          : 'Doctors near me')),
+              if (_nearby)
+                DropdownButton<int>(
+                    value: _nearbyRadiusKm,
+                    items: const [5, 10, 25, 50]
+                        .map((radius) => DropdownMenuItem(
+                            value: radius, child: Text('$radius km')))
+                        .toList(),
+                    onChanged: (radius) {
+                      if (radius != null)
+                        setState(() => _nearbyRadiusKm = radius);
+                    }),
+            ]),
+        if (_locationError != null)
+          Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(_locationError!,
+                  style:
+                      TextStyle(color: context.palette.danger, fontSize: 12))),
+        const SizedBox(height: AppSpacing.sm),
         // Website's SearchResults shows "N doctors found" / "Live verified profiles with
         // transparent fees" above the results grid.
         Text('${doctors.length} doctor${doctors.length == 1 ? '' : 's'} found',
@@ -531,15 +632,34 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                 TextStyle(color: context.palette.textSecondary, fontSize: 13)),
         const SizedBox(height: AppSpacing.sm),
         if (doctors.isEmpty)
-          const EmptyStateView(
+          EmptyStateView(
               icon: Icons.search_off,
-              title: 'No doctors match these filters',
-              subtitle: 'Try another name or remove a filter.')
+              title: _nearby
+                  ? 'No mapped clinics nearby'
+                  : 'No doctors match these filters',
+              subtitle: _nearby
+                  ? 'Try a larger distance or switch off Near me. Clinics without a map pin can still be found by city.'
+                  : 'Try another name or remove a filter.')
         else
           for (final doctor in doctors)
             Padding(
                 padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-                child: _DoctorCard(doctor: doctor)),
+                child: _DoctorCard(
+                    doctor: doctor,
+                    nearbyClinic: _nearby && _patientPosition != null
+                        ? nearestDoctorClinic(
+                                doctor,
+                                _patientPosition!.latitude,
+                                _patientPosition!.longitude)
+                            ?.clinic
+                        : null,
+                    distanceKm: _nearby && _patientPosition != null
+                        ? nearestDoctorClinic(
+                                doctor,
+                                _patientPosition!.latitude,
+                                _patientPosition!.longitude)
+                            ?.distanceKm
+                        : null)),
       ],
     );
   }
@@ -630,7 +750,9 @@ class _FilterField extends StatelessWidget {
 
 class _DoctorCard extends StatelessWidget {
   final DoctorDirectoryItem doctor;
-  const _DoctorCard({required this.doctor});
+  final ClinicSummary? nearbyClinic;
+  final double? distanceKm;
+  const _DoctorCard({required this.doctor, this.nearbyClinic, this.distanceKm});
 
   @override
   Widget build(BuildContext context) {
@@ -646,7 +768,8 @@ class _DoctorCard extends StatelessWidget {
           } else {
             Navigator.of(context).push(
               MaterialPageRoute(
-                  builder: (_) => DoctorDetailScreen(doctorId: doctor.id)),
+                  builder: (_) => DoctorDetailScreen(
+                      doctorId: doctor.id, clinicId: nearbyClinic?.id)),
             );
           }
         },
@@ -730,6 +853,12 @@ class _DoctorCard extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (distanceKm != null)
+                      Text('Approx. ${distanceKm!.toStringAsFixed(1)} km away',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: context.palette.primaryDark)),
                     const SizedBox(height: 2),
                     Row(
                       children: [
@@ -766,8 +895,9 @@ class _DoctorCard extends StatelessWidget {
                           child: OutlinedButton(
                             onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                  builder: (_) =>
-                                      DoctorDetailScreen(doctorId: doctor.id)),
+                                  builder: (_) => DoctorDetailScreen(
+                                      doctorId: doctor.id,
+                                      clinicId: nearbyClinic?.id)),
                             ),
                             style: OutlinedButton.styleFrom(
                                 padding:
@@ -791,7 +921,9 @@ class _DoctorCard extends StatelessWidget {
                                 Navigator.of(context).push(
                                   MaterialPageRoute(
                                       builder: (_) => BookAppointmentScreen(
-                                          preselectedDoctor: doctor)),
+                                          preselectedDoctor: doctor,
+                                          preselectedClinicId:
+                                              nearbyClinic?.id)),
                                 );
                               }
                             },
@@ -822,7 +954,7 @@ class _DoctorCard extends StatelessWidget {
 
   String? get _location {
     if (doctor.clinics.isEmpty) return null;
-    final clinic = doctor.clinics.first;
+    final clinic = nearbyClinic ?? doctor.clinics.first;
     final areaCity = [clinic.area, clinic.city]
         .where((s) => s != null && s.isNotEmpty)
         .join(', ');

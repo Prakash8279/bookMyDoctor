@@ -30,6 +30,9 @@ const createClinic = [
   body('name').trim().notEmpty().withMessage('name is required.').isLength({ max: 200 }),
   body('phone').optional({ values: 'falsy' }).trim().isLength({ max: 20 }),
   body('address').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
+  body('latitude').optional().isFloat({ min: -90, max: 90 }).toFloat(),
+  body('longitude').optional().isFloat({ min: -180, max: 180 }).toFloat(),
+  body().custom((input) => (input.latitude == null) === (input.longitude == null)).withMessage('latitude and longitude must be provided together.'),
   body('cityId').notEmpty().withMessage('cityId is required.').isUUID(),
   body('areaId').optional({ values: 'falsy' }).isUUID(),
   body('emergencyAvailable').optional({ values: 'falsy' }).isBoolean().toBoolean(),
@@ -68,6 +71,9 @@ const patchClinic = [
   rejectNull('name').trim().isLength({ min: 1, max: 200 }),
   body('phone').optional(OPT_NULLABLE).trim().isLength({ max: 20 }),
   body('address').optional(OPT_NULLABLE).trim().isLength({ max: 500 }),
+  body('latitude').optional(OPT_NULLABLE).isFloat({ min: -90, max: 90 }).toFloat(),
+  body('longitude').optional(OPT_NULLABLE).isFloat({ min: -180, max: 180 }).toFloat(),
+  body().custom((input) => Object.hasOwn(input, 'latitude') === Object.hasOwn(input, 'longitude')).withMessage('latitude and longitude must be updated together.'),
   // cityId is a required-in-practice field (a clinic must always reference a real city) —
   // 'falsy' here means an explicit null/omitted cityId is treated as "not touching this
   // field", not "clear it", so the service layer never has to look up a null city id.

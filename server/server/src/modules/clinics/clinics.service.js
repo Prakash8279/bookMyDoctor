@@ -56,6 +56,8 @@ const CLINIC_DETAIL_SELECT = {
   name: true,
   phone: true,
   address: true,
+  latitude: true,
+  longitude: true,
   approvalStatus: true,
   rejectionReason: true,
   emergencyAvailable: true,
@@ -98,6 +100,8 @@ const CLINIC_LIST_SELECT = {
   name: true,
   phone: true,
   address: true,
+  latitude: true,
+  longitude: true,
   approvalStatus: true,
   emergencyAvailable: true,
   paymentCashEnabled: true,
@@ -118,6 +122,8 @@ function shapeClinicDetail(clinic) {
     name: clinic.name,
     phone: clinic.phone,
     address: clinic.address,
+    latitude: clinic.latitude,
+    longitude: clinic.longitude,
     approvalStatus: clinic.approvalStatus,
     rejectionReason: clinic.rejectionReason,
     emergencyAvailable: clinic.emergencyAvailable,
@@ -151,6 +157,8 @@ function shapeClinicListItem(clinic) {
     name: clinic.name,
     phone: clinic.phone,
     address: clinic.address,
+    latitude: clinic.latitude,
+    longitude: clinic.longitude,
     approvalStatus: clinic.approvalStatus,
     emergencyAvailable: clinic.emergencyAvailable,
     paymentCashEnabled: clinic.paymentCashEnabled,
@@ -233,7 +241,7 @@ async function assertCityAndAreaValid(cityId, areaId) {
  * @param {{id:string, role:string}} actor
  */
 async function createClinic(input, actor) {
-  const { name, phone, address, cityId, areaId, emergencyAvailable, paymentCashEnabled, paymentUpiEnabled, paymentUpiId, paymentQrUrl } =
+  const { name, phone, address, latitude, longitude, cityId, areaId, emergencyAvailable, paymentCashEnabled, paymentUpiEnabled, paymentUpiId, paymentQrUrl } =
     input;
 
   await assertCityAndAreaValid(cityId, areaId);
@@ -254,6 +262,8 @@ async function createClinic(input, actor) {
         name: name.trim(),
         phone: phone ? phone.trim() : null,
         address: address ? address.trim() : null,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
         cityId,
         areaId: areaId || null,
         approvalStatus,
@@ -400,7 +410,7 @@ async function updateClinic(id, body, actor) {
   // clinic by PATCHing the status field directly.
   const updates = pickPresentFields(
     body,
-    ['name', 'phone', 'address', 'cityId', 'areaId', 'emergencyAvailable', 'paymentCashEnabled', 'paymentUpiEnabled', 'paymentUpiId', 'paymentQrUrl'],
+    ['name', 'phone', 'address', 'latitude', 'longitude', 'cityId', 'areaId', 'emergencyAvailable', 'paymentCashEnabled', 'paymentUpiEnabled', 'paymentUpiId', 'paymentQrUrl'],
     CLINIC_UPDATE_NON_NULLABLE
   );
 

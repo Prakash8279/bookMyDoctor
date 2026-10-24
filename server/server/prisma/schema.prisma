@@ -378,6 +378,8 @@ model Clinic {
   name                 String
   phone                String?
   address              String?
+  latitude             Float?
+  longitude            Float?
   cityId               String?               @map("city_id")
   city                 City?                 @relation(fields: [cityId], references: [id])
   areaId               String?               @map("area_id")

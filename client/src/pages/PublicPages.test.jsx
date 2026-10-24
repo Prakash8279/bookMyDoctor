@@ -60,6 +60,7 @@ beforeEach(() => {
 afterEach(() => {
   localStorage.clear()
   document.documentElement.removeAttribute('data-theme')
+  delete navigator.geolocation
 })
 
 // Renders `ui` plus an always-mounted probe that exposes the router's current location, so tests
@@ -172,6 +173,25 @@ describe('SearchResults', () => {
       { ...doctor, id: 'doc-2', name: 'Dr. Vikram Shah', specialization: { name: 'Dermatology' }, consultationFee: 400, experienceYears: 3, rating: 4.1, emergencyAvailable: true, clinics: [] },
     ],
   }
+
+  it('uses consented device location to show only mapped clinics within the radius', async () => {
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 19.12, longitude: 72.85 } }) } })
+    const mapped = { ...doctor, clinics: [{ ...doctor.clinics[0], latitude: 19.1201, longitude: 72.8501 }] }
+    render(<MemoryRouter initialEntries={['/search']}><SearchResults data={{ ...data, doctors: [mapped, data.doctors[1]] }} /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '⌖ Doctors near me' }))
+    expect(await screen.findByText('1 doctors found')).toBeInTheDocument()
+    expect(screen.getByText(/Approx\. 0\.0 km away/)).toBeInTheDocument()
+    expect(screen.queryByText('Dr. Vikram Shah')).not.toBeInTheDocument()
+  })
+
+  it('keeps the nearest clinic selected when opening a doctor profile', async () => {
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (success) => success({ coords: { latitude: 19.12, longitude: 72.85 } }) } })
+    const mapped = { ...doctor, clinics: [{ ...doctor.clinics[0], latitude: 19.4, longitude: 73.1 }, { id: 'clinic-near', name: 'Nearby Clinic', city: 'Mumbai', latitude: 19.1201, longitude: 72.8501 }] }
+    render(<MemoryRouter initialEntries={['/search']}><SearchResults data={{ ...data, doctors: [mapped] }} /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '⌖ Doctors near me' }))
+    expect(await screen.findByText('Nearby Clinic, Mumbai')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View profile' })).toHaveAttribute('href', '/doctors/doc-1?clinicId=clinic-near')
+  })
 
   it('lists every doctor by default and narrows by the "24/7 emergency" filter', () => {
     render(<MemoryRouter initialEntries={['/search']}><SearchResults data={data} /></MemoryRouter>)

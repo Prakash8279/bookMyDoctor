@@ -159,7 +159,8 @@ export function DoctorClinics({ data }) {
   const [assignDoctorId, setAssignDoctorId] = useState('')
   const [busyDoctorKey, setBusyDoctorKey] = useState(null)
   const [rowError, setRowError] = useState('')
-  const [form, setForm] = useState({ name: '', phone: '', cityId: '', areaId: '', address: '' })
+  const [form, setForm] = useState({ name: '', phone: '', cityId: '', areaId: '', address: '', latitude: '', longitude: '' })
+  const [locatingClinic, setLocatingClinic] = useState(false)
 
   // GET /clinics has no `doctors` field on list rows (only the single-clinic
   // detail endpoint does) — fetch full detail for each of "my" clinics so
@@ -177,17 +178,29 @@ export function DoctorClinics({ data }) {
   const clinics = data.clinics || []
   const clinic = clinics[0] || null
   useEffect(() => {
-    if (clinic) setForm({ name: clinic.name || '', phone: clinic.phone || '', cityId: clinic.city?.id || '', areaId: clinic.area?.id || '', address: clinic.address || '' })
+    if (clinic) setForm({ name: clinic.name || '', phone: clinic.phone || '', cityId: clinic.city?.id || '', areaId: clinic.area?.id || '', address: clinic.address || '', latitude: clinic.latitude?.toString() || '', longitude: clinic.longitude?.toString() || '' })
   }, [clinic])
   const areaOptions = (data.areas || []).filter((area) => !form.cityId || area.cityId === form.cityId)
+
+  const pinClinicHere = () => {
+    if (!navigator.geolocation) { setClinicError('This device cannot share its location. Enter the clinic coordinates instead.'); return }
+    setLocatingClinic(true)
+    setClinicError('')
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => { setForm((current) => ({ ...current, latitude: coords.latitude.toFixed(7), longitude: coords.longitude.toFixed(7) })); setLocatingClinic(false) },
+      () => { setClinicError('Location unavailable. Allow location permission while you are at the clinic, or enter the coordinates manually.'); setLocatingClinic(false) },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    )
+  }
 
   const saveClinic = async (event) => {
     event.preventDefault()
     if (!form.name.trim() || !form.cityId) { setClinicError('Clinic name and city are required.'); return }
+    if (Boolean(form.latitude) !== Boolean(form.longitude) || (form.latitude && (!Number.isFinite(Number(form.latitude)) || Math.abs(Number(form.latitude)) > 90 || !Number.isFinite(Number(form.longitude)) || Math.abs(Number(form.longitude)) > 180))) { setClinicError('Enter a valid latitude and longitude together.'); return }
     setSavingClinic(true)
     setClinicError('')
     try {
-      const fields = { name: form.name.trim(), phone: form.phone || undefined, cityId: form.cityId, areaId: form.areaId || undefined, address: form.address || undefined }
+      const fields = { name: form.name.trim(), phone: form.phone || undefined, cityId: form.cityId, areaId: form.areaId || undefined, address: form.address || undefined, ...(form.latitude ? { latitude: Number(form.latitude), longitude: Number(form.longitude) } : clinic?.latitude != null ? { latitude: null, longitude: null } : {}) }
       if (clinic) {
         await updateClinic(clinic.id, fields)
       } else {
@@ -282,6 +295,11 @@ export function DoctorClinics({ data }) {
           <Select label="area" placeholder="Select area" options={areaOptions.map((area) => ({ value: area.id, label: area.name }))} value={form.areaId} onChange={(event) => setForm({ ...form, areaId: event.target.value })} />
         </label>
         <div className="sm:col-span-2"><FormField label="Full address" type="textarea" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div>
+        <div className="sm:col-span-2 rounded-button border border-border bg-surface p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><strong className="text-sm text-ink">Clinic map pin</strong><p className="mt-1 text-xs text-muted">Set this while at the clinic so patients can find nearby doctors and navigate to the right entrance.</p></div><button type="button" className="touch-target rounded-button border border-border bg-white px-3 text-sm font-semibold text-primary-dark" onClick={pinClinicHere} disabled={locatingClinic}>{locatingClinic ? 'Locating…' : 'Use current location'}</button></div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2"><FormField label="Latitude" type="number" step="any" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} /><FormField label="Longitude" type="number" step="any" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} /></div>
+          {form.latitude && form.longitude && <button type="button" className="mt-2 text-xs font-semibold text-primary-dark" onClick={() => setForm({ ...form, latitude: '', longitude: '' })}>Remove map pin</button>}
+        </div>
       </div>
       <Button type="submit" className="mt-4" disabled={savingClinic}>{savingClinic ? 'Saving…' : 'Save clinic'}</Button>
       <ErrorNote>{clinicError}</ErrorNote>

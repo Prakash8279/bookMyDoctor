@@ -27,6 +27,7 @@ dependencies:
   http_parser: ^4.0.2
   # Used by clinic/contact/profile actions that open phone, email, and external links.
   url_launcher: ^6.3.1
+  geolocator: 14.0.2
   # COMPLETENESS FIX (brand consistency — user asked the app to look "same to same" as the
   # website): theme/app_theme.dart now renders the whole app in Inter, matching the website's own
   # actual font (reference_site.css's base font-family rule — Inter, not the unused Poppins/Jakarta

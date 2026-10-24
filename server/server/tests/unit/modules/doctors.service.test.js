@@ -97,6 +97,14 @@ describe('doctorsService.listDoctors — public booking window', () => {
     expect(rows[0].email).toBeUndefined();
     expect(rows[0].phone).toBeUndefined();
   });
+
+  test('directory rows include only public clinic coordinates for nearby search', async () => {
+    prisma.user.findMany.mockResolvedValue([buildDoctorRow({ doctorClinics: [{ clinic: { id: 'clinic-1', name: 'City Clinic', approvalStatus: 'active', latitude: 19.12, longitude: 72.85, city: { name: 'Mumbai' }, area: { name: 'Andheri' } } }] })]);
+    prisma.user.count.mockResolvedValue(1);
+    const { rows } = await doctorsService.listDoctors({});
+    expect(rows[0].clinics[0]).toEqual(expect.objectContaining({ latitude: 19.12, longitude: 72.85 }));
+    expect(rows[0].phone).toBeUndefined();
+  });
 });
 
 describe('doctorsService.getDoctorById — not-found / visibility', () => {

@@ -299,12 +299,23 @@ class ClinicSummary {
   final String name;
   final String? city;
   final String? area;
-  ClinicSummary({required this.id, required this.name, this.city, this.area});
+  final double? latitude;
+  final double? longitude;
+  ClinicSummary(
+      {required this.id,
+      required this.name,
+      this.city,
+      this.area,
+      this.latitude,
+      this.longitude});
   factory ClinicSummary.fromJson(Map<String, dynamic> json) => ClinicSummary(
         id: asString(json['id']),
         name: asString(json['name']),
         city: json['city'] as String?,
         area: json['area'] as String?,
+        latitude: json['latitude'] == null ? null : asDouble(json['latitude']),
+        longitude:
+            json['longitude'] == null ? null : asDouble(json['longitude']),
       );
 }
 
@@ -497,6 +508,8 @@ class Clinic {
   final String name;
   final String? phone;
   final String? address;
+  final double? latitude;
+  final double? longitude;
   final String approvalStatus;
   final String? rejectionReason;
   final bool emergencyAvailable;
@@ -514,6 +527,8 @@ class Clinic {
     required this.name,
     this.phone,
     this.address,
+    this.latitude,
+    this.longitude,
     required this.approvalStatus,
     this.rejectionReason,
     required this.emergencyAvailable,
@@ -532,6 +547,9 @@ class Clinic {
         name: asString(json['name']),
         phone: json['phone'] as String?,
         address: json['address'] as String?,
+        latitude: json['latitude'] == null ? null : asDouble(json['latitude']),
+        longitude:
+            json['longitude'] == null ? null : asDouble(json['longitude']),
         approvalStatus: asString(json['approvalStatus'], 'pending'),
         rejectionReason: json['rejectionReason'] as String?,
         emergencyAvailable: asBool(json['emergencyAvailable']),
