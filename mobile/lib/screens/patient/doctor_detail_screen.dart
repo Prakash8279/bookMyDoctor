@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/india_time.dart';
 import '../../core/token_store.dart';
 import '../../models/admin_models.dart';
 import '../../models/clinical_models.dart';
@@ -57,7 +59,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
           query: {'pageSize': 100}).catchError((_) => ApiResponse(data: []));
       for (final item in apptRes.list) {
         final a = Appointment.fromJson(item);
-        if (a.doctor?.id == widget.doctorId) {
+        if (a.doctor?.id == widget.doctorId &&
+            a.appointmentDate == indiaToday() &&
+            (a.status == 'upcoming' || a.status == 'confirmed')) {
           myAppointmentId = a.id;
           break;
         }
@@ -128,13 +132,23 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
               .join()
               .toUpperCase();
           final minAdvance = doctor.minBookingAdvanceAmount ?? 0.0;
+          final specialtyLine = [
+            doctor.specialization?.name,
+            doctor.qualification
+          ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
 
           return ListView(
             padding: EdgeInsets.zero,
             children: [
               // 1. Charcoal Hero Section (mirrors web DoctorProfile hero)
               Container(
-                color: AppColors.charcoal,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.charcoal, context.palette.primaryDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -143,20 +157,40 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          width: 64,
-                          height: 64,
+                          width: 72,
+                          height: 72,
                           decoration: BoxDecoration(
                             color: context.palette.surface,
-                            borderRadius: BorderRadius.circular(AppRadius.card),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.white24, width: 2),
                           ),
                           alignment: Alignment.center,
-                          child: Text(
-                            initials.isNotEmpty ? initials : 'DR',
-                            style: TextStyle(
-                              color: context.palette.primaryDark,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: doctor.photoUrl?.isNotEmpty == true
+                                ? CachedNetworkImage(
+                                    imageUrl: doctor.photoUrl!,
+                                    width: 68,
+                                    height: 68,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) => Center(
+                                      child: Text(
+                                          initials.isNotEmpty ? initials : 'DR',
+                                          style: TextStyle(
+                                              color:
+                                                  context.palette.primaryDark,
+                                              fontSize: 22,
+                                              fontWeight: FontWeight.w800)),
+                                    ),
+                                  )
+                                : Text(
+                                    initials.isNotEmpty ? initials : 'DR',
+                                    style: TextStyle(
+                                      color: context.palette.primaryDark,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                           ),
                         ),
                         const SizedBox(width: AppSpacing.md),
@@ -193,9 +227,9 @@ class _DoctorDetailScreenState extends State<DoctorDetailScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                doctor.qualification ??
-                                    doctor.specialization?.name ??
-                                    'General practitioner',
+                                specialtyLine.isNotEmpty
+                                    ? specialtyLine
+                                    : 'General practitioner',
                                 style: TextStyle(
                                     color: Colors.white.withValues(alpha: 0.75),
                                     fontSize: 13),

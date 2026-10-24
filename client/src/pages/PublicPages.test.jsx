@@ -215,6 +215,7 @@ describe('DoctorProfile', () => {
         bio: 'Senior cardiologist.',
         languages: ['English', 'Hindi'],
         minBookingAdvanceAmount: 150,
+        photoUrl: 'https://cdn.example.com/doctor.jpg',
         schedule: [{ day: 'Monday', hours: '9am - 1pm' }],
       }],
       appointments: [],
@@ -228,6 +229,7 @@ describe('DoctorProfile', () => {
     )
     expect(await screen.findByRole('heading', { name: 'Dr. Asha Rao' })).toBeInTheDocument()
     expect(screen.getByText('Senior cardiologist.')).toBeInTheDocument()
+    expect(screen.getByAltText('Dr. Asha Rao profile photo')).toHaveAttribute('src', 'https://cdn.example.com/doctor.jpg')
     expect(screen.getByText('English, Hindi')).toBeInTheDocument()
     expect(screen.getByText('Monday')).toBeInTheDocument()
     expect(screen.getByText('9am - 1pm')).toBeInTheDocument()
@@ -247,6 +249,13 @@ describe('DoctorProfile', () => {
       </MemoryRouter>
     )
     expect(await screen.findByText(/full consultation fee/)).toBeInTheDocument()
+  })
+
+  it('does not offer a booking link when the doctor has paused online bookings', async () => {
+    const data = { doctors: [{ ...doctor, onlineBooking: false }], appointments: [], reviews: [] }
+    render(<MemoryRouter initialEntries={['/doctors/doc-1']}><Routes><Route path="/doctors/:doctorId" element={<DoctorProfile data={data} />} /></Routes></MemoryRouter>)
+    expect(await screen.findByText('Online booking is currently unavailable.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Continue to booking' })).not.toBeInTheDocument()
   })
 
   it('shows an empty state and the load error when the doctor cannot be found or loaded', async () => {

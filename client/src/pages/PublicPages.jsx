@@ -10,6 +10,8 @@ import { GoogleSignInButton } from '../lib/GoogleSignInButton'
 import { useAppStore } from '../store/useAppStore'
 import { usePolling } from '../hooks/usePolling'
 import { ProfileAvatar } from '../components/ProfileAvatar'
+import { todaysQueueAppointment } from '../lib/patientQueueAppointment'
+import { clinicPaymentComplete } from '../lib/clinicPaymentGate'
 
 const roleHome = (role) => role === 'superadmin' ? '/super-admin/dashboard' : `/${role}/dashboard`
 
@@ -50,6 +52,8 @@ function PatientLiveQueuePreview({ appointment }) {
   return <LiveQueueWidget
     appointmentId={appointment?.id}
     initialQueue={appointment && status ? { appointmentId: appointment.id, token: status.token, nowServing: status.nowServing, patientsAhead: status.patientsAhead, estimatedWait: status.estimatedWaitMinutes, doctorStatus: status.status } : null}
+    reservedToken={appointment?.tokenNumber}
+    paymentPending={appointment ? !clinicPaymentComplete(appointment) : false}
     error={error}
     onRetry={() => appointment && fetchMyQueueStatus(appointment.id).then(setStatus).catch((err) => setError(err.message))}
   />
@@ -268,6 +272,80 @@ export function SearchResults({ data }) {
   </main></> 
 }
 
+function DoctorProfileLayout({ doctor, primaryClinic, clinic, reviews, schedule, appointment, minAdvance, clinicAddress }) {
+  const initials = doctor.name.split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'
+  const reviewCount = Number(doctor.reviewCount) || reviews.length
+  const rating = Number(doctor.rating) || 0
+  const bookingUrl = `/patient/book?doctorId=${doctor.id}${primaryClinic ? `&clinicId=${primaryClinic.id}` : ''}`
+  const specialty = doctor.specialization?.name || 'General practice'
+  return <>
+    <SiteHeader />
+    <main className="min-h-screen bg-surface pb-10">
+      <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+        <Link to="/search" className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-primary-dark hover:underline">← Back to doctors</Link>
+        <section className="relative mt-3 overflow-hidden rounded-[28px] bg-charcoal px-5 py-6 text-white shadow-card sm:px-8 sm:py-8">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-32 h-72 w-72 rounded-full bg-primary/20 blur-3xl" />
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-start gap-4 sm:items-center sm:gap-6">
+              <ProfileAvatar src={doctor.photoUrl} alt={`${doctor.name} profile photo`} fallback={initials} className="h-20 w-20 shrink-0 rounded-2xl border-2 border-white/20 bg-white text-xl font-bold text-primary-dark shadow-card sm:h-28 sm:w-28 sm:rounded-3xl sm:text-3xl" />
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/70">✓ Verified doctor</p>
+                <h1 className="mt-1 text-2xl font-semibold leading-tight text-white sm:text-4xl">{doctor.name}</h1>
+                <p className="mt-1 text-sm font-medium text-white/85 sm:text-base">{specialty}{doctor.qualification ? ` · ${doctor.qualification}` : ''}</p>
+                <p className="mt-2 text-sm text-white/70">{primaryClinic?.name || 'Clinic not added'}{primaryClinic?.city || doctor.city ? ` · ${primaryClinic?.city || doctor.city}` : ''}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              {doctor.experienceYears != null && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold sm:text-sm">{doctor.experienceYears} years experience</span>}
+              {reviewCount > 0 && <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold sm:text-sm"><span className="text-gold">★</span> {rating.toFixed(1)} · {reviewCount} reviews</span>}
+              {doctor.emergencyAvailable && <span className="rounded-full bg-error/20 px-3 py-1.5 text-xs font-semibold text-white sm:text-sm">Emergency available</span>}
+            </div>
+          </div>
+        </section>
+
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+          <div className="min-w-0 space-y-5">
+            <section className="rounded-card border border-border bg-white p-5 shadow-card sm:p-6">
+              <h2 className="text-xl font-semibold text-ink">About the doctor</h2>
+              <p className="mt-2 text-sm leading-6 text-muted sm:text-base">{doctor.bio || `${doctor.name} is a ${specialty.toLowerCase()} available for clinic appointments.`}</p>
+              <div className="mt-5 grid gap-3 border-t border-border pt-4 sm:grid-cols-3">
+                <div className="rounded-button bg-surface px-4 py-3"><span className="block text-xs text-muted">Experience</span><strong className="mt-1 block text-sm text-ink">{doctor.experienceYears != null ? `${doctor.experienceYears} years` : 'Not listed'}</strong></div>
+                <div className="rounded-button bg-surface px-4 py-3"><span className="block text-xs text-muted">Languages</span><strong className="mt-1 block text-sm text-ink">{doctor.languages?.length ? doctor.languages.join(', ') : 'Not listed'}</strong></div>
+                <div className="rounded-button bg-surface px-4 py-3"><span className="block text-xs text-muted">Online booking</span><strong className="mt-1 block text-sm text-ink">{doctor.onlineBooking === false ? 'Currently unavailable' : 'Available'}</strong></div>
+              </div>
+            </section>
+
+            <section className="rounded-card border border-border bg-white p-5 shadow-card sm:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="text-xl font-semibold text-ink">Clinic & visiting hours</h2><p className="mt-1 text-sm text-muted">{primaryClinic?.name || 'Clinic not added'}</p></div>{primaryClinic && <Link className="text-sm font-semibold text-primary-dark hover:underline" to={`/clinics?clinic=${encodeURIComponent(primaryClinic.name)}`}>View clinic team →</Link>}</div>
+              <p className="mt-4 text-sm text-ink">⌖ {clinicAddress}</p>
+              {clinic?.phone && <a className="mt-2 inline-block text-sm font-semibold text-primary-dark hover:underline" href={`tel:${clinic.phone.replace(/\s/g, '')}`}>{clinic.phone}</a>}
+              <h3 className="mt-5 border-t border-border pt-4 text-sm font-semibold text-ink">Weekly OPD schedule</h3>
+              {schedule.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2">{schedule.slice(0, 7).map((slot, index) => <div className="flex min-w-0 items-center justify-between gap-3 rounded-button bg-surface px-3 py-2.5 text-sm" key={`${slot.day || 'slot'}-${index}`}><span className="text-muted">{slot.day || 'OPD'}</span><strong className="text-right text-ink">{slot.hours || slot.time || slot}</strong></div>)}</div> : <p className="mt-2 text-sm text-muted">The clinic has not added weekly hours yet.</p>}
+            </section>
+
+            <section className="rounded-card border border-border bg-white p-5 shadow-card sm:p-6">
+              <div className="flex items-baseline justify-between gap-3"><h2 className="text-xl font-semibold text-ink">Patient reviews</h2>{reviewCount > 0 && <span className="text-sm text-muted">{reviewCount} verified</span>}</div>
+              {reviews.length ? <div className="mt-4 space-y-3">{reviews.slice(0, 3).map((review) => <article className="rounded-button border border-border bg-surface p-4" key={review.id}><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-ink">{review.patient?.name || 'Verified patient'}</strong><span className="text-sm font-semibold text-gold">{'★'.repeat(Math.max(0, Math.min(5, Math.round(Number(review.rating) || 0))))}</span></div>{review.text && <p className="mt-2 text-sm leading-6 text-muted">{review.text}</p>}</article>)}</div> : <p className="mt-3 text-sm text-muted">No approved patient reviews yet.</p>}
+            </section>
+          </div>
+
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-24">
+            <section className="rounded-card border border-border bg-white p-5 shadow-card sm:p-6">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary-dark">Clinic consultation</p>
+              <div className="mt-2 flex items-baseline gap-2"><strong className="font-sans text-3xl text-ink">₹{Number(doctor.consultationFee) || 0}</strong><span className="text-sm text-muted">per visit</span></div>
+              <p className="mt-3 text-sm leading-6 text-muted">{minAdvance > 0 ? <><strong className="text-ink">₹{minAdvance} online advance</strong> confirms the booking. Pay the rest at the clinic.</> : <>Online payment of the <strong className="text-ink">full consultation fee</strong> confirms the booking.</>}</p>
+              {doctor.onlineBooking === false ? <span className="btn-primary mt-5 w-full cursor-not-allowed opacity-50" aria-disabled="true">Continue to booking</span> : <Link className="btn-primary mt-5 w-full" to={bookingUrl}>Continue to booking <span aria-hidden="true">→</span></Link>}
+              {doctor.onlineBooking === false && <p className="mt-2 text-xs text-error">Online booking is currently unavailable.</p>}
+              <p className="mt-3 text-xs leading-5 text-muted">Your approximate visit time and token are assigned when your booking is confirmed.</p>
+            </section>
+            {appointment && <PatientLiveQueuePreview appointment={appointment} />}
+          </aside>
+        </div>
+      </div>
+    </main>
+  </>
+}
+
 export function DoctorProfile({ data }) {
   const { doctorId } = useParams()
   const getDoctor = useAppStore((state) => state.getDoctor)
@@ -285,9 +363,9 @@ export function DoctorProfile({ data }) {
   const doctor = (data.doctors || []).find((item) => item.id === doctorId)
   if (!doctor) return <><SiteHeader /><main className="mx-auto max-w-3xl px-4 py-12 sm:px-6">{profileLoading ? <LoadingSkeleton rows={4} /> : <>{profileError && <p role="alert" className="mb-4 text-sm text-error">{profileError}</p>}<EmptyState title="No doctor profile yet" message="Doctor profiles added in this browser will appear here." /></>}</main></>
   const primaryClinic = doctor.clinics?.[0]
-  const appointment = (data.appointments || []).find((item) => item.doctor?.id === doctor.id)
+  const appointment = todaysQueueAppointment((data.appointments || []).filter((item) => item.doctor?.id === doctor.id))
   const clinic = (data.clinics || []).find((item) => item.id === primaryClinic?.id)
-  const reviews = (data.reviews || []).filter((item) => (item.status || 'approved') === 'approved' && (!item.doctor || item.doctor.id === doctor.id))
+  const reviews = (data.reviews || []).filter((item) => (item.status || 'approved') === 'approved' && (item.doctor?.id || item.doctorId) === doctor.id)
   // Real weekly OPD hours for the doctor's primary clinic, now returned by the API
   // (doctors.service.js#buildSchedule) — this used to be a hardcoded empty array, which is why
   // this section always showed "Weekly OPD schedule not added yet." even for a doctor who had
@@ -300,7 +378,7 @@ export function DoctorProfile({ data }) {
   // actual configured amount.
   const minAdvance = Number(doctor.minBookingAdvanceAmount) || 0
   const clinicAddress = clinic?.address || [primaryClinic?.area, primaryClinic?.city || doctor.city].filter(Boolean).join(', ') || 'Clinic address not added'
-  return <><SiteHeader /><section className="bg-charcoal px-4 py-8 text-white sm:px-6"><div className="mx-auto flex max-w-6xl flex-wrap items-start justify-between gap-6"><div className="flex items-start gap-4"><div className="grid h-16 w-16 shrink-0 place-items-center rounded-card bg-white text-xl font-semibold uppercase text-primary-dark">{doctor.name.split(' ').filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase() || 'DR'}</div><div><p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-white/70"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg> Verified practitioner</p><h1 className="mt-1 text-3xl text-white">{doctor.name}</h1><p className="mt-1 text-lg text-white/70">{doctor.qualification || doctor.specialization?.name || 'General practice'}</p><p className="mt-2 flex items-center gap-1.5 text-sm text-white/60"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>{primaryClinic?.name || 'Clinic not added'}{clinicAddress ? `, ${clinicAddress}` : ''}</p>{doctor.emergencyAvailable && <div className="mt-3"><Badge tone="error">Emergency available</Badge></div>}</div></div><div className="text-left sm:text-right"><strong className="text-4xl font-sans text-white">{doctor.rating || 0}</strong><p className="mt-1 flex items-center gap-1 text-sm text-gold sm:justify-end">★ Patient rating</p><p className="mt-1 text-xs text-white/60">{doctor.reviewCount || reviews.length || 0} verified review(s)</p></div></div></section><main className="mx-auto max-w-6xl px-4 py-8 sm:px-6"><div className="grid gap-5 lg:grid-cols-[1fr_360px]"><div className="space-y-5"><article className="rounded-card border border-border bg-white p-6 shadow-card"><h2 className="text-xl">About {doctor.name}</h2><p className="mt-2 leading-7 text-muted">{doctor.bio || 'No description added yet.'}</p><div className="mt-5 grid gap-4 border-t border-border pt-5 sm:grid-cols-3"><div><span className="block text-sm text-muted">Experience</span><strong>{doctor.experienceYears || 0} years</strong></div><div><span className="block text-sm text-muted">Languages</span><strong>{doctor.languages?.length ? doctor.languages.join(', ') : 'Not added yet'}</strong></div><div><span className="block text-sm text-muted">Availability</span><strong>{doctor.scheduleSummary || (doctor.onlineBooking === false ? 'Not accepting online bookings' : 'Schedule not added')}</strong></div></div></article><article className="rounded-card border border-border bg-white p-6 shadow-card"><div className="flex items-center justify-between gap-3"><h2 className="text-xl">Clinic information</h2>{primaryClinic && <Link className="text-sm font-semibold text-primary-dark" to={`/clinics?clinic=${encodeURIComponent(primaryClinic.name)}`}>View clinic team</Link>}</div><h3 className="mt-4 text-lg">{primaryClinic?.name || 'Clinic not added'}</h3><p className="mt-1 text-sm text-muted">{clinicAddress}</p>{clinic?.phone && <p className="mt-1 text-sm text-muted">{clinic.phone}</p>}<div className="mt-5 space-y-2">{schedule.length ? schedule.slice(0, 7).map((slot, index) => <div className="flex items-center justify-between gap-3 rounded-button bg-surface px-3 py-2 text-sm" key={`${slot.day || 'slot'}-${index}`}><span className="text-muted">{slot.day || 'OPD schedule'}</span><strong>{slot.hours || slot.time || slot}</strong></div>) : <p className="text-sm text-muted">Weekly OPD schedule not added yet.</p>}</div></article><article className="rounded-card border border-border bg-white p-6 shadow-card"><h2 className="text-xl">Patient reviews</h2><div className="mt-4 flex items-center gap-3"><strong className="text-xl">{doctor.rating || 0} / 5</strong><span className="text-sm text-muted">{reviews.length || doctor.reviewCount || 0} verified review(s)</span></div>{reviews.length ? <div className="mt-4 space-y-3">{reviews.slice(0, 3).map((review) => <div className="rounded-button bg-surface p-4" key={review.id}><div className="flex items-center justify-between gap-2"><strong>{review.patient?.name || 'Verified patient'}</strong><span className="text-sm">★★★★★ · Verified appointment</span></div><p className="mt-2 text-sm text-muted">{review.text || 'No written comment.'}</p></div>)}</div> : <p className="mt-3 text-sm text-muted">Reviews will appear after completed appointments.</p>}</article></div><aside className="space-y-4"><div className="rounded-card border border-border bg-white p-6 shadow-card"><p className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-primary-dark"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg> Book clinic appointment</p><p className="mt-2 text-3xl font-sans">₹{Number(doctor.consultationFee) || 0}</p><p className="mt-2 text-sm text-muted">{minAdvance > 0 ? <><strong>₹{minAdvance} online advance</strong> confirms the booking — the remaining fee is payable at the clinic.</> : <>Online payment of the <strong>full consultation fee</strong> confirms the booking.</>}</p><p className="mt-3 text-sm leading-6 text-muted">Your visit time and queue token are assigned from the doctor's OPD schedule.</p><Link className="btn-primary mt-5 w-full" to={`/patient/book?doctorId=${doctor.id}${primaryClinic ? `&clinicId=${primaryClinic.id}` : ''}`}>Continue to booking</Link></div><PatientLiveQueuePreview appointment={appointment} /></aside></div></main></>
+  return <DoctorProfileLayout doctor={doctor} primaryClinic={primaryClinic} clinic={clinic} reviews={reviews} schedule={schedule} appointment={appointment} minAdvance={minAdvance} clinicAddress={clinicAddress} />
 }
 export function EmergencyPage({ data }) { const doctors = (data.doctors || []).filter((doctor) => doctor.emergencyAvailable); return <><SiteHeader /><main className="mx-auto max-w-5xl px-4 py-8 sm:px-6"><Badge tone="error">Emergency availability</Badge><h1 className="mt-3 text-3xl">Doctors available for emergency care</h1><p className="mt-2 text-sm text-muted">This page only shows availability. Contact the clinic directly for urgent care.</p>{doctors.length ? <div className="mt-5 grid gap-4">{doctors.map((doctor) => { const clinic = doctor.clinics?.[0]; return <article className="rounded-card border border-error/30 bg-white p-5 shadow-card" key={doctor.id}><div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl">{doctor.name}</h2><p className="text-sm text-muted">{doctor.specialization?.name || 'General practice'} · {clinic?.name || 'Clinic not added'}</p></div><Badge tone="error">Emergency available</Badge></div>{clinic?.phone && <a className="mt-4 inline-flex touch-target items-center justify-center rounded-button border border-error px-4 text-sm font-semibold text-error" href={`tel:${clinic.phone.replace(/\s/g, '')}`}>Call clinic</a>}</article> })}</div> : <div className="mt-5"><EmptyState title="No emergency doctors available right now" message="Emergency-ready doctors will appear here when marked available." /></div>}</main></> }
 export function Login() {
