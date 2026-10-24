@@ -717,6 +717,19 @@ describe('DoctorAppointments / ReceptionAppointments (shared AppointmentTable)',
     expect(await screen.findByText('Asha')).toBeInTheDocument()
   })
 
+  it.each([DoctorAppointments, ReceptionAppointments])('keeps desktop appointment rows compact with secondary fields in details', async (Component) => {
+    mockGetRoutes({ '/appointments': [{ ...APPOINTMENTS[0], appointmentDate: '2026-10-24', appointmentTime: '10:00', patient: { name: 'Asha', phone: '9000000001' }, clinic: { name: 'Demo Clinic' } }] })
+    renderConnected(Component, {})
+    expect(await screen.findByText('Asha')).toBeInTheDocument()
+    expect(screen.getAllByRole('columnheader')).toHaveLength(7)
+    const row = screen.getByText('Asha').closest('tr')
+    expect(within(row).getByText('Demo Clinic')).toBeInTheDocument()
+    expect(within(row).getByText('More details').closest('details')).not.toHaveAttribute('open')
+    fireEvent.click(within(row).getByText('More details'))
+    expect(within(row).getByText('More details').closest('details')).toHaveAttribute('open')
+    expect(within(row).getByRole('button', { name: 'Confirm' })).toBeEnabled()
+  })
+
   // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me v
   // dikhao", follow-up: "dctor receptionest ko v show ho") — the shared AppointmentTable's 'ID'
   // column is just this table's own row sequence number, not the real booking id. Since both

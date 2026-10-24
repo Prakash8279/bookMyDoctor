@@ -29,6 +29,7 @@ import { PatientNavIcon } from '../components/PatientNavIcon'
 import { PortalThemePreference } from '../components/PortalThemePreference'
 import { IndiaDateRangeFilter } from '../components/IndiaDateRangeFilter'
 import { inIndiaDateRange, isIndiaDateRangeValid } from '../lib/indiaDateRange'
+import { useIsMobile } from '../hooks/useIsMobile'
 ChartJS.register(ArcElement, BarElement, CategoryScale, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip)
 
 // BUG FIX (found live: a doctor saving an invalid IFSC code in the bank-details form below saw
@@ -140,6 +141,7 @@ const derivePatients = (appointments = []) => {
 }
 
 const AppointmentTable = ({ data }) => {
+  const isMobile = useIsMobile()
   const [dateFilter, setDateFilter] = useState(indiaTodayDate)
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(1)
@@ -195,12 +197,29 @@ const AppointmentTable = ({ data }) => {
     setError: setActionError,
   })
 
+  const appointmentActions = (item) => <div className="flex min-w-[220px] flex-wrap items-center gap-x-3 gap-y-1">
+    {!clinicPaymentComplete(item) && !['cancelled', 'no_show', 'completed'].includes(item.status) && <span className="w-full text-xs font-semibold text-warning">Payment required</span>}
+    {item.status === 'upcoming' && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Confirm'}</button>}
+    {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Complete'}</button>}
+    {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'no_show')} className="touch-target text-xs font-semibold text-muted disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'No-show'}</button>}
+    {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={cancellingId === item.id} onClick={() => cancelAppointment(item)} className="touch-target text-xs font-semibold text-error disabled:opacity-50">{cancellingId === item.id ? 'Saving…' : 'Cancel'}</button>}
+  </div>
+  const desktopColumns = [
+    { key: 'bookingId', label: 'Booking ID', render: (item) => <div className="min-w-[145px]"><strong>{shortId(item.id)}</strong><span className="block text-xs text-muted">{bookingCreatedAtLabel(item)}</span><details className="mt-1 whitespace-normal text-xs"><summary className="cursor-pointer font-semibold text-primary-dark">More details</summary><dl className="mt-2 grid gap-1 text-muted"><div>Doctor ID: {stableId(item.doctor?.doctorNumber, 'DCD')}</div><div>Patient ID: {stableId(item.patient?.patientNumber, 'DCP')}</div><div>Patient info: {patientVitals(item.patient)}</div><div>Health notes: {item.patient?.medicalHistory || '—'}</div><div>Emergency contact: {item.patient?.emergencyContact || '—'}</div><div>Payment method: {item.paymentMethod || '—'}</div><div>Notes: {item.reason || '—'}</div></dl></details></div> },
+    { key: 'patientName', label: 'Patient', render: (item) => <div className="min-w-[120px]"><strong>{item.patient?.name || item.familyMember?.name || 'Patient'}</strong><span className="block text-xs text-muted">{item.patient?.phone || '—'}</span></div> },
+    { key: 'visit', label: 'Visit / token', render: (item) => <div><span>{item.appointmentDate || '—'}</span> · <span>{item.appointmentTime || '—'}</span><span className="block text-xs text-muted">{item.tokenNumber != null ? `Token #${item.tokenNumber}` : 'No token'}</span></div> },
+    { key: 'doctorName', label: 'Doctor / clinic', render: (item) => <div className="max-w-[220px] whitespace-normal"><strong>{item.doctor?.name || '—'}</strong><span className="block text-xs text-muted">{item.clinic?.name || '—'}</span></div> },
+    { key: 'status', label: 'Status', render: (item) => <StatusPill status={item.status} /> },
+    { key: 'paymentStatus', label: 'Payment / due', render: (item) => <div><StatusPill status={item.paymentStatus || 'pending'} /><span className="block text-xs text-muted">Fee {item.fees?.consultationFee != null ? `₹${Number(item.fees.consultationFee).toFixed(2)}` : '—'} · Due {item.fees?.due != null ? `₹${Number(item.fees.due).toFixed(2)}` : '—'}</span></div> },
+    { key: 'actionCol', label: 'Actions', render: appointmentActions },
+  ]
+
   return <>
     <section aria-label="Appointment filters" className="mb-3 rounded-button border border-border bg-white p-3">
       <h2 className="text-sm font-semibold">Appointment filters</h2>
-      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-        <FormField label="Filter visit date" type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} />
-        <FormField label="Filter appointment status" type="select" options={['upcoming', 'pending_payment', 'confirmed', 'completed', 'cancelled', 'no_show']} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} />
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <div className="w-full sm:w-44"><FormField label="Filter visit date" type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setPage(1) }} /></div>
+        <div className="w-full sm:w-56"><FormField label="Filter appointment status" type="select" options={['upcoming', 'pending_payment', 'confirmed', 'completed', 'cancelled', 'no_show']} value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} /></div>
         <Button tone="secondary" onClick={() => { setDateFilter(indiaTodayDate()); setStatusFilter(''); setPage(1) }}>Clear filters</Button>
       </div>
     </section>
@@ -231,7 +250,7 @@ const AppointmentTable = ({ data }) => {
           <span className="font-semibold text-ink">Due {item.fees?.due != null ? `₹${Number(item.fees.due).toFixed(2)}` : '—'}</span>
         </div>
       </>}
-      columns={[
+      columns={isMobile ? [
         { key: 'id', label: 'ID', render: (item, index) => sequenceId(index) },
         // BOOKING-ID VISIBILITY FIX (user request: "bookinh id ko slip pe dikhai and my bookong me
         // v dikhao", follow-up: "dctor receptionest ko v show ho") — 'ID' above is just this
@@ -288,15 +307,9 @@ const AppointmentTable = ({ data }) => {
         {
           key: 'actionCol',
           label: 'Actions',
-          render: (item) => <div className="flex flex-wrap gap-2">
-            {!clinicPaymentComplete(item) && !['cancelled', 'no_show', 'completed'].includes(item.status) && <span className="text-xs font-semibold text-warning">Payment required</span>}
-            {item.status === 'upcoming' && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'confirmed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Confirm'}</button>}
-            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'completed')} className="touch-target text-xs font-semibold text-primary-dark disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'Complete'}</button>}
-            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={busyId === item.id || !clinicPaymentComplete(item)} onClick={() => changeStatus(item.id, 'no_show')} className="touch-target text-xs font-semibold text-muted disabled:opacity-50">{busyId === item.id ? 'Saving…' : 'No-show'}</button>}
-            {(item.status === 'upcoming' || item.status === 'confirmed') && <button disabled={cancellingId === item.id} onClick={() => cancelAppointment(item)} className="touch-target text-xs font-semibold text-error disabled:opacity-50">{cancellingId === item.id ? 'Saving…' : 'Cancel'}</button>}
-          </div>,
+          render: appointmentActions,
         },
-      ]}
+      ] : desktopColumns}
     />
   </>
 }
@@ -1118,8 +1131,8 @@ export function DoctorAppointments({ data, receptionist = false }) {
   }
 
   return <Page title="Appointments" subtitle={receptionist ? 'Manage scheduled and walk-in visits.' : 'Manage scheduled patients and consultation status.'}>
-    <div aria-label="Export appointments" className="mb-4 rounded-card border border-border bg-white p-3 shadow-card sm:p-4">
-      <div className="doctor-appointment-export-dates grid grid-cols-2 gap-2 sm:max-w-xl sm:gap-3">
+    <div aria-label="Export appointments" className="mb-3 flex flex-wrap items-end gap-2 rounded-button border border-border bg-white p-3">
+      <div className="doctor-appointment-export-dates grid w-full grid-cols-2 gap-2 sm:w-80">
         <label className="min-w-0 text-xs font-semibold text-muted">Start date
           <input aria-label="Start date" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm text-ink sm:px-3" />
         </label>
@@ -1127,7 +1140,7 @@ export function DoctorAppointments({ data, receptionist = false }) {
           <input aria-label="End date" type="date" min={dateFrom} value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm text-ink sm:px-3" />
         </label>
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="flex gap-2">
         <Button type="button" tone="secondary" className="shrink-0 px-3" onClick={() => { const today = indiaTodayDate(); setDateFrom(today); setDateTo(today); setExportError(''); setExportMessage('') }}>Today</Button>
         <Button type="button" className="min-w-0 flex-1 sm:flex-none" disabled={!dateFrom || !dateTo || exporting} onClick={exportAppointments}>{exporting ? 'Downloading…' : 'Download CSV'}</Button>
       </div>
