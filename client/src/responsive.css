@@ -752,10 +752,19 @@ label,
   #specializations .specialty-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
-  #specializations.section { padding: 28px 0 32px; }
-  #specializations .section-heading { margin-bottom: 14px; gap: 8px; }
-  #specializations .section-heading h2 { font-size: 24px; letter-spacing: -0.7px; }
-  #specializations .section-heading p { font-size: 13px; line-height: 1.35; }
+  #specializations.section { padding: 20px 0 22px; }
+  #specializations .section-heading {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  #specializations .section-heading .kicker,
+  #specializations .section-heading p { display: none; }
+  #specializations .section-heading h2 { margin: 0; font-size: 20px; letter-spacing: -0.5px; line-height: 1.15; }
+  #specializations .section-heading .text-link { flex: none; white-space: nowrap; font-size: 11px; }
+  #specializations .section-heading .text-link svg { width: 13px; height: 13px; }
   #specializations .specialty-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   #specializations .specialty-grid { gap: 6px; }
   #specializations .specialty-grid.has-more:not(.is-expanded) .specialty-card:nth-child(n+5) { display: none; }

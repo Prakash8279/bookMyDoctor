@@ -1322,28 +1322,53 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PageHeader(
-            kicker: 'Find the right care',
-            title: 'Browse by specialization',
-            subtitle:
-                'Experienced doctors across the most requested areas of care.',
-            action: TextButton(
-              onPressed: widget.onSeeAll,
+          if (visibleCount == 4)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Flexible(
-                      child: Text('View all doctors',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: context.palette.primary))),
-                  const SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_rounded,
-                      size: 16, color: context.palette.primary),
+                  Expanded(
+                    child: Text('Browse by specialization',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: context.palette.textPrimary)),
+                  ),
+                  TextButton(
+                    onPressed: widget.onSeeAll,
+                    style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(0, 32),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                    child: const Text('All doctors',
+                        style: TextStyle(fontSize: 11)),
+                  ),
                 ],
               ),
+            )
+          else
+            PageHeader(
+              kicker: 'Find the right care',
+              title: 'Browse by specialization',
+              subtitle:
+                  'Experienced doctors across the most requested areas of care.',
+              action: TextButton(
+                onPressed: widget.onSeeAll,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                        child: Text('View all doctors',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: context.palette.primary))),
+                    const SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_rounded,
+                        size: 16, color: context.palette.primary),
+                  ],
+                ),
+              ),
             ),
-          ),
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
