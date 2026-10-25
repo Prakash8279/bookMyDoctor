@@ -539,10 +539,17 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   if (data != null) ...[
                     // 2. Stats Strip
                     _StatsStrip(
-                      doctorsCount: (data.publicStats?['verifiedDoctors'] as num?)?.toInt(),
-                      clinicsCount: (data.publicStats?['partnerClinics'] as num?)?.toInt(),
-                      appointmentsCount: (data.publicStats?['appointmentsManaged'] as num?)?.toInt(),
-                      avgRating: (data.publicStats?['patientRating'] as num?)?.toDouble(),
+                      doctorsCount:
+                          (data.publicStats?['verifiedDoctors'] as num?)
+                              ?.toInt(),
+                      clinicsCount:
+                          (data.publicStats?['partnerClinics'] as num?)
+                              ?.toInt(),
+                      appointmentsCount:
+                          (data.publicStats?['appointmentsManaged'] as num?)
+                              ?.toInt(),
+                      avgRating: (data.publicStats?['patientRating'] as num?)
+                          ?.toDouble(),
                     ),
 
                     // 3. Browse by Specialization
@@ -1262,19 +1269,23 @@ class _StatsStrip extends StatelessWidget {
   }
 }
 
-const List<IconData> _specializationIcons = [
-  Icons.medical_services_outlined,
-  Icons.favorite_outline,
-  Icons.child_care_outlined,
-  Icons.auto_awesome_outlined,
-  Icons.healing_outlined,
-  Icons.monitor_heart_outlined,
-  Icons.psychology_outlined,
-  Icons.sentiment_satisfied_outlined,
-];
+IconData _specialtyIconFor(String name) => switch (name.trim().toLowerCase()) {
+      'cardiologist' => Icons.favorite_border,
+      'dermatologist' => Icons.face_outlined,
+      'pediatrician' => Icons.child_care_outlined,
+      'gynecologist' => Icons.female_outlined,
+      'orthopedic surgeon' || 'rheumatologist' => Icons.healing_outlined,
+      'neurologist' || 'psychiatrist' => Icons.psychology_outlined,
+      'ent specialist' => Icons.hearing_outlined,
+      'ophthalmologist' => Icons.remove_red_eye_outlined,
+      'dentist' => Icons.medical_services_outlined,
+      'pulmonologist' => Icons.air_outlined,
+      'nephrologist' || 'urologist' => Icons.water_drop_outlined,
+      _ => Icons.medical_services_outlined,
+    };
 
-/// 3. Specializations Section — 2-column grid matching web's .specialty-grid with corner arrows
-class _SpecializationsSection extends StatelessWidget {
+/// Compact specialty links mirror the public website's expandable catalog.
+class _SpecializationsSection extends StatefulWidget {
   final List<Specialization> specializations;
   final Map<String, int> doctorCountBySpecialization;
   final ValueChanged<String> onTap;
@@ -1286,28 +1297,19 @@ class _SpecializationsSection extends StatelessWidget {
     required this.onSeeAll,
   });
 
-  static final List<Specialization> fallbackSpecializations = [
-    Specialization(
-        id: '62549a9c-7986-4d2b-856e-ec41c53b5470',
-        name: 'cardiologist',
-        icon: null,
-        description: null),
-    Specialization(
-        id: '99999999-9999-4999-8999-999999999999',
-        name: 'Dermatologist',
-        icon: 'skin',
-        description: 'Skin, hair, and nail conditions'),
-    Specialization(
-        id: '77777777-7777-4777-8777-777777777777',
-        name: 'General Physician',
-        icon: 'stethoscope',
-        description: 'General health checkups and common illnesses'),
-  ];
+  @override
+  State<_SpecializationsSection> createState() =>
+      _SpecializationsSectionState();
+}
+
+class _SpecializationsSectionState extends State<_SpecializationsSection> {
+  bool _showAll = false;
 
   @override
   Widget build(BuildContext context) {
-    final list =
-        specializations.isNotEmpty ? specializations : fallbackSpecializations;
+    final list = _showAll
+        ? widget.specializations
+        : widget.specializations.take(8).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.xs),
@@ -1320,7 +1322,7 @@ class _SpecializationsSection extends StatelessWidget {
             subtitle:
                 'Experienced doctors across the most requested areas of care.',
             action: TextButton(
-              onPressed: onSeeAll,
+              onPressed: widget.onSeeAll,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1349,17 +1351,17 @@ class _SpecializationsSection extends StatelessWidget {
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
                   mainAxisExtent:
-                      108 * MediaQuery.textScalerOf(context).scale(1),
+                      72 * MediaQuery.textScalerOf(context).scale(1),
                 ),
                 itemBuilder: (context, i) {
                   final s = list[i];
-                  final count = doctorCountBySpecialization[s.name] ??
-                      doctorCountBySpecialization[
+                  final count = widget.doctorCountBySpecialization[s.name] ??
+                      widget.doctorCountBySpecialization[
                           s.name.trim().toLowerCase()] ??
                       0;
                   return InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    onTap: () => onTap(s.id),
+                    onTap: () => widget.onTap(s.id),
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -1376,60 +1378,43 @@ class _SpecializationsSection extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: Stack(
+                      child: Row(
                         children: [
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Icon(Icons.arrow_forward_rounded,
-                                size: 16,
-                                color: context.palette
-                                    .lightMuted(const Color(0xFFB5B0AA))),
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: context.palette
+                                  .lightSurface(const Color(0xFFFBF1EC)),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(_specialtyIconFor(s.name),
+                                color: context.palette.primaryDark, size: 18),
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: context.palette
-                                      .lightSurface(const Color(0xFFFBF1EC)),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Icon(
-                                    _specializationIcons[
-                                        i % _specializationIcons.length],
-                                    color: context.palette.primaryDark,
-                                    size: 18),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    s.name,
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(s.name,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 12.5,
                                         height: 1.15,
-                                        color: context.palette.textPrimary),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
+                                        color: context.palette.textPrimary)),
+                                const SizedBox(height: 2),
+                                Text(
                                     '$count ${count == 1 ? 'doctor' : 'doctors'}',
                                     style: TextStyle(
                                         color: context.palette.lightMuted(
                                             const Color(0xFF6F6A64)),
                                         fontSize: 11,
-                                        fontWeight: FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                        fontWeight: FontWeight.w500)),
+                              ],
+                            ),
                           ),
                         ],
                       ),
@@ -1439,6 +1424,15 @@ class _SpecializationsSection extends StatelessWidget {
               );
             },
           ),
+          if (widget.specializations.length > 8)
+            Center(
+              child: TextButton(
+                onPressed: () => setState(() => _showAll = !_showAll),
+                child: Text(_showAll
+                    ? 'Show fewer specialties'
+                    : 'Show all ${widget.specializations.length} specialties'),
+              ),
+            ),
         ],
       ),
     );

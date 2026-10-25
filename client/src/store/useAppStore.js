@@ -563,7 +563,7 @@ export const useAppStore = create(
         return rows
       },
       fetchSpecializations: async (filters = {}) => {
-        const rows = await fetchAdminRows('/geography/specializations', filters, get().currentUser)
+        const rows = await fetchAdminRows('/geography/specializations', { ...filters, allPages: !filters.page }, get().currentUser)
         set((state) => ({ data: { ...state.data, specializations: rows } }))
         return rows
       },

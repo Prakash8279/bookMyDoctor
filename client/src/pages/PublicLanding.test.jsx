@@ -92,6 +92,20 @@ describe('PatientLanding', () => {
     expect(screen.getByText('—', { selector: 'strong' })).toBeInTheDocument()
   })
 
+  it('uses specialty-specific icons and expands the compact catalog', () => {
+    const names = ['Dermatologist', 'Cardiologist', 'Pediatrician', 'Neurologist', 'Dentist', 'Urologist', 'Ophthalmologist', 'Gynecologist', 'General Physician']
+    useAppStore.setState({ data: {
+      ...useAppStore.getState().data,
+      specializations: names.map((name, index) => ({ id: `s${index}`, name })),
+    } })
+    renderWithLocation(<PatientLanding />)
+    expect(screen.getByRole('link', { name: /Dermatologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-sparkles')
+    expect(screen.getByRole('link', { name: /Cardiologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-heart')
+    expect(screen.queryByRole('link', { name: /General Physician/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Show all 9 specialties' }))
+    expect(screen.getByRole('link', { name: /General Physician/ })).toBeInTheDocument()
+  })
+
   it('submits the hero search filters as query params on /search', () => {
     useAppStore.setState({
       data: {

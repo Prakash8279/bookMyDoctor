@@ -5,8 +5,6 @@ import { SiteHeader } from './PublicPages'
 import { useAppStore } from '../store/useAppStore'
 
 /* oxlint-disable react/jsx-key -- each static icon is selected individually inside a keyed card */
-/* oxlint-disable react/jsx-key -- each static icon is selected individually inside a keyed card */
-/* oxlint-disable react/jsx-key -- each static icon is selected individually inside a keyed card */
 const SPECIALTY_ICONS = [
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-stethoscope"><path d="M11 2v2"></path><path d="M5 2v2"></path><path d="M5 3H4a2 2 0 0 0-2 2v4a6 6 0 0 0 12 0V5a2 2 0 0 0-2-2h-1"></path><path d="M8 15a6 6 0 0 0 12 0v-3"></path><circle cx="20" cy="10" r="2"></circle></svg>,
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-heart"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path></svg>,
@@ -16,10 +14,25 @@ const SPECIALTY_ICONS = [
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-activity"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>,
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-brain"><path d="M12 18V5"></path><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"></path><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"></path><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"></path><path d="M18 18a4 4 0 0 0 2-7.464"></path><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"></path><path d="M6 18a4 4 0 0 1-2-7.464"></path><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"></path></svg>,
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-face-slightly-smiling"><path d="M15 10V9"></path><path d="M16.472 15a6 6 0 01-8.943 0"></path><path d="M9 10V9"></path><circle cx="12" cy="12" r="10"></circle></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 9a5 5 0 0 1 10 0c0 4-4 5-4 8a2 2 0 0 1-4 0"/><path d="M6 12a6 6 0 0 0 3 5"/></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 3C4.5 3 3 5 3 8c0 4 2 6 3 10 .5 2 1.1 3 2.2 3 1.8 0 1.8-5 3.8-5s2 5 3.8 5c1.1 0 1.7-1 2.2-3 1-4 3-6 3-10 0-3-1.5-5-4-5-2 0-3 1-5 1S9 3 7 3Z"/></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 3v8l-4 4v6m10-18v8l4 4v6M9 11l3 3 3-3"/><path d="M5 21h4m6 0h4"/></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M12 15v7m-4-3h8"/></svg>,
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M10 3C5 3 3 7 3 12s2 9 6 9c3 0 5-2 5-5 0-2-1-3-3-4-2-1-2-3-1-4 1-2 2-3 0-5Zm4 0c5 0 7 4 7 9s-2 9-6 9c-3 0-5-2-5-5"/></svg>,
 ]
 /* oxlint-enable react/jsx-key */
-/* oxlint-enable react/jsx-key */
-/* oxlint-enable react/jsx-key */
+
+// Use a specialty's meaning, never its position in the alphabetically sorted API list.
+const SPECIALTY_ICON_BY_NAME = {
+  'General Physician': 0, Cardiologist: 1, Dermatologist: 3,
+  Pediatrician: 2, Gynecologist: 12, 'Orthopedic Surgeon': 4,
+  Neurologist: 6, Psychiatrist: 6, 'ENT Specialist': 9,
+  Ophthalmologist: 8, Dentist: 10, Gastroenterologist: 5,
+  Pulmonologist: 11, Nephrologist: 13, Urologist: 13,
+  Endocrinologist: 5, Oncologist: 5, Rheumatologist: 4,
+  'General Surgeon': 0, Diabetologist: 5,
+}
 
 function PatientStories({ reviews }) {
   // Admins can receive pending/rejected rows in the shared store. Never expose
@@ -99,6 +112,7 @@ export function PatientLanding() {
   const [specialty, setSpecialty] = useState('')
   const [clinic, setClinic] = useState('')
   const [booking, setBooking] = useState('today')
+  const [showAllSpecialties, setShowAllSpecialties] = useState(false)
 
   // Was `(data.doctors||[]).filter(...)` re-run per specialization, per render — O(specializations
   // × doctors), unmemoized, on the page most likely to re-render from unrelated store writes.
@@ -244,11 +258,11 @@ export function PatientLanding() {
         </div>
 
         <div className="specialty-grid">
-          {(data.specializations || []).map((specialization, index) => {
+          {(showAllSpecialties ? data.specializations || [] : (data.specializations || []).slice(0, 8)).map((specialization) => {
             const count = doctorCountBySpecialization.get(specialization.name) || 0
             return <Link key={specialization.id} to={`/search?specialization=${encodeURIComponent(specialization.name)}`} className="specialty-card">
               <span className="specialty-icon">
-                {SPECIALTY_ICONS[index % SPECIALTY_ICONS.length]}
+                {SPECIALTY_ICONS[SPECIALTY_ICON_BY_NAME[specialization.name] ?? 0]}
               </span>
               <strong>{specialization.name}</strong>
               <small>{count} {count === 1 ? 'doctor' : 'doctors'}</small>
@@ -256,6 +270,9 @@ export function PatientLanding() {
             </Link>
           })}
         </div>
+        {(data.specializations || []).length > 8 && <button type="button" className="specialty-show-all" onClick={() => setShowAllSpecialties((value) => !value)} aria-expanded={showAllSpecialties}>
+          {showAllSpecialties ? 'Show fewer specialties' : `Show all ${data.specializations.length} specialties`}
+        </button>}
       </div>
     </section>
 
