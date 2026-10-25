@@ -1269,20 +1269,47 @@ class _StatsStrip extends StatelessWidget {
   }
 }
 
-IconData _specialtyIconFor(String name) => switch (name.trim().toLowerCase()) {
-      'cardiologist' => Icons.favorite_border,
-      'dermatologist' => Icons.face_outlined,
-      'pediatrician' => Icons.child_care_outlined,
-      'gynecologist' => Icons.female_outlined,
-      'orthopedic surgeon' || 'rheumatologist' => Icons.healing_outlined,
-      'neurologist' || 'psychiatrist' => Icons.psychology_outlined,
-      'ent specialist' => Icons.hearing_outlined,
-      'ophthalmologist' => Icons.remove_red_eye_outlined,
-      'dentist' => Icons.medical_services_outlined,
-      'pulmonologist' => Icons.air_outlined,
-      'nephrologist' || 'urologist' => Icons.water_drop_outlined,
-      _ => Icons.medical_services_outlined,
-    };
+String _specialtyAssetFor(String name) {
+  const illustrated = {
+    'general physician',
+    'cardiologist',
+    'dermatologist',
+    'pediatrician',
+    'gynecologist',
+    'orthopedic surgeon',
+    'neurologist',
+    'psychiatrist',
+    'ent specialist',
+    'ophthalmologist',
+    'dentist',
+    'gastroenterologist',
+    'pulmonologist',
+    'nephrologist',
+    'urologist',
+    'endocrinologist',
+    'oncologist',
+    'rheumatologist',
+    'general surgeon',
+    'diabetologist',
+  };
+  const aliases = {
+    'cardiology': 'cardiologist',
+    'dermatology': 'dermatologist',
+    'pediatrics': 'pediatrician',
+    'gynecology': 'gynecologist',
+    'orthopedics': 'orthopedic surgeon',
+    'neurology': 'neurologist',
+    'psychiatry': 'psychiatrist',
+    'ophthalmology': 'ophthalmologist',
+    'dentistry': 'dentist',
+  };
+  final normalized = name.trim().toLowerCase();
+  final recognized = aliases[normalized] ?? normalized;
+  final slug =
+      (illustrated.contains(recognized) ? recognized : 'general physician')
+          .replaceAll(' ', '-');
+  return 'assets/specialties/$slug.png';
+}
 
 /// Compact specialty links mirror the public website's expandable catalog.
 class _SpecializationsSection extends StatefulWidget {
@@ -1382,7 +1409,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
                   mainAxisExtent:
-                      60 * MediaQuery.textScalerOf(context).scale(1),
+                      64 * MediaQuery.textScalerOf(context).scale(1),
                 ),
                 itemBuilder: (context, i) {
                   final s = list[i];
@@ -1411,16 +1438,12 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                       ),
                       child: Row(
                         children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: context.palette
-                                  .lightSurface(const Color(0xFFFBF1EC)),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(_specialtyIconFor(s.name),
-                                color: context.palette.primaryDark, size: 16),
+                          Image.asset(
+                            _specialtyAssetFor(s.name),
+                            width: 38,
+                            height: 38,
+                            filterQuality: FilterQuality.medium,
+                            semanticLabel: '${s.name} illustration',
                           ),
                           const SizedBox(width: 7),
                           Expanded(

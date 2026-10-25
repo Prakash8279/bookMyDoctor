@@ -84,6 +84,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
+    - assets/specialties/
     - assets/fonts/OFL.txt
     - assets/fonts/NotoSansDevanagari-OFL.txt
     - assets/fonts/NotoSansDevanagari.ttf

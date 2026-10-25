@@ -100,8 +100,8 @@ describe('PatientLanding', () => {
       doctors: [{ id: 'doctor-1', name: 'Dr. Asha', specialization: { name: 'General Physician' }, clinics: [] }],
     } })
     renderWithLocation(<PatientLanding />)
-    expect(screen.getByRole('link', { name: /Dermatologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-sparkles')
-    expect(screen.getByRole('link', { name: /Cardiologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-heart')
+    expect(screen.getByRole('link', { name: /Dermatologist/ }).querySelector('.specialty-icon img')).toHaveAttribute('src', '/specialties/dermatologist.png')
+    expect(screen.getByRole('link', { name: /Cardiologist/ }).querySelector('.specialty-icon img')).toHaveAttribute('src', '/specialties/cardiologist.png')
     expect(document.querySelector('#specializations .specialty-card strong')).toHaveTextContent('General Physician')
     expect(screen.queryByRole('link', { name: /Urologist/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show all 9 specialties' }))
