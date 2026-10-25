@@ -1400,6 +1400,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
             builder: (context, constraints) {
               final width = constraints.maxWidth;
               final crossAxisCount = width >= 720 ? 4 : (width >= 460 ? 3 : 2);
+              final textScale = MediaQuery.textScalerOf(context).scale(1);
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -1408,8 +1409,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                   crossAxisCount: crossAxisCount,
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
-                  mainAxisExtent:
-                      64 * MediaQuery.textScalerOf(context).scale(1),
+                  mainAxisExtent: textScale > 1 ? 84 * textScale : 64,
                 ),
                 itemBuilder: (context, i) {
                   final s = list[i];
