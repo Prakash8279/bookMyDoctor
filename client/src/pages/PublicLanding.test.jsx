@@ -97,13 +97,15 @@ describe('PatientLanding', () => {
     useAppStore.setState({ data: {
       ...useAppStore.getState().data,
       specializations: names.map((name, index) => ({ id: `s${index}`, name })),
+      doctors: [{ id: 'doctor-1', name: 'Dr. Asha', specialization: { name: 'General Physician' }, clinics: [] }],
     } })
     renderWithLocation(<PatientLanding />)
     expect(screen.getByRole('link', { name: /Dermatologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-sparkles')
     expect(screen.getByRole('link', { name: /Cardiologist/ }).querySelector('.specialty-icon svg')).toHaveClass('lucide-heart')
-    expect(screen.queryByRole('link', { name: /General Physician/ })).not.toBeInTheDocument()
+    expect(document.querySelector('#specializations .specialty-card strong')).toHaveTextContent('General Physician')
+    expect(screen.queryByRole('link', { name: /Urologist/ })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Show all 9 specialties' }))
-    expect(screen.getByRole('link', { name: /General Physician/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Urologist/ })).toBeInTheDocument()
   })
 
   it('submits the hero search filters as query params on /search', () => {

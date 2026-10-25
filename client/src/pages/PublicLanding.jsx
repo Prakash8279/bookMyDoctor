@@ -126,6 +126,10 @@ export function PatientLanding() {
     }
     return counts
   }, [data.doctors])
+  const orderedSpecializations = useMemo(() => [...(data.specializations || [])].sort((a, b) =>
+    (doctorCountBySpecialization.get(b.name) || 0) - (doctorCountBySpecialization.get(a.name) || 0)
+      || a.name.localeCompare(b.name)
+  ), [data.specializations, doctorCountBySpecialization])
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -257,8 +261,8 @@ export function PatientLanding() {
           <Link to="/search" className="text-link">View all doctors <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></Link>
         </div>
 
-        <div className="specialty-grid">
-          {(showAllSpecialties ? data.specializations || [] : (data.specializations || []).slice(0, 8)).map((specialization) => {
+        <div className={`specialty-grid${showAllSpecialties ? ' is-expanded' : ''}${orderedSpecializations.length > 8 ? ' has-more' : ''}`}>
+          {(showAllSpecialties ? orderedSpecializations : orderedSpecializations.slice(0, 8)).map((specialization) => {
             const count = doctorCountBySpecialization.get(specialization.name) || 0
             return <Link key={specialization.id} to={`/search?specialization=${encodeURIComponent(specialization.name)}`} className="specialty-card">
               <span className="specialty-icon">

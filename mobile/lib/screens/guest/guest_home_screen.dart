@@ -1307,9 +1307,15 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
 
   @override
   Widget build(BuildContext context) {
-    final list = _showAll
-        ? widget.specializations
-        : widget.specializations.take(8).toList();
+    final ordered = [...widget.specializations]..sort((a, b) {
+        final aCount = widget.doctorCountBySpecialization[a.name] ?? 0;
+        final bCount = widget.doctorCountBySpecialization[b.name] ?? 0;
+        return bCount.compareTo(aCount) != 0
+            ? bCount.compareTo(aCount)
+            : a.name.compareTo(b.name);
+      });
+    final visibleCount = MediaQuery.sizeOf(context).width < 600 ? 4 : 8;
+    final list = _showAll ? ordered : ordered.take(visibleCount).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.md, vertical: AppSpacing.xs),
@@ -1351,7 +1357,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                   mainAxisSpacing: AppSpacing.sm,
                   crossAxisSpacing: AppSpacing.sm,
                   mainAxisExtent:
-                      72 * MediaQuery.textScalerOf(context).scale(1),
+                      60 * MediaQuery.textScalerOf(context).scale(1),
                 ),
                 itemBuilder: (context, i) {
                   final s = list[i];
@@ -1363,7 +1369,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                     borderRadius: BorderRadius.circular(16),
                     onTap: () => widget.onTap(s.id),
                     child: Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         color: context.palette.surface,
                         border: Border.all(
@@ -1381,17 +1387,17 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                       child: Row(
                         children: [
                           Container(
-                            width: 32,
-                            height: 32,
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
                               color: context.palette
                                   .lightSurface(const Color(0xFFFBF1EC)),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(_specialtyIconFor(s.name),
-                                color: context.palette.primaryDark, size: 18),
+                                color: context.palette.primaryDark, size: 16),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 7),
                           Expanded(
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
@@ -1402,7 +1408,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                         fontWeight: FontWeight.w700,
-                                        fontSize: 12.5,
+                                        fontSize: 11.5,
                                         height: 1.15,
                                         color: context.palette.textPrimary)),
                                 const SizedBox(height: 2),
@@ -1411,7 +1417,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
                                     style: TextStyle(
                                         color: context.palette.lightMuted(
                                             const Color(0xFF6F6A64)),
-                                        fontSize: 11,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.w500)),
                               ],
                             ),
@@ -1424,7 +1430,7 @@ class _SpecializationsSectionState extends State<_SpecializationsSection> {
               );
             },
           ),
-          if (widget.specializations.length > 8)
+          if (widget.specializations.length > visibleCount)
             Center(
               child: TextButton(
                 onPressed: () => setState(() => _showAll = !_showAll),
