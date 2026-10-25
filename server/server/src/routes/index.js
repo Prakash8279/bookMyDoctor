@@ -20,6 +20,7 @@ router.use('/media', require('../modules/uploads/uploads.routes'));
 
 // Directory & Reference Data phase.
 router.use('/geography', require('../modules/geography/geography.routes'));
+router.use('/public', require('../modules/publicStats/publicStats.routes'));
 router.use('/doctors', require('../modules/doctors/doctors.routes'));
 router.use('/clinics', require('../modules/clinics/clinics.routes'));
 router.use('/family-members', require('../modules/familyMembers/familyMembers.routes'));

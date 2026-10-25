@@ -46,13 +46,13 @@ class GuestHomeScreen extends StatefulWidget {
 class _HomeData {
   final List<Specialization> specializations;
   final List<DoctorDirectoryItem> doctors;
-  final int clinicsCount;
+  final Map<String, dynamic>? publicStats;
   final List<String> cities;
   final List<String> clinicNames;
   _HomeData({
     required this.specializations,
     required this.doctors,
-    required this.clinicsCount,
+    required this.publicStats,
     required this.cities,
     required this.clinicNames,
   });
@@ -119,11 +119,11 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     final results = await Future.wait([
       _fetchSpecializations(),
       _fetchDoctors(),
-      _fetchClinicsCount(),
+      _fetchPublicStats(),
     ]);
     final specializations = results[0] as List<Specialization>;
     final doctors = results[1] as List<DoctorDirectoryItem>;
-    final clinicsCount = results[2] as int;
+    final publicStats = results[2] as Map<String, dynamic>?;
 
     final citySet = <String>{};
     final clinicSet = <String>{};
@@ -144,7 +144,7 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     return _HomeData(
       specializations: specializations,
       doctors: doctors,
-      clinicsCount: clinicsCount,
+      publicStats: publicStats,
       cities: cities,
       clinicNames: clinicNames,
     );
@@ -201,13 +201,11 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
     }
   }
 
-  Future<int> _fetchClinicsCount() async {
+  Future<Map<String, dynamic>?> _fetchPublicStats() async {
     try {
-      final res =
-          await ApiClient.instance.get('/clinics', query: {'pageSize': 100});
-      return res.list.length;
+      return (await ApiClient.instance.get('/public/stats')).map;
     } catch (_) {
-      return 0;
+      return null;
     }
   }
 
@@ -479,10 +477,6 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
             builder: (context, snapshot) {
               final loading = snapshot.connectionState != ConnectionState.done;
               final data = snapshot.data;
-              final avgRating = (data != null && data.doctors.isNotEmpty)
-                  ? data.doctors.map((d) => d.rating).reduce((a, b) => a + b) /
-                      data.doctors.length
-                  : 0.0;
               final doctorCountBySpecialization = <String, int>{};
               for (final d in data?.doctors ?? <DoctorDirectoryItem>[]) {
                 final name = d.specialization?.name.trim();
@@ -545,9 +539,10 @@ class _GuestHomeScreenState extends State<GuestHomeScreen> {
                   if (data != null) ...[
                     // 2. Stats Strip
                     _StatsStrip(
-                      doctorsCount: data.doctors.length,
-                      clinicsCount: data.clinicsCount,
-                      avgRating: avgRating,
+                      doctorsCount: (data.publicStats?['verifiedDoctors'] as num?)?.toInt(),
+                      clinicsCount: (data.publicStats?['partnerClinics'] as num?)?.toInt(),
+                      appointmentsCount: (data.publicStats?['appointmentsManaged'] as num?)?.toInt(),
+                      avgRating: (data.publicStats?['patientRating'] as num?)?.toDouble(),
                     ),
 
                     // 3. Browse by Specialization
@@ -1130,12 +1125,14 @@ class _FloatingInfoCard extends StatelessWidget {
 
 /// 2. Stats Strip — matches reference_site.css .stats-strip and 2x2 mobile grid
 class _StatsStrip extends StatelessWidget {
-  final int doctorsCount;
-  final int clinicsCount;
-  final double avgRating;
+  final int? doctorsCount;
+  final int? clinicsCount;
+  final int? appointmentsCount;
+  final double? avgRating;
   const _StatsStrip(
       {required this.doctorsCount,
       required this.clinicsCount,
+      required this.appointmentsCount,
       required this.avgRating});
 
   @override
@@ -1163,7 +1160,7 @@ class _StatsStrip extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Text('$doctorsCount',
+                      Text(doctorsCount?.toString() ?? '—',
                           style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
@@ -1189,7 +1186,7 @@ class _StatsStrip extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Text('$clinicsCount',
+                      Text(clinicsCount?.toString() ?? '—',
                           style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
@@ -1219,7 +1216,7 @@ class _StatsStrip extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Text('0',
+                      Text(appointmentsCount?.toString() ?? '—',
                           style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,
@@ -1241,7 +1238,7 @@ class _StatsStrip extends StatelessWidget {
                       const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
                   child: Column(
                     children: [
-                      Text(avgRating > 0 ? avgRating.toStringAsFixed(1) : '0',
+                      Text(avgRating?.toStringAsFixed(1) ?? '—',
                           style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w800,

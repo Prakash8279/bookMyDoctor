@@ -57,6 +57,7 @@ describe('PatientLanding', () => {
         cities: [{ id: 'c1', name: 'Mumbai' }],
         specializations: [{ id: 'spec-1', name: 'Cardiology' }],
         clinics: [{ id: 'clinic-1', name: 'Heart Care Clinic' }],
+        publicStats: { verifiedDoctors: 1, partnerClinics: 1, appointmentsManaged: 7, patientRating: 4.5 },
         doctors: [{
           id: 'doc-1',
           name: 'Dr. Asha Rao',
@@ -72,10 +73,23 @@ describe('PatientLanding', () => {
     expect(screen.getByRole('heading', { name: /Care without the waiting room/i })).toBeInTheDocument()
     // Stats strip counts (1 doctor, 1 clinic).
     expect(screen.getAllByText('1', { selector: 'strong' })).toHaveLength(2)
+    expect(screen.getByText('7', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('4.5', { selector: 'strong' })).toBeInTheDocument()
     // The specialization card shows the real doctor count for that specialization (1 doctor).
     expect(screen.getByText('Cardiology', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.getByText('1 doctor')).toBeInTheDocument()
     expect(screen.getByText('Dr. Asha Rao')).toBeInTheDocument()
+  })
+
+  it('does not show private appointment rows as the public booking total', () => {
+    useAppStore.setState({ data: {
+      ...useAppStore.getState().data,
+      appointments: [{ id: 'private-1' }],
+      publicStats: { verifiedDoctors: 0, partnerClinics: 0, appointmentsManaged: 12, patientRating: null },
+    } })
+    renderWithLocation(<PatientLanding />)
+    expect(screen.getByText('12', { selector: 'strong' })).toBeInTheDocument()
+    expect(screen.getByText('—', { selector: 'strong' })).toBeInTheDocument()
   })
 
   it('submits the hero search filters as query params on /search', () => {

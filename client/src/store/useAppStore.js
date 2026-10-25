@@ -64,6 +64,7 @@ const DEFAULT_DATA_SHAPE = {
   // Directory
   doctors: [],
   clinics: [],
+  publicStats: null,
 
   // Patient-owned
   familyMembers: [],
@@ -378,6 +379,7 @@ export const useAppStore = create(
             // Admins receive every status by default; the public directory must
             // request approved rows explicitly for the homepage carousel.
             get().fetchReviews({ status: 'approved' }),
+            get().fetchPublicStats(),
           ])
         } finally {
           set({ dataLoading: false, dataLoaded: true })
@@ -611,6 +613,11 @@ export const useAppStore = create(
         const rows = await fetchAdminRows('/doctors', filters, get().currentUser)
         set((state) => ({ data: { ...state.data, doctors: rows } }))
         return rows
+      },
+      fetchPublicStats: async () => {
+        const stats = await apiClient.get('/public/stats')
+        set((state) => ({ data: { ...state.data, publicStats: stats } }))
+        return stats
       },
       getDoctor: async (id) => {
         const doctor = await apiClient.get(`/doctors/${id}`)

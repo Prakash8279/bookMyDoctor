@@ -93,6 +93,7 @@ function PatientStories({ reviews }) {
 export function PatientLanding() {
   const navigate = useNavigate()
   const data = useAppStore((state) => state.data)
+  const publicStats = data.publicStats
   const [term, setTerm] = useState('')
   const [city, setCity] = useState('')
   const [specialty, setSpecialty] = useState('')
@@ -223,10 +224,10 @@ export function PatientLanding() {
     {/* Stats Strip */}
     <section className="stats-strip">
       <div className="container stats-grid">
-        <div><strong>{(data.doctors || []).length}</strong><span>Verified doctors</span></div>
-        <div><strong>{(data.clinics || []).length}</strong><span>Partner clinics</span></div>
-        <div><strong>{(data.appointments || []).length}</strong><span>Appointments managed</span></div>
-        <div><strong>{(data.doctors || []).length ? ((data.doctors || []).reduce((sum, doctor) => sum + (Number(doctor.rating) || 0), 0) / (data.doctors || []).length).toFixed(1) : '0'}</strong><span>Patient rating</span></div>
+        <div><strong>{publicStats?.verifiedDoctors ?? '—'}</strong><span>Verified doctors</span></div>
+        <div><strong>{publicStats?.partnerClinics ?? '—'}</strong><span>Partner clinics</span></div>
+        <div><strong>{publicStats?.appointmentsManaged ?? '—'}</strong><span>Appointments managed</span></div>
+        <div><strong>{publicStats?.patientRating == null ? '—' : Number(publicStats.patientRating).toFixed(1)}</strong><span>Patient rating</span></div>
       </div>
     </section>
 
