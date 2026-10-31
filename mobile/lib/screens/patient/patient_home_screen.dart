@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../shared/notifications_screen.dart';
 import '../shared/profile_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'appointments_screen.dart';
@@ -8,12 +7,9 @@ import 'book_appointment_screen.dart';
 import 'family_members_screen.dart';
 import 'patient_dashboard_screen.dart';
 import 'payments_screen.dart';
-import 'complaints_screen.dart';
 import 'queue_tracker_screen.dart';
-import 'reviews_screen.dart';
 
-/// Patient portal shell. Help, complaints, and policy links share one destination so the main
-/// navigation stays compact and aligned with the web portal.
+/// Patient portal shell. The visible navigation mirrors the website sidebar exactly.
 class PatientHomeScreen extends StatelessWidget {
   const PatientHomeScreen({super.key});
 
@@ -39,10 +35,6 @@ class PatientHomeScreen extends StatelessWidget {
             label: 'Queue tracker',
             builder: _buildQueue),
         RoleNavItem(
-            icon: Icons.history_rounded,
-            label: 'Booking history',
-            builder: _buildHistory),
-        RoleNavItem(
             icon: Icons.receipt_long_outlined,
             label: 'Payments',
             builder: _buildPayments),
@@ -50,18 +42,6 @@ class PatientHomeScreen extends StatelessWidget {
             icon: Icons.people_outline,
             label: 'Family members',
             builder: _buildFamily),
-        RoleNavItem(
-            icon: Icons.star_outline_rounded,
-            label: 'My reviews',
-            builder: _buildReviews),
-        RoleNavItem(
-            icon: Icons.support_agent_outlined,
-            label: 'Help & Policies',
-            builder: _buildComplaints),
-        RoleNavItem(
-            icon: Icons.notifications_none,
-            label: 'Notifications',
-            builder: _buildNotifications),
         RoleNavItem(
             icon: Icons.person_outline,
             label: 'My profile',
@@ -77,13 +57,6 @@ Widget _buildAppointments(BuildContext context) =>
     const PatientAppointmentsScreen();
 Widget _buildQueue(BuildContext context) =>
     const QueueTrackerScreen(embedded: true);
-Widget _buildHistory(BuildContext context) =>
-    const PatientAppointmentsScreen(isHistory: true);
 Widget _buildPayments(BuildContext context) => const PatientPaymentsScreen();
 Widget _buildFamily(BuildContext context) => const FamilyMembersScreen();
-Widget _buildReviews(BuildContext context) => const PatientReviewsScreen();
-Widget _buildComplaints(BuildContext context) =>
-    const PatientComplaintsScreen();
-Widget _buildNotifications(BuildContext context) =>
-    const NotificationsScreen(showLiveBadge: true);
 Widget _buildProfile(BuildContext context) => const ProfileScreen();

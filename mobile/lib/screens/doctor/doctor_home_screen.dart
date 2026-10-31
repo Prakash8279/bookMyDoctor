@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../shared/notifications_screen.dart';
 import '../shared/profile_screen.dart';
-import '../shared/legal_policies_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'doctor_appointments_screen.dart';
 import 'doctor_analytics_screen.dart';
@@ -71,10 +70,6 @@ class DoctorHomeScreen extends StatelessWidget {
             label: 'Reports',
             builder: _buildReports),
         RoleNavItem(
-            icon: Icons.description_outlined,
-            label: 'Help & Policies',
-            builder: _buildPolicies),
-        RoleNavItem(
             icon: Icons.person_outline,
             label: 'My profile',
             builder: _buildProfile),
@@ -102,4 +97,3 @@ Widget _buildReceptionists(BuildContext context) =>
 Widget _buildReports(BuildContext context) =>
     const DoctorRevenueReportsScreen();
 Widget _buildProfile(BuildContext context) => const ProfileScreen();
-Widget _buildPolicies(BuildContext context) => const LegalPoliciesScreen();

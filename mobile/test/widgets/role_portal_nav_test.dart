@@ -26,19 +26,15 @@ void main() {
 
       final roleScaffold =
           const PatientHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 11);
+      expect(roleScaffold.items.length, 7);
 
       final expectedLabels = [
         'Dashboard',
         'Book appointment',
         'My appointments',
         'Queue tracker',
-        'Booking history',
         'Payments',
         'Family members',
-        'My reviews',
-        'Help & Policies',
-        'Notifications',
         'My profile',
       ];
 
@@ -68,7 +64,7 @@ void main() {
 
       final roleScaffold =
           const DoctorHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 12);
+      expect(roleScaffold.items.length, 11);
 
       final expectedLabels = [
         'Dashboard',
@@ -81,7 +77,6 @@ void main() {
         'OPD schedule',
         'Receptionists',
         'Reports',
-        'Help & Policies',
         'My profile',
       ];
 
@@ -112,7 +107,7 @@ void main() {
 
       final roleScaffold =
           const ReceptionistHomeScreen().build(capturedContext) as RoleScaffold;
-      expect(roleScaffold.items.length, 12);
+      expect(roleScaffold.items.length, 10);
 
       final expectedLabels = [
         'Dashboard',
@@ -123,9 +118,7 @@ void main() {
         'Doctor availability',
         'Payments',
         'Patients',
-        'Notifications',
         'Reports',
-        'Help & Policies',
         'My profile',
       ];
 

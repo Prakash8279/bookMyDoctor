@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../shared/notifications_screen.dart';
 import '../shared/profile_screen.dart';
-import '../shared/legal_policies_screen.dart';
 import '../../widgets/role_scaffold.dart';
 import 'receptionist_appointments_screen.dart';
 import 'receptionist_dashboard_screen.dart';
@@ -24,9 +22,8 @@ import 'receptionist_walkin_booking_screen.dart';
 /// 6. Doctor availability
 /// 7. Payments
 /// 8. Patients
-/// 9. Notifications
-/// 10. Reports
-/// 11. My profile
+/// 9. Reports
+/// 10. My profile
 class ReceptionistHomeScreen extends StatelessWidget {
   const ReceptionistHomeScreen({super.key});
 
@@ -68,17 +65,9 @@ class ReceptionistHomeScreen extends StatelessWidget {
             label: 'Patients',
             builder: _buildPatients),
         RoleNavItem(
-            icon: Icons.notifications_none,
-            label: 'Notifications',
-            builder: _buildNotifications),
-        RoleNavItem(
             icon: Icons.summarize_outlined,
             label: 'Reports',
             builder: _buildReports),
-        RoleNavItem(
-            icon: Icons.description_outlined,
-            label: 'Help & Policies',
-            builder: _buildPolicies),
         RoleNavItem(
             icon: Icons.person_outline,
             label: 'My profile',
@@ -102,7 +91,5 @@ Widget _buildPayments(BuildContext context) =>
     const ReceptionistPaymentsScreen();
 Widget _buildPatients(BuildContext context) =>
     const ReceptionistPatientsScreen();
-Widget _buildNotifications(BuildContext context) => const NotificationsScreen();
 Widget _buildReports(BuildContext context) => const ReceptionistReportsScreen();
 Widget _buildProfile(BuildContext context) => const ProfileScreen();
-Widget _buildPolicies(BuildContext context) => const LegalPoliciesScreen();

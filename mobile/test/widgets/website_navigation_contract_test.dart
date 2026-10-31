@@ -27,7 +27,7 @@ void main() {
           ? RegExp(r'const PATIENT_SERVICES = \[([\s\S]*?)\n\]')
               .firstMatch(web)![1]!
           : RegExp('$role: \\[([\\s\\S]*?)\\n  \\]').firstMatch(web)![1]!;
-      final expected = [...labels(block), 'Help & Policies'];
+      final expected = labels(block);
       final footer =
           File('../client/src/layouts/PortalLayout.jsx').readAsStringSync();
       final footerBlock =

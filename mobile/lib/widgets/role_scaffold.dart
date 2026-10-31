@@ -509,8 +509,7 @@ class PortalQuickActions extends StatelessWidget {
       'Queue tracker',
       'Payments',
       'Family members',
-      'My profile',
-      'Help & Policies'
+      'My profile'
     ];
     final doctorServices = [
       'Queue management',
@@ -519,8 +518,7 @@ class PortalQuickActions extends StatelessWidget {
       'Patient reviews',
       'Clinic settings',
       'OPD schedule',
-      'Receptionists',
-      'Help & Policies'
+      'Receptionists'
     ];
     final receptionServices = [
       'Walk-in registration',
@@ -529,8 +527,7 @@ class PortalQuickActions extends StatelessWidget {
       'Appointments',
       'Payments',
       'Patients',
-      'Reports',
-      'Help & Policies'
+      'Reports'
     ];
     final labels = role.contains('patient')
         ? patientServices
