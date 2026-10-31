@@ -1,3 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <image href="favicon.png" width="512" height="512" preserveAspectRatio="xMidYMid slice" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BookADoctors logo">
+  <rect width="512" height="512" rx="112" fill="#ad5d3b"/>
+  <path d="M256 414 112 270c-55-55-18-150 61-150 36 0 64 18 83 47 19-29 47-47 83-47 79 0 116 95 61 150Z" fill="none" stroke="#fff" stroke-width="29" stroke-linejoin="round"/>
+  <path d="M105 263h66l36-53 33 111 47-139 33 81h87" fill="none" stroke="#fff" stroke-width="27" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

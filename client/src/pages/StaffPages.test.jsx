@@ -9,7 +9,7 @@
 // observed re-rendering the page, exactly as it would in the real app.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 vi.mock('../lib/apiClient', () => ({
   default: {
@@ -198,6 +198,22 @@ describe('DoctorDashboard', () => {
 })
 
 describe('QueueManagement (sequential, forward-only status transitions)', () => {
+  it('does not show cached tokens from another doctor before the selected queue loads', async () => {
+    setCurrentUser({ id: 'admin-1', name: 'Admin', role: 'admin' })
+    useAppStore.setState((state) => ({ data: { ...state.data, queueTokens: [{ id: 'old', tokenNumber: 1, status: 'completed', patient: { name: 'Other doctor patient' } }] } }))
+    let finishLoad
+    apiClient.get.mockImplementation((url) => url === '/queue'
+      ? new Promise((resolve) => { finishLoad = resolve })
+      : Promise.resolve([]))
+    function Connected() { const data = useAppStore((state) => state.data); return <QueueManagement data={data} /> }
+    render(<MemoryRouter initialEntries={['/admin/doctors/doc-2/queue']}><Routes><Route path="/admin/doctors/:doctorId/queue" element={<Connected />} /></Routes></MemoryRouter>)
+    expect(screen.queryByText('Other doctor patient')).not.toBeInTheDocument()
+    expect(apiClient.get).toHaveBeenCalledWith('/queue', { params: expect.objectContaining({ doctorId: 'doc-2' }) })
+    await act(async () => finishLoad([{ id: 'new', tokenNumber: 2, status: 'waiting', patient: { name: 'Selected doctor patient' } }]))
+    expect(screen.getByText('Selected doctor patient')).toBeInTheDocument()
+    expect(screen.queryByText('Other doctor patient')).not.toBeInTheDocument()
+  })
+
   it('shows exactly one legal next action per active token, and none for a completed one', async () => {
     mockGetRoutes({
       '/queue': [
@@ -273,6 +289,23 @@ describe('DoctorProfileEdit', () => {
     setCurrentUser(null)
     renderConnected(DoctorProfileEdit, { data: {} })
     expect(screen.getByText('No doctor profile yet')).toBeInTheDocument()
+  })
+
+  it('administrator edits the selected doctor schedule, never their own account', async () => {
+    setCurrentUser({ id: 'admin-1', name: 'Admin', role: 'admin' })
+    apiClient.get.mockImplementation((url) => {
+      if (url === '/doctors/doc-2') return Promise.resolve({ id: 'doc-2', name: 'Dr. Asha', maxDaysAdvance: 12, onlineBooking: true, clinics: [] })
+      if (url === '/clinics') return Promise.resolve([{ id: 'clinic-1', name: 'Main Clinic' }])
+      return Promise.resolve([])
+    })
+    apiClient.patch.mockResolvedValue({ id: 'doc-2', name: 'Dr. Asha', maxDaysAdvance: 14, onlineBooking: true, clinics: [] })
+    function Connected() { const data = useAppStore((state) => state.data); return <ClinicSchedule data={data} /> }
+    render(<MemoryRouter initialEntries={['/admin/doctors/doc-2/schedule']}><Routes><Route path="/admin/doctors/:doctorId/schedule" element={<Connected />} /></Routes></MemoryRouter>)
+    expect(await screen.findByText('Dr. Asha · OPD schedule')).toBeInTheDocument()
+    expect(apiClient.get).toHaveBeenCalledWith('/clinics', { params: { doctorId: 'doc-2', pageSize: 100 } })
+    fireEvent.change(screen.getByLabelText(/Days patients can book in advance/i), { target: { value: '14' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save booking window' }))
+    await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/doctors/doc-2', expect.objectContaining({ maxDaysAdvance: 14 })))
   })
 
   it('submits the profile form with correctly-typed and derived fields', async () => {

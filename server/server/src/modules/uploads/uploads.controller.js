@@ -11,7 +11,7 @@ const { success } = require('../../utils/apiResponse');
 const asyncHandler = require('../../utils/asyncHandler');
 
 const uploadPhoto = asyncHandler(async (req, res) => {
-  const url = await uploadsService.savePhoto(req.user, req.uploadedFile.url);
+  const url = await uploadsService.savePhoto(req.user, req.uploadedFile.url, req.params.doctorId || req.user.id);
   return success(res, { url }, { message: 'Photo uploaded.' });
 });
 
@@ -22,7 +22,7 @@ const uploadDocument = asyncHandler(async (req, res) => {
   // ownership check needed, unlike every other read of this list — see
   // doctors.service.js#shapeDoctor's includeContact comment for why signing normally happens at
   // response time rather than at upload time), so it's safe to hand back an already-signed URL.
-  const url = await uploadsService.saveVerificationDocument(req.user, req.uploadedFile.url, req.body.name);
+  const url = await uploadsService.saveVerificationDocument(req.user, req.uploadedFile.url, req.body.name, req.params.doctorId || req.user.id);
   return success(res, { url: signDocumentUrl(url) }, { statusCode: 201, message: 'Verification document uploaded.' });
 });
 

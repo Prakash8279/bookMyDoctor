@@ -362,6 +362,14 @@ describe('meService.updateMe — per-role field allowlist', () => {
     expect(entry.description).not.toContain('A Secret City Value');
     expect(entry.description).toContain('city');
   });
+
+  test('an administrator changing a doctor profile is audited as the administrator', async () => {
+    prisma.user.findUnique.mockResolvedValue(fullUserRow({ role: 'doctor' }));
+    await meService.updateMe('user-1', 'doctor', { bio: 'New bio' }, { id: 'admin-1', role: 'admin' });
+    expect(activityLogService.log).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: 'admin-1', actorRole: 'admin', actionType: 'doctor.admin_profile_update', targetEntityId: 'user-1',
+    }));
+  });
 });
 
 describe('meService.changePassword', () => {

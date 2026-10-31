@@ -141,6 +141,21 @@ describe('AdminDashboard', () => {
 })
 
 describe('DoctorVerification', () => {
+  it('admin profile editor updates only the selected doctor', async () => {
+    setCurrentUser({ id: 'admin-1', name: 'Admin', role: 'admin' })
+    const doctor = { id: 'doc-1', name: 'Dr. Kapoor', status: 'verified', specialization: { id: 'spec-1', name: 'Cardiology' }, consultationFee: 500, emergencyFee: 0, experienceYears: 5, bookingPaymentPolicy: 'full', languages: [] }
+    mockGetRoutes({ '/doctors': [doctor], '/doctors/doc-1': doctor })
+    apiClient.patch.mockResolvedValue({ ...doctor, consultationFee: 650 })
+    useAppStore.setState((state) => ({ data: { ...state.data, specializations: [{ id: 'spec-1', name: 'Cardiology' }] } }))
+    renderConnected(DoctorVerification)
+    const row = (await screen.findByText('Dr. Kapoor')).closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit profile' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/^Consultation fee/), { target: { value: '650' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save doctor profile' }))
+    await waitFor(() => expect(apiClient.patch).toHaveBeenCalledWith('/doctors/doc-1/profile', expect.objectContaining({ consultationFee: 650 })))
+  })
+
   it.each(['admin', 'superadmin'])('renders the %s doctor registry as mobile cards and a shrinkable details dialog', async (role) => {
     const originalMatchMedia = window.matchMedia
     window.matchMedia = vi.fn().mockReturnValue({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })

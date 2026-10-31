@@ -52,6 +52,7 @@ const createClinic = [
 // ever sends a free-text `search` param — every one filters by city/area/emergencyAvailable/mine
 // instead.
 const listClinics = [
+  query('doctorId').optional({ values: 'falsy' }).isUUID(),
   query('city').optional({ values: 'falsy' }).isUUID().withMessage('city must be a valid id.'),
   query('area').optional({ values: 'falsy' }).isUUID().withMessage('area must be a valid id.'),
   query('emergencyAvailable').optional({ values: 'falsy' }).isBoolean().toBoolean(),
@@ -136,11 +137,7 @@ const removeDoctorAssignment = [param('id').isUUID(), param('doctorUserId').isUU
 
 const putHours = [
   param('clinicId').isUUID(),
-  // doctorUserId body field removed (backend-cleanup audit — user request: "website frontend me
-  // nahi hai but backend bna hua hai to backend se hata do"): this only ever mattered for an
-  // admin-initiated request (see clinics.service.js#resolveTargetDoctorId) — no web/mobile screen
-  // ever calls this endpoint as admin or sends this field; a doctor caller always uses their own
-  // id regardless.
+  body('doctorUserId').optional().isUUID().withMessage('doctorUserId must be a valid doctor id.'),
   body('weekday').isInt({ min: 0, max: 6 }).withMessage('weekday must be between 0 (Sunday) and 6 (Saturday).').toInt(),
   body('startTime').matches(TIME_RE).withMessage('startTime must be in HH:MM 24-hour format.'),
   body('endTime').matches(TIME_RE).withMessage('endTime must be in HH:MM 24-hour format.'),
@@ -163,9 +160,9 @@ const deleteHours = [param('clinicId').isUUID(), param('hoursId').isUUID()];
 
 // ── doctor_clinic_closures ──────────────────────────────────────────────
 
-// doctorUserId body field removed (backend-cleanup audit) — same reasoning as putHours above.
 const createClosure = [
   param('clinicId').isUUID(),
+  body('doctorUserId').optional().isUUID().withMessage('doctorUserId must be a valid doctor id.'),
   body('closedDate').isISO8601().withMessage('closedDate must be a valid date (YYYY-MM-DD).').toDate(),
   body('reason').optional({ values: 'falsy' }).trim().isLength({ max: 500 }),
 ];

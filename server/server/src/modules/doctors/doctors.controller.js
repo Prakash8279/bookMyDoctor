@@ -36,6 +36,11 @@ const patchDoctor = asyncHandler(async (req, res) => {
   return success(res, doctor, { message: 'Booking settings updated' });
 });
 
+const patchDoctorProfileAsAdmin = asyncHandler(async (req, res) => {
+  const doctor = await doctorsService.updateDoctorProfileAsAdmin(req.params.id, req.body, req.user);
+  return success(res, doctor, { message: 'Doctor profile updated' });
+});
+
 const createDoctor = asyncHandler(async (req, res) => {
   const doctor = await doctorsService.createDoctor(req.body, req.user);
   return success(res, doctor, { statusCode: 201, message: 'Doctor account created' });
@@ -89,4 +94,4 @@ const updateDoctorAccountStatus = asyncHandler(async (req, res) => {
   return success(res, doctor, { message: 'Doctor account login status updated' });
 });
 
-module.exports = { listDoctors, getDoctor, patchDoctor, createDoctor, registerDoctor, updateDoctorStatus, updateDoctorAccountStatus };
+module.exports = { listDoctors, getDoctor, patchDoctor, patchDoctorProfileAsAdmin, createDoctor, registerDoctor, updateDoctorStatus, updateDoctorAccountStatus };

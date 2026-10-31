@@ -1,6 +1,6 @@
 import { appointmentTimeLabel, bookingCreatedAtLabel } from '../lib/appointmentTime'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { FormField } from '../components/FormField'
 import { Select } from '../components/Select'
@@ -107,6 +107,8 @@ export function QueueTracker({ data, role = 'patient' }) {
 }
 
 export function PortalAppointments({ data, role = 'patient' }) {
+  const [searchParams] = useSearchParams()
+  const initialDoctorId = searchParams.get('doctorId') || ''
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   const updateAppointmentStatus = useAppStore((state) => state.updateAppointmentStatus)
   const [loading, setLoading] = useState(role === 'admin')
@@ -124,7 +126,7 @@ export function PortalAppointments({ data, role = 'patient' }) {
   // appointments.controller.js). Blank values are stripped by cleanParams() before the request, so
   // an empty field simply means "no filter" — no separate "all cities"/"all doctors" sentinel
   // option needed.
-  const [filters, setFilters] = useState(() => ({ cityId: '', doctorId: '', dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() }))
+  const [filters, setFilters] = useState(() => ({ cityId: '', doctorId: initialDoctorId, dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() }))
 
   // Appointments aren't part of the admin/superadmin bulk load (plan §4.2
   // admin branch) — fetch them here for the platform-wide registry view.
@@ -143,9 +145,9 @@ export function PortalAppointments({ data, role = 'patient' }) {
   }, [fetchAppointments])
   useEffect(() => {
     if (role !== 'admin') return undefined
-    load({ cityId: '', doctorId: '', dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() })
+    load({ cityId: '', doctorId: initialDoctorId, dateFrom: indiaTodayDate(), dateTo: indiaTodayDate() })
     return () => { loadVersion.current += 1 }
-  }, [load, role])
+  }, [load, role, initialDoctorId])
   // Re-fetch immediately on every filter change (city/doctor/date), same "apply on change"
   // pattern as Revenue reports' date-range/doctor filter above — no separate "Apply" button.
   const updateFilter = (key) => (event) => {
@@ -343,6 +345,8 @@ export function Specializations({ data }) {
 }
 
 export function ReviewModeration({ data }) {
+  const [searchParams] = useSearchParams()
+  const doctorId = searchParams.get('doctorId') || ''
   const updateReviewStatus = useAppStore((state) => state.updateReviewStatus)
   const fetchReviews = useAppStore((state) => state.fetchReviews)
   const [loading, setLoading] = useState(true)
@@ -356,19 +360,19 @@ export function ReviewModeration({ data }) {
   const load = () => {
     setLoading(true)
     setListError('')
-    return fetchReviews({}).catch((err) => setListError(err.message || 'Could not load reviews.')).finally(() => setLoading(false))
+    return fetchReviews(doctorId ? { doctorId } : {}).catch((err) => setListError(err.message || 'Could not load reviews.')).finally(() => setLoading(false))
   }
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setListError('')
-    fetchReviews({})
+    fetchReviews(doctorId ? { doctorId } : {})
       .catch((err) => { if (!cancelled) setListError(err.message || 'Could not load reviews.') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [fetchReviews])
+  }, [fetchReviews, doctorId])
 
-  const reviews = data.reviews || []
+  const reviews = (data.reviews || []).filter((item) => !doctorId || item.doctor?.id === doctorId)
   const changeStatus = async (id, status) => {
     setBusyId(id)
     setActionError('')

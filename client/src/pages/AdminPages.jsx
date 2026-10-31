@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { AdminRecordTable as DataTable } from '../components/AdminRecordTable'
 import { EmptyState } from '../components/EmptyState'
 import { FormField } from '../components/FormField'
@@ -19,6 +19,7 @@ import { useListLoad } from '../hooks/useListLoad'
 import { csvCell, downloadCsv } from '../lib/csv'
 import { indiaTodayDate } from '../lib/doctorAppointmentsExport'
 import { AdminPeriodSummary } from '../components/AdminPeriodSummary'
+import { ProfileAvatar } from '../components/ProfileAvatar'
 import { indiaRecordDate } from '../lib/adminRecords'
 const Page = ({ title, subtitle, children, action, kicker }) =><section><div className="page-heading mb-5 flex flex-wrap items-end justify-between gap-3"><div className="min-w-0">{kicker && <p className="text-xs font-semibold uppercase tracking-widest text-primary-dark">{kicker}</p>}<h1 className="text-2xl sm:text-3xl">{title}</h1>{subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}</div>{action && <div className="page-heading__action">{action}</div>}</div>{children}</section>
 const Button = ({ children, tone = 'primary', className = '', ...props }) => <button className={`touch-target rounded-button px-4 py-2.5 text-sm font-semibold ${tone === 'primary' ? 'bg-primary-dark text-white hover:bg-charcoal' : tone === 'error' ? 'bg-error text-white' : tone === 'dark' ? 'bg-charcoal text-white hover:bg-ink' : 'border border-border bg-white text-ink'} ${className}`} {...props}>{children}</button>
@@ -148,6 +149,7 @@ export function AdminDashboard({ data }) {
 }
 
 export function DoctorVerification({ data }) {
+  const currentUser = useAppStore((state) => state.currentUser)
   const [saved, setSaved] = useState(false)
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -169,6 +171,12 @@ export function DoctorVerification({ data }) {
   const [editError, setEditError] = useState('')
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
   const [bookingSaved, setBookingSaved] = useState(false)
+  const [profileDoctor, setProfileDoctor] = useState(null)
+  const [profileError, setProfileError] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSaved, setProfileSaved] = useState(false)
+  const [profileUploadBusy, setProfileUploadBusy] = useState(false)
+  const [documentLabel, setDocumentLabel] = useState('')
   // Defaults to true (follow the platform-wide window) until the fetched doctor record says
   // otherwise — same pattern as PlatformSettings' `alwaysOpen` state further down this file.
   const [followPlatformWindow, setFollowPlatformWindow] = useState(true)
@@ -177,6 +185,9 @@ export function DoctorVerification({ data }) {
   const updateDoctorAccountStatus = useAppStore((state) => state.updateDoctorAccountStatus)
   const getDoctor = useAppStore((state) => state.getDoctor)
   const updateDoctorBookingPolicy = useAppStore((state) => state.updateDoctorBookingPolicy)
+  const updateDoctorProfileAsAdmin = useAppStore((state) => state.updateDoctorProfileAsAdmin)
+  const uploadDoctorPhotoAsAdmin = useAppStore((state) => state.uploadDoctorPhotoAsAdmin)
+  const uploadDoctorDocumentAsAdmin = useAppStore((state) => state.uploadDoctorDocumentAsAdmin)
   // Admin/superadmin's post-login bulk load does NOT fetch doctors (plan §4.2 admin branch —
   // it only fetches dashboard stats/notifications/charges/settings/booking rules), and an
   // authenticated session also skips the public loadPublicDirectory() call that would otherwise
@@ -325,6 +336,59 @@ export function DoctorVerification({ data }) {
     }
   }
 
+  const openProfile = async (id) => {
+    setEditingId(id)
+    setProfileError('')
+    setProfileSaved(false)
+    try { setProfileDoctor(await getDoctor(id)) }
+    catch (err) { setProfileError(err.message || 'Could not load doctor profile.') }
+    finally { setEditingId(null) }
+  }
+
+  const saveProfile = async (event) => {
+    event.preventDefault()
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    setProfileSaving(true)
+    setProfileError('')
+    setProfileSaved(false)
+    try {
+      const doctor = await updateDoctorProfileAsAdmin(profileDoctor.id, {
+        name: values.name.trim(), phone: values.phone.trim(), city: values.city.trim(),
+        specializationId: values.specializationId,
+        qualification: values.qualification.trim(), registrationNumber: values.registrationNumber.trim(),
+        experienceYears: Number(values.experienceYears), consultationFee: Number(values.consultationFee),
+        emergencyFee: Number(values.emergencyFee), emergencyAvailable: values.emergencyAvailable === 'on',
+        languages: values.languages.split(',').map((value) => value.trim()).filter(Boolean),
+        bio: values.bio.trim(), bookingPaymentPolicy: values.bookingPaymentPolicy,
+        minBookingAdvanceAmount: values.bookingPaymentPolicy === 'minimum_or_full' ? Number(values.minBookingAdvanceAmount) : null,
+        bankAccountHolderName: values.bankAccountHolderName.trim() || null,
+        bankAccountNumber: values.bankAccountNumber.trim() || null,
+        bankIfscCode: values.bankIfscCode.trim() || null,
+        bankName: values.bankName.trim() || null,
+        bankUpiId: values.bankUpiId.trim() || null,
+      })
+      setProfileDoctor(doctor)
+      setProfileSaved(true)
+    } catch (err) { setProfileError(err?.details?.[0]?.message || err.message || 'Could not save doctor profile.') }
+    finally { setProfileSaving(false) }
+  }
+
+  const uploadProfileFile = async (event, kind) => {
+    const input = event.target
+    const file = input.files?.[0]
+    if (!file || !profileDoctor) return
+    setProfileUploadBusy(true)
+    setProfileError('')
+    try {
+      const updated = kind === 'photo'
+        ? await uploadDoctorPhotoAsAdmin(profileDoctor.id, file)
+        : await uploadDoctorDocumentAsAdmin(profileDoctor.id, file, documentLabel.trim())
+      setProfileDoctor(updated)
+      if (kind === 'document') setDocumentLabel('')
+    } catch (err) { setProfileError(err.message || 'Could not upload the file.') }
+    finally { setProfileUploadBusy(false); input.value = '' }
+  }
+
   const allDoctors = data.doctors || []
   const pendingDoctors = allDoctors.filter((item) => (item.status || 'verified') === 'pending')
 
@@ -371,12 +435,20 @@ export function DoctorVerification({ data }) {
           key: 'actionCol', label: 'Actions', render: (item) => {
             const currentStatus = item.status || 'verified'
             const currentAccountStatus = item.accountStatus || 'active'
-            return <div className="flex flex-wrap gap-2">
+            return <details className="min-w-48"><summary className="touch-target cursor-pointer rounded-button border border-border bg-white px-3 py-2 text-sm font-semibold text-primary-dark">Manage doctor</summary><div className="mt-2 flex flex-wrap gap-2">
               <Button tone="secondary" disabled={viewingId === item.id} onClick={() => viewDetails(item.id)}>{viewingId === item.id ? 'Loading…' : 'View details'}</Button>
+              <Button tone="secondary" disabled={editingId === item.id} onClick={() => openProfile(item.id)}>{editingId === item.id ? 'Loading…' : 'Edit profile'}</Button>
               <Button tone="secondary" disabled={editingId === item.id} onClick={() => openBookingSettings(item.id)}>{editingId === item.id ? 'Loading…' : 'Booking settings'}</Button>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/doctors/${item.id}/schedule`}>OPD schedule</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/doctors/${item.id}/queue`}>Live queue</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/appointments?doctorId=${encodeURIComponent(item.id)}`}>Appointments</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/clinics?doctorId=${encodeURIComponent(item.id)}`}>Clinics</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/receptionists`}>Receptionists</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/reviews?doctorId=${encodeURIComponent(item.id)}`}>Reviews</Link>
+              <Link className="touch-target rounded-button border border-border bg-white px-4 py-2.5 text-sm font-semibold text-ink" to={`${currentUser?.role === 'superadmin' ? '/super-admin' : '/admin'}/revenue?doctorId=${encodeURIComponent(item.id)}`}>Revenue</Link>
               <Button tone="secondary" disabled={updatingId === item.id} onClick={() => changeStatus(item.id, currentStatus === 'verified' ? 'disabled' : 'verified')}>{currentStatus === 'verified' ? 'Disable' : 'Verify'}</Button>
               <Button tone={currentAccountStatus === 'active' ? 'error' : 'secondary'} disabled={accountUpdatingId === item.id} onClick={() => changeAccountStatus(item.id, currentAccountStatus === 'active' ? 'disabled' : 'active')}>{accountUpdatingId === item.id ? 'Updating…' : currentAccountStatus === 'active' ? 'Disable login' : 'Enable login'}</Button>
-            </div>
+            </div></details>
           }
         }
       ]} />
@@ -457,6 +529,42 @@ export function DoctorVerification({ data }) {
               </dl>
             : <p className="mt-2 text-sm text-muted">This doctor has not added bank details yet.</p>}
         </div>
+      </div>}
+    </Modal>
+    <Modal open={!!profileDoctor} title={profileDoctor ? `Edit profile — ${profileDoctor.name}` : 'Edit doctor profile'} onClose={() => { setProfileDoctor(null); setProfileError('') }}>
+      {profileDoctor && <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3 rounded-button border border-border p-3 text-sm">
+          <ProfileAvatar src={profileDoctor.photoUrl} alt={profileDoctor.name} fallback="DR" className="h-14 w-14 rounded-full bg-primary-light text-primary-dark" />
+          <label className="cursor-pointer font-semibold text-primary-dark">{profileUploadBusy ? 'Uploading…' : 'Change photo'}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={profileUploadBusy} onChange={(event) => uploadProfileFile(event, 'photo')} /></label>
+        </div>
+        <div className="rounded-button border border-border p-3 text-sm">
+          <strong>Verification documents</strong>
+          <ul className="mt-2 space-y-1">{(profileDoctor.verificationDocuments || []).map((doc, index) => <li key={`${doc.url}-${index}`}><a className="text-primary-dark underline" href={doc.url} target="_blank" rel="noreferrer">{doc.name || `Document ${index + 1}`}</a></li>)}</ul>
+          <div className="mt-3 flex flex-wrap items-end gap-2"><FormField label="Document label" value={documentLabel} onChange={(event) => setDocumentLabel(event.target.value)} /><label className="cursor-pointer rounded-button border border-border px-3 py-2.5 font-semibold text-primary-dark">{profileUploadBusy ? 'Uploading…' : 'Upload document'}<input type="file" accept="image/*,application/pdf" className="sr-only" disabled={profileUploadBusy} onChange={(event) => uploadProfileFile(event, 'document')} /></label></div>
+        </div>
+        <form key={profileDoctor.id} onSubmit={saveProfile} className="grid gap-3 text-sm sm:grid-cols-2">
+        <FormField label="Name" name="name" defaultValue={profileDoctor.name || ''} required />
+        <FormField label="Phone" name="phone" defaultValue={profileDoctor.phone || ''} />
+        <FormField label="City" name="city" defaultValue={profileDoctor.city || ''} />
+        <label className="block"><span className="mb-1.5 block font-medium">Specialization</span><Select name="specializationId" required defaultValue={profileDoctor.specialization?.id || ''} options={specializations.map((item) => ({ value: item.id, label: item.name }))} /></label>
+        <FormField label="Qualification" name="qualification" defaultValue={profileDoctor.qualification || ''} />
+        <FormField label="Registration number" name="registrationNumber" defaultValue={profileDoctor.registrationNumber || ''} />
+        <FormField label="Experience (years)" name="experienceYears" type="number" min="0" max="80" defaultValue={profileDoctor.experienceYears ?? 0} required />
+        <FormField label="Consultation fee (₹)" name="consultationFee" type="number" min="0" step="0.01" defaultValue={profileDoctor.consultationFee ?? 0} required />
+        <FormField label="Emergency fee (₹)" name="emergencyFee" type="number" min="0" step="0.01" defaultValue={profileDoctor.emergencyFee ?? 0} required />
+        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" name="emergencyAvailable" defaultChecked={Boolean(profileDoctor.emergencyAvailable)} /> Emergency available</label>
+        <FormField label="Languages (comma separated)" name="languages" defaultValue={(profileDoctor.languages || []).join(', ')} />
+        <label className="block"><span className="mb-1.5 block font-medium">Booking payment rule</span><Select name="bookingPaymentPolicy" includeBlank={false} defaultValue={profileDoctor.bookingPaymentPolicy || 'full'} options={[{ value: 'full', label: 'Full payment' }, { value: 'minimum_or_full', label: 'Minimum or full' }, { value: 'platform_only', label: 'Platform fee only' }]} /></label>
+        <FormField label="Minimum booking amount (₹)" name="minBookingAdvanceAmount" type="number" min="0" step="0.01" defaultValue={profileDoctor.minBookingAdvanceAmount ?? ''} />
+        <div className="sm:col-span-2"><FormField label="Professional bio" name="bio" type="textarea" defaultValue={profileDoctor.bio || ''} /></div>
+        <h3 className="font-semibold sm:col-span-2">Payout details</h3>
+        <FormField label="Account holder" name="bankAccountHolderName" defaultValue={profileDoctor.bankDetails?.accountHolderName || ''} />
+        <FormField label="Account number" name="bankAccountNumber" defaultValue={profileDoctor.bankDetails?.accountNumber || ''} />
+        <FormField label="IFSC" name="bankIfscCode" defaultValue={profileDoctor.bankDetails?.ifscCode || ''} />
+        <FormField label="Bank name" name="bankName" defaultValue={profileDoctor.bankDetails?.bankName || ''} />
+        <FormField label="UPI ID" name="bankUpiId" defaultValue={profileDoctor.bankDetails?.upiId || ''} />
+        <div className="sm:col-span-2"><ErrorNote>{profileError}</ErrorNote><Button type="submit" disabled={profileSaving}>{profileSaving ? 'Saving…' : 'Save doctor profile'}</Button>{profileSaved && <p role="status" className="mt-2 text-success">Doctor profile saved.</p>}</div>
+        </form>
       </div>}
     </Modal>
     <Modal
@@ -601,16 +709,93 @@ export function ClinicVerification({ data }) {
 }
 
 export function ManageClinics({ data }) {
+  const [searchParams] = useSearchParams()
+  const doctorId = searchParams.get('doctorId') || ''
   const toggleClinicEmergency = useAppStore((state) => state.toggleClinicEmergency)
   const toggleClinicStatus = useAppStore((state) => state.toggleClinicStatus)
   const fetchClinics = useAppStore((state) => state.fetchClinics)
+  const fetchCities = useAppStore((state) => state.fetchCities)
+  const fetchAreas = useAppStore((state) => state.fetchAreas)
+  const searchDoctors = useAppStore((state) => state.searchDoctors)
+  const getClinic = useAppStore((state) => state.getClinic)
+  const createClinic = useAppStore((state) => state.createClinic)
+  const updateClinic = useAppStore((state) => state.updateClinic)
+  const uploadClinicQr = useAppStore((state) => state.uploadClinicQr)
+  const assignDoctorToClinic = useAppStore((state) => state.assignDoctorToClinic)
+  const updateDoctorClinicAssignment = useAppStore((state) => state.updateDoctorClinicAssignment)
+  const removeDoctorFromClinic = useAppStore((state) => state.removeDoctorFromClinic)
   const [actionError, setActionError] = useState('')
   const [busyKey, setBusyKey] = useState(null)
+  const [editingClinic, setEditingClinic] = useState(null)
+  const [clinicError, setClinicError] = useState('')
+  const [clinicBusy, setClinicBusy] = useState(false)
+  const [selectedDoctorId, setSelectedDoctorId] = useState(doctorId)
 
   // LOAD-REVIEW FIX (audit finding: "admin list pages refetch their full list on every mount") —
   // see hooks/useListLoad.js's header comment. The "↻ Refresh" button always bypasses the cache
   // via `refresh`; only the automatic on-mount fetch is TTL-gated.
-  const { loading, error: listError, refresh: load } = useListLoad('admin:clinics', () => fetchClinics({}))
+  const { loading, error: listError, refresh: load } = useListLoad(`admin:clinics:${doctorId}`, () => Promise.all([fetchClinics(doctorId ? { doctorId } : {}), fetchCities(), fetchAreas(), searchDoctors({ pageSize: 100 })]))
+
+  const openClinic = async (id) => {
+    setClinicError('')
+    setSelectedDoctorId(doctorId)
+    if (!id) { setEditingClinic({ id: null, name: '', city: null, area: null, doctors: [] }); return }
+    setBusyKey(`${id}:edit`)
+    try {
+      const clinic = await getClinic(id)
+      setEditingClinic(clinic)
+      if ((clinic.doctors || []).some((member) => member.doctorUserId === doctorId)) setSelectedDoctorId('')
+    }
+    catch (err) { setActionError(err.message || 'Could not load this clinic.') }
+    finally { setBusyKey(null) }
+  }
+
+  const saveClinic = async (event) => {
+    event.preventDefault()
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries())
+    const fields = {
+      name: values.name.trim(), phone: values.phone.trim() || null, address: values.address.trim() || null,
+      cityId: values.cityId, areaId: values.areaId || null,
+      ...(values.latitude ? { latitude: Number(values.latitude), longitude: Number(values.longitude) } : editingClinic.id ? { latitude: null, longitude: null } : {}),
+      paymentCashEnabled: values.paymentCashEnabled === 'on', paymentUpiEnabled: values.paymentUpiEnabled === 'on',
+      paymentUpiId: values.paymentUpiId.trim() || null,
+    }
+    if (Boolean(values.latitude) !== Boolean(values.longitude)) { setClinicError('Enter both latitude and longitude, or leave both blank.'); return }
+    setClinicBusy(true)
+    setClinicError('')
+    try {
+      const clinic = editingClinic.id ? await updateClinic(editingClinic.id, fields) : await createClinic(fields)
+      setEditingClinic(clinic)
+      await load()
+    } catch (err) { setClinicError(err.message || 'Could not save clinic details.') }
+    finally { setClinicBusy(false) }
+  }
+
+  const changeAssignment = async (doctorUserId, fields) => {
+    setClinicBusy(true)
+    setClinicError('')
+    try {
+      if (fields === null) await removeDoctorFromClinic(editingClinic.id, doctorUserId)
+      else if (fields.create) await assignDoctorToClinic(editingClinic.id, { doctorUserId, isOwner: (editingClinic.doctors || []).length === 0, isPrimary: (editingClinic.doctors || []).length === 0, onlineBooking: true })
+      else await updateDoctorClinicAssignment(editingClinic.id, doctorUserId, fields)
+      setEditingClinic(await getClinic(editingClinic.id))
+      setSelectedDoctorId('')
+    } catch (err) { setClinicError(err.message || 'Could not update the clinic team.') }
+    finally { setClinicBusy(false) }
+  }
+
+  const uploadQr = async (event) => {
+    const input = event.target
+    const file = input.files?.[0]
+    if (!file || !editingClinic?.id) return
+    setClinicBusy(true)
+    setClinicError('')
+    try {
+      await uploadClinicQr(editingClinic.id, file)
+      setEditingClinic(await getClinic(editingClinic.id))
+    } catch (err) { setClinicError(err.message || 'Could not upload clinic QR code.') }
+    finally { setClinicBusy(false); input.value = '' }
+  }
 
   const handleToggleStatus = async (id) => {
     setBusyKey(`${id}:status`)
@@ -636,7 +821,7 @@ export function ManageClinics({ data }) {
     }
   }
 
-  return <Page title="Clinic management" subtitle="Review and control clinic availability.">
+  return <Page title="Clinic management" subtitle="Review and control clinic availability." action={<Button type="button" onClick={() => openClinic(null)}>Add clinic</Button>}>
     <ErrorNote>{actionError}</ErrorNote>
     <DataTable
       loading={loading}
@@ -649,10 +834,32 @@ export function ManageClinics({ data }) {
         { key: 'address', label: 'Address', render: (item) => item.address || [item.area?.name, item.city?.name].filter(Boolean).join(', ') || '—' },
         { key: 'phone', label: 'Phone', render: (item) => item.phone || '—' },
         { key: 'approvalStatus', label: 'Status', render: (item) => <StatusPill status={item.approvalStatus || 'active'} /> },
-        { key: 'actionCol', label: 'Actions', render: (item) => <Button tone="secondary" disabled={busyKey === `${item.id}:status`} onClick={() => handleToggleStatus(item.id)}>{item.approvalStatus === 'disabled' ? 'Enable' : 'Disable'}</Button> },
+        { key: 'actionCol', label: 'Actions', render: (item) => <div className="flex flex-wrap gap-2"><Button tone="secondary" disabled={busyKey === `${item.id}:edit`} onClick={() => openClinic(item.id)}>{busyKey === `${item.id}:edit` ? 'Loading…' : 'Edit clinic'}</Button><Button tone="secondary" disabled={busyKey === `${item.id}:status`} onClick={() => handleToggleStatus(item.id)}>{item.approvalStatus === 'disabled' ? 'Enable' : 'Disable'}</Button></div> },
         { key: 'emergencyAvailable', label: 'Emergency', render: (item) => <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(item.emergencyAvailable)} disabled={busyKey === `${item.id}:emergency`} onChange={() => handleToggleEmergency(item.id)} /> Available</label> }
       ]}
     />
+    <Modal open={!!editingClinic} title={editingClinic?.id ? `Clinic settings — ${editingClinic.name}` : 'Add clinic'} onClose={() => { setEditingClinic(null); setClinicError('') }}>
+      {editingClinic && <div className="space-y-4">
+        <form key={`${editingClinic.id || 'new'}:${editingClinic.updatedAt || ''}`} onSubmit={saveClinic} className="grid gap-3 sm:grid-cols-2">
+          <FormField label="Clinic name" name="name" defaultValue={editingClinic.name || ''} required />
+          <FormField label="Phone" name="phone" defaultValue={editingClinic.phone || ''} />
+          <label className="text-sm font-medium">City<Select name="cityId" required defaultValue={editingClinic.city?.id || ''} options={(data.cities || []).map((city) => ({ value: city.id, label: city.name }))} /></label>
+          <label className="text-sm font-medium">Area<Select name="areaId" defaultValue={editingClinic.area?.id || ''} options={(data.areas || []).map((area) => ({ value: area.id, label: area.name }))} /></label>
+          <div className="sm:col-span-2"><FormField label="Full address" name="address" type="textarea" defaultValue={editingClinic.address || ''} /></div>
+          <FormField label="Latitude" name="latitude" type="number" step="any" min="-90" max="90" defaultValue={editingClinic.latitude ?? ''} />
+          <FormField label="Longitude" name="longitude" type="number" step="any" min="-180" max="180" defaultValue={editingClinic.longitude ?? ''} />
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="paymentCashEnabled" defaultChecked={editingClinic.paymentCashEnabled !== false} /> Accept cash</label>
+          <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" name="paymentUpiEnabled" defaultChecked={editingClinic.paymentUpiEnabled === true} /> Accept UPI</label>
+          <FormField label="Clinic UPI ID" name="paymentUpiId" defaultValue={editingClinic.paymentUpiId || ''} />
+          {editingClinic.id && <div className="sm:col-span-2"><p className="text-sm font-medium">Payment QR code</p><div className="mt-2 flex items-center gap-3">{editingClinic.paymentQrUrl && <img src={editingClinic.paymentQrUrl} alt="Clinic QR code" className="h-16 w-16 rounded-button border border-border object-contain" />}<label className="cursor-pointer rounded-button border border-border px-3 py-2 text-sm font-semibold">{clinicBusy ? 'Uploading…' : 'Upload QR image'}<input type="file" accept="image/*" className="sr-only" disabled={clinicBusy} onChange={uploadQr} /></label></div></div>}
+          <div className="sm:col-span-2"><ErrorNote>{clinicError}</ErrorNote><Button type="submit" disabled={clinicBusy}>{clinicBusy ? 'Saving…' : editingClinic.id ? 'Save clinic' : 'Create clinic'}</Button></div>
+        </form>
+        {editingClinic.id && <section className="border-t border-border pt-3 text-sm"><h3 className="font-semibold">Assigned doctors</h3>
+          <div className="mt-2 space-y-2">{(editingClinic.doctors || []).map((member) => <div key={member.doctorUserId} className="flex flex-wrap items-center justify-between gap-2 rounded-button bg-surface p-2"><span>{member.name || 'Doctor'}{member.isOwner ? ' · owner' : ''}</span><div className="flex gap-2"><Button type="button" tone="secondary" disabled={clinicBusy} onClick={() => changeAssignment(member.doctorUserId, { onlineBooking: member.onlineBooking === false })}>{member.onlineBooking === false ? 'Enable bookings' : 'Pause bookings'}</Button><Button type="button" tone="error" disabled={clinicBusy} onClick={() => changeAssignment(member.doctorUserId, null)}>Remove</Button></div></div>)}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-2"><Select aria-label="Add doctor" placeholder="Select doctor" value={selectedDoctorId} onChange={(event) => setSelectedDoctorId(event.target.value)} options={(data.doctors || []).filter((doctor) => !(editingClinic.doctors || []).some((member) => member.doctorUserId === doctor.id)).map((doctor) => ({ value: doctor.id, label: doctor.name }))} /><Button type="button" disabled={clinicBusy || !selectedDoctorId} onClick={() => changeAssignment(selectedDoctorId, { create: true })}>Add doctor</Button></div>
+        </section>}
+      </div>}
+    </Modal>
   </Page>
 }
 
@@ -956,6 +1163,7 @@ const parsePaymentDate = (value) => {
 }
 
 export function RevenueReports({ data, doctorOnly = false }) {
+  const [searchParams] = useSearchParams()
   const fetchPayments = useAppStore((state) => state.fetchPayments)
   const fetchAppointments = useAppStore((state) => state.fetchAppointments)
   // `currentUser` lives at the top level of the store, not inside `data`.
@@ -964,7 +1172,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
   const [loadError, setLoadError] = useState('')
   const [fromDate, setFromDate] = useState(indiaTodayDate)
   const [toDate, setToDate] = useState(indiaTodayDate)
-  const [doctorFilter, setDoctorFilter] = useState('all')
+  const [doctorFilter, setDoctorFilter] = useState(() => searchParams.get('doctorId') || searchParams.get('doctor') || 'all')
 
   const load = () => {
     setLoading(true)
@@ -996,7 +1204,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     average,
     commission,
     clinicPayout,
-    doctorNames,
+    doctorOptions,
     byDoctor,
     invalidRange,
     paymentModeBreakdown,
@@ -1004,7 +1212,8 @@ export function RevenueReports({ data, doctorOnly = false }) {
     cashTotal,
     onlineTotal,
   } = useMemo(() => {
-    const selectedDoctor = doctorOnly ? (currentUser?.name || 'My practice') : doctorFilter
+    const doctorOptions = [...new Map([...(data.doctors || []), ...(data.payments || []).map((item) => item.doctor).filter(Boolean)].filter((doctor) => doctor.id).map((doctor) => [doctor.id, { value: doctor.id, label: doctor.name || 'Doctor' }])).values()]
+    const selectedDoctor = doctorOnly ? (currentUser?.name || 'My practice') : doctorFilter === 'all' ? 'all' : doctorOptions.find((doctor) => doctor.value === doctorFilter)?.label || doctorFilter
     const sourcePayments = doctorOnly ? (currentUser?.id ? (data.payments || []).filter((payment) => payment.doctor?.id === currentUser.id) : []) : (data.payments || [])
     const start = parsePaymentDate(fromDate)
     const end = parsePaymentDate(toDate)
@@ -1015,7 +1224,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
       const date = parsePaymentDate(payment.createdAt)
       const name = payment.doctor?.name || 'Unassigned'
       const inPeriod = !invalidRange && date && start && end ? date >= start && date <= end : false
-      return inPeriod && (doctorOnly || selectedDoctor === 'all' || name === selectedDoctor)
+      return inPeriod && (doctorOnly || doctorFilter === 'all' || payment.doctor?.id === doctorFilter || name === doctorFilter)
     })
     // Money fields come pre-masked/pre-computed by role from the server (plan
     // §1.8/§1.12) — doctor/receptionist only ever get `fees.consultationFee`,
@@ -1033,13 +1242,13 @@ export function RevenueReports({ data, doctorOnly = false }) {
     const average = revenuePayments.length ? total / revenuePayments.length : 0
     const commission = doctorOnly ? 0 : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.commission ?? 0), 0)
     const clinicPayout = doctorOnly ? total : revenuePayments.reduce((sum, item) => sum + Number(item.fees?.clinicPayout ?? 0), 0)
-    const doctorNames = [...new Set([...(data.doctors || []).map((doctor) => doctor.name), ...sourcePayments.map((item) => item.doctor?.name).filter(Boolean)])]
     const byDoctor = Object.values(revenuePayments.reduce((groups, item) => {
       const name = item.doctor?.name || 'Unassigned'
-      const group = groups[name] || { id: name, doctor: name, payments: 0, revenue: 0 }
+      const groupId = item.doctor?.id || name
+      const group = groups[groupId] || { id: groupId, doctor: name, payments: 0, revenue: 0 }
       group.payments += 1
       group.revenue += item.reportAmount
-      groups[name] = group
+      groups[groupId] = group
       return groups
     }, {}))
     // COMPLETENESS ADD (request: "receptionist and doctor ke pass show ho online payment kitna hua
@@ -1063,12 +1272,12 @@ export function RevenueReports({ data, doctorOnly = false }) {
     const bookingTotal = revenuePayments.filter(isOnlineBookingPayment).reduce((sum, item) => sum + item.reportAmount, 0)
     const cashTotal = revenuePayments.filter((item) => isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
     const onlineTotal = revenuePayments.filter((item) => !isCashMode(item.mode) && !isOnlineBookingPayment(item)).reduce((sum, item) => sum + item.reportAmount, 0)
-    return { selectedDoctor, payments, reportPayments, revenuePayments, total, average, commission, clinicPayout, doctorNames, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
+    return { selectedDoctor, payments, reportPayments, revenuePayments, total, average, commission, clinicPayout, doctorOptions, byDoctor, invalidRange, paymentModeBreakdown, bookingTotal, cashTotal, onlineTotal }
   }, [data.doctors, data.payments, currentUser, doctorOnly, doctorFilter, fromDate, toDate])
   const periodLabel = `${fromDate || 'Start'} to ${toDate || 'End'}`
   const rangeAnalytics = useMemo(() => {
     const appointments = (data.appointments || []).filter((row) => !invalidRange && row.appointmentDate >= fromDate && row.appointmentDate <= toDate
-      && (doctorFilter === 'all' || row.doctor?.name === doctorFilter))
+      && (doctorFilter === 'all' || row.doctor?.id === doctorFilter || row.doctor?.name === doctorFilter))
     const days = [...new Set([...appointments.map((row) => row.appointmentDate), ...reportPayments.map((row) => indiaRecordDate(row.createdAt))])].filter(Boolean).sort()
     return { labels: days, appointments: days.map((day) => appointments.filter((row) => row.appointmentDate === day).length),
       revenue: days.map((day) => revenuePayments.filter((row) => indiaRecordDate(row.createdAt) === day).reduce((sum, row) => sum + row.reportAmount, 0)),
@@ -1087,7 +1296,7 @@ export function RevenueReports({ data, doctorOnly = false }) {
     anchor.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap"><label className="min-w-0 text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label><label className="min-w-0 text-xs font-semibold text-muted">To<input aria-label="Revenue end date" min={fromDate} type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorNames.map((name) => ({ value: name, label: name }))]} />}<button type="button" onClick={downloadExcel} disabled={loading || invalidRange || Boolean(loadError)} className="touch-target col-span-2 inline-flex items-center justify-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50">Download Excel</button></div>}>
+  return <Page title={doctorOnly ? 'My revenue reports' : 'Revenue reports'} subtitle={doctorOnly ? 'View only your own revenue for any selected date range.' : 'View payment revenue for any selected date range and doctor.'} action={<div className="grid w-full min-w-0 grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap"><label className="min-w-0 text-xs font-semibold text-muted">From<input aria-label="Revenue start date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label><label className="min-w-0 text-xs font-semibold text-muted">To<input aria-label="Revenue end date" min={fromDate} type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="mt-1 block min-h-11 min-w-0 w-full rounded-button border border-border bg-white px-2 text-sm sm:w-auto" /></label>{!doctorOnly && <Select aria-label="Filter by doctor" includeBlank={false} className="min-w-[10rem]" value={doctorFilter} onChange={(event) => setDoctorFilter(event.target.value)} options={[{ value: 'all', label: 'All doctors' }, ...doctorOptions]} />}<button type="button" onClick={downloadExcel} disabled={loading || invalidRange || Boolean(loadError)} className="touch-target col-span-2 inline-flex items-center justify-center rounded-button bg-primary-dark px-3.5 text-sm font-semibold text-white hover:bg-charcoal disabled:opacity-50">Download Excel</button></div>}>
     {invalidRange && <p role="alert" className="mb-4 rounded-button border border-error/30 bg-error/10 px-3 py-2 text-sm font-semibold text-error">From date must be before To date.</p>}
     <ErrorNote>{loadError}</ErrorNote>
     <div className={doctorOnly ? 'grid grid-cols-2 gap-3' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-4'}><StatCard label="Selected range revenue" value={money(total)} detail={`${revenuePayments.length} payment${revenuePayments.length === 1 ? '' : 's'}`} icon="₹" /><StatCard label="Average payment" value={money(average)} detail="Per successful revenue payment" icon="≈" />{!doctorOnly && <><StatCard label="Platform commission" value={money(commission)} detail="Platform charges and taxes" icon="%" /><StatCard label="Clinic payout" value={money(clinicPayout)} detail="Consultation charges collected" icon="✓" /></>}</div>

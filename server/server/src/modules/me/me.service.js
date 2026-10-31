@@ -145,7 +145,7 @@ async function getMe(userId) {
  * @param {string} role
  * @param {object} body - raw request body (already shape-validated by me.validation.js)
  */
-async function updateMe(userId, role, body) {
+async function updateMe(userId, role, body, actor = { id: userId, role }) {
   const baseUpdates = pickPresentFields(body, BASE_EDITABLE_FIELDS);
   const profileUpdates = pickPresentFields(body, PROFILE_EDITABLE_FIELDS[role] || []);
 
@@ -306,12 +306,12 @@ async function updateMe(userId, role, body) {
   // Field NAMES only in the audit trail — never values (avoids leaking medical history,
   // addresses, etc. into activity_log).
   await activityLogService.log({
-    actorUserId: userId,
-    actorRole: role,
-    actionType: 'me.profile_update',
+    actorUserId: actor.id,
+    actorRole: actor.role,
+    actionType: actor.id === userId ? 'me.profile_update' : 'doctor.admin_profile_update',
     targetEntityType: 'user',
     targetEntityId: userId,
-    description: `Updated own profile: ${changedFieldNames.join(', ')}`,
+    description: `${actor.id === userId ? 'Updated own profile' : 'Updated doctor profile'}: ${changedFieldNames.join(', ')}`,
   });
 
   if (role === 'doctor') {

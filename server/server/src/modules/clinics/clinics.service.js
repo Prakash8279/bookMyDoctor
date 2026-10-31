@@ -315,14 +315,15 @@ async function createClinic(input, actor) {
  * @param {object} query
  * @param {{id:string, role:string}|undefined} requester
  */
-async function listClinics({ city, area, emergencyAvailable, approvalStatus, mine, page, pageSize }, requester) {
+async function listClinics({ city, area, emergencyAvailable, approvalStatus, mine, doctorId, page, pageSize }, requester) {
+  if (doctorId && !isAdmin(requester)) throw new ApiError(403, 'FORBIDDEN', 'Only administrators can filter clinics by doctor.');
   const wantsMine = mine === true && !!requester && requester.role === 'doctor';
   // Output is role-invariant EXCEPT for the `mine` branch (a doctor's own, all-statuses view)
   // and the admin branch (sees every status by default) — both must be scoped to the actor.
   const scope = wantsMine ? `mine:${requester.id}` : isAdmin(requester) ? 'admin' : 'public';
   const cacheKey = `cache:clinics:list:${scope}:${city || ''}:${area || ''}:${
     emergencyAvailable ?? ''
-  }:${approvalStatus || ''}:${page || ''}:${pageSize || ''}`;
+  }:${approvalStatus || ''}:${doctorId || ''}:${page || ''}:${pageSize || ''}`;
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
@@ -346,6 +347,7 @@ async function listClinics({ city, area, emergencyAvailable, approvalStatus, min
       ...(area ? { areaId: area } : {}),
       ...(typeof emergencyAvailable === 'boolean' ? { emergencyAvailable } : {}),
       ...(wantsMine ? { doctorClinics: { some: { doctorUserId: requester.id } } } : {}),
+      ...(doctorId ? { doctorClinics: { some: { doctorUserId: doctorId } } } : {}),
     };
 
     const [rows, total] = await Promise.all([

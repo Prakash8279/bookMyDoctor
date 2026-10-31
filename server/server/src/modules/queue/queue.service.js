@@ -32,8 +32,8 @@ const LIST_CACHE_TTL_SECONDS = 10;
 
 // status filter removed (backend-cleanup audit — user request: "website frontend me nahi hai but
 // backend bna hua hai to backend se hata do"): neither web nor mobile ever sent it.
-function buildListCacheKey({ date, page, pageSize }, actor, scopeId) {
-  const scope = actor.role === 'doctor' ? `doctor:${actor.id}` : `receptionist:${scopeId || 'none'}`;
+function buildListCacheKey({ date, doctorId, page, pageSize }, actor, scopeId) {
+  const scope = ['admin', 'superadmin'].includes(actor.role) ? `admin:${doctorId}` : actor.role === 'doctor' ? `doctor:${actor.id}` : `receptionist:${scopeId || 'none'}`;
   return `cache:queue:list:${scope}:${date || ''}:${page || ''}:${pageSize || ''}`;
 }
 
@@ -47,6 +47,7 @@ function buildListCacheKey({ date, page, pageSize }, actor, scopeId) {
 async function invalidateQueueListCaches({ doctorUserId, clinicId }) {
   const patterns = [];
   if (doctorUserId) patterns.push(`cache:queue:list:doctor:${doctorUserId}:*`);
+  if (doctorUserId) patterns.push(`cache:queue:list:admin:${doctorUserId}:*`);
   if (clinicId) patterns.push(`cache:queue:list:receptionist:${clinicId}:*`);
   await Promise.all(patterns.map((p) => cacheService.invalidate(p)));
 }
@@ -140,7 +141,7 @@ function shapeQueueToken(row) {
 function shapeQueuePatientRef(patientRow, role) {
   if (!patientRow) return null;
   const base = { id: patientRow.id, name: patientRow.name, patientNumber: patientRow.patientNumber ?? null };
-  if (role === 'doctor') {
+  if (role === 'doctor' || role === 'admin' || role === 'superadmin') {
     const pp = patientRow.patientProfile || {};
     return {
       ...base,
@@ -251,6 +252,7 @@ async function getVisibleQueueTokenOrThrow(id, actor) {
   }
 
   if (actor.role === 'doctor' && row.doctorUserId === actor.id) return row;
+  if (['admin', 'superadmin'].includes(actor.role)) return row;
 
   if (actor.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
@@ -278,7 +280,7 @@ async function getVisibleQueueTokenOrThrow(id, actor) {
  * @param {{date?:string, page?:number, pageSize?:number}} query
  * @param {{id:string, role:string}} actor
  */
-async function listQueue({ date, page, pageSize }, actor) {
+async function listQueue({ date, doctorId, page, pageSize }, actor) {
   let receptionistClinicId = null;
   if (actor.role === 'receptionist') {
     const rp = await prisma.receptionistProfile.findUnique({
@@ -286,13 +288,15 @@ async function listQueue({ date, page, pageSize }, actor) {
       select: { clinicId: true },
     });
     receptionistClinicId = rp ? rp.clinicId : null;
+  } else if (['admin', 'superadmin'].includes(actor.role)) {
+    if (!doctorId) throw new ApiError(400, 'DOCTOR_ID_REQUIRED', 'Select a doctor to view the queue.');
   } else if (actor.role !== 'doctor') {
-    // Unreachable in practice — authorize('doctor','receptionist') on the route already blocks
+    // Unreachable in practice — the route's authorize gate already blocks
     // every other role — kept as defensive-in-depth, matching the pattern used elsewhere.
     throw new ApiError(403, 'FORBIDDEN', 'You do not have permission to view the queue.');
   }
 
-  const cacheKey = buildListCacheKey({ date, page, pageSize }, actor, receptionistClinicId);
+  const cacheKey = buildListCacheKey({ date, doctorId, page, pageSize }, actor, receptionistClinicId);
 
   return cacheService.getOrSet(cacheKey, LIST_CACHE_TTL_SECONDS, async () => {
     const { skip, take, page: p, pageSize: ps } = parsePagination({ page, pageSize });
@@ -307,8 +311,8 @@ async function listQueue({ date, page, pageSize }, actor) {
     const where = { queueDate, status: { not: 'on_hold' },
       appointment: { is: { ...clinicPaymentWhere(), status: { notIn: ['pending_payment', 'cancelled', 'no_show'] } } } };
 
-    if (actor.role === 'doctor') {
-      where.doctorUserId = actor.id;
+    if (actor.role === 'doctor' || ['admin', 'superadmin'].includes(actor.role)) {
+      where.doctorUserId = actor.role === 'doctor' ? actor.id : doctorId;
     } else {
       if (!receptionistClinicId) {
         return { rows: [], pagination: buildPaginationMeta({ page: p, pageSize: ps, total: 0 }), truncated: false };

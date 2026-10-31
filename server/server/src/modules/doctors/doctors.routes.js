@@ -13,6 +13,8 @@ const authorize = require('../../middleware/authorize');
 const validateRequest = require('../../middleware/validateRequest');
 const { authLimiter } = require('../../middleware/rateLimiter');
 const validation = require('./doctors.validation');
+const meValidation = require('../me/me.validation');
+const { param } = require('express-validator');
 const controller = require('./doctors.controller');
 
 // Public search — optionalAuthenticate only sets req.user when a valid token is present;
@@ -26,6 +28,15 @@ router.get('/', optionalAuthenticate, validation.listDoctors, validateRequest, c
 router.post('/register', authLimiter, validation.registerDoctor, validateRequest, controller.registerDoctor);
 
 router.get('/:id', optionalAuthenticate, validation.getDoctor, validateRequest, controller.getDoctor);
+
+router.patch(
+  '/:id/profile',
+  authenticate,
+  authorize('admin', 'superadmin'),
+  [param('id').isUUID(), ...meValidation.patchMe],
+  validateRequest,
+  controller.patchDoctorProfileAsAdmin
+);
 
 router.patch(
   '/:id',

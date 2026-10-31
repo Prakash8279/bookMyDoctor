@@ -14,9 +14,9 @@ const createClinic = asyncHandler(async (req, res) => {
 
 // search filter removed (backend-cleanup audit) — see clinics.validation.js#listClinics's comment.
 const listClinics = asyncHandler(async (req, res) => {
-  const { city, area, emergencyAvailable, approvalStatus, mine, page, pageSize } = req.query;
+  const { city, area, emergencyAvailable, approvalStatus, mine, doctorId, page, pageSize } = req.query;
   const { rows, pagination } = await clinicsService.listClinics(
-    { city, area, emergencyAvailable, approvalStatus, mine, page, pageSize },
+    { city, area, emergencyAvailable, approvalStatus, mine, doctorId, page, pageSize },
     req.user
   );
   return success(res, rows, { pagination });

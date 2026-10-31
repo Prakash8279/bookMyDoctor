@@ -9,7 +9,9 @@ double? clinicDistanceKm(
   if (targetLat == null ||
       targetLng == null ||
       targetLat.abs() > 90 ||
-      targetLng.abs() > 180) return null;
+      targetLng.abs() > 180) {
+    return null;
+  }
   double radians(double value) => value * math.pi / 180;
   final deltaLat = radians(targetLat - latitude);
   final deltaLng = radians(targetLng - longitude);

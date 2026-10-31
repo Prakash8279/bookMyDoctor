@@ -624,6 +624,28 @@ export const useAppStore = create(
         set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
         return doctor
       },
+      updateDoctorProfileAsAdmin: async (id, fields) => {
+        const doctor = await apiClient.patch(`/doctors/${id}/profile`, fields)
+        set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
+        return doctor
+      },
+      uploadDoctorPhotoAsAdmin: async (id, file) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        await apiClient.post(`/media/doctors/${id}/photo`, formData)
+        const doctor = await apiClient.get(`/doctors/${id}`)
+        set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
+        return doctor
+      },
+      uploadDoctorDocumentAsAdmin: async (id, file, name) => {
+        const formData = new FormData()
+        formData.append('file', file)
+        if (name) formData.append('name', name)
+        await apiClient.post(`/media/doctors/${id}/document`, formData)
+        const doctor = await apiClient.get(`/doctors/${id}`)
+        set((state) => ({ data: { ...state.data, doctors: upsertById(state.data.doctors, doctor) } }))
+        return doctor
+      },
       // Renamed/split from the old mock's `updateDoctor` — ONLY these 3
       // booking-policy fields, full-replace, all 3 required by the server.
       updateDoctorBookingPolicy: async (id, fields) => {

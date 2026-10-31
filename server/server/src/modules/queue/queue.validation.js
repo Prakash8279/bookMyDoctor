@@ -18,6 +18,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // always fetch the day's full queue.
 const listQueue = [
   query('date').optional({ values: 'falsy' }).matches(DATE_RE).withMessage('date must be in YYYY-MM-DD format.'),
+  query('doctorId').optional({ values: 'falsy' }).isUUID().withMessage('doctorId must be a valid doctor id.'),
   query('page').optional().isInt({ min: 1 }).toInt(),
   query('pageSize').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Bar, Line } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, BarElement, CategoryScale, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from 'chart.js'
 import { DataTable } from '../components/DataTable'
@@ -405,6 +405,10 @@ export function DoctorDashboard({ data }) {
 const bookingLabel = (source) => source === 'walk_in' ? 'Walk-in' : source === 'online' ? 'Online' : '—'
 const queueRecordCsv = (rows) => buildCsv(['Id', 'Token', 'Patient', 'Status', 'Booking', 'Patients ahead', 'Estimated wait (min)'], rows.map((item) => [item.displayId, `#${item.tokenNumber ?? ''}`, item.patient?.name || '', item.status, bookingLabel(item.source), item.patientsAhead ?? '', item.estimatedWaitMinutes ?? '']))
 export function QueueManagement({ data, receptionist = false }) {
+  const { doctorId: managedDoctorId } = useParams()
+  const currentUser = useAppStore((state) => state.currentUser)
+  const queueScope = managedDoctorId ? `doctor:${managedDoctorId}` : `${receptionist ? 'receptionist' : 'doctor'}:${currentUser?.id || ''}`
+  const [loadedScope, setLoadedScope] = useState(null)
   const setQueueTokenStatus = useAppStore((state) => state.setQueueTokenStatus)
   const fetchQueue = useAppStore((state) => state.fetchQueue)
   const [loading, setLoading] = useState(true)
@@ -415,14 +419,17 @@ export function QueueManagement({ data, receptionist = false }) {
   const loadQueue = useCallback(() => {
     setLoading(true)
     setLoadError('')
-    return fetchQueue({ allPages: true }).catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.'))).finally(() => setLoading(false))
-  }, [fetchQueue])
+    return fetchQueue({ allPages: true, ...(managedDoctorId ? { doctorId: managedDoctorId } : {}) })
+      .then(() => setLoadedScope(queueScope))
+      .catch((err) => setLoadError(firstErrorMessage(err, 'Could not load the live queue.')))
+      .finally(() => setLoading(false))
+  }, [fetchQueue, managedDoctorId, queueScope])
   usePolling(loadQueue, { intervalMs: 15000 })
 
   // `GET /queue` is already scoped server-side (doctor sees only their own
   // tokens, receptionist only their clinic's) — no client-side doctor filter
   // is needed or possible any more (queue rows carry no doctor field at all).
-  const tokens = data.queueTokens || []
+  const tokens = loadedScope === queueScope ? (data.queueTokens || []) : []
   const rows = tokens.map((item, index) => ({ ...item, displayId: index + 1 }))
   const activeRows = rows.filter((item) => item.status !== 'completed')
   const completedRows = rows.filter((item) => item.status === 'completed')
@@ -803,7 +810,10 @@ const opdEntryCsv = (rows) => buildCsv(['Id', 'Type', 'Clinic', 'Day/Date', 'Hou
 ]))
 export function ClinicSchedule({ data }) {
   const currentUser = useAppStore((state) => state.currentUser)
-  const profile = currentUser?.profile || {}
+  const { doctorId: managedDoctorId } = useParams()
+  const [managedDoctor, setManagedDoctor] = useState(null)
+  const targetDoctorId = managedDoctorId || currentUser?.id
+  const profile = managedDoctorId ? (managedDoctor || {}) : (currentUser?.profile || {})
   const [opdTiming, setOpdTiming] = useState({ start: '10:00', end: '18:00', slotMinutes: '15' })
   const [editingEntry, setEditingEntry] = useState(null)
   const [editMessage, setEditMessage] = useState('')
@@ -822,6 +832,7 @@ export function ClinicSchedule({ data }) {
   const fetchClinicHours = useAppStore((state) => state.fetchClinicHours)
   const fetchClinicClosures = useAppStore((state) => state.fetchClinicClosures)
   const refreshCurrentUser = useAppStore((state) => state.refreshCurrentUser)
+  const getDoctor = useAppStore((state) => state.getDoctor)
   const entries = data.opdEntries || []
   const [startHours, startMinutes] = opdTiming.start.split(':').map(Number)
   const [endHours, endMinutes] = opdTiming.end.split(':').map(Number)
@@ -830,19 +841,23 @@ export function ClinicSchedule({ data }) {
     ? Math.floor(availableMinutes / Number(opdTiming.slotMinutes))
     : 0
   const loadOpdEntries = useCallback(async () => {
-    const clinics = await apiClient.get('/clinics', { params: { mine: true, pageSize: 100 } })
+    const doctor = managedDoctorId ? await getDoctor(managedDoctorId) : null
+    if (doctor) setManagedDoctor(doctor)
+    const clinics = doctor ? await apiClient.get('/clinics', { params: { doctorId: managedDoctorId, pageSize: 100 } }) : await apiClient.get('/clinics', { params: { mine: true, pageSize: 100 } })
     setDoctorClinics(clinics)
-    await Promise.all(clinics.flatMap((clinic) => [fetchClinicHours(clinic.id), fetchClinicClosures(clinic.id)]))
-  }, [fetchClinicHours, fetchClinicClosures])
+    await Promise.all(clinics.flatMap((clinic) => [fetchClinicHours(clinic.id, managedDoctorId ? { doctorId: managedDoctorId } : {}), fetchClinicClosures(clinic.id, managedDoctorId ? { doctorId: managedDoctorId } : {})]))
+  }, [fetchClinicHours, fetchClinicClosures, getDoctor, managedDoctorId])
 
   useEffect(() => {
-    if (!currentUser?.id) return
+    if (!targetDoctorId) return
     loadOpdEntries()
       .then(() => setRefreshedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })))
       .catch((err) => setError(firstErrorMessage(err, 'Could not load OPD records.')))
-  }, [loadOpdEntries, currentUser?.id])
+  }, [loadOpdEntries, targetDoctorId])
 
-  if (!currentUser) return <Page title="OPD schedule"><EmptyState title="No doctor profile yet" message="Sign in as a doctor to manage clinic schedules." /></Page>
+  if (!currentUser) return <Page title="OPD schedule"><EmptyState title="No doctor profile yet" message="Sign in to manage clinic schedules." /></Page>
+  if (managedDoctorId && !['admin', 'superadmin'].includes(currentUser.role)) return <Page title="OPD schedule"><EmptyState title="Access denied" message="Only administrators can manage another doctor's schedule." /></Page>
+  if (managedDoctorId && !managedDoctor) return <Page title="OPD schedule"><ErrorNote>{error}</ErrorNote><Button type="button" onClick={() => loadOpdEntries().catch((err) => setError(firstErrorMessage(err, 'Could not load doctor schedule.')))} disabled={!error}>{error ? 'Retry' : 'Loading doctor…'}</Button></Page>
 
   const savePolicy = async (event) => {
     event.preventDefault()
@@ -861,7 +876,7 @@ export function ClinicSchedule({ data }) {
       // onlineBooking isn't collected on this form, so carry the current value through.
       // maxOnlineBookingsPerDay is optional/nullable: an empty field means "no daily cap",
       // sent as null rather than 0 so the server doesn't read it as "block every booking."
-      await updateDoctorBookingPolicy(currentUser.id, {
+      const updatedDoctor = await updateDoctorBookingPolicy(targetDoctorId, {
         onlineBooking: profile.onlineBooking !== false,
         allowRebooking: values.allowRebooking === 'on',
         maxDaysAdvance,
@@ -875,6 +890,7 @@ export function ClinicSchedule({ data }) {
         tokenNumberingMode: values.tokenNumberingMode === 'Sequential' ? 'sequential' : 'alternate',
         onlineTokenParity: values.tokenNumberingMode === 'Odd / even — online gets even numbers' ? 'even' : 'odd',
       })
+      if (managedDoctorId) setManagedDoctor(updatedDoctor)
       setSavedPolicy(true)
     } catch (err) {
       setError(firstErrorMessage(err, 'Could not save the booking window.'))
@@ -899,6 +915,7 @@ export function ClinicSchedule({ data }) {
     setError('')
     try {
       await upsertClinicHours(clinic.id, {
+        ...(managedDoctorId ? { doctorUserId: managedDoctorId } : {}),
         weekday: OPD_DAYS.indexOf(values.day),
         startTime: values.start,
         endTime: values.end,
@@ -923,7 +940,7 @@ export function ClinicSchedule({ data }) {
     setError('')
     setSavedClosing(false)
     try {
-      await createClinicClosure(clinic.id, { closedDate: values.date, reason: values.reason })
+      await createClinicClosure(clinic.id, { ...(managedDoctorId ? { doctorUserId: managedDoctorId } : {}), closedDate: values.date, reason: values.reason })
       setSavedClosing(true)
       form.reset()
     } catch (err) {
@@ -947,7 +964,7 @@ export function ClinicSchedule({ data }) {
     setSubmitting(true)
     setError('')
     try {
-      await Promise.all([refreshCurrentUser(), loadOpdEntries()])
+      await Promise.all([...(managedDoctorId ? [] : [refreshCurrentUser()]), loadOpdEntries()])
       setRefreshedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
     } catch (err) {
       setError(firstErrorMessage(err, 'Could not refresh the OPD schedule.'))
@@ -968,6 +985,7 @@ export function ClinicSchedule({ data }) {
     setEditMessage('')
     try {
       await upsertClinicHours(editingEntry.clinicId, {
+        ...(managedDoctorId ? { doctorUserId: managedDoctorId } : {}),
         weekday: editingEntry.weekday, startTime: values.start, endTime: values.end,
         slotMinutes: Number(values.slotMinutes),
       })
@@ -988,24 +1006,25 @@ export function ClinicSchedule({ data }) {
     setError('')
     setEditMessage('')
     try {
-      await updateDoctorBookingPolicy(currentUser.id, {
+      const updatedDoctor = await updateDoctorBookingPolicy(targetDoctorId, {
         onlineBooking: profile.onlineBooking !== false, allowRebooking: profile.allowRebooking !== false,
         maxDaysAdvance: profile.maxDaysAdvance ?? 30, maxOnlineBookingsPerDay: dailySlots,
         tokenNumberingMode: profile.tokenNumberingMode || 'sequential', onlineTokenParity: profile.onlineTokenParity || 'odd',
       })
+      if (managedDoctorId) setManagedDoctor(updatedDoctor)
       setEditMessage('Daily online slots updated for all days and clinics.')
     } catch (err) {
       setError(firstErrorMessage(err, 'Could not update daily online slots.'))
     } finally { setSubmitting(false) }
   }
-  const rows = entries.filter((item) => doctorClinics.some((clinic) => clinic.id === item.clinicId)).map((item, index) => ({
+  const rows = entries.filter((item) => doctorClinics.some((clinic) => clinic.id === item.clinicId) && (!managedDoctorId || item.doctorUserId === managedDoctorId)).map((item, index) => ({
     ...item, displayId: index + 1, clinicLabel: doctorClinics.find((clinic) => clinic.id === item.clinicId)?.name || '—',
     dailySlots: item.kind !== 'hours' || item.status === 'inactive' ? 0 : profile.maxOnlineBookingsPerDay ?? Math.max(0, Math.ceil(
       ((Number(item.endTime?.slice(0, 2)) * 60 + Number(item.endTime?.slice(3, 5)))
         - (Number(item.startTime?.slice(0, 2)) * 60 + Number(item.startTime?.slice(3, 5)))) / (item.slotMinutes || 15))),
   }))
   const exportCsv = () => downloadCsv('opd-schedule.csv', opdEntryCsv(rows))
-  return <Page kicker="Production database" title="OPD schedule" subtitle="Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-xs font-semibold text-success"><span className="h-1.5 w-1.5 rounded-full bg-success" />{refreshedAt ? `Updated · ${refreshedAt}` : 'Not refreshed yet'}</span><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" disabled={submitting} onClick={refresh}>{submitting ? 'Refreshing…' : 'Refresh'}</Button><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" onClick={exportCsv}>Export CSV</Button></div>}>
+  return <Page kicker="Production database" title={managedDoctorId ? `${managedDoctor?.name || 'Doctor'} · OPD schedule` : 'OPD schedule'} subtitle="Set each clinic's day-wise hours, patient duration, future-booking window, and closing dates." action={<div className="flex flex-wrap items-center gap-2"><span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-3 py-1.5 text-xs font-semibold text-success"><span className="h-1.5 w-1.5 rounded-full bg-success" />{refreshedAt ? `Updated · ${refreshedAt}` : 'Not refreshed yet'}</span><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" disabled={submitting} onClick={refresh}>{submitting ? 'Refreshing…' : 'Refresh'}</Button><Button type="button" tone="secondary" className="py-1.5 px-3 text-xs" onClick={exportCsv}>Export CSV</Button></div>}>
     <ErrorNote>{error}</ErrorNote>
     <div className="grid gap-5 lg:grid-cols-2">
       <form key={`${profile.maxDaysAdvance ?? 30}:${profile.maxOnlineBookingsPerDay ?? ''}:${profile.allowRebooking}:${profile.tokenNumberingMode}:${profile.onlineTokenParity}`} onSubmit={savePolicy} className="rounded-card border border-border bg-white p-5 shadow-card">

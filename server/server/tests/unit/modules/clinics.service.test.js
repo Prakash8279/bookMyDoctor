@@ -261,6 +261,15 @@ describe('clinicsService.listClinics — scope/status branching', () => {
     expect(where).not.toHaveProperty('approvalStatus');
   });
 
+  test('administrator can list all clinics assigned to one doctor, including pending clinics', async () => {
+    await clinicsService.listClinics({ doctorId: 'doc-1' }, ADMIN);
+    expect(prisma.clinic.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ doctorClinics: { some: { doctorUserId: 'doc-1' } } }),
+    }));
+    expect(prisma.clinic.findMany.mock.calls[0][0].where).not.toHaveProperty('approvalStatus');
+    await expect(clinicsService.listClinics({ doctorId: 'doc-1' }, DOCTOR)).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   test('an admin with an explicit approvalStatus filter gets it applied', async () => {
     await clinicsService.listClinics({ approvalStatus: 'disabled' }, ADMIN);
 

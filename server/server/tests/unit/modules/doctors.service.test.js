@@ -30,9 +30,37 @@ jest.mock('../../../src/services/cacheService', () => ({
   getOrSet: jest.fn((key, ttlSeconds, fetchFn) => fetchFn()),
   invalidate: jest.fn(),
 }));
+jest.mock('../../../src/modules/me/me.service', () => ({ updateMe: jest.fn() }));
 
 const prisma = require('../../../src/config/db');
 const doctorsService = require('../../../src/modules/doctors/doctors.service');
+const meService = require('../../../src/modules/me/me.service');
+
+describe('admin doctor profile management', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  test('updates the selected doctor and records the administrator as actor', async () => {
+    prisma.user.findUnique.mockResolvedValue(buildDoctorRow({ role: 'doctor' }));
+    const actor = { id: 'admin-1', role: 'admin' };
+    const fields = { consultationFee: 650, bio: 'Updated bio' };
+    await doctorsService.updateDoctorProfileAsAdmin('doc-1', fields, actor);
+    expect(meService.updateMe).toHaveBeenCalledWith('doc-1', 'doctor', fields, actor);
+  });
+
+  test('rejects non-admin callers before reading a doctor record', async () => {
+    await expect(doctorsService.updateDoctorProfileAsAdmin('doc-1', { bio: 'X' }, { id: 'doc-2', role: 'doctor' }))
+      .rejects.toMatchObject({ statusCode: 403 });
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(meService.updateMe).not.toHaveBeenCalled();
+  });
+
+  test('cannot edit a patient via the doctor route', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: 'patient', doctorProfile: null });
+    await expect(doctorsService.updateDoctorProfileAsAdmin('patient-1', { name: 'Changed' }, { id: 'admin-1', role: 'superadmin' }))
+      .rejects.toMatchObject({ statusCode: 404 });
+    expect(meService.updateMe).not.toHaveBeenCalled();
+  });
+});
 
 function buildDoctorRow(overrides = {}) {
   const { doctorProfile, doctorClinics, doctorClinicHours, ...userOverrides } = overrides;

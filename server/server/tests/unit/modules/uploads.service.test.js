@@ -18,7 +18,7 @@
  * lazily requires it purely for its invalidateDoctorCaches side effect.
  */
 jest.mock('../../../src/config/db', () => ({
-  user: { update: jest.fn() },
+  user: { findUnique: jest.fn(), update: jest.fn() },
   doctorProfile: { findUnique: jest.fn(), update: jest.fn() },
   clinic: { findUnique: jest.fn(), update: jest.fn() },
   doctorClinic: { findUnique: jest.fn() },
@@ -38,6 +38,20 @@ const PATIENT = { id: 'patient-1', role: 'patient' };
 const RECEPTIONIST = { id: 'recep-1', role: 'receptionist' };
 
 describe('uploadsService.savePhoto', () => {
+  test('administrator can replace a selected doctor photo without changing their own', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: 'doctor' });
+    await uploadsService.savePhoto({ id: 'admin-1', role: 'admin' }, 'http://host/photo.jpg', DOCTOR.id);
+    expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: DOCTOR.id }, data: { photoUrl: 'http://host/photo.jpg' } });
+    expect(doctorsService.invalidateDoctorCaches).toHaveBeenCalledWith(DOCTOR.id);
+  });
+
+  test('administrator cannot upload a photo to a non-doctor via the doctor route', async () => {
+    prisma.user.findUnique.mockResolvedValue({ role: 'patient' });
+    await expect(uploadsService.savePhoto({ id: 'admin-1', role: 'admin' }, 'http://host/photo.jpg', PATIENT.id))
+      .rejects.toMatchObject({ statusCode: 404 });
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
   test('a doctor uploading a photo busts the public directory cache via the lazy doctors.service require', async () => {
     await uploadsService.savePhoto(DOCTOR, 'http://host/photo.jpg');
 
@@ -53,6 +67,12 @@ describe('uploadsService.savePhoto', () => {
 });
 
 describe('uploadsService.saveVerificationDocument', () => {
+  test('administrator document upload targets the selected doctor and keeps administrator attribution', async () => {
+    prisma.doctorProfile.findUnique.mockResolvedValue({ verificationDocuments: [] });
+    await uploadsService.saveVerificationDocument({ id: 'admin-1', role: 'superadmin' }, 'http://host/doc.pdf', 'Registration', DOCTOR.id);
+    expect(prisma.doctorProfile.update).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: DOCTOR.id } }));
+  });
+
   test('404 DOCTOR_PROFILE_NOT_FOUND when the doctor has no profile row (defensive guard)', async () => {
     prisma.doctorProfile.findUnique.mockResolvedValue(null);
 
@@ -104,6 +124,11 @@ describe('uploadsService.saveVerificationDocument', () => {
 });
 
 describe('uploadsService.saveClinicQr — dual ownership check', () => {
+  test('administrator may replace a clinic QR and is recorded as the actor', async () => {
+    prisma.clinic.findUnique.mockResolvedValue({ id: 'clinic-1' });
+    await uploadsService.saveClinicQr({ id: 'admin-1', role: 'admin' }, 'clinic-1', 'http://host/qr.png');
+    expect(prisma.clinic.update).toHaveBeenCalledWith({ where: { id: 'clinic-1' }, data: { paymentQrUrl: 'http://host/qr.png' } });
+  });
   test('404 CLINIC_NOT_FOUND when the clinic does not exist', async () => {
     prisma.clinic.findUnique.mockResolvedValue(null);
 

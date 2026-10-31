@@ -22,8 +22,13 @@ const MAX_DOCUMENT_NAME_LENGTH = 150;
  * @param {{id:string, role:string}} actor
  * @param {string} url
  */
-async function savePhoto(actor, url) {
-  await prisma.user.update({ where: { id: actor.id }, data: { photoUrl: url } });
+async function savePhoto(actor, url, targetUserId = actor.id) {
+  if (targetUserId !== actor.id) {
+    if (!['admin', 'superadmin'].includes(actor.role)) throw new ApiError(403, 'FORBIDDEN', 'Only an administrator can change another user’s photo.');
+    const target = await prisma.user.findUnique({ where: { id: targetUserId }, select: { role: true } });
+    if (target?.role !== 'doctor') throw new ApiError(404, 'DOCTOR_NOT_FOUND', 'Doctor not found.');
+  }
+  await prisma.user.update({ where: { id: targetUserId }, data: { photoUrl: url } });
 
   // FIX (cache-invalidation audit): DOCTOR_LIST_SELECT/DOCTOR_DETAIL_SELECT both select
   // photoUrl and doctors.service.js#shapeDoctor returns it in every cached listDoctors/
@@ -34,9 +39,9 @@ async function savePhoto(actor, url) {
   // one on the public directory/detail pages for up to 60s. Lazy require, same reasoning as
   // me.service.js's own cross-module invalidation call: doctors.service.js doesn't require this
   // module, so this isn't a true cycle.
-  if (actor.role === 'doctor') {
+  if (actor.role === 'doctor' || targetUserId !== actor.id) {
     const doctorsService = require('../doctors/doctors.service');
-    await doctorsService.invalidateDoctorCaches(actor.id);
+    await doctorsService.invalidateDoctorCaches(targetUserId);
   }
 
   await activityLogService.log({
@@ -44,8 +49,8 @@ async function savePhoto(actor, url) {
     actorRole: actor.role,
     actionType: 'uploads.photo',
     targetEntityType: 'user',
-    targetEntityId: actor.id,
-    description: 'Uploaded a new profile photo',
+    targetEntityId: targetUserId,
+    description: targetUserId === actor.id ? 'Uploaded a new profile photo' : 'Updated doctor profile photo',
   });
 
   return url;
@@ -63,9 +68,12 @@ async function savePhoto(actor, url) {
  *   is a DISPLAY label only, never a filesystem path — the file itself was already written under
  *   a server-generated UUID filename by fileUploadService, never the client's original filename.
  */
-async function saveVerificationDocument(actor, url, documentName) {
+async function saveVerificationDocument(actor, url, documentName, targetDoctorId = actor.id) {
+  if (targetDoctorId !== actor.id && !['admin', 'superadmin'].includes(actor.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only an administrator can upload another doctor’s document.');
+  }
   const existing = await prisma.doctorProfile.findUnique({
-    where: { userId: actor.id },
+    where: { userId: targetDoctorId },
     select: { verificationDocuments: true },
   });
   // A doctor account always has a doctor_profiles row (created alongside the user in the same
@@ -81,16 +89,18 @@ async function saveVerificationDocument(actor, url, documentName) {
   const nextDocuments = [...currentDocuments, { name: label, url, uploadedAt: new Date().toISOString() }];
 
   await prisma.doctorProfile.update({
-    where: { userId: actor.id },
+    where: { userId: targetDoctorId },
     data: { verificationDocuments: nextDocuments },
   });
+  const doctorsService = require('../doctors/doctors.service');
+  await doctorsService.invalidateDoctorCaches(targetDoctorId);
 
   await activityLogService.log({
     actorUserId: actor.id,
     actorRole: actor.role,
     actionType: 'uploads.verification_document',
     targetEntityType: 'user',
-    targetEntityId: actor.id,
+    targetEntityId: targetDoctorId,
     description: `Uploaded verification document: ${label}`,
   });
 
@@ -108,9 +118,8 @@ async function saveVerificationDocument(actor, url, documentName) {
  *   - receptionist: must be staffed at this exact clinic (receptionist_profiles.clinic_id) — the
  *     only clinic scoping that role has anywhere in the schema (see that column's own header
  *     comment in schema.prisma for why it's nullable/additive).
- * admin/superadmin are deliberately NOT special-cased here — this route's authorize('doctor',
- * 'receptionist') already excludes them, matching the task's stated scope ("doctor or
- * receptionist role"); an admin needing to fix a clinic's QR code has PATCH /clinics/:id for that.
+ * Admin and superadmin can manage any clinic QR from clinic management; their identity is
+ * retained in the audit entry.
  * @param {{id:string, role:string}} actor
  * @param {string} clinicId
  * @param {string} url
@@ -129,9 +138,8 @@ async function saveClinicQr(actor, clinicId, url) {
     if (!assignment || !assignment.isOwner) {
       throw new ApiError(403, 'FORBIDDEN', 'You must be an owner of this clinic to upload its QR code.');
     }
-  } else {
-    // receptionist — the only other role authorize('doctor', 'receptionist') lets through to
-    // this function (see uploads.routes.js).
+  } else if (actor.role === 'receptionist') {
+    // Receptionists are limited to their assigned clinic.
     const receptionistProfile = await prisma.receptionistProfile.findUnique({
       where: { userId: actor.id },
       select: { clinicId: true },
@@ -139,6 +147,8 @@ async function saveClinicQr(actor, clinicId, url) {
     if (!receptionistProfile || receptionistProfile.clinicId !== clinicId) {
       throw new ApiError(403, 'FORBIDDEN', 'You are not staffed at this clinic.');
     }
+  } else if (!['admin', 'superadmin'].includes(actor.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'You cannot change this clinic QR code.');
   }
 
   await prisma.clinic.update({ where: { id: clinicId }, data: { paymentQrUrl: url } });

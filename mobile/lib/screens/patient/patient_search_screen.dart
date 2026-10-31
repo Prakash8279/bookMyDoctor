@@ -392,16 +392,19 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
       _locationError = null;
     });
     try {
-      if (!await Geolocator.isLocationServiceEnabled())
+      if (!await Geolocator.isLocationServiceEnabled()) {
         throw StateError(
             'Turn on location services or search by city and area.');
+      }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+      }
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever)
+          permission == LocationPermission.deniedForever) {
         throw StateError(
             'Allow location permission or search by city and area.');
+      }
       final position = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,
@@ -416,9 +419,10 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
         _applied.area = '';
       });
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() =>
             _locationError = error.toString().replaceFirst('Bad state: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -612,8 +616,9 @@ class _PatientSearchScreenState extends State<PatientSearchScreen> {
                             value: radius, child: Text('$radius km')))
                         .toList(),
                     onChanged: (radius) {
-                      if (radius != null)
+                      if (radius != null) {
                         setState(() => _nearbyRadiusKm = radius);
+                      }
                     }),
             ]),
         if (_locationError != null)

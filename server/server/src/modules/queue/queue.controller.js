@@ -9,8 +9,8 @@ const asyncHandler = require('../../utils/asyncHandler');
 
 // status query filter removed (backend-cleanup audit) — see queue.validation.js#listQueue's comment.
 const listQueue = asyncHandler(async (req, res) => {
-  const { date, page, pageSize } = req.query;
-  const { rows, pagination, truncated } = await queueService.listQueue({ date, page, pageSize }, req.user);
+  const { date, doctorId, page, pageSize } = req.query;
+  const { rows, pagination, truncated } = await queueService.listQueue({ date, doctorId, page, pageSize }, req.user);
   // LOAD-REVIEW FIX: surface the defensive-cap signal to the caller instead of only a server log
   // line — see queue.service.js's MAX_QUEUE_FETCH comment.
   return success(res, rows, { pagination, truncated });

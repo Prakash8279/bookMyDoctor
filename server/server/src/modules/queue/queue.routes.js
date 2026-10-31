@@ -4,7 +4,7 @@
  * plus a read-only live-queue listing (GET /, recommended addition beyond the literal PATCH-only
  * brief — flagged in the phase plan; a PATCH-only queue module isn't operable since staff need
  * to see who's waiting before they can act on a token).
- * Allowed roles: doctor, receptionist
+ * Allowed roles: doctor, receptionist, and administrators managing a selected doctor
  * Responsibility: wire path+method -> [authenticate, authorize(...), validation chain, validateRequest, controller fn].
  * No business logic here — that belongs in queue.service.js.
  *
@@ -21,7 +21,7 @@ const validateRequest = require('../../middleware/validateRequest');
 const validation = require('./queue.validation');
 const controller = require('./queue.controller');
 
-const QUEUE_ROLES = ['doctor', 'receptionist'];
+const QUEUE_ROLES = ['doctor', 'receptionist', 'admin', 'superadmin'];
 
 router.get('/', authenticate, authorize(...QUEUE_ROLES), validation.listQueue, validateRequest, controller.listQueue);
 

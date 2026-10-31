@@ -265,6 +265,8 @@ export default function App() {
       <Route index element={requires('admin', <AdminDashboard data={data} />)} />
       <Route path="dashboard" element={requires('admin', <AdminDashboard data={data} />)} />
       <Route path="doctors" element={requires('admin', <DoctorVerification data={data} />)} />
+      <Route path="doctors/:doctorId/schedule" element={requires('admin', <ClinicSchedule data={data} />)} />
+      <Route path="doctors/:doctorId/queue" element={requires('admin', <QueueManagement data={data} />)} />
       <Route path="clinic-verification" element={requires('admin', <ClinicVerification data={data} />)} />
       {/* COMPLETENESS FIX (audit Priority 1 #4): this used to render a stub AdminForm with a
           local-only saveDraft() table showing blank City/Status columns for every user, on a
@@ -310,6 +312,10 @@ export default function App() {
       <Route path="dashboard" element={requires('superadmin', <SuperAdminDashboard data={data} />)} />
       <Route path="entities" element={requires('superadmin', <SuperAdminEntities data={data} />)} />
       <Route path="doctors" element={requires('superadmin', <DoctorVerification data={data} />)} />
+      <Route path="doctors/:doctorId/schedule" element={requires('superadmin', <ClinicSchedule data={data} />)} />
+      <Route path="doctors/:doctorId/queue" element={requires('superadmin', <QueueManagement data={data} />)} />
+      <Route path="appointments" element={requires('superadmin', <PortalAppointments data={data} role="admin" />)} />
+      <Route path="reviews" element={requires('superadmin', <ReviewModeration data={data} />)} />
       <Route path="patients" element={requires('superadmin', <ManagePatients data={data} />)} />
       <Route path="clinics" element={requires('superadmin', <ManageClinics data={data} />)} />
       <Route path="receptionists" element={requires('superadmin', <ManageReceptionists data={data} />)} />

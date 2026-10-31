@@ -1,8 +1,8 @@
 /**
  * Route definitions for the uploads module.
  * Scope: multipart file uploads — profile photos (any authenticated user, own row), doctor
- * verification documents (doctor only), and clinic payment QR codes (doctor/receptionist,
- * scoped to a clinic they actually own/staff — see uploads.service.js#saveClinicQr).
+ * verification documents (doctor self-service or admin for a selected doctor), and clinic
+ * payment QR codes (clinic owner/receptionist or admin — see uploads.service.js#saveClinicQr).
  * Allowed roles: see per-route authorize(...) below; there is no "any role, any target" route.
  * Responsibility: wire path+method -> [authenticate, authorize(...), the matching multer
  * middleware from services/fileUploadService.js, validation chain, validateRequest, controller
@@ -31,12 +31,16 @@ const { uploadLimiter } = require('../../middleware/rateLimiter');
 const fileUploadService = require('../../services/fileUploadService');
 const validation = require('./uploads.validation');
 const controller = require('./uploads.controller');
+const { param } = require('express-validator');
 
 router.use(authenticate);
 
 // Any authenticated user, own row only (matches PATCH /me's ownership model) — no authorize()
 // role gate needed, req.user.id is the only id ever used downstream (uploads.service.js#savePhoto).
 router.post('/photo', uploadLimiter, ...fileUploadService.photoUpload, controller.uploadPhoto);
+
+router.post('/doctors/:doctorId/photo', authorize('admin', 'superadmin'), [param('doctorId').isUUID()], validateRequest, uploadLimiter, ...fileUploadService.photoUpload, controller.uploadPhoto);
+router.post('/doctors/:doctorId/document', authorize('admin', 'superadmin'), [param('doctorId').isUUID()], validateRequest, uploadLimiter, ...fileUploadService.documentUpload, validation.uploadDocument, validateRequest, controller.uploadDocument);
 
 // Doctor-only: appended to the CALLER's own doctor_profiles.verification_documents.
 router.post(
@@ -49,12 +53,10 @@ router.post(
   controller.uploadDocument
 );
 
-// Doctor or receptionist: clinicId (a multipart text field, validated below) says which clinic —
-// uploads.service.js#saveClinicQr is what actually enforces "this doctor/receptionist may write
-// to THIS clinic"; authorize() here only gates the role, not the specific clinic.
+// Clinic owner, assigned receptionist, or administrator: clinicId identifies the target clinic.
 router.post(
   '/qr',
-  authorize('doctor', 'receptionist'),
+  authorize('doctor', 'receptionist', 'admin', 'superadmin'),
   uploadLimiter,
   ...fileUploadService.qrUpload,
   validation.uploadQr,

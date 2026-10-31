@@ -501,6 +501,19 @@ async function updateBookingSettings(id, body, requester) {
   return getDoctorById(id, requester);
 }
 
+async function updateDoctorProfileAsAdmin(id, body, actor) {
+  if (!ADMIN_ROLES.includes(actor.role)) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only admins can edit another doctor.');
+  }
+  const target = await prisma.user.findUnique({ where: { id }, select: { role: true, doctorProfile: { select: { userId: true } } } });
+  if (!target || target.role !== 'doctor' || !target.doctorProfile) {
+    throw new ApiError(404, 'DOCTOR_NOT_FOUND', 'Doctor not found.');
+  }
+  const meService = require('../me/me.service');
+  await meService.updateMe(id, 'doctor', body, actor);
+  return getDoctorById(id, actor);
+}
+
 /**
  * Provisions a new doctor account (User + DoctorProfile in one transaction). Used by two
  * callers: an admin/superadmin creating a doctor directly (actor = req.user, `verifyImmediately`
@@ -740,6 +753,7 @@ module.exports = {
   listDoctors,
   getDoctorById,
   updateBookingSettings,
+  updateDoctorProfileAsAdmin,
   createDoctor,
   updateDoctorStatus,
   updateDoctorAccountStatus,

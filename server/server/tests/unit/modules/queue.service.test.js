@@ -153,6 +153,15 @@ describe('queueService.getMyQueueStatus', () => {
 });
 
 describe('queueService.listQueue', () => {
+  test('admin must select a doctor and sees only that doctor’s queue', async () => {
+    await expect(queueService.listQueue({}, { id: 'admin-1', role: 'admin' }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'DOCTOR_ID_REQUIRED' });
+    prisma.queueToken.findMany.mockResolvedValue([]);
+    await queueService.listQueue({ doctorId: 'doc-A' }, { id: 'admin-1', role: 'admin' });
+    expect(prisma.queueToken.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ doctorUserId: 'doc-A' }),
+    }));
+  });
   test('applies the full-payment gate in the database before counts and pagination', async () => {
     prisma.queueToken.findMany.mockResolvedValue([]);
     await queueService.listQueue({}, {id:'doc-A',role:'doctor'});
